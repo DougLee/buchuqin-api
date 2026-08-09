@@ -1,5 +1,6 @@
 import { Type } from 'class-transformer';
 import {
+  ArrayMinSize,
   IsArray,
   IsIn,
   IsInt,
@@ -37,5 +38,5 @@ export class CreateAfterSalesDto {
   @IsIn(['quality', 'missing', 'damaged']) type!:
     'quality' | 'missing' | 'damaged';
   @IsString() @MaxLength(300) description!: string;
-  @IsArray() @IsString({ each: true }) images!: string[];
+  @IsArray() @ArrayMinSize(1) @IsString({ each: true }) images!: string[];
 }

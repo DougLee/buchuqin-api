@@ -27,6 +27,33 @@ describe('BusinessService', () => {
     expect(service.cart('user-001').items).toHaveLength(0);
     expect(order.package?.status).toBe('waiting-pick');
   });
+  it('does not allow an unpaid order to enter fulfillment', () => {
+    const order = service.createOrder('user-001', {
+      addressId: 'address-001',
+      deliveryMode: 'instant',
+    });
+    expect(() => service.advance('user-001', order.id)).toThrow(
+      '当前状态不可推进履约',
+    );
+  });
+  it('rejects payment after the 15-minute deadline', () => {
+    const order = service.createOrder('user-001', {
+      addressId: 'address-001',
+      deliveryMode: 'instant',
+    });
+    order.createdAt = new Date(Date.now() - 16 * 60 * 1000).toISOString();
+    expect(() => service.pay('user-001', order.id)).toThrow('订单支付已超时');
+    expect(order.status).toBe('cancelled');
+  });
+  it('cancels an unpaid order without creating a refund', () => {
+    const order = service.createOrder('user-001', {
+      addressId: 'address-001',
+      deliveryMode: 'instant',
+    });
+    service.cancel('user-001', order.id);
+    expect(order.statusText).toBe('订单已取消');
+    expect(service.refunds('user-001')).toHaveLength(0);
+  });
   it('completes delivery and creates an after-sales refund', () => {
     const order = service.createOrder('user-001', {
       addressId: 'address-001',

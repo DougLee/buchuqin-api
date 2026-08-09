@@ -225,10 +225,14 @@ export class BusinessService {
   }
   orders(userId: string, status?: string) {
     this.expirePendingOrders(userId);
+    const delivering = new Set(['paid', 'picking', 'first-mile', 'last-mile']);
     return this.store.orders.filter(
       (o) =>
         o.userId === userId &&
-        (!status || status === 'all' || o.status === status),
+        (!status ||
+          status === 'all' ||
+          o.status === status ||
+          (status === 'delivering' && delivering.has(o.status))),
     );
   }
   order(userId: string, id: string) {
@@ -241,6 +245,11 @@ export class BusinessService {
   pay(userId: string, id: string) {
     const item = this.order(userId, id);
     if (item.status === 'paid') return item;
+    if (Date.now() - new Date(item.createdAt).getTime() >= 15 * 60 * 1000) {
+      item.status = 'cancelled';
+      item.statusText = '支付超时已关闭';
+      throw new BadRequestException('订单支付已超时');
+    }
     if (item.status !== 'pending-payment')
       throw new BadRequestException('当前状态不可支付');
     for (const line of item.items) {
@@ -271,6 +280,8 @@ export class BusinessService {
   }
   advance(userId: string, id: string) {
     const item = this.order(userId, id);
+    if (!['paid', 'picking', 'first-mile', 'last-mile'].includes(item.status))
+      throw new BadRequestException('当前状态不可推进履约');
     const next = item.timeline.findIndex((step) => !step.done);
     if (next < 0) {
       item.status = 'completed';
@@ -303,6 +314,7 @@ export class BusinessService {
   }
   cancel(userId: string, id: string) {
     const item = this.order(userId, id);
+    const wasPaid = item.status === 'paid';
     if (!['pending-payment', 'paid'].includes(item.status))
       throw new BadRequestException('当前状态不可取消');
     if (item.status === 'paid' && !item.stockRestored) {
@@ -315,8 +327,8 @@ export class BusinessService {
       if (coupon) coupon.status = 'available';
     }
     item.status = 'cancelled';
-    item.statusText = '订单已取消并退款';
-    if (item.paidAt)
+    item.statusText = wasPaid ? '订单已取消并退款' : '订单已取消';
+    if (wasPaid)
       this.store.refunds.unshift({
         id: `refund-${Date.now()}`,
         userId,
@@ -328,9 +340,11 @@ export class BusinessService {
       });
     this.notify(
       userId,
-      'refund',
-      '退款已原路返回',
-      `订单 ${item.orderNo} 已取消，退款 ¥${item.payableAmount}。`,
+      wasPaid ? 'refund' : 'order',
+      wasPaid ? '退款已原路返回' : '订单已取消',
+      wasPaid
+        ? `订单 ${item.orderNo} 已取消，退款 ¥${item.payableAmount}。`
+        : `订单 ${item.orderNo} 未支付，已关闭。`,
     );
     return item;
   }
@@ -351,6 +365,12 @@ export class BusinessService {
     const order = this.order(userId, orderId);
     if (order.status !== 'completed')
       throw new BadRequestException('订单送达后才能申请售后');
+    const deliveredAt = order.timeline.at(-1)?.time;
+    if (
+      !deliveredAt ||
+      Date.now() - new Date(deliveredAt).getTime() > 24 * 60 * 60 * 1000
+    )
+      throw new BadRequestException('已超过送达后 24 小时售后期限');
     if (this.store.afterSales.some((a) => a.orderId === orderId))
       throw new BadRequestException('该订单已提交售后');
     const record = {
