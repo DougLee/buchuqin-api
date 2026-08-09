@@ -23,7 +23,8 @@ export class AuthController {
   @Post('mock-login')
   @HttpCode(200)
   @ApiOperation({ summary: 'Mock 微信登录' })
-  login(@Body() _body: MockLoginDto) {
+  login(@Body() body: MockLoginDto) {
+    void body.code;
     const user = {
       id: 'user-001',
       campusId: 'campus-hbut',

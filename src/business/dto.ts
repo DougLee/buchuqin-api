@@ -5,6 +5,7 @@ import {
   IsInt,
   IsOptional,
   IsString,
+  MaxLength,
   Min,
   ValidateNested,
 } from 'class-validator';
@@ -23,7 +24,7 @@ export class CreateOrderDto {
   @IsIn(['instant', 'scheduled']) deliveryMode!: 'instant' | 'scheduled';
   @IsOptional() @IsString() deliverySlot?: string;
   @IsOptional() @IsString() couponId?: string;
-  @IsOptional() @IsString() remark?: string;
+  @IsOptional() @IsString() @MaxLength(60) remark?: string;
 }
 export class CreateAddressDto {
   @IsString() buildingName!: string;

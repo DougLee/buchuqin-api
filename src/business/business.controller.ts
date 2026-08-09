@@ -37,8 +37,18 @@ export class BusinessController {
   @Get('products') products(
     @Query('categoryId') category?: string,
     @Query('keyword') keyword?: string,
+    @Query('page') pageValue = '1',
+    @Query('pageSize') pageSizeValue = '20',
   ) {
-    return ok(this.service.listProducts(category, keyword));
+    const all = this.service.listProducts(category, keyword);
+    const page = Math.max(1, Number(pageValue) || 1);
+    const pageSize = Math.min(50, Math.max(1, Number(pageSizeValue) || 20));
+    return ok({
+      items: all.slice((page - 1) * pageSize, page * pageSize),
+      total: all.length,
+      page,
+      pageSize,
+    });
   }
   @Get('products/:id') product(@Param('id') id: string) {
     return ok(this.service.product(id));
@@ -56,15 +66,25 @@ export class BusinessController {
     return ok(this.service.checkout(req.user.id, dto));
   }
   @Post('orders')
-  @ApiOperation({ summary: '创建 Mock 订单并模拟支付成功' })
+  @ApiOperation({ summary: '创建待支付 Mock 订单' })
   createOrder(@Req() req: AuthRequest, @Body() dto: CreateOrderDto) {
     return ok(this.service.createOrder(req.user.id, dto), '下单成功');
   }
   @Get('orders') orders(
     @Req() req: AuthRequest,
     @Query('status') status?: string,
+    @Query('page') pageValue = '1',
+    @Query('pageSize') pageSizeValue = '20',
   ) {
-    return ok(this.service.orders(req.user.id, status));
+    const all = this.service.orders(req.user.id, status);
+    const page = Math.max(1, Number(pageValue) || 1);
+    const pageSize = Math.min(50, Math.max(1, Number(pageSizeValue) || 20));
+    return ok({
+      items: all.slice((page - 1) * pageSize, page * pageSize),
+      total: all.length,
+      page,
+      pageSize,
+    });
   }
   @Get('orders/:id') order(@Req() req: AuthRequest, @Param('id') id: string) {
     return ok(this.service.order(req.user.id, id));
@@ -81,20 +101,28 @@ export class BusinessController {
   ) {
     return ok(this.service.cancel(req.user.id, id), '订单已取消');
   }
-  @Get('addresses') addresses() {
-    return ok(this.store.addresses);
+  @Post('orders/:id/mock-advance') advance(
+    @Req() req: AuthRequest,
+    @Param('id') id: string,
+  ) {
+    return ok(this.service.advance(req.user.id, id), '履约状态已推进');
   }
-  @Post('addresses') addAddress(@Body() dto: CreateAddressDto) {
-    return ok(this.service.addAddress(dto), '地址已保存');
+  @Get('addresses') addresses(@Req() req: AuthRequest) {
+    return ok(this.service.addresses(req.user.id, req.user.campusId));
+  }
+  @Post('addresses') addAddress(
+    @Req() req: AuthRequest,
+    @Body() dto: CreateAddressDto,
+  ) {
+    return ok(
+      this.service.addAddress(req.user.id, req.user.campusId, dto),
+      '地址已保存',
+    );
   }
   @Get('coupons') coupons() {
     return ok(this.store.coupons);
   }
   @Get('delivery/slots') slots() {
-    return ok([
-      { id: '17', label: '17:00-18:00', available: true },
-      { id: '20', label: '20:00-21:00', available: true },
-      { id: '21', label: '21:00-22:00', available: false },
-    ]);
+    return ok(this.store.deliverySlots);
   }
 }

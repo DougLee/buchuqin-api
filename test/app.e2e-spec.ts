@@ -22,7 +22,11 @@ describe('AppController (e2e)', () => {
       .post('/api/v1/auth/mock-login')
       .send({ code: 'mock' })
       .expect(200)
-      .expect(({ body }) => expect(body.data.token).toBeDefined());
+      .expect((response) =>
+        expect(
+          (response.body as { data: { token?: string } }).data.token,
+        ).toBeDefined(),
+      );
   });
 
   afterEach(async () => {

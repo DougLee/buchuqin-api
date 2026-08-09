@@ -111,6 +111,7 @@ export const banners = [
 export const addresses = [
   {
     id: 'address-001',
+    userId: 'user-001',
     campusId: campus.id,
     campusName: campus.name,
     buildingId: 'building-5',
@@ -139,4 +140,9 @@ export const coupons = [
     status: 'available',
     expiresAt: '2026-10-31 23:59:59',
   },
+];
+export const deliverySlots = [
+  { id: '17', label: '17:00-18:00', available: true },
+  { id: '20', label: '20:00-21:00', available: true },
+  { id: '21', label: '21:00-22:00', available: false },
 ];
