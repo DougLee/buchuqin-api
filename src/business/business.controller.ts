@@ -15,7 +15,12 @@ import type { AuthRequest } from '../auth/jwt-auth.guard';
 import { ok } from '../common/api-response';
 import { MockStore } from '../mock/mock.store';
 import { BusinessService } from './business.service';
-import { CreateAddressDto, CreateOrderDto, UpdateCartDto } from './dto';
+import {
+  CreateAddressDto,
+  CreateAfterSalesDto,
+  CreateOrderDto,
+  UpdateCartDto,
+} from './dto';
 @ApiTags('用户端 MVP')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
@@ -124,5 +129,30 @@ export class BusinessController {
   }
   @Get('delivery/slots') slots() {
     return ok(this.store.deliverySlots);
+  }
+  @Post('orders/:id/after-sales') afterSale(
+    @Req() req: AuthRequest,
+    @Param('id') id: string,
+    @Body() dto: CreateAfterSalesDto,
+  ) {
+    return ok(
+      this.service.createAfterSales(req.user.id, id, dto),
+      '售后申请已提交',
+    );
+  }
+  @Get('after-sales') afterSales(@Req() req: AuthRequest) {
+    return ok(this.service.afterSales(req.user.id));
+  }
+  @Get('refunds') refunds(@Req() req: AuthRequest) {
+    return ok(this.service.refunds(req.user.id));
+  }
+  @Get('notifications') notifications(@Req() req: AuthRequest) {
+    return ok(this.service.notifications(req.user.id));
+  }
+  @Post('notifications/:id/read') readNotification(
+    @Req() req: AuthRequest,
+    @Param('id') id: string,
+  ) {
+    return ok(this.service.readNotification(req.user.id, id));
   }
 }

@@ -33,3 +33,9 @@ export class CreateAddressDto {
   @IsString() contactName!: string;
   @IsString() phone!: string;
 }
+export class CreateAfterSalesDto {
+  @IsIn(['quality', 'missing', 'damaged']) type!:
+    'quality' | 'missing' | 'damaged';
+  @IsString() @MaxLength(300) description!: string;
+  @IsArray() @IsString({ each: true }) images!: string[];
+}

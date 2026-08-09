@@ -4,7 +4,12 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { MockStore } from '../mock/mock.store';
-import { CreateAddressDto, CreateOrderDto, UpdateCartDto } from './dto';
+import {
+  CreateAddressDto,
+  CreateAfterSalesDto,
+  CreateOrderDto,
+  UpdateCartDto,
+} from './dto';
 
 interface OrderLine {
   product: {
@@ -53,11 +58,23 @@ export interface MockOrder {
   timeline: TimelineStep[];
   package?: { id: string; status: string };
   paidAt?: string;
+  stockRestored?: boolean;
 }
 
 @Injectable()
 export class BusinessService {
   constructor(private readonly store: MockStore) {}
+  private notify(userId: string, type: string, title: string, content: string) {
+    this.store.notifications.unshift({
+      id: `notice-${Date.now()}`,
+      userId,
+      type,
+      title,
+      content,
+      read: false,
+      createdAt: new Date().toISOString(),
+    });
+  }
   home() {
     return {
       campus: this.store.campus,
@@ -207,6 +224,7 @@ export class BusinessService {
     return order;
   }
   orders(userId: string, status?: string) {
+    this.expirePendingOrders(userId);
     return this.store.orders.filter(
       (o) =>
         o.userId === userId &&
@@ -243,6 +261,12 @@ export class BusinessService {
       if (coupon) coupon.status = 'used';
     }
     this.store.carts[userId] = {};
+    this.notify(
+      userId,
+      'order',
+      '支付成功',
+      '订单已进入湖工大校园仓，仓储人员即将开始拣货。',
+    );
     return item;
   }
   advance(userId: string, id: string) {
@@ -269,21 +293,111 @@ export class BusinessService {
       item.status = 'completed';
       item.statusText = '已送达寝室';
     }
+    this.notify(
+      userId,
+      'delivery',
+      item.statusText,
+      `${item.orderNo} 的履约状态已更新。`,
+    );
     return item;
   }
   cancel(userId: string, id: string) {
     const item = this.order(userId, id);
     if (!['pending-payment', 'paid'].includes(item.status))
       throw new BadRequestException('当前状态不可取消');
-    if (item.status === 'paid')
+    if (item.status === 'paid' && !item.stockRestored) {
       for (const line of item.items)
         this.product(line.product.id).stock += line.quantity;
+      item.stockRestored = true;
+    }
     if (item.couponId) {
       const coupon = this.store.coupons.find((c) => c.id === item.couponId);
       if (coupon) coupon.status = 'available';
     }
     item.status = 'cancelled';
     item.statusText = '订单已取消并退款';
+    if (item.paidAt)
+      this.store.refunds.unshift({
+        id: `refund-${Date.now()}`,
+        userId,
+        orderId: id,
+        amount: item.payableAmount,
+        reason: '用户取消订单',
+        status: 'succeeded',
+        createdAt: new Date().toISOString(),
+      });
+    this.notify(
+      userId,
+      'refund',
+      '退款已原路返回',
+      `订单 ${item.orderNo} 已取消，退款 ¥${item.payableAmount}。`,
+    );
+    return item;
+  }
+  private expirePendingOrders(userId: string) {
+    const deadline = Date.now() - 15 * 60 * 1000;
+    for (const item of this.store.orders) {
+      if (
+        item.userId === userId &&
+        item.status === 'pending-payment' &&
+        new Date(item.createdAt).getTime() < deadline
+      ) {
+        item.status = 'cancelled';
+        item.statusText = '支付超时已关闭';
+      }
+    }
+  }
+  createAfterSales(userId: string, orderId: string, dto: CreateAfterSalesDto) {
+    const order = this.order(userId, orderId);
+    if (order.status !== 'completed')
+      throw new BadRequestException('订单送达后才能申请售后');
+    if (this.store.afterSales.some((a) => a.orderId === orderId))
+      throw new BadRequestException('该订单已提交售后');
+    const record = {
+      id: `after-${Date.now()}`,
+      userId,
+      orderId,
+      type: dto.type,
+      description: dto.description,
+      images: dto.images,
+      status: 'approved',
+      createdAt: new Date().toISOString(),
+    };
+    this.store.afterSales.unshift(record);
+    this.store.refunds.unshift({
+      id: `refund-${Date.now()}`,
+      userId,
+      orderId,
+      amount: order.payableAmount,
+      reason: dto.description,
+      status: 'succeeded',
+      createdAt: new Date().toISOString(),
+    });
+    order.status = 'refunded';
+    order.statusText = '售后退款完成';
+    this.notify(
+      userId,
+      'refund',
+      '售后申请已通过',
+      `订单 ${order.orderNo} 已退款 ¥${order.payableAmount}。`,
+    );
+    return record;
+  }
+  afterSales(userId: string) {
+    return this.store.afterSales.filter((a) => a.userId === userId);
+  }
+  refunds(userId: string) {
+    return this.store.refunds.filter((r) => r.userId === userId);
+  }
+  notifications(userId: string) {
+    return this.store.notifications.filter((n) => n.userId === userId);
+  }
+  readNotification(userId: string, id: string) {
+    const item = this.store.notifications.find(
+      (n) => n.id === id && n.userId === userId,
+    );
+    if (!item) throw new NotFoundException('消息不存在');
+    item.read = true;
     return item;
   }
   addresses(userId: string, campusId: string) {

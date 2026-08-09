@@ -27,4 +27,24 @@ describe('BusinessService', () => {
     expect(service.cart('user-001').items).toHaveLength(0);
     expect(order.package?.status).toBe('waiting-pick');
   });
+  it('completes delivery and creates an after-sales refund', () => {
+    const order = service.createOrder('user-001', {
+      addressId: 'address-001',
+      deliveryMode: 'instant',
+      couponId: 'coupon-001',
+    });
+    service.pay('user-001', order.id);
+    service.advance('user-001', order.id);
+    service.advance('user-001', order.id);
+    service.advance('user-001', order.id);
+    expect(order.status).toBe('completed');
+    const record = service.createAfterSales('user-001', order.id, {
+      type: 'quality',
+      description: '商品包装破损且无法食用',
+      images: ['mock://proof.jpg'],
+    });
+    expect(record.status).toBe('approved');
+    expect(order.status).toBe('refunded');
+    expect(service.refunds('user-001')).toHaveLength(1);
+  });
 });
