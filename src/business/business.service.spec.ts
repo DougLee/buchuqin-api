@@ -46,15 +46,17 @@ describe('BusinessService', () => {
     expect(order.status).toBe('cancelled');
   });
   it('cancels an unpaid order without creating a refund', () => {
+    const refundCount = service.refunds('user-001').length;
     const order = service.createOrder('user-001', {
       addressId: 'address-001',
       deliveryMode: 'instant',
     });
     service.cancel('user-001', order.id);
     expect(order.statusText).toBe('订单已取消');
-    expect(service.refunds('user-001')).toHaveLength(0);
+    expect(service.refunds('user-001')).toHaveLength(refundCount);
   });
   it('completes delivery and creates an after-sales refund', () => {
+    const refundCount = service.refunds('user-001').length;
     const order = service.createOrder('user-001', {
       addressId: 'address-001',
       deliveryMode: 'instant',
@@ -72,6 +74,6 @@ describe('BusinessService', () => {
     });
     expect(record.status).toBe('approved');
     expect(order.status).toBe('refunded');
-    expect(service.refunds('user-001')).toHaveLength(1);
+    expect(service.refunds('user-001')).toHaveLength(refundCount + 1);
   });
 });
