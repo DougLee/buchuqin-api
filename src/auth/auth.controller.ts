@@ -25,17 +25,26 @@ export class AuthController {
   @ApiOperation({ summary: 'Mock 微信登录' })
   login(@Body() body: MockLoginDto) {
     const fulfillment = body.code?.includes('fulfillment');
+    const admin = body.code?.includes('admin');
     const user = {
-      id: fulfillment ? 'staff-bm-001' : 'user-001',
+      id: admin ? 'admin-001' : fulfillment ? 'staff-bm-001' : 'user-001',
       campusId: 'campus-hbut',
-      role: fulfillment ? ('building-manager' as const) : ('user' as const),
+      role: admin
+        ? ('admin' as const)
+        : fulfillment
+          ? ('building-manager' as const)
+          : ('user' as const),
     };
     return ok({
       token: this.jwt.sign(user),
       user: {
         ...user,
-        nickname: fulfillment ? '陈晨' : '湖工大小橙',
-        phone: fulfillment ? '139****0518' : '138****2026',
+        nickname: admin ? '平台管理员' : fulfillment ? '陈晨' : '湖工大小橙',
+        phone: admin
+          ? '027****8899'
+          : fulfillment
+            ? '139****0518'
+            : '138****2026',
         avatar: '',
       },
     });

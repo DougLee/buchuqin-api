@@ -30,9 +30,13 @@ import {
 export class FulfillmentController {
   constructor(private readonly service: FulfillmentService) {}
   private role(req: AuthRequest, mockRole?: StaffRole): StaffRole {
-    if (req.user.role === 'user')
+    if (
+      !['building-manager', 'fulltime-rider', 'parttime-rider'].includes(
+        req.user.role,
+      )
+    )
       throw new ForbiddenException('普通用户无权访问履约端');
-    return mockRole ?? req.user.role;
+    return mockRole ?? (req.user.role as StaffRole);
   }
   @Get('profile') profile(
     @Req() req: AuthRequest,

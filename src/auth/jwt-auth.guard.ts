@@ -9,7 +9,15 @@ import type { Request } from 'express';
 export interface AuthUser {
   id: string;
   campusId: string;
-  role: 'user' | 'building-manager' | 'fulltime-rider' | 'parttime-rider';
+  role:
+    | 'user'
+    | 'building-manager'
+    | 'fulltime-rider'
+    | 'parttime-rider'
+    | 'admin'
+    | 'operations'
+    | 'warehouse'
+    | 'finance';
 }
 export interface AuthRequest extends Request {
   user: AuthUser;

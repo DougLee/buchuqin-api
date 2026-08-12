@@ -12,7 +12,7 @@ import {
   UpdateCartDto,
 } from './dto';
 
-interface OrderLine {
+export interface OrderLine {
   product: {
     id: string;
     name: string;
@@ -28,7 +28,7 @@ interface OrderLine {
   };
   quantity: number;
 }
-interface TimelineStep {
+export interface TimelineStep {
   key: string;
   title: string;
   description: string;

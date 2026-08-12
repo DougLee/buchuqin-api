@@ -7,10 +7,23 @@ import { BusinessService } from './business/business.service';
 import { MockStore } from './mock/mock.store';
 import { FulfillmentController } from './fulfillment/fulfillment.controller';
 import { FulfillmentService } from './fulfillment/fulfillment.service';
+import { AdminController } from './admin/admin.controller';
+import { AdminService } from './admin/admin.service';
 
 @Module({
   imports: [JwtModule.register({ secret: 'buchuqinshishe-mock-secret' })],
-  controllers: [AuthController, BusinessController, FulfillmentController],
-  providers: [MockStore, BusinessService, FulfillmentService, JwtAuthGuard],
+  controllers: [
+    AuthController,
+    BusinessController,
+    FulfillmentController,
+    AdminController,
+  ],
+  providers: [
+    MockStore,
+    BusinessService,
+    FulfillmentService,
+    AdminService,
+    JwtAuthGuard,
+  ],
 })
 export class AppModule {}

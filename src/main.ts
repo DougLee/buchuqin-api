@@ -10,7 +10,7 @@ async function bootstrap() {
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   const config = new DocumentBuilder()
     .setTitle('不出寝食社 MVP API')
-    .setDescription('用户小程序与履约演示使用的 Mock API')
+    .setDescription('用户小程序、履约小程序与 PC 管理后台使用的统一 Mock API')
     .setVersion('1.0')
     .addBearerAuth()
     .build();
