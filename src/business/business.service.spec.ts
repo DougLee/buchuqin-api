@@ -76,4 +76,39 @@ describe('BusinessService', () => {
     expect(order.status).toBe('refunded');
     expect(service.refunds('user-001')).toHaveLength(refundCount + 1);
   });
+  it('supports address lifecycle without crossing users', () => {
+    const created = service.addAddress('user-001', 'campus-hbut', {
+      buildingName: '西区 7 栋',
+      floor: 4,
+      room: '418',
+      contactName: '小橙',
+      phone: '13800132026',
+      isDefault: true,
+    });
+    expect(created.isDefault).toBe(true);
+    expect(service.addresses('user-001', 'campus-hbut')[0].isDefault).toBe(
+      false,
+    );
+    expect(
+      service.updateAddress('user-001', 'campus-hbut', created.id, {
+        room: '419',
+      }).room,
+    ).toBe('419');
+    expect(() =>
+      service.updateAddress('user-002', 'campus-hbut', created.id, {
+        room: '420',
+      }),
+    ).toThrow('地址不存在');
+    expect(
+      service.deleteAddress('user-001', 'campus-hbut', created.id),
+    ).toEqual({ id: created.id, deleted: true });
+  });
+  it('updates individual cart lines and notification counters', () => {
+    expect(service.setCartItem('user-001', 'p001', 1).totalQuantity).toBe(2);
+    expect(service.setCartItem('user-001', 'p002', 0).totalQuantity).toBe(1);
+    expect(service.unreadNotificationCount('user-001').total).toBeGreaterThan(
+      0,
+    );
+    expect(service.readAllNotifications('user-001').total).toBe(0);
+  });
 });

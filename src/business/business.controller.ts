@@ -1,8 +1,10 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
+  Patch,
   Put,
   Post,
   Query,
@@ -17,9 +19,12 @@ import { MockStore } from '../mock/mock.store';
 import { BusinessService } from './business.service';
 import {
   CreateAddressDto,
+  AddCartItemDto,
+  CartQuantityDto,
   CreateAfterSalesDto,
   CreateOrderDto,
   UpdateCartDto,
+  UpdateAddressDto,
 } from './dto';
 @ApiTags('用户端 MVP')
 @ApiBearerAuth()
@@ -63,6 +68,37 @@ export class BusinessController {
   }
   @Put('cart') updateCart(@Req() req: AuthRequest, @Body() dto: UpdateCartDto) {
     return ok(this.service.updateCart(req.user.id, dto));
+  }
+  @Post('cart/items') addCartItem(
+    @Req() req: AuthRequest,
+    @Body() dto: AddCartItemDto,
+  ) {
+    const current = this.service
+      .cart(req.user.id)
+      .items.find((item) => item.product.id === dto.productId);
+    return ok(
+      this.service.setCartItem(
+        req.user.id,
+        dto.productId,
+        (current?.quantity ?? 0) + dto.quantity,
+      ),
+    );
+  }
+  @Patch('cart/items/:productId') updateCartItem(
+    @Req() req: AuthRequest,
+    @Param('productId') productId: string,
+    @Body() dto: CartQuantityDto,
+  ) {
+    return ok(this.service.setCartItem(req.user.id, productId, dto.quantity));
+  }
+  @Delete('cart/items/:productId') deleteCartItem(
+    @Req() req: AuthRequest,
+    @Param('productId') productId: string,
+  ) {
+    return ok(this.service.setCartItem(req.user.id, productId, 0));
+  }
+  @Delete('cart') clearCart(@Req() req: AuthRequest) {
+    return ok(this.service.clearCart(req.user.id));
   }
   @Post('orders/checkout') checkout(
     @Req() req: AuthRequest,
@@ -112,6 +148,12 @@ export class BusinessController {
   ) {
     return ok(this.service.advance(req.user.id, id), '履约状态已推进');
   }
+  @Post('orders/:id/confirm-receipt') confirmReceipt(
+    @Req() req: AuthRequest,
+    @Param('id') id: string,
+  ) {
+    return ok(this.service.confirmReceipt(req.user.id, id), '已确认收货');
+  }
   @Get('addresses') addresses(@Req() req: AuthRequest) {
     return ok(this.service.addresses(req.user.id, req.user.campusId));
   }
@@ -124,13 +166,67 @@ export class BusinessController {
       '地址已保存',
     );
   }
+  @Patch('addresses/:id') updateAddress(
+    @Req() req: AuthRequest,
+    @Param('id') id: string,
+    @Body() dto: UpdateAddressDto,
+  ) {
+    return ok(
+      this.service.updateAddress(req.user.id, req.user.campusId, id, dto),
+    );
+  }
+  @Delete('addresses/:id') deleteAddress(
+    @Req() req: AuthRequest,
+    @Param('id') id: string,
+  ) {
+    return ok(this.service.deleteAddress(req.user.id, req.user.campusId, id));
+  }
+  @Put('addresses/:id/default') defaultAddress(
+    @Req() req: AuthRequest,
+    @Param('id') id: string,
+  ) {
+    return ok(
+      this.service.setDefaultAddress(req.user.id, req.user.campusId, id),
+    );
+  }
+  @Get('campuses/current/buildings') buildings() {
+    return ok([
+      {
+        id: 'west-5',
+        name: '西区 5 栋',
+        minFloor: 1,
+        maxFloor: 7,
+        available: true,
+      },
+      {
+        id: 'west-6',
+        name: '西区 6 栋',
+        minFloor: 1,
+        maxFloor: 7,
+        available: true,
+      },
+      {
+        id: 'west-7',
+        name: '西区 7 栋',
+        minFloor: 1,
+        maxFloor: 7,
+        available: true,
+      },
+    ]);
+  }
   @Get('coupons') coupons() {
     return ok(this.store.coupons);
+  }
+  @Post('coupons/available') availableCoupons(
+    @Req() req: AuthRequest,
+    @Body() dto: CreateOrderDto,
+  ) {
+    return ok(this.service.availableCoupons(req.user.id, dto));
   }
   @Get('delivery/slots') slots() {
     return ok(this.store.deliverySlots);
   }
-  @Post('orders/:id/after-sales') afterSale(
+  @Post('orders/:id/after-sales') createAfterSale(
     @Req() req: AuthRequest,
     @Param('id') id: string,
     @Body() dto: CreateAfterSalesDto,
@@ -143,8 +239,23 @@ export class BusinessController {
   @Get('after-sales') afterSales(@Req() req: AuthRequest) {
     return ok(this.service.afterSales(req.user.id));
   }
+  @Get('after-sales/:id') afterSale(
+    @Req() req: AuthRequest,
+    @Param('id') id: string,
+  ) {
+    return ok(this.service.afterSale(req.user.id, id));
+  }
+  @Post('after-sales/:id/cancel') cancelAfterSale(
+    @Req() req: AuthRequest,
+    @Param('id') id: string,
+  ) {
+    return ok(this.service.cancelAfterSale(req.user.id, id));
+  }
   @Get('refunds') refunds(@Req() req: AuthRequest) {
     return ok(this.service.refunds(req.user.id));
+  }
+  @Get('refunds/:id') refund(@Req() req: AuthRequest, @Param('id') id: string) {
+    return ok(this.service.refund(req.user.id, id));
   }
   @Get('notifications') notifications(@Req() req: AuthRequest) {
     return ok(this.service.notifications(req.user.id));
@@ -154,5 +265,16 @@ export class BusinessController {
     @Param('id') id: string,
   ) {
     return ok(this.service.readNotification(req.user.id, id));
+  }
+  @Post('notifications/read-all') readAllNotifications(
+    @Req() req: AuthRequest,
+    @Body() body: { type?: string },
+  ) {
+    return ok(this.service.readAllNotifications(req.user.id, body.type));
+  }
+  @Get('notifications/unread-count') unreadNotificationCount(
+    @Req() req: AuthRequest,
+  ) {
+    return ok(this.service.unreadNotificationCount(req.user.id));
   }
 }

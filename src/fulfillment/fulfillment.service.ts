@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { MockStore } from '../mock/mock.store';
+import type { LeaveRequestDto, TaskActionDto } from './dto';
 
 export type StaffRole =
   'building-manager' | 'fulltime-rider' | 'parttime-rider';
@@ -31,10 +32,35 @@ export interface FulfillmentTask {
     done: boolean;
     time?: string;
   }>;
+  availableActions: string[];
 }
 
 @Injectable()
 export class FulfillmentService {
+  private staffStatuses = new Map<string, 'online' | 'paused' | 'offline'>();
+  private leaveRecords = [
+    {
+      id: 'leave-001',
+      staffId: 'staff-bm-001',
+      startAt: '2026-08-16 08:00',
+      endAt: '2026-08-16 22:30',
+      reason: '参加学院活动',
+      status: 'approved',
+      statusText: '已批准',
+    },
+  ];
+  private dispatchInvitations = [
+    {
+      id: 'dispatch-001',
+      staffId: 'staff-bm-001',
+      building: '西区 7 栋',
+      startAt: '2026-08-14 18:00',
+      endAt: '2026-08-14 22:30',
+      reward: 28,
+      status: 'invited',
+      statusText: '待接受调配',
+    },
+  ];
   constructor(private readonly store: MockStore) {}
 
   profile(role: StaffRole = 'building-manager') {
@@ -46,7 +72,7 @@ export class FulfillmentService {
         roleText: '西区 5 栋楼长',
         staffNo: 'BM-HBUT-005',
         building: '西区 5 栋',
-        online: true,
+        online: this.status('staff-bm-001') === 'online',
       },
       'fulltime-rider': {
         id: 'staff-rider-001',
@@ -55,7 +81,7 @@ export class FulfillmentService {
         roleText: '全职配送员',
         staffNo: 'RD-HBUT-012',
         building: '湖北工业大学',
-        online: true,
+        online: this.status('staff-rider-001') === 'online',
       },
       'parttime-rider': {
         id: 'staff-rider-002',
@@ -64,10 +90,47 @@ export class FulfillmentService {
         roleText: '兼职配送员',
         staffNo: 'PT-HBUT-028',
         building: '湖北工业大学',
-        online: false,
+        online: this.status('staff-rider-002') === 'online',
       },
     };
     return profiles[role];
+  }
+  private status(staffId: string) {
+    return (
+      this.staffStatuses.get(staffId) ??
+      (staffId === 'staff-rider-002' ? 'offline' : 'online')
+    );
+  }
+  updateStatus(role: StaffRole, status: 'online' | 'paused' | 'offline') {
+    const profile = this.profile(role);
+    this.staffStatuses.set(profile.id, status);
+    return { ...profile, online: status === 'online', status };
+  }
+  currentShift(role: StaffRole) {
+    return {
+      id: `shift-${role}-20260812`,
+      status: this.profile(role).online ? 'working' : 'not-started',
+      role,
+      serviceArea: this.profile(role).building,
+      startAt: '2026-08-12T08:00:00+08:00',
+      endAt: '2026-08-12T22:30:00+08:00',
+    };
+  }
+  checkIn(role: StaffRole) {
+    this.updateStatus(role, 'online');
+    return {
+      ...this.currentShift(role),
+      status: 'working',
+      checkedInAt: new Date().toISOString(),
+    };
+  }
+  checkOut(role: StaffRole) {
+    this.updateStatus(role, 'offline');
+    return {
+      ...this.currentShift(role),
+      status: 'completed',
+      checkedOutAt: new Date().toISOString(),
+    };
   }
 
   dashboard(role: StaffRole) {
@@ -116,28 +179,86 @@ export class FulfillmentService {
     role: StaffRole,
     id: string,
     action: string,
-    payload: Record<string, unknown> = {},
+    payload: TaskActionDto = {},
   ): FulfillmentTask {
     const order = this.store.orders.find(
       (item) => `task-${role}-${item.id}` === id,
     );
     if (!order) throw new NotFoundException('履约任务不存在');
-    const actionMap: Record<string, { status: string; text: string }> =
+    const actionMap: Record<
+      string,
+      { status: string; text: string; from: string[] }
+    > =
       role === 'building-manager'
         ? {
-            receive: { status: 'last-mile', text: '楼长已接货' },
-            delivered: { status: 'completed', text: '已送达寝室' },
-            absent: { status: 'exception', text: '用户不在，暂存楼长处' },
-            refused: { status: 'exception', text: '用户拒收，待带回仓库' },
+            receive: {
+              status: 'last-mile',
+              text: '楼长已接货',
+              from: ['first-mile', 'last-mile'],
+            },
+            'start-delivery': {
+              status: 'last-mile',
+              text: '楼长送往寝室',
+              from: ['last-mile'],
+            },
+            delivered: {
+              status: 'completed',
+              text: '已送达寝室',
+              from: ['last-mile'],
+            },
+            absent: {
+              status: 'exception',
+              text: '用户不在，暂存楼长处',
+              from: ['last-mile'],
+            },
+            refused: {
+              status: 'exception',
+              text: '用户拒收，待带回仓库',
+              from: ['last-mile'],
+            },
           }
         : {
-            accept: { status: 'paid', text: '配送员已接单' },
-            pickup: { status: 'first-mile', text: '已扫码取货' },
-            arrive: { status: 'last-mile', text: '已到楼下，等待楼长交接' },
-            transfer: { status: 'exception', text: '转单申请处理中' },
+            accept: {
+              status: 'paid',
+              text: '配送员已接单',
+              from: ['paid', 'picking'],
+            },
+            pickup: {
+              status: 'first-mile',
+              text: '已扫码取货',
+              from: ['paid', 'picking'],
+            },
+            depart: {
+              status: 'first-mile',
+              text: '已从校园仓出发',
+              from: ['first-mile'],
+            },
+            arrive: {
+              status: 'last-mile',
+              text: '已到楼下，等待楼长交接',
+              from: ['first-mile'],
+            },
+            handover: {
+              status: 'last-mile',
+              text: '已与楼长完成交接',
+              from: ['last-mile'],
+            },
+            transfer: {
+              status: 'exception',
+              text: '转单申请处理中',
+              from: ['paid', 'picking', 'first-mile'],
+            },
           };
     const next = actionMap[action];
     if (!next) throw new BadRequestException('不支持的履约操作');
+    if (!next.from.includes(order.status))
+      throw new BadRequestException(
+        `订单状态 ${order.status} 不允许执行 ${action}`,
+      );
+    if (action === 'pickup' && !payload.packageCode)
+      throw new BadRequestException('扫码取货必须提交包裹码');
+    if (action === 'handover' && !payload.handoverCode)
+      throw new BadRequestException('楼下交接必须提交交接码');
     if (action === 'delivered') {
       const images = payload.images;
       const location = payload.location;
@@ -152,25 +273,47 @@ export class FulfillmentService {
   }
 
   leave() {
-    return [
-      {
-        id: 'leave-001',
-        startAt: '2026-08-16 08:00',
-        endAt: '2026-08-16 22:30',
-        reason: '参加学院活动',
-        status: 'approved',
-        statusText: '已批准',
-      },
-      {
-        id: 'dispatch-001',
-        building: '西区 7 栋',
-        startAt: '2026-08-14 18:00',
-        endAt: '2026-08-14 22:30',
-        reward: 28,
-        status: 'invited',
-        statusText: '待接受调配',
-      },
-    ];
+    return [...this.leaveRecords, ...this.dispatchInvitations];
+  }
+  createLeave(staffId: string, dto: LeaveRequestDto) {
+    if (new Date(dto.startAt) <= new Date(Date.now() + 2 * 60 * 60 * 1000))
+      throw new BadRequestException('请假需至少提前 2 小时提交');
+    const record = {
+      id: `leave-${Date.now()}`,
+      staffId,
+      ...dto,
+      status: 'pending',
+      statusText: '待审核',
+    };
+    this.leaveRecords.unshift(record);
+    return record;
+  }
+  cancelLeave(staffId: string, id: string) {
+    const item = this.leaveRecords.find(
+      (record) => record.id === id && record.staffId === staffId,
+    );
+    if (!item) throw new NotFoundException('请假记录不存在');
+    if (item.status !== 'pending')
+      throw new BadRequestException('仅待审核请假可撤销');
+    item.status = 'cancelled';
+    item.statusText = '已撤销';
+    return item;
+  }
+  dispatchInvites(staffId: string, status?: string) {
+    return this.dispatchInvitations.filter(
+      (item) => item.staffId === staffId && (!status || item.status === status),
+    );
+  }
+  respondDispatch(staffId: string, id: string, accepted: boolean) {
+    const item = this.dispatchInvitations.find(
+      (record) => record.id === id && record.staffId === staffId,
+    );
+    if (!item) throw new NotFoundException('调配邀请不存在');
+    if (item.status !== 'invited')
+      throw new BadRequestException('调配邀请已处理');
+    item.status = accepted ? 'accepted' : 'rejected';
+    item.statusText = accepted ? '已接受调配' : '已拒绝';
+    return item;
   }
 
   commissions(role: StaffRole) {
@@ -245,6 +388,20 @@ export class FulfillmentService {
         image: item.product.image,
       })),
       timeline: order.timeline.map((step) => ({ ...step })),
+      availableActions: this.availableActions(role, order.status),
     };
+  }
+  private availableActions(role: StaffRole, status: string) {
+    if (role === 'building-manager') {
+      if (status === 'first-mile') return ['receive'];
+      if (status === 'last-mile')
+        return ['start-delivery', 'delivered', 'absent'];
+      return [];
+    }
+    if (['paid', 'picking'].includes(status))
+      return ['accept', 'pickup', 'transfer'];
+    if (status === 'first-mile') return ['depart', 'arrive', 'transfer'];
+    if (status === 'last-mile') return ['handover'];
+    return [];
   }
 }

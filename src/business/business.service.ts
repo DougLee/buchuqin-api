@@ -8,6 +8,7 @@ import {
   CreateAddressDto,
   CreateAfterSalesDto,
   CreateOrderDto,
+  UpdateAddressDto,
   UpdateCartDto,
 } from './dto';
 
@@ -123,6 +124,20 @@ export class BusinessService {
     );
     return this.cart(userId);
   }
+  setCartItem(userId: string, productId: string, quantity: number) {
+    const current = { ...(this.store.carts[userId] ?? {}) };
+    const product = this.product(productId);
+    if (quantity > product.stock)
+      throw new BadRequestException(`${product.name}库存不足`);
+    if (quantity === 0) delete current[productId];
+    else current[productId] = quantity;
+    this.store.carts[userId] = current;
+    return this.cart(userId);
+  }
+  clearCart(userId: string) {
+    this.store.carts[userId] = {};
+    return this.cart(userId);
+  }
   private validateQuote(userId: string, dto: CreateOrderDto) {
     const cart = this.cart(userId);
     if (!cart.items.length) throw new BadRequestException('购物车为空');
@@ -236,10 +251,24 @@ export class BusinessService {
     );
   }
   order(userId: string, id: string) {
+    this.expirePendingOrders(userId);
     const item = this.store.orders.find(
       (o) => o.id === id && o.userId === userId,
     );
     if (!item) throw new NotFoundException('订单不存在');
+    return item;
+  }
+  confirmReceipt(userId: string, id: string) {
+    const item = this.order(userId, id);
+    if (!['last-mile', 'completed'].includes(item.status))
+      throw new BadRequestException('当前状态不可确认收货');
+    item.status = 'completed';
+    item.statusText = '已确认收货';
+    const last = item.timeline.at(-1);
+    if (last && !last.done) {
+      last.done = true;
+      last.time = new Date().toISOString();
+    }
     return item;
   }
   pay(userId: string, id: string) {
@@ -420,12 +449,32 @@ export class BusinessService {
     item.read = true;
     return item;
   }
+  readAllNotifications(userId: string, type?: string) {
+    this.notifications(userId)
+      .filter((item) => !type || item.type === type)
+      .forEach((item) => (item.read = true));
+    return this.unreadNotificationCount(userId);
+  }
+  unreadNotificationCount(userId: string) {
+    const unread = this.notifications(userId).filter((item) => !item.read);
+    return {
+      total: unread.length,
+      byType: unread.reduce<Record<string, number>>((result, item) => {
+        result[item.type] = (result[item.type] ?? 0) + 1;
+        return result;
+      }, {}),
+    };
+  }
   addresses(userId: string, campusId: string) {
     return this.store.addresses.filter(
       (a) => a.userId === userId && a.campusId === campusId,
     );
   }
   addAddress(userId: string, campusId: string, dto: CreateAddressDto) {
+    if (dto.isDefault)
+      this.addresses(userId, campusId).forEach(
+        (item) => (item.isDefault = false),
+      );
     const address = {
       id: `address-${Date.now()}`,
       userId,
@@ -437,5 +486,74 @@ export class BusinessService {
     };
     this.store.addresses.push(address);
     return address;
+  }
+  updateAddress(
+    userId: string,
+    campusId: string,
+    id: string,
+    dto: UpdateAddressDto,
+  ) {
+    const address = this.addresses(userId, campusId).find(
+      (item) => item.id === id,
+    );
+    if (!address) throw new NotFoundException('地址不存在');
+    Object.assign(address, dto);
+    return address;
+  }
+  deleteAddress(userId: string, campusId: string, id: string) {
+    const index = this.store.addresses.findIndex(
+      (item) =>
+        item.id === id && item.userId === userId && item.campusId === campusId,
+    );
+    if (index < 0) throw new NotFoundException('地址不存在');
+    const [deleted] = this.store.addresses.splice(index, 1);
+    if (deleted.isDefault && this.addresses(userId, campusId)[0])
+      this.addresses(userId, campusId)[0].isDefault = true;
+    return { id, deleted: true };
+  }
+  setDefaultAddress(userId: string, campusId: string, id: string) {
+    const addresses = this.addresses(userId, campusId);
+    const address = addresses.find((item) => item.id === id);
+    if (!address) throw new NotFoundException('地址不存在');
+    addresses.forEach((item) => (item.isDefault = item.id === id));
+    return address;
+  }
+  availableCoupons(userId: string, dto: CreateOrderDto) {
+    const { cart } = this.validateQuote(userId, {
+      ...dto,
+      couponId: undefined,
+    });
+    return this.store.coupons.map((coupon) => {
+      const reason =
+        coupon.status !== 'available'
+          ? '优惠券不可用'
+          : new Date(coupon.expiresAt) <= new Date()
+            ? '优惠券已过期'
+            : cart.productAmount < coupon.threshold
+              ? `还差${Number((coupon.threshold - cart.productAmount).toFixed(2))}元可用`
+              : undefined;
+      return { ...coupon, available: !reason, unavailableReason: reason };
+    });
+  }
+  afterSale(userId: string, id: string) {
+    const item = this.store.afterSales.find(
+      (record) => record.id === id && record.userId === userId,
+    );
+    if (!item) throw new NotFoundException('售后单不存在');
+    return item;
+  }
+  cancelAfterSale(userId: string, id: string) {
+    const item = this.afterSale(userId, id);
+    if (!['pending', 'approved'].includes(item.status))
+      throw new BadRequestException('当前售后状态不可撤销');
+    item.status = 'cancelled';
+    return item;
+  }
+  refund(userId: string, id: string) {
+    const item = this.store.refunds.find(
+      (record) => record.id === id && record.userId === userId,
+    );
+    if (!item) throw new NotFoundException('退款记录不存在');
+    return item;
   }
 }

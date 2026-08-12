@@ -6,6 +6,7 @@ import {
   IsInt,
   IsOptional,
   IsString,
+  Matches,
   MaxLength,
   Min,
   ValidateNested,
@@ -32,7 +33,28 @@ export class CreateAddressDto {
   @IsInt() @Min(1) floor!: number;
   @IsString() room!: string;
   @IsString() contactName!: string;
-  @IsString() phone!: string;
+  @IsString() @Matches(/^1\d{10}$/) phone!: string;
+  @IsOptional() isDefault?: boolean;
+}
+export class UpdateAddressDto {
+  @IsOptional() @IsString() buildingName?: string;
+  @IsOptional() @IsInt() @Min(1) floor?: number;
+  @IsOptional() @IsString() room?: string;
+  @IsOptional() @IsString() contactName?: string;
+  @IsOptional() @IsString() @Matches(/^1\d{10}$/) phone?: string;
+}
+export class CartQuantityDto {
+  @IsInt() @Min(0) quantity!: number;
+}
+export class AddCartItemDto extends CartQuantityDto {
+  @IsString() productId!: string;
+}
+export class CancelReasonDto {
+  @IsOptional() @IsString() reasonCode?: string;
+  @IsOptional() @IsString() @MaxLength(120) reason?: string;
+}
+export class SwitchCampusDto {
+  @IsString() campusId!: string;
 }
 export class CreateAfterSalesDto {
   @IsIn(['quality', 'missing', 'damaged']) type!:
