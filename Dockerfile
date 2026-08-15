@@ -5,7 +5,7 @@ RUN apk add --no-cache openssl && corepack enable && corepack prepare pnpm@9.15.
 COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
 COPY . .
-RUN pnpm db:generate && pnpm build && pnpm exec tsc --module commonjs --esModuleInterop --skipLibCheck --target es2020 --outDir dist-seed prisma/seed.ts
+RUN pnpm db:generate && pnpm build && pnpm exec tsc --module commonjs --moduleResolution node --target es2022 --lib es2022 --experimentalDecorators --emitDecoratorMetadata --esModuleInterop --skipLibCheck --strict false --outDir dist-seed prisma/seed.ts
 
 # 运行阶段：alpine + openssl（prisma 引擎需要），携带全量 node_modules（seed 依赖 ts-node）
 FROM node:20-alpine
