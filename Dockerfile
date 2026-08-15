@@ -15,6 +15,7 @@ ENV NODE_ENV=production
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/prisma ./prisma
+COPY --from=build /app/src ./src
 COPY --from=build /app/package.json ./package.json
 EXPOSE 3000
 # 启动即迁移；SEED_ON_BOOT=true 时首次灌入演示数据（幂等）
