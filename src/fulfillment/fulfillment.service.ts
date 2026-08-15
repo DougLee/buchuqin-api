@@ -11,6 +11,9 @@ export type StaffRole =
   'building-manager' | 'fulltime-rider' | 'parttime-rider';
 type JsonMap = Record<string, any>;
 
+/** 简化提成规则：固定 3 元/单（完整规则快照见 IK8W5L）。 */
+export const COMMISSION_PER_ORDER = 3;
+
 @Injectable()
 export class FulfillmentService {
   constructor(private readonly db: PrismaService) {}
@@ -60,15 +63,18 @@ export class FulfillmentService {
 
   async dashboard(staffId: string) {
     const profile = await this.profile(staffId);
-    const tasks = await this.tasks(staffId);
+    const [performance, tasks] = await Promise.all([
+      this.performance(staffId),
+      this.tasks(staffId),
+    ]);
     const active = tasks.filter((x) => x.status !== 'completed');
     return {
       profile,
       stats: {
         pending: active.length,
-        completed: profile.completedToday,
-        income: profile.income,
-        onTimeRate: profile.onTimeRate,
+        completed: performance.completed,
+        income: performance.income,
+        onTimeRate: performance.onTimeRate,
       },
       announcement:
         profile.role === 'building-manager'
@@ -76,6 +82,66 @@ export class FulfillmentService {
           : '校园仓有待配送任务',
       tasks: active.slice(0, 4),
     };
+  }
+  /** 绩效从订单 timeline 真实计算，不再读 Staff 冗余字段。 */
+  async performance(staffId: string) {
+    const s = await this.profile(staffId);
+    const orders = await this.db.order.findMany({
+      where: {
+        campusId: s.campusId,
+        status: { notIn: ['pending-payment', 'cancelled', 'refunded'] },
+      },
+    });
+    const mine = this.attributedOrders(s, orders);
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    const deliveredAt = (order: (typeof orders)[number]) => {
+      const time = (order.timeline as JsonMap[]).at(-1)?.time;
+      return time ? new Date(String(time)) : null;
+    };
+    const completed = mine.filter((x) => x.status === 'completed');
+    const completedToday = completed.filter(
+      (x) => (deliveredAt(x)?.getTime() ?? 0) >= startOfToday.getTime(),
+    );
+    // 准时口径：送达时间与支付时间在同一天（MVP 简化，正式 SLA 见规则快照 IK8W5L）。
+    const onTime = completed.filter((x) => {
+      const time = deliveredAt(x);
+      return (
+        !!time && !!x.paidAt && time.toDateString() === x.paidAt.toDateString()
+      );
+    });
+    const withProof = completed.filter((x) => {
+      const proof = (x.package as JsonMap | null)?.proof as JsonMap | undefined;
+      return Array.isArray(proof?.images) && proof.images.length > 0;
+    });
+    const rate = (n: number, d: number) =>
+      d ? Number(((n / d) * 100).toFixed(1)) : 0;
+    return {
+      period: 'today',
+      pending: mine.filter((x) =>
+        ['paid', 'picking', 'first-mile', 'last-mile'].includes(x.status),
+      ).length,
+      completed: completedToday.length,
+      completedTotal: completed.length,
+      income: Number((completed.length * COMMISSION_PER_ORDER).toFixed(2)),
+      onTimeRate: rate(onTime.length, completed.length),
+      proofRate: rate(withProof.length, completed.length),
+      exceptionRate: rate(
+        mine.filter((x) => x.status === 'exception').length,
+        mine.length,
+      ),
+    };
+  }
+  /** 订单归属：楼长按楼栋，配送员按校园全量。 */
+  private attributedOrders<T extends { address: unknown }>(
+    staff: { role: string; building: string },
+    orders: T[],
+  ): T[] {
+    return staff.role === 'building-manager'
+      ? orders.filter(
+          (x) => String((x.address as JsonMap).buildingName) === staff.building,
+        )
+      : orders;
   }
   async tasks(staffId: string, status?: string) {
     const staff = await this.profile(staffId);
@@ -199,12 +265,29 @@ export class FulfillmentService {
       step.done = true;
       step.time = new Date().toISOString();
     }
+    // delivered 时把送达凭证（照片/定位/坐标）写入包裹信息，供绩效凭证完整率统计。
+    const packageUpdate =
+      action === 'delivered'
+        ? {
+            package: {
+              ...((order.package as JsonMap | null) ?? {}),
+              proof: {
+                images: payload.images ?? [],
+                location: payload.location ?? '',
+                latitude: payload.latitude ?? null,
+                longitude: payload.longitude ?? null,
+                time: new Date().toISOString(),
+              },
+            } as Prisma.InputJsonValue,
+          }
+        : {};
     await this.db.order.update({
       where: { id: order.id },
       data: {
         status: next.status,
         statusText: next.text,
         timeline: timeline as Prisma.InputJsonValue,
+        ...packageUpdate,
       },
     });
     return this.task(staffId, id);
@@ -263,20 +346,24 @@ export class FulfillmentService {
     const s = await this.profile(staffId);
     const orders = await this.db.order.findMany({
       where: { campusId: s.campusId, status: 'completed' },
-      take: 5,
+      orderBy: { createdAt: 'desc' },
     });
+    const mine = this.attributedOrders(s, orders);
     const base = s.role === 'building-manager' ? 500 : 0;
+    const deliveryIncome = Number(
+      (mine.length * COMMISSION_PER_ORDER).toFixed(2),
+    );
     return {
       month: new Date().toISOString().slice(0, 7),
       baseSalary: base,
-      deliveryIncome: s.income,
+      deliveryIncome,
       adjustment: 0,
-      payable: base + s.income,
-      records: orders.map((o, i) => ({
-        id: `commission-${i + 1}`,
+      payable: Number((base + deliveryIncome).toFixed(2)),
+      records: mine.map((o) => ({
+        id: `commission-${o.id}`,
         orderNo: o.orderNo,
-        building: s.building,
-        amount: 3.2,
+        building: String((o.address as JsonMap).buildingName),
+        amount: COMMISSION_PER_ORDER,
         createdAt: o.createdAt,
         status: 'pending',
       })),

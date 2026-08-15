@@ -68,9 +68,20 @@ export class CreateStaffDto {
 }
 export class UpdateStaffDto {
   @IsOptional() @IsString() @MaxLength(20) name?: string;
-  @IsOptional() @IsIn(['building-manager', 'fulltime-rider', 'parttime-rider'])
+  @IsOptional()
+  @IsIn(['building-manager', 'fulltime-rider', 'parttime-rider'])
   role?: string;
   @IsOptional() @IsString() @MaxLength(20) staffNo?: string;
   @IsOptional() @IsString() buildingId?: string | null;
   @IsOptional() @IsIn(STAFF_STATUSES) status?: string;
+}
+export class StockInDto {
+  @IsString() productId!: string;
+  @Type(() => Number) @IsInt() @Min(1) quantity!: number;
+  @IsString() @MaxLength(120) reason!: string;
+}
+export class AdjustStockDto {
+  @IsString() productId!: string;
+  @Type(() => Number) @IsInt() delta!: number;
+  @IsString() @MaxLength(120) reason!: string;
 }

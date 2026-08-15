@@ -190,12 +190,6 @@ export class FulfillmentController {
     return ok(await this.service.commissions(this.auth(r)));
   }
   @Get('performance') async performance(@Req() r: AuthRequest) {
-    const d = await this.service.dashboard(this.auth(r));
-    return ok({
-      period: 'today',
-      ...d.stats,
-      proofRate: d.profile.proofRate,
-      exceptionRate: 1.2,
-    });
+    return ok(await this.service.performance(this.auth(r)));
   }
 }

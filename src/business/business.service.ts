@@ -358,13 +358,8 @@ export class BusinessService {
     const userCoupon = dto.couponId
       ? await this.validateUserCoupon(userId, dto.couponId)
       : null;
-    const discount = userCoupon
-      ? number(userCoupon.coupon.amount)
-      : 0;
-    if (
-      userCoupon &&
-      cart.productAmount < number(userCoupon.coupon.threshold)
-    )
+    const discount = userCoupon ? number(userCoupon.coupon.amount) : 0;
+    if (userCoupon && cart.productAmount < number(userCoupon.coupon.threshold))
       throw new BadRequestException('商品金额未达到优惠券使用门槛');
     return {
       ...cart,

@@ -7,12 +7,14 @@ import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
 import { BusinessService } from '../business/business.service';
 import type {
+  AdjustStockDto,
   CreateBuildingDto,
   CreateCouponDto,
   CreateProductDto,
   CreateRoomDto,
   CreateStaffDto,
   IssueCouponDto,
+  StockInDto,
   UpdateBuildingDto,
   UpdateCouponDto,
   UpdateStaffDto,
@@ -28,9 +30,11 @@ export class AdminService {
     return Number(x);
   }
   async dashboard() {
-    const [campus, orders] = await Promise.all([
+    const [campus, orders, trend, activities] = await Promise.all([
       this.db.campus.findFirstOrThrow(),
       this.db.order.findMany(),
+      this.trend(),
+      this.activities(),
     ]);
     const paid = orders.filter(
       (x) => !['pending-payment', 'cancelled'].includes(x.status),
@@ -75,7 +79,8 @@ export class AdminService {
           : 0,
         exceptions: orders.filter((x) => x.status === 'exception').length,
       },
-      orderTrend: [0, 0, 0, 0, 0, 0, paid.length],
+      trend,
+      activities,
       fulfillment: {
         waitingPick: orders.filter((x) => x.status === 'picking').length,
         firstMile: orders.filter((x) => x.status === 'first-mile').length,
@@ -95,6 +100,87 @@ export class AdminService {
             : 0,
         })),
     };
+  }
+  /** 近 7 日订单/支付金额/新用户聚合（数据库分组，缺数据日期补零）。 */
+  private async trend() {
+    const since = new Date();
+    since.setHours(0, 0, 0, 0);
+    since.setDate(since.getDate() - 6);
+    const [orderRows, userRows] = await Promise.all([
+      this.db.$queryRaw<
+        Array<{ day: Date; orders: number; paidAmount: Prisma.Decimal }>
+      >`
+        SELECT "createdAt"::date AS day,
+               COUNT(*)::int AS orders,
+               COALESCE(SUM(CASE WHEN status NOT IN ('pending-payment', 'cancelled')
+                            THEN "payableAmount" ELSE 0 END), 0) AS "paidAmount"
+        FROM "Order"
+        WHERE "createdAt" >= ${since}
+        GROUP BY 1`,
+      this.db.$queryRaw<Array<{ day: Date; newUsers: number }>>`
+        SELECT "createdAt"::date AS day, COUNT(*)::int AS "newUsers"
+        FROM "User"
+        WHERE "createdAt" >= ${since}
+        GROUP BY 1`,
+    ]);
+    const key = (d: Date) =>
+      `${String(d.getMonth() + 1).padStart(2, '0')}-${String(
+        d.getDate(),
+      ).padStart(2, '0')}`;
+    const byDay = new Map(
+      orderRows.map((row) => [
+        key(row.day),
+        { orders: row.orders, paidAmount: Number(row.paidAmount) },
+      ]),
+    );
+    const usersByDay = new Map(
+      userRows.map((row) => [key(row.day), row.newUsers]),
+    );
+    return Array.from({ length: 7 }, (_, i) => {
+      const day = new Date(since);
+      day.setDate(since.getDate() + i);
+      const bucket = byDay.get(key(day));
+      return {
+        date: key(day),
+        orders: bucket?.orders ?? 0,
+        paidAmount: Number((bucket?.paidAmount ?? 0).toFixed(2)),
+        newUsers: usersByDay.get(key(day)) ?? 0,
+      };
+    });
+  }
+  /** 最近订单事件 + 审计日志合并的活动流（取前 8 条）。 */
+  private async activities() {
+    const [orders, audits] = await Promise.all([
+      this.db.order.findMany({
+        orderBy: { createdAt: 'desc' },
+        take: 8,
+        select: { createdAt: true, orderNo: true, statusText: true },
+      }),
+      this.db.auditLog.findMany({
+        orderBy: { createdAt: 'desc' },
+        take: 8,
+        select: {
+          createdAt: true,
+          operator: true,
+          action: true,
+          entityType: true,
+        },
+      }),
+    ]);
+    return [
+      ...orders.map((x) => ({
+        time: x.createdAt.toISOString(),
+        text: `订单 ${x.orderNo} · ${x.statusText}`,
+        type: 'order',
+      })),
+      ...audits.map((x) => ({
+        time: x.createdAt.toISOString(),
+        text: `${x.operator} 执行 ${x.action}（${x.entityType}）`,
+        type: 'audit',
+      })),
+    ]
+      .sort((a, b) => b.time.localeCompare(a.time))
+      .slice(0, 8);
   }
   async products() {
     const xs = await this.db.product.findMany({ orderBy: { sales: 'desc' } });
@@ -244,6 +330,82 @@ export class AdminService {
       warning: x.availableStock < 20,
     }));
   }
+  async stockIn(body: StockInDto, operator: string) {
+    const product = await this.db.product.findUnique({
+      where: { id: body.productId },
+    });
+    if (!product) throw new NotFoundException('商品不存在');
+    const txn = await this.db.$transaction(async (tx) => {
+      const record = await tx.inventoryTxn.create({
+        data: {
+          productId: body.productId,
+          type: 'stock-in',
+          delta: body.quantity,
+          reason: body.reason,
+          operator,
+        },
+      });
+      await tx.product.update({
+        where: { id: body.productId },
+        data: { stock: { increment: body.quantity } },
+      });
+      return record;
+    });
+    await this.audit(
+      operator,
+      'inventory.stock-in',
+      'product',
+      body.productId,
+      { stock: product.stock },
+      { stock: product.stock + body.quantity, txnId: txn.id },
+    );
+    return txn;
+  }
+  async adjustStock(body: AdjustStockDto, operator: string) {
+    if (!body.delta) throw new BadRequestException('调整数量不能为 0');
+    const product = await this.db.product.findUnique({
+      where: { id: body.productId },
+    });
+    if (!product) throw new NotFoundException('商品不存在');
+    const txn = await this.db.$transaction(async (tx) => {
+      const current = await tx.product.findUniqueOrThrow({
+        where: { id: body.productId },
+        select: { stock: true },
+      });
+      if (current.stock + body.delta < 0)
+        throw new BadRequestException('调整后库存不能为负数');
+      const record = await tx.inventoryTxn.create({
+        data: {
+          productId: body.productId,
+          type: 'adjust',
+          delta: body.delta,
+          reason: body.reason,
+          operator,
+        },
+      });
+      await tx.product.update({
+        where: { id: body.productId },
+        data: { stock: { increment: body.delta } },
+      });
+      return record;
+    });
+    await this.audit(
+      operator,
+      'inventory.adjust',
+      'product',
+      body.productId,
+      { stock: product.stock },
+      { stock: product.stock + body.delta, txnId: txn.id },
+    );
+    return txn;
+  }
+  async inventoryTxns(productId?: string) {
+    return this.db.inventoryTxn.findMany({
+      where: productId ? { productId } : {},
+      include: { product: { select: { id: true, name: true } } },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
   async orders(status?: string) {
     const xs = await this.db.order.findMany({
       where: status && status !== 'all' ? { status } : {},
@@ -335,11 +497,7 @@ export class AdminService {
     });
     return staff;
   }
-  async updateStaff(
-    id: string,
-    body: UpdateStaffDto,
-    operator: string,
-  ) {
+  async updateStaff(id: string, body: UpdateStaffDto, operator: string) {
     const before = await this.db.staff.findUnique({ where: { id } });
     if (!before || before.status === 'deleted')
       throw new NotFoundException('员工不存在');
@@ -435,11 +593,7 @@ export class AdminService {
     );
     return building;
   }
-  async updateBuilding(
-    id: string,
-    body: UpdateBuildingDto,
-    operator: string,
-  ) {
+  async updateBuilding(id: string, body: UpdateBuildingDto, operator: string) {
     const before = await this.db.building.findUnique({ where: { id } });
     if (!before) throw new NotFoundException('楼栋不存在');
     const after = await this.db.building.update({ where: { id }, data: body });
@@ -467,7 +621,14 @@ export class AdminService {
     if (building.staff.length)
       throw new BadRequestException('楼栋下仍有在职员工，无法删除');
     await this.db.building.delete({ where: { id } });
-    await this.audit(operator, 'building.delete', 'building', id, building, null);
+    await this.audit(
+      operator,
+      'building.delete',
+      'building',
+      id,
+      building,
+      null,
+    );
     return { id, deleted: true };
   }
   async rooms(buildingId: string) {
@@ -486,11 +647,7 @@ export class AdminService {
       qrToken: x.qrToken,
     }));
   }
-  async createRoom(
-    buildingId: string,
-    body: CreateRoomDto,
-    operator: string,
-  ) {
+  async createRoom(buildingId: string, body: CreateRoomDto, operator: string) {
     const building = await this.db.building.findUnique({
       where: { id: buildingId },
     });
@@ -498,7 +655,13 @@ export class AdminService {
     if (body.floor > building.floors)
       throw new BadRequestException('楼层超出楼栋总层数');
     const duplicate = await this.db.room.findUnique({
-      where: { buildingId_floor_roomNo: { buildingId, floor: body.floor, roomNo: body.roomNo } },
+      where: {
+        buildingId_floor_roomNo: {
+          buildingId,
+          floor: body.floor,
+          roomNo: body.roomNo,
+        },
+      },
     });
     if (duplicate) throw new BadRequestException('该寝室已存在');
     const room = await this.db.room.create({
@@ -612,10 +775,7 @@ export class AdminService {
       remain: Math.max(0, x.total - x.claimed),
     }));
   }
-  async createCoupon(
-    body: CreateCouponDto,
-    operator: string,
-  ) {
+  async createCoupon(body: CreateCouponDto, operator: string) {
     const expiresAt = new Date(body.expiresAt);
     if (Number.isNaN(expiresAt.getTime()))
       throw new BadRequestException('过期时间格式不正确');
@@ -642,11 +802,7 @@ export class AdminService {
     });
     return coupon;
   }
-  async updateCoupon(
-    id: string,
-    body: UpdateCouponDto,
-    operator: string,
-  ) {
+  async updateCoupon(id: string, body: UpdateCouponDto, operator: string) {
     const before = await this.db.coupon.findUnique({ where: { id } });
     if (!before) throw new NotFoundException('优惠券不存在');
     const after = await this.db.coupon.update({
@@ -656,11 +812,7 @@ export class AdminService {
     await this.audit(operator, 'coupon.update', 'coupon', id, before, after);
     return after;
   }
-  async issueCoupon(
-    id: string,
-    body: IssueCouponDto,
-    operator: string,
-  ) {
+  async issueCoupon(id: string, body: IssueCouponDto, operator: string) {
     const coupon = await this.db.coupon.findUnique({ where: { id } });
     if (!coupon) throw new NotFoundException('优惠券不存在');
     if (coupon.status !== 'active')
@@ -687,7 +839,10 @@ export class AdminService {
       // 条件更新兜底并发：已领取数加上本次发放数不能超过总量。
       const won = await tx.coupon.updateMany({
         where: { id, claimed: { lte: coupon.total - targets.length } },
-        data: { claimed: { increment: targets.length }, issued: { increment: targets.length } },
+        data: {
+          claimed: { increment: targets.length },
+          issued: { increment: targets.length },
+        },
       });
       if (!won.count)
         throw new BadRequestException('发放数量超过优惠券剩余额度');

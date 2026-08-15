@@ -66,6 +66,18 @@ model Product {
   weight        Decimal    @db.Decimal(10, 3)
   status        String     @default("on-sale")
   cartItems     CartItem[]
+  inventoryTxns InventoryTxn[]
+}
+
+model InventoryTxn {
+  id        String   @id @default(cuid())
+  productId String
+  product   Product  @relation(fields: [productId], references: [id])
+  type      String
+  delta     Int
+  reason    String
+  operator  String
+  createdAt DateTime @default(now())
 }
 
 model Banner {

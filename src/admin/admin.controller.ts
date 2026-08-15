@@ -17,6 +17,7 @@ import type { AuthRequest } from '../auth/jwt-auth.guard';
 import { ok } from '../common/api-response';
 import { AdminService } from './admin.service';
 import {
+  AdjustStockDto,
   BarcodeDto,
   CreateBuildingDto,
   CreateCouponDto,
@@ -24,6 +25,7 @@ import {
   CreateRoomDto,
   CreateStaffDto,
   IssueCouponDto,
+  StockInDto,
   UpdateBuildingDto,
   UpdateCouponDto,
   UpdateStaffDto,
@@ -77,6 +79,27 @@ export class AdminController {
   @Get('inventory') async inventory(@Req() req: AuthRequest) {
     this.authorize(req);
     return ok(await this.service.inventory());
+  }
+  @Post('inventory/stock-in') async stockIn(
+    @Req() req: AuthRequest,
+    @Body() body: StockInDto,
+  ) {
+    this.authorize(req);
+    return ok(await this.service.stockIn(body, req.user.id), '入库完成');
+  }
+  @Post('inventory/adjust') async adjustStock(
+    @Req() req: AuthRequest,
+    @Body() body: AdjustStockDto,
+  ) {
+    this.authorize(req);
+    return ok(await this.service.adjustStock(body, req.user.id), '库存已调整');
+  }
+  @Get('inventory/txns') async inventoryTxns(
+    @Req() req: AuthRequest,
+    @Query('productId') productId?: string,
+  ) {
+    this.authorize(req);
+    return ok(await this.service.inventoryTxns(productId));
   }
   @Get('orders') async orders(
     @Req() req: AuthRequest,
@@ -168,7 +191,10 @@ export class AdminController {
     @Body() body: CreateRoomDto,
   ) {
     this.authorize(req);
-    return ok(await this.service.createRoom(id, body, req.user.id), '寝室已创建');
+    return ok(
+      await this.service.createRoom(id, body, req.user.id),
+      '寝室已创建',
+    );
   }
   @Delete('buildings/:id/rooms/:roomId') async deleteRoom(
     @Req() req: AuthRequest,
@@ -235,7 +261,10 @@ export class AdminController {
     @Body() body: IssueCouponDto,
   ) {
     this.authorize(req);
-    return ok(await this.service.issueCoupon(id, body, req.user.id), '发放完成');
+    return ok(
+      await this.service.issueCoupon(id, body, req.user.id),
+      '发放完成',
+    );
   }
   @Get('audit-logs') async audits(@Req() req: AuthRequest) {
     this.authorize(req);
