@@ -186,30 +186,8 @@ export class BusinessController {
       await this.service.setDefaultAddress(req.user.id, req.user.campusId, id),
     );
   }
-  @Get('campuses/current/buildings') buildings() {
-    return ok([
-      {
-        id: 'west-5',
-        name: '西区 5 栋',
-        minFloor: 1,
-        maxFloor: 7,
-        available: true,
-      },
-      {
-        id: 'west-6',
-        name: '西区 6 栋',
-        minFloor: 1,
-        maxFloor: 7,
-        available: true,
-      },
-      {
-        id: 'west-7',
-        name: '西区 7 栋',
-        minFloor: 1,
-        maxFloor: 7,
-        available: true,
-      },
-    ]);
+  @Get('campuses/current/buildings') async buildings(@Req() req: AuthRequest) {
+    return ok(await this.service.buildings(req.user.campusId));
   }
   @Get('coupons') async coupons(@Req() req: AuthRequest) {
     return ok(await this.service.coupons(req.user.id, req.user.campusId));

@@ -193,6 +193,21 @@ export class BusinessService {
       throw new BadRequestException('优惠券已过期');
     return record;
   }
+  async buildings(campusId = 'campus-hbut') {
+    const xs = await this.db.building.findMany({
+      where: { campusId, status: 'active' },
+      orderBy: { createdAt: 'asc' },
+    });
+    return xs.map((x) => ({
+      id: x.id,
+      name: x.name,
+      minFloor: 1,
+      maxFloor: x.floors,
+      hasElevator: x.hasElevator,
+      gender: x.gender,
+      available: true,
+    }));
+  }
   async slots(campusId = 'campus-hbut') {
     return this.db.deliverySlot.findMany({
       where: { campusId },
@@ -678,13 +693,16 @@ export class BusinessService {
         data: { isDefault: false },
       });
     const campus = await this.campus();
+    const building = await this.db.building.findFirst({
+      where: { campusId, name: dto.buildingName },
+    });
     return this.db.address.create({
       data: {
         id: `address-${Date.now()}`,
         userId,
         campusId,
         campusName: campus.name,
-        buildingId: dto.buildingName,
+        buildingId: building?.id ?? dto.buildingName,
         ...dto,
         isDefault: dto.isDefault ?? false,
       },

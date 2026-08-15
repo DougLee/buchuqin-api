@@ -8,6 +8,8 @@ const json = (value: unknown) =>
 
 async function main() {
   await prisma.auditLog.deleteMany();
+  await prisma.room.deleteMany();
+  await prisma.building.deleteMany();
   await prisma.dispatchInvitation.deleteMany();
   await prisma.leaveRequest.deleteMany();
   await prisma.refund.deleteMany();
@@ -62,6 +64,42 @@ async function main() {
   });
   for (const address of source.addresses)
     await prisma.address.create({ data: address });
+  // A3 seed 迁移：把现有 Address.buildingName 归并成 Building/Room 记录。
+  const buildingIdByName = new Map<string, string>();
+  for (const name of [
+    ...new Set(source.addresses.map((item) => item.buildingName)),
+  ]) {
+    const floors = Math.max(
+      ...source.addresses
+        .filter((item) => item.buildingName === name)
+        .map((item) => item.floor),
+    );
+    const building = await prisma.building.create({
+      data: {
+        campusId: source.campus.id,
+        name,
+        floors,
+        hasElevator: true,
+        gender: 'mixed',
+      },
+    });
+    buildingIdByName.set(name, building.id);
+  }
+  for (const address of source.addresses) {
+    const buildingId = buildingIdByName.get(address.buildingName)!;
+    await prisma.address.update({
+      where: { id: address.id },
+      data: { buildingId },
+    });
+    await prisma.room.create({
+      data: {
+        buildingId,
+        floor: address.floor,
+        roomNo: address.room,
+        qrToken: `qr-seed-${address.id}`,
+      },
+    });
+  }
   for (const [userId, items] of Object.entries(source.carts))
     for (const [productId, quantity] of Object.entries(items))
       await prisma.cartItem.create({ data: { userId, productId, quantity } });
@@ -161,6 +199,13 @@ async function main() {
       },
     ],
   });
+  // A3 seed 迁移：员工按楼栋名称回填 buildingId。
+  for (const [name, buildingId] of buildingIdByName) {
+    await prisma.staff.updateMany({
+      where: { building: name },
+      data: { buildingId },
+    });
+  }
   await prisma.leaveRequest.create({
     data: {
       id: 'leave-001',

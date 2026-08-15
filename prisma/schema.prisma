@@ -80,6 +80,31 @@ model Banner {
   status   String  @default("active")
 }
 
+model Building {
+  id          String   @id @default(cuid())
+  campusId    String
+  name        String
+  floors      Int      @default(6)
+  hasElevator Boolean  @default(false)
+  gender      String   @default("mixed")
+  status      String   @default("active")
+  createdAt   DateTime @default(now())
+  rooms       Room[]
+  staff       Staff[]
+}
+
+model Room {
+  id         String   @id @default(cuid())
+  buildingId String
+  building   Building @relation(fields: [buildingId], references: [id])
+  floor      Int
+  roomNo     String
+  qrToken    String   @unique
+  createdAt  DateTime @default(now())
+
+  @@unique([buildingId, floor, roomNo])
+}
+
 model Address {
   id           String  @id
   userId       String
@@ -215,6 +240,8 @@ model Staff {
   role                String
   roleText            String
   staffNo             String               @unique
+  buildingId          String?
+  buildingRef         Building?            @relation(fields: [buildingId], references: [id])
   building            String
   status              String               @default("online")
   completedToday      Int                  @default(0)

@@ -10,21 +10,24 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtService } from '@nestjs/jwt';
-import { IsIn } from 'class-validator';
+import { IsIn, IsString } from 'class-validator';
 import { ok } from '../common/api-response';
 import { PrismaService } from '../database/prisma.service';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import type { AuthRequest, AuthUser } from './jwt-auth.guard';
 
+const IDENTITIES = [
+  'user',
+  'building-manager',
+  'fulltime-rider',
+  'parttime-rider',
+  'admin',
+] as const;
+
 class TestLoginDto {
-  @IsIn([
-    'user',
-    'building-manager',
-    'fulltime-rider',
-    'parttime-rider',
-    'admin',
-  ])
-  identity!: AuthUser['role'];
+  // 支持 identity 角色别名，也支持具体 staffNo / staff id（演示后台增删的账号）。
+  @IsString()
+  identity!: string;
 }
 
 @ApiTags('认证')
@@ -67,9 +70,22 @@ export class AuthController {
         },
       });
     }
-    const staff = await this.db.staff.findFirstOrThrow({
-      where: { role: body.identity },
-    });
+    const staff = IDENTITIES.includes(
+      body.identity as (typeof IDENTITIES)[number],
+    )
+      ? await this.db.staff.findFirstOrThrow({
+          where: {
+            role: body.identity,
+            status: { not: 'deleted' },
+          },
+        })
+      : await this.db.staff.findFirst({
+          where: {
+            OR: [{ staffNo: body.identity }, { id: body.identity }],
+            status: { not: 'deleted' },
+          },
+        });
+    if (!staff) throw new NotFoundException('测试账号不存在');
     const claims: AuthUser = {
       id: staff.id,
       campusId: staff.campusId,

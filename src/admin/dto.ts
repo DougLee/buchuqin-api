@@ -1,6 +1,7 @@
 import { Type } from 'class-transformer';
 import {
   IsArray,
+  IsBoolean,
   IsIn,
   IsInt,
   IsNumber,
@@ -40,4 +41,36 @@ export class UpdateCouponDto {
 }
 export class IssueCouponDto {
   @IsArray() @IsString({ each: true }) userIds!: string[];
+}
+export class CreateBuildingDto {
+  @IsString() @MaxLength(30) name!: string;
+  @Type(() => Number) @IsInt() @Min(1) floors!: number;
+  @IsBoolean() hasElevator!: boolean;
+  @IsIn(['male', 'female', 'mixed']) gender!: 'male' | 'female' | 'mixed';
+}
+export class UpdateBuildingDto {
+  @IsOptional() @IsString() @MaxLength(30) name?: string;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) floors?: number;
+  @IsOptional() @IsBoolean() hasElevator?: boolean;
+  @IsOptional() @IsIn(['male', 'female', 'mixed']) gender?: string;
+}
+export class CreateRoomDto {
+  @Type(() => Number) @IsInt() @Min(1) floor!: number;
+  @IsString() @MaxLength(10) roomNo!: string;
+}
+const STAFF_STATUSES = ['online', 'paused', 'offline'] as const;
+export class CreateStaffDto {
+  @IsString() @MaxLength(20) name!: string;
+  @IsIn(['building-manager', 'fulltime-rider', 'parttime-rider']) role!: string;
+  @IsString() @MaxLength(20) staffNo!: string;
+  @IsOptional() @IsString() buildingId?: string;
+  @IsOptional() @IsIn(STAFF_STATUSES) status?: string;
+}
+export class UpdateStaffDto {
+  @IsOptional() @IsString() @MaxLength(20) name?: string;
+  @IsOptional() @IsIn(['building-manager', 'fulltime-rider', 'parttime-rider'])
+  role?: string;
+  @IsOptional() @IsString() @MaxLength(20) staffNo?: string;
+  @IsOptional() @IsString() buildingId?: string | null;
+  @IsOptional() @IsIn(STAFF_STATUSES) status?: string;
 }

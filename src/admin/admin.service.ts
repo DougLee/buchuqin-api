@@ -7,10 +7,15 @@ import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
 import { BusinessService } from '../business/business.service';
 import type {
+  CreateBuildingDto,
   CreateCouponDto,
   CreateProductDto,
+  CreateRoomDto,
+  CreateStaffDto,
   IssueCouponDto,
+  UpdateBuildingDto,
   UpdateCouponDto,
+  UpdateStaffDto,
 } from './dto';
 
 @Injectable()
@@ -277,7 +282,11 @@ export class AdminService {
     return result;
   }
   async staff() {
-    const xs = await this.db.staff.findMany();
+    const xs = await this.db.staff.findMany({
+      where: { status: { not: 'deleted' } },
+      include: { buildingRef: true },
+      orderBy: { staffNo: 'asc' },
+    });
     return xs.map((x) => ({
       ...x,
       onTimeRate: this.num(x.onTimeRate),
@@ -285,6 +294,232 @@ export class AdminService {
       income: this.num(x.income),
       online: x.status === 'online',
     }));
+  }
+  async createStaff(body: CreateStaffDto, operator: string) {
+    const duplicate = await this.db.staff.findUnique({
+      where: { staffNo: body.staffNo },
+    });
+    if (duplicate) throw new BadRequestException('工号已存在');
+    let buildingName = '湖北工业大学';
+    if (body.buildingId) {
+      const building = await this.db.building.findUnique({
+        where: { id: body.buildingId },
+      });
+      if (!building) throw new BadRequestException('楼栋不存在');
+      buildingName = building.name;
+    }
+    const roleText =
+      body.role === 'building-manager'
+        ? `${buildingName}楼长`
+        : body.role === 'fulltime-rider'
+          ? '全职配送员'
+          : '兼职配送员';
+    const staff = await this.db.staff.create({
+      data: {
+        id: `staff-${Date.now()}`,
+        campusId: 'campus-hbut',
+        name: body.name,
+        role: body.role,
+        roleText,
+        staffNo: body.staffNo,
+        buildingId: body.buildingId ?? null,
+        building: buildingName,
+        status: body.status ?? 'online',
+        onTimeRate: 100,
+        income: 0,
+      },
+    });
+    await this.audit(operator, 'staff.create', 'staff', staff.id, null, {
+      name: staff.name,
+      staffNo: staff.staffNo,
+    });
+    return staff;
+  }
+  async updateStaff(
+    id: string,
+    body: UpdateStaffDto,
+    operator: string,
+  ) {
+    const before = await this.db.staff.findUnique({ where: { id } });
+    if (!before || before.status === 'deleted')
+      throw new NotFoundException('员工不存在');
+    if (
+      body.staffNo &&
+      body.staffNo !== before.staffNo &&
+      (await this.db.staff.findUnique({ where: { staffNo: body.staffNo } }))
+    )
+      throw new BadRequestException('工号已存在');
+    const data: Prisma.StaffUpdateInput = {};
+    if (body.name !== undefined) data.name = body.name;
+    if (body.role !== undefined) data.role = body.role;
+    if (body.staffNo !== undefined) data.staffNo = body.staffNo;
+    if (body.status !== undefined) data.status = body.status;
+    let buildingName = before.building;
+    if (body.buildingId !== undefined) {
+      if (body.buildingId === null) {
+        data.buildingRef = { disconnect: true };
+        buildingName = '湖北工业大学';
+      } else {
+        const building = await this.db.building.findUnique({
+          where: { id: body.buildingId },
+        });
+        if (!building) throw new BadRequestException('楼栋不存在');
+        data.buildingRef = { connect: { id: building.id } };
+        data.building = building.name;
+        buildingName = building.name;
+      }
+    }
+    if (body.role !== undefined || body.buildingId !== undefined) {
+      const role = body.role ?? before.role;
+      data.roleText =
+        role === 'building-manager'
+          ? `${buildingName}楼长`
+          : role === 'fulltime-rider'
+            ? '全职配送员'
+            : '兼职配送员';
+    }
+    const after = await this.db.staff.update({ where: { id }, data });
+    await this.audit(operator, 'staff.update', 'staff', id, before, after);
+    return after;
+  }
+  async deleteStaff(id: string, operator: string) {
+    const before = await this.db.staff.findUnique({ where: { id } });
+    if (!before || before.status === 'deleted')
+      throw new NotFoundException('员工不存在');
+    const after = await this.db.staff.update({
+      where: { id },
+      data: { status: 'deleted' },
+    });
+    await this.audit(operator, 'staff.delete', 'staff', id, before, after);
+    return { id, deleted: true };
+  }
+  async buildings() {
+    const xs = await this.db.building.findMany({
+      include: {
+        _count: { select: { rooms: true } },
+        staff: { where: { status: { not: 'deleted' } } },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+    return xs.map((x) => ({
+      id: x.id,
+      name: x.name,
+      floors: x.floors,
+      hasElevator: x.hasElevator,
+      gender: x.gender,
+      roomsCount: x._count.rooms,
+      staffName: x.staff.map((s) => s.name).join('、') || undefined,
+    }));
+  }
+  async createBuilding(body: CreateBuildingDto, operator: string) {
+    const duplicate = await this.db.building.findFirst({
+      where: { name: body.name },
+    });
+    if (duplicate) throw new BadRequestException('楼栋名称已存在');
+    const building = await this.db.building.create({
+      data: {
+        campusId: 'campus-hbut',
+        name: body.name,
+        floors: body.floors,
+        hasElevator: body.hasElevator,
+        gender: body.gender,
+      },
+    });
+    await this.audit(
+      operator,
+      'building.create',
+      'building',
+      building.id,
+      null,
+      building,
+    );
+    return building;
+  }
+  async updateBuilding(
+    id: string,
+    body: UpdateBuildingDto,
+    operator: string,
+  ) {
+    const before = await this.db.building.findUnique({ where: { id } });
+    if (!before) throw new NotFoundException('楼栋不存在');
+    const after = await this.db.building.update({ where: { id }, data: body });
+    await this.audit(
+      operator,
+      'building.update',
+      'building',
+      id,
+      before,
+      after,
+    );
+    return after;
+  }
+  async deleteBuilding(id: string, operator: string) {
+    const building = await this.db.building.findUnique({
+      where: { id },
+      include: {
+        _count: { select: { rooms: true } },
+        staff: { where: { status: { not: 'deleted' } } },
+      },
+    });
+    if (!building) throw new NotFoundException('楼栋不存在');
+    if (building._count.rooms)
+      throw new BadRequestException('楼栋下存在寝室，无法删除');
+    if (building.staff.length)
+      throw new BadRequestException('楼栋下仍有在职员工，无法删除');
+    await this.db.building.delete({ where: { id } });
+    await this.audit(operator, 'building.delete', 'building', id, building, null);
+    return { id, deleted: true };
+  }
+  async rooms(buildingId: string) {
+    const building = await this.db.building.findUnique({
+      where: { id: buildingId },
+    });
+    if (!building) throw new NotFoundException('楼栋不存在');
+    const xs = await this.db.room.findMany({
+      where: { buildingId },
+      orderBy: [{ floor: 'asc' }, { roomNo: 'asc' }],
+    });
+    return xs.map((x) => ({
+      id: x.id,
+      floor: x.floor,
+      roomNo: x.roomNo,
+      qrToken: x.qrToken,
+    }));
+  }
+  async createRoom(
+    buildingId: string,
+    body: CreateRoomDto,
+    operator: string,
+  ) {
+    const building = await this.db.building.findUnique({
+      where: { id: buildingId },
+    });
+    if (!building) throw new NotFoundException('楼栋不存在');
+    if (body.floor > building.floors)
+      throw new BadRequestException('楼层超出楼栋总层数');
+    const duplicate = await this.db.room.findUnique({
+      where: { buildingId_floor_roomNo: { buildingId, floor: body.floor, roomNo: body.roomNo } },
+    });
+    if (duplicate) throw new BadRequestException('该寝室已存在');
+    const room = await this.db.room.create({
+      data: {
+        buildingId,
+        floor: body.floor,
+        roomNo: body.roomNo,
+        qrToken: `qr-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+      },
+    });
+    await this.audit(operator, 'room.create', 'room', room.id, null, room);
+    return room;
+  }
+  async deleteRoom(buildingId: string, roomId: string, operator: string) {
+    const room = await this.db.room.findFirst({
+      where: { id: roomId, buildingId },
+    });
+    if (!room) throw new NotFoundException('寝室不存在');
+    await this.db.room.delete({ where: { id: roomId } });
+    await this.audit(operator, 'room.delete', 'room', roomId, room, null);
+    return { id: roomId, deleted: true };
   }
   async afterSales() {
     return this.db.afterSale.findMany({
@@ -352,11 +587,21 @@ export class AdminService {
     return Promise.all(
       xs.map(async (x) => ({
         ...x,
-        buildings: 12,
-        rooms: 864,
+        buildings: await this.db.building.count({
+          where: { campusId: x.id },
+        }),
+        rooms: await this.db.room.count({
+          where: { building: { campusId: x.id } },
+        }),
         users: await this.db.user.count({ where: { campusId: x.id } }),
       })),
     );
+  }
+  users() {
+    return this.db.user.findMany({
+      select: { id: true, nickname: true, phone: true },
+      orderBy: { createdAt: 'asc' },
+    });
   }
   async coupons() {
     const xs = await this.db.coupon.findMany();
