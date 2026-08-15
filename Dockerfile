@@ -1,7 +1,7 @@
 # 构建阶段：pnpm 装依赖 + prisma generate + nest build
 FROM node:20-alpine AS build
 WORKDIR /app
-RUN apk add --no-cache openssl && corepack enable
+RUN apk add --no-cache openssl && corepack enable && corepack prepare pnpm@9.15.9 --activate
 COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
 COPY . .
