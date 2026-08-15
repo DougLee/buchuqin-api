@@ -8,10 +8,10 @@
 
 - `POST /files/images` — multipart/form-data，字段名 `file`
   - 限制：单文件 ≤5MB，MIME 必须 image/*
-  - 返回：`{ url: "/api/v1/uploads/2026/08/xxxx.jpg" }`（相对路径，前端拼 baseURL）
+  - 返回：`{ url: "https://<bucket>.cos.<region>.myqcloud.com/uploads/2026/08/uuid.jpg" }`（**腾讯 COS 绝对 URL**，ADR-0003；历史相对路径 /api/v1/uploads 仍可访问旧数据）
   - 权限：任意已登录角色（user / building-manager / fulltime-rider / parttime-rider / admin 系）
-  - 存储：`uploads/` 目录（gitignore），NestJS 静态服务挂 `/api/v1/uploads`
-  - 幂等/安全：文件名随机化（uuid），保留扩展名
+  - 存储：后端代理上传腾讯 COS（桶私有 + 对象 public-read ACL），路径 uploads/年/月/uuid.ext
+  - 环境变量：COS_SECRET_ID / COS_SECRET_KEY / COS_BUCKET / COS_REGION /（可选）COS_PUBLIC_BASE_URL
 
 ## A2 优惠券（IK8W79）
 
