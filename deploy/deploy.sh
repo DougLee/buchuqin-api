@@ -16,7 +16,6 @@ init() {
 sync_files() {
   # 编排文件以仓库为源，每次部署同步
   cp $REPO/deploy/docker-compose.yml $ROOT/docker-compose.yml
-  cp $REPO/deploy/nginx.conf $ROOT/nginx.conf
 }
 
 case "${1:-up}" in
