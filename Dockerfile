@@ -10,7 +10,7 @@ RUN pnpm db:generate && pnpm build
 # 运行阶段：alpine + openssl（prisma 引擎需要），携带全量 node_modules（seed 依赖 ts-node）
 FROM node:20-alpine
 WORKDIR /app
-RUN apk add --no-cache openssl
+RUN apk add --no-cache openssl && corepack enable && corepack prepare pnpm@9.15.9 --activate
 ENV NODE_ENV=production
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
