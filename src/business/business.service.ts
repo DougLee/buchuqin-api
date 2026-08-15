@@ -93,29 +93,105 @@ export class BusinessService {
   async categories() {
     return this.db.category.findMany({ orderBy: { sort: 'asc' } });
   }
+  private couponView(coupon: {
+    id: string;
+    name: string;
+    amount: Prisma.Decimal;
+    threshold: Prisma.Decimal;
+    total: number;
+    claimed: number;
+    status: string;
+    expiresAt: Date;
+  }) {
+    return {
+      id: coupon.id,
+      name: coupon.name,
+      amount: number(coupon.amount),
+      threshold: number(coupon.threshold),
+      total: coupon.total,
+      remain: Math.max(0, coupon.total - coupon.claimed),
+      status: coupon.status,
+      expiresAt: coupon.expiresAt.toISOString(),
+    };
+  }
   async coupons(userId: string, campusId = 'campus-hbut') {
-    const [items, usedOrders] = await Promise.all([
+    const [items, mine] = await Promise.all([
       this.db.coupon.findMany({
         where: { campusId },
         orderBy: { expiresAt: 'asc' },
       }),
-      this.db.order.findMany({
-        where: {
-          userId,
-          couponId: { not: null },
-          status: { notIn: ['pending-payment', 'cancelled'] },
-        },
-        select: { couponId: true },
+      this.db.userCoupon.findMany({
+        where: { userId },
+        include: { coupon: true },
+        orderBy: { claimedAt: 'desc' },
       }),
     ]);
-    const used = new Set(usedOrders.map((order) => order.couponId));
-    return items.map((i) => ({
-      ...i,
-      status: used.has(i.id) ? 'used' : i.status,
-      amount: number(i.amount),
-      threshold: number(i.threshold),
-      expiresAt: i.expiresAt.toISOString(),
-    }));
+    const now = new Date();
+    const holding = new Set(
+      mine.filter((x) => x.status !== 'used').map((x) => x.couponId),
+    );
+    return {
+      claimable: items
+        .filter(
+          (c) =>
+            c.status === 'active' &&
+            c.expiresAt > now &&
+            c.claimed < c.total &&
+            !holding.has(c.id),
+        )
+        .map((c) => this.couponView(c)),
+      mine: mine.map((x) => ({
+        id: x.id,
+        couponId: x.couponId,
+        status: x.status,
+        claimedAt: x.claimedAt.toISOString(),
+        coupon: this.couponView(x.coupon),
+      })),
+    };
+  }
+  async claimCoupon(userId: string, couponId: string) {
+    return this.db.$transaction(async (tx) => {
+      const existing = await tx.userCoupon.findFirst({
+        where: { userId, couponId },
+      });
+      if (existing) {
+        // 幂等：重复领取直接返回已有记录。
+        if (existing.status === 'used')
+          throw new BadRequestException('该优惠券已使用');
+        return existing;
+      }
+      const coupon = await tx.coupon.findUnique({ where: { id: couponId } });
+      if (!coupon) throw new NotFoundException('优惠券不存在');
+      if (coupon.status !== 'active')
+        throw new BadRequestException('优惠券暂不可领取');
+      if (coupon.expiresAt.getTime() <= Date.now())
+        throw new BadRequestException('优惠券已过期');
+      // 并发不超发：条件更新占用名额，抢不到名额即已领完。
+      const won = await tx.coupon.updateMany({
+        where: { id: couponId, claimed: { lt: coupon.total } },
+        data: { claimed: { increment: 1 }, issued: { increment: 1 } },
+      });
+      if (!won.count) throw new BadRequestException('优惠券已被领完');
+      return tx.userCoupon.create({
+        data: { userId, couponId, status: 'claimed' },
+      });
+    });
+  }
+  /** 校验用于下单的 UserCoupon（couponId 语义为 UserCoupon id）。 */
+  private async validateUserCoupon(userId: string, userCouponId: string) {
+    const record = await this.db.userCoupon.findUnique({
+      where: { id: userCouponId },
+      include: { coupon: true },
+    });
+    if (!record || record.userId !== userId)
+      throw new BadRequestException('优惠券不存在或无权使用');
+    if (!['claimed', 'released'].includes(record.status))
+      throw new BadRequestException('优惠券当前状态不可使用');
+    if (record.coupon.status !== 'active')
+      throw new BadRequestException('优惠券已下架');
+    if (record.coupon.expiresAt.getTime() <= Date.now())
+      throw new BadRequestException('优惠券已过期');
+    return record;
   }
   async slots(campusId = 'campus-hbut') {
     return this.db.deliverySlot.findMany({
@@ -264,32 +340,17 @@ export class BusinessService {
   async checkout(userId: string, dto: CreateOrderDto) {
     const { cart } = await this.validateQuote(userId, dto);
     const deliveryFee = dto.deliveryMode === 'instant' ? 4 : 2;
-    const coupon = dto.couponId
-      ? await this.db.coupon.findFirst({
-          where: {
-            id: dto.couponId,
-            status: 'available',
-            expiresAt: { gt: new Date() },
-          },
-        })
+    const userCoupon = dto.couponId
+      ? await this.validateUserCoupon(userId, dto.couponId)
       : null;
-    if (dto.couponId) {
-      if (!coupon) throw new BadRequestException('优惠券不可用或已过期');
-      if (cart.productAmount < number(coupon.threshold))
-        throw new BadRequestException(`商品金额未达到优惠券使用门槛`);
-      const used = await this.db.order.findFirst({
-        where: {
-          userId,
-          couponId: dto.couponId,
-          status: { notIn: ['pending-payment', 'cancelled'] },
-        },
-      });
-      if (used) throw new BadRequestException('优惠券已使用');
-    }
-    const discount =
-      coupon && cart.productAmount >= number(coupon.threshold)
-        ? number(coupon.amount)
-        : 0;
+    const discount = userCoupon
+      ? number(userCoupon.coupon.amount)
+      : 0;
+    if (
+      userCoupon &&
+      cart.productAmount < number(userCoupon.coupon.threshold)
+    )
+      throw new BadRequestException('商品金额未达到优惠券使用门槛');
     return {
       ...cart,
       deliveryFee,
@@ -334,39 +395,76 @@ export class BusinessService {
         done: false,
       },
     ];
-    const order = await this.db.order.create({
-      data: {
-        id,
-        orderNo: `BCQ${Date.now()}`,
-        userId,
-        campusId: address.campusId,
-        status: 'pending-payment',
-        statusText: '等待支付',
-        address: json(address),
-        deliveryMode: dto.deliveryMode,
-        deliverySlot: dto.deliverySlot,
-        couponId: dto.couponId,
-        remark: dto.remark ?? '',
-        items: json(settlement.items),
-        productAmount: settlement.productAmount,
-        totalQuantity: settlement.totalQuantity,
-        deliveryThreshold: settlement.deliveryThreshold,
-        deliveryFee: settlement.deliveryFee,
-        discount: settlement.discount,
-        payableAmount: settlement.payableAmount,
-        estimatedArrival: settlement.estimatedArrival,
-        timeline: json(timeline),
-        createdAt: now,
-      },
+    const order = await this.db.$transaction(async (tx) => {
+      if (dto.couponId) {
+        // 下单锁定优惠券：claimed/released -> locked，条件更新防并发重复占用。
+        const locked = await tx.userCoupon.updateMany({
+          where: {
+            id: dto.couponId,
+            userId,
+            status: { in: ['claimed', 'released'] },
+          },
+          data: { status: 'locked' },
+        });
+        if (!locked.count)
+          throw new BadRequestException('优惠券不可用或已被锁定');
+      }
+      return tx.order.create({
+        data: {
+          id,
+          orderNo: `BCQ${Date.now()}`,
+          userId,
+          campusId: address.campusId,
+          status: 'pending-payment',
+          statusText: '等待支付',
+          address: json(address),
+          deliveryMode: dto.deliveryMode,
+          deliverySlot: dto.deliverySlot,
+          couponId: dto.couponId,
+          remark: dto.remark ?? '',
+          items: json(settlement.items),
+          productAmount: settlement.productAmount,
+          totalQuantity: settlement.totalQuantity,
+          deliveryThreshold: settlement.deliveryThreshold,
+          deliveryFee: settlement.deliveryFee,
+          discount: settlement.discount,
+          payableAmount: settlement.payableAmount,
+          estimatedArrival: settlement.estimatedArrival,
+          timeline: json(timeline),
+          createdAt: now,
+        },
+      });
     });
     return this.orderView(order);
   }
   private async expirePendingOrders(userId: string) {
     const deadline = new Date(Date.now() - 15 * 60 * 1000);
-    await this.db.order.updateMany({
-      where: { userId, status: 'pending-payment', createdAt: { lt: deadline } },
-      data: { status: 'cancelled', statusText: '支付超时已关闭' },
+    const stale = await this.db.order.findMany({
+      where: {
+        userId,
+        status: 'pending-payment',
+        createdAt: { lt: deadline },
+      },
+      select: { id: true, couponId: true },
     });
+    if (!stale.length) return;
+    const couponIds = stale
+      .map((x) => x.couponId)
+      .filter((x): x is string => Boolean(x));
+    await this.db.$transaction([
+      this.db.order.updateMany({
+        where: { id: { in: stale.map((x) => x.id) } },
+        data: { status: 'cancelled', statusText: '支付超时已关闭' },
+      }),
+      ...(couponIds.length
+        ? [
+            this.db.userCoupon.updateMany({
+              where: { id: { in: couponIds }, status: 'locked' },
+              data: { status: 'released' },
+            }),
+          ]
+        : []),
+    ]);
   }
   async orders(userId: string, status?: string) {
     await this.expirePendingOrders(userId);
@@ -400,6 +498,11 @@ export class BusinessService {
           where: { id },
           data: { status: 'cancelled', statusText: '支付超时已关闭' },
         });
+        if (raw.couponId)
+          await tx.userCoupon.updateMany({
+            where: { id: raw.couponId, status: 'locked' },
+            data: { status: 'released' },
+          });
         throw new BadRequestException('订单支付已超时');
       }
       if (raw.status !== 'pending-payment')
@@ -433,11 +536,23 @@ export class BusinessService {
           }),
         },
       });
-      if (raw.couponId)
-        await tx.coupon.updateMany({
-          where: { id: raw.couponId, status: 'available' },
-          data: { used: { increment: 1 } },
+      if (raw.couponId) {
+        // 支付成功：locked -> used，并累计券维度的已使用计数。
+        const used = await tx.userCoupon.updateMany({
+          where: { id: raw.couponId, status: 'locked' },
+          data: { status: 'used' },
         });
+        if (used.count) {
+          const holding = await tx.userCoupon.findUniqueOrThrow({
+            where: { id: raw.couponId },
+            select: { couponId: true },
+          });
+          await tx.coupon.update({
+            where: { id: holding.couponId },
+            data: { used: { increment: 1 } },
+          });
+        }
+      }
       await tx.cartItem.deleteMany({ where: { userId } });
       await tx.notification.create({
         data: {
@@ -523,9 +638,10 @@ export class BusinessService {
             data: { stock: { increment: line.quantity } },
           });
       if (raw.couponId)
-        await tx.coupon.updateMany({
-          where: { id: raw.couponId },
-          data: { status: 'available' },
+        // 取消订单：locked/used -> released，released 状态可再次选用。
+        await tx.userCoupon.updateMany({
+          where: { id: raw.couponId, status: { in: ['locked', 'used'] } },
+          data: { status: 'released' },
         });
       const updated = await tx.order.update({
         where: { id },
@@ -626,35 +742,28 @@ export class BusinessService {
       ...dto,
       couponId: undefined,
     });
-    const [items, usedOrders] = await Promise.all([
-      this.db.coupon.findMany({ where: { campusId: 'campus-hbut' } }),
-      this.db.order.findMany({
-        where: {
-          userId,
-          couponId: { not: null },
-          status: { notIn: ['pending-payment', 'cancelled'] },
-        },
-        select: { couponId: true },
-      }),
-    ]);
-    const used = new Set(usedOrders.map((order) => order.couponId));
-    return items.map((c) => {
-      const amount = number(c.amount),
-        threshold = number(c.threshold);
-      const reason = used.has(c.id)
-        ? '优惠券已使用'
-        : c.status !== 'available'
-          ? '优惠券不可用'
-          : c.expiresAt <= new Date()
-            ? '优惠券已过期'
-            : cart.productAmount < threshold
-              ? `还差${Number((threshold - cart.productAmount).toFixed(2))}元可用`
-              : undefined;
+    const rows = await this.db.userCoupon.findMany({
+      where: { userId, status: { in: ['claimed', 'released'] } },
+      include: { coupon: true },
+      orderBy: { claimedAt: 'desc' },
+    });
+    const now = new Date();
+    return rows.map((row) => {
+      const amount = number(row.coupon.amount),
+        threshold = number(row.coupon.threshold);
+      let reason: string | undefined;
+      if (row.coupon.status !== 'active') reason = '优惠券已下架';
+      else if (row.coupon.expiresAt <= now) reason = '优惠券已过期';
+      else if (cart.productAmount < threshold)
+        reason = `还差${Number((threshold - cart.productAmount).toFixed(2))}元可用`;
       return {
-        ...c,
+        id: row.id,
+        couponId: row.couponId,
+        name: row.coupon.name,
         amount,
         threshold,
-        expiresAt: c.expiresAt.toISOString(),
+        status: row.status,
+        expiresAt: row.coupon.expiresAt.toISOString(),
         available: !reason,
         unavailableReason: reason,
       };

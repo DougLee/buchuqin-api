@@ -6,7 +6,12 @@ import {
 import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
 import { BusinessService } from '../business/business.service';
-import type { CreateProductDto } from './dto';
+import type {
+  CreateCouponDto,
+  CreateProductDto,
+  IssueCouponDto,
+  UpdateCouponDto,
+} from './dto';
 
 @Injectable()
 export class AdminService {
@@ -359,7 +364,101 @@ export class AdminService {
       ...x,
       amount: this.num(x.amount),
       threshold: this.num(x.threshold),
+      remain: Math.max(0, x.total - x.claimed),
     }));
+  }
+  async createCoupon(
+    body: CreateCouponDto,
+    operator: string,
+  ) {
+    const expiresAt = new Date(body.expiresAt);
+    if (Number.isNaN(expiresAt.getTime()))
+      throw new BadRequestException('过期时间格式不正确');
+    if (expiresAt.getTime() <= Date.now())
+      throw new BadRequestException('过期时间必须晚于当前时间');
+    const coupon = await this.db.coupon.create({
+      data: {
+        id: `coupon-${Date.now()}`,
+        campusId: 'campus-hbut',
+        name: body.name,
+        amount: body.amount,
+        threshold: body.threshold,
+        total: body.total,
+        status: 'active',
+        expiresAt,
+        issued: 0,
+        claimed: 0,
+        used: 0,
+      },
+    });
+    await this.audit(operator, 'coupon.create', 'coupon', coupon.id, null, {
+      name: coupon.name,
+      total: coupon.total,
+    });
+    return coupon;
+  }
+  async updateCoupon(
+    id: string,
+    body: UpdateCouponDto,
+    operator: string,
+  ) {
+    const before = await this.db.coupon.findUnique({ where: { id } });
+    if (!before) throw new NotFoundException('优惠券不存在');
+    const after = await this.db.coupon.update({
+      where: { id },
+      data: { status: body.status },
+    });
+    await this.audit(operator, 'coupon.update', 'coupon', id, before, after);
+    return after;
+  }
+  async issueCoupon(
+    id: string,
+    body: IssueCouponDto,
+    operator: string,
+  ) {
+    const coupon = await this.db.coupon.findUnique({ where: { id } });
+    if (!coupon) throw new NotFoundException('优惠券不存在');
+    if (coupon.status !== 'active')
+      throw new BadRequestException('已下架的优惠券不能发放');
+    if (coupon.expiresAt.getTime() <= Date.now())
+      throw new BadRequestException('已过期的优惠券不能发放');
+    const userIds = [...new Set(body.userIds)];
+    if (!userIds.length) throw new BadRequestException('请选择发放对象');
+    const users = await this.db.user.findMany({
+      where: { id: { in: userIds } },
+      select: { id: true },
+    });
+    if (users.length !== userIds.length)
+      throw new BadRequestException('部分用户不存在');
+    const holdings = await this.db.userCoupon.findMany({
+      where: { couponId: id, userId: { in: userIds }, status: { not: 'used' } },
+      select: { userId: true },
+    });
+    const heldBy = new Set(holdings.map((x) => x.userId));
+    const targets = userIds.filter((userId) => !heldBy.has(userId));
+    if (!targets.length)
+      throw new BadRequestException('所选用户均持有该券，无需重复发放');
+    const result = await this.db.$transaction(async (tx) => {
+      // 条件更新兜底并发：已领取数加上本次发放数不能超过总量。
+      const won = await tx.coupon.updateMany({
+        where: { id, claimed: { lte: coupon.total - targets.length } },
+        data: { claimed: { increment: targets.length }, issued: { increment: targets.length } },
+      });
+      if (!won.count)
+        throw new BadRequestException('发放数量超过优惠券剩余额度');
+      return tx.userCoupon.createMany({
+        data: targets.map((userId) => ({
+          userId,
+          couponId: id,
+          status: 'claimed',
+        })),
+      });
+    });
+    await this.audit(operator, 'coupon.issue', 'coupon', id, coupon, {
+      targets,
+      skipped: userIds.filter((userId) => heldBy.has(userId)),
+    });
+    return { issued: result.count, targets, couponId: id };
   }
   auditLogs() {
     return this.db.auditLog.findMany({ orderBy: { createdAt: 'desc' } });

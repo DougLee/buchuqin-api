@@ -214,6 +214,15 @@ export class BusinessController {
   @Get('coupons') async coupons(@Req() req: AuthRequest) {
     return ok(await this.service.coupons(req.user.id, req.user.campusId));
   }
+  @Post('coupons/:couponId/claim') async claimCoupon(
+    @Req() req: AuthRequest,
+    @Param('couponId') couponId: string,
+  ) {
+    return ok(
+      await this.service.claimCoupon(req.user.id, couponId),
+      '领取成功',
+    );
+  }
   @Post('coupons/available') async availableCoupons(
     @Req() req: AuthRequest,
     @Body() dto: CreateOrderDto,

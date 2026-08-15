@@ -37,6 +37,7 @@ model User {
   notifications Notification[]
   afterSales    AfterSale[]
   refunds       Refund[]
+  userCoupons   UserCoupon[]
 }
 
 model Category {
@@ -107,16 +108,28 @@ model CartItem {
 }
 
 model Coupon {
-  id        String   @id
-  campusId  String
-  name      String
-  amount    Decimal  @db.Decimal(10, 2)
-  threshold Decimal  @db.Decimal(10, 2)
-  status    String
-  expiresAt DateTime
-  issued    Int      @default(0)
-  claimed   Int      @default(0)
-  used      Int      @default(0)
+  id           String        @id
+  campusId     String
+  name         String
+  amount       Decimal       @db.Decimal(10, 2)
+  threshold    Decimal       @db.Decimal(10, 2)
+  total        Int           @default(0)
+  status       String
+  expiresAt    DateTime
+  issued       Int           @default(0)
+  claimed      Int           @default(0)
+  used         Int           @default(0)
+  userCoupons  UserCoupon[]
+}
+
+model UserCoupon {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  couponId  String
+  coupon    Coupon   @relation(fields: [couponId], references: [id])
+  status    String   @default("claimed")
+  claimedAt DateTime @default(now())
 }
 
 model DeliverySlot {

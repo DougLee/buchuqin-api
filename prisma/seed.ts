@@ -69,6 +69,8 @@ async function main() {
     data: source.coupons.map((item, index) => ({
       ...item,
       campusId: source.campus.id,
+      status: 'active',
+      total: 800 + index * 180,
       expiresAt: new Date(item.expiresAt),
       issued: 500 + index * 180,
       claimed: 286 + index * 92,

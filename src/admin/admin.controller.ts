@@ -15,7 +15,13 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import type { AuthRequest } from '../auth/jwt-auth.guard';
 import { ok } from '../common/api-response';
 import { AdminService } from './admin.service';
-import { BarcodeDto, CreateProductDto } from './dto';
+import {
+  BarcodeDto,
+  CreateCouponDto,
+  CreateProductDto,
+  IssueCouponDto,
+  UpdateCouponDto,
+} from './dto';
 
 @ApiTags('PC 管理后台 MVP')
 @ApiBearerAuth()
@@ -117,6 +123,32 @@ export class AdminController {
   @Get('coupons') async coupons(@Req() req: AuthRequest) {
     this.authorize(req);
     return ok(await this.service.coupons());
+  }
+  @Post('coupons') async createCoupon(
+    @Req() req: AuthRequest,
+    @Body() body: CreateCouponDto,
+  ) {
+    this.authorize(req);
+    return ok(
+      await this.service.createCoupon(body, req.user.id),
+      '优惠券已创建',
+    );
+  }
+  @Patch('coupons/:id') async updateCoupon(
+    @Req() req: AuthRequest,
+    @Param('id') id: string,
+    @Body() body: UpdateCouponDto,
+  ) {
+    this.authorize(req);
+    return ok(await this.service.updateCoupon(id, body, req.user.id));
+  }
+  @Post('coupons/:id/issue') async issueCoupon(
+    @Req() req: AuthRequest,
+    @Param('id') id: string,
+    @Body() body: IssueCouponDto,
+  ) {
+    this.authorize(req);
+    return ok(await this.service.issueCoupon(id, body, req.user.id), '发放完成');
   }
   @Get('audit-logs') async audits(@Req() req: AuthRequest) {
     this.authorize(req);
