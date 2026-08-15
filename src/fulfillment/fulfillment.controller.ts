@@ -15,7 +15,6 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import type { AuthRequest } from '../auth/jwt-auth.guard';
 import { ok } from '../common/api-response';
 import { FulfillmentService } from './fulfillment.service';
-import type { StaffRole } from './fulfillment.service';
 import {
   LeaveRequestDto,
   RejectDto,
@@ -29,227 +28,173 @@ import {
 @Controller('fulfillment')
 export class FulfillmentController {
   constructor(private readonly service: FulfillmentService) {}
-  private role(req: AuthRequest, mockRole?: StaffRole): StaffRole {
+  private auth(req: AuthRequest) {
     if (
       !['building-manager', 'fulltime-rider', 'parttime-rider'].includes(
         req.user.role,
       )
     )
-      throw new ForbiddenException('普通用户无权访问履约端');
-    return mockRole ?? (req.user.role as StaffRole);
+      throw new ForbiddenException('无履约端权限');
+    return req.user.id;
   }
-  @Get('profile') profile(
-    @Req() req: AuthRequest,
-    @Query('role') mockRole?: StaffRole,
+  @Get('profile') async profile(@Req() r: AuthRequest) {
+    return ok(await this.service.profile(this.auth(r)));
+  }
+  @Patch('profile/status') async status(
+    @Req() r: AuthRequest,
+    @Body() d: StaffStatusDto,
   ) {
-    return ok(this.service.profile(this.role(req, mockRole)));
+    return ok(await this.service.updateStatus(this.auth(r), d.status));
   }
-  @Patch('profile/status') updateStatus(
-    @Req() req: AuthRequest,
-    @Query('role') mockRole: StaffRole | undefined,
-    @Body() dto: StaffStatusDto,
+  @Get('shifts/current') async shift(@Req() r: AuthRequest) {
+    return ok(await this.service.currentShift(this.auth(r)));
+  }
+  @Post('shifts/check-in') async checkIn(@Req() r: AuthRequest) {
+    return ok(await this.service.checkIn(this.auth(r)), '签到成功');
+  }
+  @Post('shifts/check-out') async checkOut(@Req() r: AuthRequest) {
+    return ok(await this.service.checkOut(this.auth(r)), '签退成功');
+  }
+  @Get('dashboard') async dashboard(@Req() r: AuthRequest) {
+    return ok(await this.service.dashboard(this.auth(r)));
+  }
+  @Get('tasks') async tasks(
+    @Req() r: AuthRequest,
+    @Query('status') s?: string,
   ) {
-    return ok(this.service.updateStatus(this.role(req, mockRole), dto.status));
+    return ok(await this.service.tasks(this.auth(r), s));
   }
-  @Get('shifts/current') currentShift(
-    @Req() req: AuthRequest,
-    @Query('role') mockRole?: StaffRole,
-  ) {
-    return ok(this.service.currentShift(this.role(req, mockRole)));
+  @Get('tasks/:id') async task(@Req() r: AuthRequest, @Param('id') id: string) {
+    return ok(await this.service.task(this.auth(r), id));
   }
-  @Post('shifts/check-in') checkIn(
-    @Req() req: AuthRequest,
-    @Query('role') mockRole?: StaffRole,
-  ) {
-    return ok(this.service.checkIn(this.role(req, mockRole)), '签到成功');
-  }
-  @Post('shifts/check-out') checkOut(
-    @Req() req: AuthRequest,
-    @Query('role') mockRole?: StaffRole,
-  ) {
-    return ok(this.service.checkOut(this.role(req, mockRole)), '签退成功');
-  }
-  @Get('dashboard') dashboard(
-    @Req() req: AuthRequest,
-    @Query('role') role: StaffRole = 'building-manager',
-  ) {
-    return ok(this.service.dashboard(this.role(req, role)));
-  }
-  @Get('tasks') tasks(
-    @Req() req: AuthRequest,
-    @Query('role') role: StaffRole = 'building-manager',
-    @Query('status') status?: string,
-  ) {
-    return ok(this.service.tasks(this.role(req, role), status));
-  }
-  @Get('tasks/:id') task(
-    @Req() req: AuthRequest,
+  @Post('tasks/:id/actions/:action') async action(
+    @Req() r: AuthRequest,
     @Param('id') id: string,
-    @Query('role') role: StaffRole = 'building-manager',
+    @Param('action') a: string,
+    @Body() b: TaskActionDto,
   ) {
-    return ok(this.service.task(this.role(req, role), id));
-  }
-  @Post('tasks/:id/actions/:action') action(
-    @Req() req: AuthRequest,
-    @Param('id') id: string,
-    @Param('action') action: string,
-    @Query('role') role: StaffRole = 'building-manager',
-    @Body() body: TaskActionDto,
-  ) {
-    if (action === 'pickup' && !body.packageCode)
-      body.packageCode = 'MOCK-SCAN-CODE';
-    if (action === 'handover' && !body.handoverCode)
-      body.handoverCode = 'MOCK-HANDOVER-CODE';
     return ok(
-      this.service.updateTask(this.role(req, role), id, action, body),
+      await this.service.updateTask(this.auth(r), id, a, b),
       '履约状态已更新',
     );
   }
   @Post('tasks/:id/accept') accept(
-    @Req() req: AuthRequest,
+    @Req() r: AuthRequest,
     @Param('id') id: string,
-    @Query('role') role: StaffRole,
-    @Body() body: TaskActionDto,
+    @Body() b: TaskActionDto,
   ) {
-    return ok(
-      this.service.updateTask(this.role(req, role), id, 'accept', body),
-    );
+    return this.action(r, id, 'accept', b);
   }
   @Post('tasks/:id/pickup') pickup(
-    @Req() req: AuthRequest,
+    @Req() r: AuthRequest,
     @Param('id') id: string,
-    @Query('role') role: StaffRole,
-    @Body() body: TaskActionDto,
+    @Body() b: TaskActionDto,
   ) {
-    return ok(
-      this.service.updateTask(this.role(req, role), id, 'pickup', body),
-    );
+    return this.action(r, id, 'pickup', b);
   }
   @Post('tasks/:id/depart') depart(
-    @Req() req: AuthRequest,
+    @Req() r: AuthRequest,
     @Param('id') id: string,
-    @Query('role') role: StaffRole,
-    @Body() body: TaskActionDto,
+    @Body() b: TaskActionDto,
   ) {
-    return ok(
-      this.service.updateTask(this.role(req, role), id, 'depart', body),
-    );
+    return this.action(r, id, 'depart', b);
   }
   @Post('tasks/:id/arrive') arrive(
-    @Req() req: AuthRequest,
+    @Req() r: AuthRequest,
     @Param('id') id: string,
-    @Query('role') role: StaffRole,
-    @Body() body: TaskActionDto,
+    @Body() b: TaskActionDto,
   ) {
-    return ok(
-      this.service.updateTask(this.role(req, role), id, 'arrive', body),
-    );
+    return this.action(r, id, 'arrive', b);
   }
   @Post('tasks/:id/handover') handover(
-    @Req() req: AuthRequest,
+    @Req() r: AuthRequest,
     @Param('id') id: string,
-    @Query('role') role: StaffRole,
-    @Body() body: TaskActionDto,
+    @Body() b: TaskActionDto,
   ) {
-    return ok(
-      this.service.updateTask(this.role(req, role), id, 'handover', body),
-    );
+    return this.action(r, id, 'handover', b);
   }
   @Post('tasks/:id/receive') receive(
-    @Req() req: AuthRequest,
+    @Req() r: AuthRequest,
     @Param('id') id: string,
-    @Query('role') role: StaffRole,
-    @Body() body: TaskActionDto,
+    @Body() b: TaskActionDto,
   ) {
-    return ok(
-      this.service.updateTask(this.role(req, role), id, 'receive', body),
-    );
+    return this.action(r, id, 'receive', b);
   }
-  @Post('tasks/:id/start-delivery') startDelivery(
-    @Req() req: AuthRequest,
+  @Post('tasks/:id/start-delivery') start(
+    @Req() r: AuthRequest,
     @Param('id') id: string,
-    @Query('role') role: StaffRole,
-    @Body() body: TaskActionDto,
+    @Body() b: TaskActionDto,
   ) {
-    return ok(
-      this.service.updateTask(this.role(req, role), id, 'start-delivery', body),
-    );
+    return this.action(r, id, 'start-delivery', b);
   }
   @Post('tasks/:id/delivered') delivered(
-    @Req() req: AuthRequest,
+    @Req() r: AuthRequest,
     @Param('id') id: string,
-    @Query('role') role: StaffRole,
-    @Body() body: TaskActionDto,
+    @Body() b: TaskActionDto,
+  ) {
+    return this.action(r, id, 'delivered', b);
+  }
+  @Post('tasks/:id/report-exception') exception(
+    @Req() r: AuthRequest,
+    @Param('id') id: string,
+    @Body() b: TaskActionDto,
+  ) {
+    return this.action(r, id, 'absent', b);
+  }
+  @Get('leave-dispatch') async leaveDispatch(@Req() r: AuthRequest) {
+    const id = this.auth(r);
+    return ok([
+      ...(await this.service.leave(id)),
+      ...(await this.service.dispatchInvites(id)),
+    ]);
+  }
+  @Get('leave-requests') async leaves(@Req() r: AuthRequest) {
+    return ok(await this.service.leave(this.auth(r)));
+  }
+  @Post('leave-requests') async createLeave(
+    @Req() r: AuthRequest,
+    @Body() d: LeaveRequestDto,
   ) {
     return ok(
-      this.service.updateTask(this.role(req, role), id, 'delivered', body),
+      await this.service.createLeave(this.auth(r), d),
+      '请假申请已提交',
     );
   }
-  @Post('tasks/:id/report-exception') reportException(
-    @Req() req: AuthRequest,
-    @Param('id') id: string,
-    @Query('role') role: StaffRole,
-    @Body() body: TaskActionDto,
-  ) {
-    return ok(
-      this.service.updateTask(this.role(req, role), id, 'absent', body),
-    );
-  }
-  @Get('leave-dispatch') leave() {
-    return ok(this.service.leave());
-  }
-  @Get('leave-requests') leaveRequests() {
-    return ok(
-      this.service.leave().filter((item) => item.id.startsWith('leave-')),
-    );
-  }
-  @Post('leave-requests') createLeave(
-    @Req() req: AuthRequest,
-    @Body() dto: LeaveRequestDto,
-  ) {
-    return ok(this.service.createLeave(req.user.id, dto), '请假申请已提交');
-  }
-  @Post('leave-requests/:id/cancel') cancelLeave(
-    @Req() req: AuthRequest,
+  @Post('leave-requests/:id/cancel') async cancelLeave(
+    @Req() r: AuthRequest,
     @Param('id') id: string,
   ) {
-    return ok(this.service.cancelLeave(req.user.id, id));
+    return ok(await this.service.cancelLeave(this.auth(r), id));
   }
-  @Get('dispatch-invitations') dispatchInvitations(
-    @Req() req: AuthRequest,
-    @Query('status') status?: string,
+  @Get('dispatch-invitations') async invites(
+    @Req() r: AuthRequest,
+    @Query('status') s?: string,
   ) {
-    return ok(this.service.dispatchInvites(req.user.id, status));
+    return ok(await this.service.dispatchInvites(this.auth(r), s));
   }
-  @Post('dispatch-invitations/:id/accept') acceptDispatch(
-    @Req() req: AuthRequest,
+  @Post('dispatch-invitations/:id/accept') async acceptInvite(
+    @Req() r: AuthRequest,
     @Param('id') id: string,
   ) {
-    return ok(this.service.respondDispatch(req.user.id, id, true));
+    return ok(await this.service.respondDispatch(this.auth(r), id, true));
   }
-  @Post('dispatch-invitations/:id/reject') rejectDispatch(
-    @Req() req: AuthRequest,
+  @Post('dispatch-invitations/:id/reject') async rejectInvite(
+    @Req() r: AuthRequest,
     @Param('id') id: string,
-    @Body() body: RejectDto,
+    @Body() b: RejectDto,
   ) {
-    void body;
-    return ok(this.service.respondDispatch(req.user.id, id, false));
+    void b;
+    return ok(await this.service.respondDispatch(this.auth(r), id, false));
   }
-  @Get('commissions') commissions(
-    @Req() req: AuthRequest,
-    @Query('role') role: StaffRole = 'building-manager',
-  ) {
-    return ok(this.service.commissions(this.role(req, role)));
+  @Get('commissions') async commissions(@Req() r: AuthRequest) {
+    return ok(await this.service.commissions(this.auth(r)));
   }
-  @Get('performance') performance(
-    @Req() req: AuthRequest,
-    @Query('role') role: StaffRole = 'building-manager',
-  ) {
-    const dashboard = this.service.dashboard(this.role(req, role));
+  @Get('performance') async performance(@Req() r: AuthRequest) {
+    const d = await this.service.dashboard(this.auth(r));
     return ok({
       period: 'today',
-      ...dashboard.stats,
-      proofRate: 99,
+      ...d.stats,
+      proofRate: d.profile.proofRate,
       exceptionRate: 1.2,
     });
   }

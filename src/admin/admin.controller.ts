@@ -15,6 +15,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import type { AuthRequest } from '../auth/jwt-auth.guard';
 import { ok } from '../common/api-response';
 import { AdminService } from './admin.service';
+import { BarcodeDto, CreateProductDto } from './dto';
 
 @ApiTags('PC 管理后台 MVP')
 @ApiBearerAuth()
@@ -28,75 +29,97 @@ export class AdminController {
     )
       throw new ForbiddenException('无后台访问权限');
   }
-  @Get('dashboard') dashboard(@Req() req: AuthRequest) {
+  @Get('dashboard') async dashboard(@Req() req: AuthRequest) {
     this.authorize(req);
-    return ok(this.service.dashboard());
+    return ok(await this.service.dashboard());
   }
-  @Get('products') products(@Req() req: AuthRequest) {
+  @Get('products') async products(@Req() req: AuthRequest) {
     this.authorize(req);
-    return ok(this.service.products());
+    return ok(await this.service.products());
   }
-  @Patch('products/:id') updateProduct(
+  @Post('products/barcode/lookup') async lookupBarcode(
+    @Req() req: AuthRequest,
+    @Body() body: BarcodeDto,
+  ) {
+    this.authorize(req);
+    return ok(await this.service.lookupBarcode(body.barcode));
+  }
+  @Post('products') async createProduct(
+    @Req() req: AuthRequest,
+    @Body() body: CreateProductDto,
+  ) {
+    this.authorize(req);
+    return ok(
+      await this.service.createProduct(body, req.user.id),
+      '商品已创建',
+    );
+  }
+  @Patch('products/:id') async updateProduct(
     @Req() req: AuthRequest,
     @Param('id') id: string,
     @Body() body: { price?: number; stock?: number },
   ) {
     this.authorize(req);
-    return ok(this.service.updateProduct(id, body, req.user.id));
+    return ok(await this.service.updateProduct(id, body, req.user.id));
   }
-  @Get('inventory') inventory(@Req() req: AuthRequest) {
+  @Get('inventory') async inventory(@Req() req: AuthRequest) {
     this.authorize(req);
-    return ok(this.service.inventory());
+    return ok(await this.service.inventory());
   }
-  @Get('orders') orders(
+  @Get('orders') async orders(
     @Req() req: AuthRequest,
     @Query('status') status?: string,
   ) {
     this.authorize(req);
-    return ok(this.service.orders(status));
+    return ok(await this.service.orders(status));
   }
-  @Get('orders/:id') order(@Req() req: AuthRequest, @Param('id') id: string) {
+  @Get('orders/:id') async order(
+    @Req() req: AuthRequest,
+    @Param('id') id: string,
+  ) {
     this.authorize(req);
-    return ok(this.service.order(id));
+    return ok(await this.service.order(id));
   }
-  @Post('orders/:id/actions/:action') orderAction(
+  @Post('orders/:id/actions/:action') async orderAction(
     @Req() req: AuthRequest,
     @Param('id') id: string,
     @Param('action') action: string,
   ) {
     this.authorize(req);
-    return ok(this.service.orderAction(id, action, req.user.id));
+    return ok(await this.service.orderAction(id, action, req.user.id));
   }
-  @Get('staff') staff(@Req() req: AuthRequest) {
+  @Get('staff') async staff(@Req() req: AuthRequest) {
     this.authorize(req);
-    return ok(this.service.staff());
+    return ok(await this.service.staff());
   }
-  @Get('after-sales') afterSales(@Req() req: AuthRequest) {
+  @Get('after-sales') async afterSales(@Req() req: AuthRequest) {
     this.authorize(req);
-    return ok(this.service.afterSales());
+    return ok(await this.service.afterSales());
   }
-  @Post('after-sales/:id/review') review(
+  @Post('after-sales/:id/review') async review(
     @Req() req: AuthRequest,
     @Param('id') id: string,
     @Body() body: { approved: boolean },
   ) {
     this.authorize(req);
-    return ok(this.service.reviewAfterSale(id, body.approved, req.user.id));
+    return ok(
+      await this.service.reviewAfterSale(id, body.approved, req.user.id),
+    );
   }
-  @Get('settlements') settlements(@Req() req: AuthRequest) {
+  @Get('settlements') async settlements(@Req() req: AuthRequest) {
     this.authorize(req);
-    return ok(this.service.settlements());
+    return ok(await this.service.settlements());
   }
-  @Get('campuses') campuses(@Req() req: AuthRequest) {
+  @Get('campuses') async campuses(@Req() req: AuthRequest) {
     this.authorize(req);
-    return ok(this.service.campuses());
+    return ok(await this.service.campuses());
   }
-  @Get('coupons') coupons(@Req() req: AuthRequest) {
+  @Get('coupons') async coupons(@Req() req: AuthRequest) {
     this.authorize(req);
-    return ok(this.service.coupons());
+    return ok(await this.service.coupons());
   }
-  @Get('audit-logs') audits(@Req() req: AuthRequest) {
+  @Get('audit-logs') async audits(@Req() req: AuthRequest) {
     this.authorize(req);
-    return ok(this.service.auditLogs());
+    return ok(await this.service.auditLogs());
   }
 }

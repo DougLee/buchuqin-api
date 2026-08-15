@@ -6,11 +6,15 @@ import { AppModule } from './app.module';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   app.setGlobalPrefix('api/v1');
-  app.enableCors();
+  const origins = (process.env.CORS_ORIGINS ?? '')
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean);
+  app.enableCors({ origin: origins.length ? origins : false });
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   const config = new DocumentBuilder()
     .setTitle('不出寝食社 MVP API')
-    .setDescription('用户小程序、履约小程序与 PC 管理后台使用的统一 Mock API')
+    .setDescription('用户小程序、履约小程序与 PC 管理后台使用的统一业务 API')
     .setVersion('1.0')
     .addBearerAuth()
     .build();

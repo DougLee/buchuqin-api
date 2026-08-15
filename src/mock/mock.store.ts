@@ -92,7 +92,7 @@ export class MockStore {
       userId: 'user-001',
       type: 'refund',
       title: '退款已到账',
-      content: '售后退款 ¥41.60 已原路返回 Mock 支付账户。',
+      content: '售后退款 ¥41.60 已原路返回原支付账户。',
       read: true,
       createdAt: '2026-08-08T18:20:00.000Z',
     },

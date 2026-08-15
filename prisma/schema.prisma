@@ -1,0 +1,250 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Campus {
+  id            String    @id
+  name          String
+  shortName     String
+  warehouseName String
+  address       String?
+  status        String    @default("active")
+  createdAt     DateTime  @default(now())
+  users         User[]
+  products      Product[]
+  addresses     Address[]
+  orders        Order[]
+  staff         Staff[]
+}
+
+model User {
+  id            String         @id
+  campusId      String
+  campus        Campus         @relation(fields: [campusId], references: [id])
+  nickname      String
+  phone         String
+  avatar        String         @default("")
+  role          String         @default("user")
+  createdAt     DateTime       @default(now())
+  addresses     Address[]
+  cartItems     CartItem[]
+  orders        Order[]
+  notifications Notification[]
+  afterSales    AfterSale[]
+  refunds       Refund[]
+}
+
+model Category {
+  id       String    @id
+  name     String
+  sort     Int       @default(0)
+  products Product[]
+}
+
+model Product {
+  id            String     @id
+  barcode       String?    @unique
+  campusId      String
+  campus        Campus     @relation(fields: [campusId], references: [id])
+  categoryId    String
+  category      Category   @relation(fields: [categoryId], references: [id])
+  name          String
+  subtitle      String
+  price         Decimal    @db.Decimal(10, 2)
+  originalPrice Decimal    @db.Decimal(10, 2)
+  stock         Int
+  lockedStock   Int        @default(0)
+  sales         Int        @default(0)
+  tag           String
+  image         String
+  weight        Decimal    @db.Decimal(10, 3)
+  status        String     @default("on-sale")
+  cartItems     CartItem[]
+}
+
+model Banner {
+  id       String  @id
+  campusId String
+  title    String
+  subtitle String
+  badge    String
+  color    String
+  image    String?
+  sort     Int     @default(0)
+  status   String  @default("active")
+}
+
+model Address {
+  id           String  @id
+  userId       String
+  user         User    @relation(fields: [userId], references: [id])
+  campusId     String
+  campus       Campus  @relation(fields: [campusId], references: [id])
+  campusName   String
+  buildingId   String
+  buildingName String
+  floor        Int
+  room         String
+  contactName  String
+  phone        String
+  isDefault    Boolean @default(false)
+}
+
+model CartItem {
+  id        String  @id @default(cuid())
+  userId    String
+  user      User    @relation(fields: [userId], references: [id])
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+  quantity  Int
+
+  @@unique([userId, productId])
+}
+
+model Coupon {
+  id        String   @id
+  campusId  String
+  name      String
+  amount    Decimal  @db.Decimal(10, 2)
+  threshold Decimal  @db.Decimal(10, 2)
+  status    String
+  expiresAt DateTime
+  issued    Int      @default(0)
+  claimed   Int      @default(0)
+  used      Int      @default(0)
+}
+
+model DeliverySlot {
+  id        String  @id
+  campusId  String
+  label     String
+  available Boolean @default(true)
+  capacity  Int     @default(100)
+}
+
+model Order {
+  id                String      @id
+  orderNo           String      @unique
+  userId            String
+  user              User        @relation(fields: [userId], references: [id])
+  campusId          String
+  campus            Campus      @relation(fields: [campusId], references: [id])
+  status            String
+  statusText        String
+  createdAt         DateTime    @default(now())
+  paidAt            DateTime?
+  address           Json
+  deliveryMode      String
+  deliverySlot      String?
+  couponId          String?
+  remark            String      @default("")
+  items             Json
+  productAmount     Decimal     @db.Decimal(10, 2)
+  totalQuantity     Int
+  deliveryThreshold Decimal     @db.Decimal(10, 2)
+  deliveryFee       Decimal     @db.Decimal(10, 2)
+  discount          Decimal     @db.Decimal(10, 2)
+  payableAmount     Decimal     @db.Decimal(10, 2)
+  estimatedArrival  String
+  timeline          Json
+  package           Json?
+  stockRestored     Boolean     @default(false)
+  afterSales        AfterSale[]
+  refunds           Refund[]
+}
+
+model Notification {
+  id        String   @id
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  type      String
+  title     String
+  content   String
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model AfterSale {
+  id          String   @id
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  orderId     String
+  order       Order    @relation(fields: [orderId], references: [id])
+  type        String
+  description String
+  images      Json
+  status      String
+  createdAt   DateTime @default(now())
+}
+
+model Refund {
+  id        String   @id
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  orderId   String
+  order     Order    @relation(fields: [orderId], references: [id])
+  amount    Decimal  @db.Decimal(10, 2)
+  reason    String
+  status    String
+  createdAt DateTime @default(now())
+}
+
+model Staff {
+  id                  String               @id
+  campusId            String
+  campus              Campus               @relation(fields: [campusId], references: [id])
+  name                String
+  role                String
+  roleText            String
+  staffNo             String               @unique
+  building            String
+  status              String               @default("online")
+  completedToday      Int                  @default(0)
+  onTimeRate          Decimal              @db.Decimal(5, 2)
+  proofRate           Decimal?             @db.Decimal(5, 2)
+  income              Decimal              @db.Decimal(10, 2)
+  leaveRequests       LeaveRequest[]
+  dispatchInvitations DispatchInvitation[]
+}
+
+model LeaveRequest {
+  id         String   @id
+  staffId    String
+  staff      Staff    @relation(fields: [staffId], references: [id])
+  startAt    DateTime
+  endAt      DateTime
+  reason     String
+  status     String
+  statusText String
+  createdAt  DateTime @default(now())
+}
+
+model DispatchInvitation {
+  id         String   @id
+  staffId    String
+  staff      Staff    @relation(fields: [staffId], references: [id])
+  building   String
+  startAt    DateTime
+  endAt      DateTime
+  reward     Decimal  @db.Decimal(10, 2)
+  status     String
+  statusText String
+  createdAt  DateTime @default(now())
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  campusId   String
+  operator   String
+  action     String
+  entityType String
+  entityId   String
+  before     Json?
+  after      Json?
+  createdAt  DateTime @default(now())
+}

@@ -5,8 +5,8 @@ import {
   Get,
   Param,
   Patch,
-  Put,
   Post,
+  Put,
   Query,
   Req,
   UseGuards,
@@ -15,44 +15,40 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import type { AuthRequest } from '../auth/jwt-auth.guard';
 import { ok } from '../common/api-response';
-import { MockStore } from '../mock/mock.store';
 import { BusinessService } from './business.service';
 import {
-  CreateAddressDto,
   AddCartItemDto,
   CartQuantityDto,
+  CreateAddressDto,
   CreateAfterSalesDto,
   CreateOrderDto,
-  UpdateCartDto,
   UpdateAddressDto,
+  UpdateCartDto,
 } from './dto';
-@ApiTags('用户端 MVP')
+@ApiTags('用户端')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
 @Controller()
 export class BusinessController {
-  constructor(
-    private readonly service: BusinessService,
-    private readonly store: MockStore,
-  ) {}
-  @Get('home') home() {
-    return ok(this.service.home());
+  constructor(private readonly service: BusinessService) {}
+  @Get('home') async home() {
+    return ok(await this.service.home());
   }
-  @Get('campus/current') campus() {
-    return ok(this.store.campus);
+  @Get('campus/current') async campus() {
+    return ok(await this.service.campus());
   }
-  @Get('categories') categories() {
-    return ok(this.store.categories);
+  @Get('categories') async categories() {
+    return ok(await this.service.categories());
   }
-  @Get('products') products(
+  @Get('products') async products(
     @Query('categoryId') category?: string,
     @Query('keyword') keyword?: string,
-    @Query('page') pageValue = '1',
-    @Query('pageSize') pageSizeValue = '20',
+    @Query('page') pv = '1',
+    @Query('pageSize') psv = '20',
   ) {
-    const all = this.service.listProducts(category, keyword);
-    const page = Math.max(1, Number(pageValue) || 1);
-    const pageSize = Math.min(50, Math.max(1, Number(pageSizeValue) || 20));
+    const all = await this.service.listProducts(category, keyword),
+      page = Math.max(1, Number(pv) || 1),
+      pageSize = Math.min(50, Math.max(1, Number(psv) || 20));
     return ok({
       items: all.slice((page - 1) * pageSize, page * pageSize),
       total: all.length,
@@ -60,66 +56,68 @@ export class BusinessController {
       pageSize,
     });
   }
-  @Get('products/:id') product(@Param('id') id: string) {
-    return ok(this.service.product(id));
+  @Get('products/:id') async product(@Param('id') id: string) {
+    return ok(await this.service.product(id));
   }
-  @Get('cart') cart(@Req() req: AuthRequest) {
-    return ok(this.service.cart(req.user.id));
+  @Get('cart') async cart(@Req() req: AuthRequest) {
+    return ok(await this.service.cart(req.user.id));
   }
-  @Put('cart') updateCart(@Req() req: AuthRequest, @Body() dto: UpdateCartDto) {
-    return ok(this.service.updateCart(req.user.id, dto));
+  @Put('cart') async updateCart(
+    @Req() req: AuthRequest,
+    @Body() dto: UpdateCartDto,
+  ) {
+    return ok(await this.service.updateCart(req.user.id, dto));
   }
-  @Post('cart/items') addCartItem(
+  @Post('cart/items') async addCartItem(
     @Req() req: AuthRequest,
     @Body() dto: AddCartItemDto,
   ) {
-    const current = this.service
-      .cart(req.user.id)
-      .items.find((item) => item.product.id === dto.productId);
+    const cart = await this.service.cart(req.user.id),
+      current = cart.items.find((i) => i.product.id === dto.productId);
     return ok(
-      this.service.setCartItem(
+      await this.service.setCartItem(
         req.user.id,
         dto.productId,
         (current?.quantity ?? 0) + dto.quantity,
       ),
     );
   }
-  @Patch('cart/items/:productId') updateCartItem(
+  @Patch('cart/items/:productId') async updateCartItem(
     @Req() req: AuthRequest,
-    @Param('productId') productId: string,
+    @Param('productId') id: string,
     @Body() dto: CartQuantityDto,
   ) {
-    return ok(this.service.setCartItem(req.user.id, productId, dto.quantity));
+    return ok(await this.service.setCartItem(req.user.id, id, dto.quantity));
   }
-  @Delete('cart/items/:productId') deleteCartItem(
+  @Delete('cart/items/:productId') async deleteCartItem(
     @Req() req: AuthRequest,
-    @Param('productId') productId: string,
+    @Param('productId') id: string,
   ) {
-    return ok(this.service.setCartItem(req.user.id, productId, 0));
+    return ok(await this.service.setCartItem(req.user.id, id, 0));
   }
-  @Delete('cart') clearCart(@Req() req: AuthRequest) {
-    return ok(this.service.clearCart(req.user.id));
+  @Delete('cart') async clearCart(@Req() req: AuthRequest) {
+    return ok(await this.service.clearCart(req.user.id));
   }
-  @Post('orders/checkout') checkout(
+  @Post('orders/checkout') async checkout(
     @Req() req: AuthRequest,
     @Body() dto: CreateOrderDto,
   ) {
-    return ok(this.service.checkout(req.user.id, dto));
+    return ok(await this.service.checkout(req.user.id, dto));
   }
   @Post('orders')
-  @ApiOperation({ summary: '创建待支付 Mock 订单' })
-  createOrder(@Req() req: AuthRequest, @Body() dto: CreateOrderDto) {
-    return ok(this.service.createOrder(req.user.id, dto), '下单成功');
+  @ApiOperation({ summary: '创建待支付测试订单' })
+  async createOrder(@Req() req: AuthRequest, @Body() dto: CreateOrderDto) {
+    return ok(await this.service.createOrder(req.user.id, dto), '下单成功');
   }
-  @Get('orders') orders(
+  @Get('orders') async orders(
     @Req() req: AuthRequest,
     @Query('status') status?: string,
-    @Query('page') pageValue = '1',
-    @Query('pageSize') pageSizeValue = '20',
+    @Query('page') pv = '1',
+    @Query('pageSize') psv = '20',
   ) {
-    const all = this.service.orders(req.user.id, status);
-    const page = Math.max(1, Number(pageValue) || 1);
-    const pageSize = Math.min(50, Math.max(1, Number(pageSizeValue) || 20));
+    const all = await this.service.orders(req.user.id, status),
+      page = Math.max(1, Number(pv) || 1),
+      pageSize = Math.min(50, Math.max(1, Number(psv) || 20));
     return ok({
       items: all.slice((page - 1) * pageSize, page * pageSize),
       total: all.length,
@@ -127,66 +125,65 @@ export class BusinessController {
       pageSize,
     });
   }
-  @Get('orders/:id') order(@Req() req: AuthRequest, @Param('id') id: string) {
-    return ok(this.service.order(req.user.id, id));
-  }
-  @Post('orders/:id/pay') pay(
+  @Get('orders/:id') async order(
     @Req() req: AuthRequest,
     @Param('id') id: string,
   ) {
-    return ok(this.service.pay(req.user.id, id), '模拟支付成功');
+    return ok(await this.service.order(req.user.id, id));
   }
-  @Post('orders/:id/cancel') cancel(
+  @Post('orders/:id/pay') async pay(
     @Req() req: AuthRequest,
     @Param('id') id: string,
   ) {
-    return ok(this.service.cancel(req.user.id, id), '订单已取消');
+    return ok(await this.service.pay(req.user.id, id), '测试支付成功');
   }
-  @Post('orders/:id/mock-advance') advance(
+  @Post('orders/:id/cancel') async cancel(
     @Req() req: AuthRequest,
     @Param('id') id: string,
   ) {
-    return ok(this.service.advance(req.user.id, id), '履约状态已推进');
+    return ok(await this.service.cancel(req.user.id, id), '订单已取消');
   }
-  @Post('orders/:id/confirm-receipt') confirmReceipt(
+  @Post('orders/:id/confirm-receipt') async confirm(
     @Req() req: AuthRequest,
     @Param('id') id: string,
   ) {
-    return ok(this.service.confirmReceipt(req.user.id, id), '已确认收货');
+    return ok(await this.service.confirmReceipt(req.user.id, id), '已确认收货');
   }
-  @Get('addresses') addresses(@Req() req: AuthRequest) {
-    return ok(this.service.addresses(req.user.id, req.user.campusId));
+  @Get('addresses') async addresses(@Req() req: AuthRequest) {
+    return ok(await this.service.addresses(req.user.id, req.user.campusId));
   }
-  @Post('addresses') addAddress(
+  @Post('addresses') async addAddress(
     @Req() req: AuthRequest,
     @Body() dto: CreateAddressDto,
   ) {
     return ok(
-      this.service.addAddress(req.user.id, req.user.campusId, dto),
+      await this.service.addAddress(req.user.id, req.user.campusId, dto),
       '地址已保存',
     );
   }
-  @Patch('addresses/:id') updateAddress(
+  @Patch('addresses/:id') async updateAddress(
     @Req() req: AuthRequest,
     @Param('id') id: string,
     @Body() dto: UpdateAddressDto,
   ) {
     return ok(
-      this.service.updateAddress(req.user.id, req.user.campusId, id, dto),
+      await this.service.updateAddress(req.user.id, req.user.campusId, id, dto),
     );
   }
-  @Delete('addresses/:id') deleteAddress(
-    @Req() req: AuthRequest,
-    @Param('id') id: string,
-  ) {
-    return ok(this.service.deleteAddress(req.user.id, req.user.campusId, id));
-  }
-  @Put('addresses/:id/default') defaultAddress(
+  @Delete('addresses/:id') async deleteAddress(
     @Req() req: AuthRequest,
     @Param('id') id: string,
   ) {
     return ok(
-      this.service.setDefaultAddress(req.user.id, req.user.campusId, id),
+      await this.service.deleteAddress(req.user.id, req.user.campusId, id),
+    );
+  }
+  @Put('addresses/:id/default') async defaultAddress(
+    @Req() req: AuthRequest,
+    @Param('id') id: string,
+  ) {
+    return ok(
+      await this.service.setDefaultAddress(req.user.id, req.user.campusId, id),
     );
   }
   @Get('campuses/current/buildings') buildings() {
@@ -214,67 +211,68 @@ export class BusinessController {
       },
     ]);
   }
-  @Get('coupons') coupons() {
-    return ok(this.store.coupons);
+  @Get('coupons') async coupons(@Req() req: AuthRequest) {
+    return ok(await this.service.coupons(req.user.id, req.user.campusId));
   }
-  @Post('coupons/available') availableCoupons(
+  @Post('coupons/available') async availableCoupons(
     @Req() req: AuthRequest,
     @Body() dto: CreateOrderDto,
   ) {
-    return ok(this.service.availableCoupons(req.user.id, dto));
+    return ok(await this.service.availableCoupons(req.user.id, dto));
   }
-  @Get('delivery/slots') slots() {
-    return ok(this.store.deliverySlots);
+  @Get('delivery/slots') async slots(@Req() req: AuthRequest) {
+    return ok(await this.service.slots(req.user.campusId));
   }
-  @Post('orders/:id/after-sales') createAfterSale(
+  @Post('orders/:id/after-sales') async createAfterSale(
     @Req() req: AuthRequest,
     @Param('id') id: string,
     @Body() dto: CreateAfterSalesDto,
   ) {
     return ok(
-      this.service.createAfterSales(req.user.id, id, dto),
+      await this.service.createAfterSales(req.user.id, id, dto),
       '售后申请已提交',
     );
   }
-  @Get('after-sales') afterSales(@Req() req: AuthRequest) {
-    return ok(this.service.afterSales(req.user.id));
+  @Get('after-sales') async afterSales(@Req() req: AuthRequest) {
+    return ok(await this.service.afterSales(req.user.id));
   }
-  @Get('after-sales/:id') afterSale(
+  @Get('after-sales/:id') async afterSale(
     @Req() req: AuthRequest,
     @Param('id') id: string,
   ) {
-    return ok(this.service.afterSale(req.user.id, id));
+    return ok(await this.service.afterSale(req.user.id, id));
   }
-  @Post('after-sales/:id/cancel') cancelAfterSale(
+  @Post('after-sales/:id/cancel') async cancelAfterSale(
     @Req() req: AuthRequest,
     @Param('id') id: string,
   ) {
-    return ok(this.service.cancelAfterSale(req.user.id, id));
+    return ok(await this.service.cancelAfterSale(req.user.id, id));
   }
-  @Get('refunds') refunds(@Req() req: AuthRequest) {
-    return ok(this.service.refunds(req.user.id));
+  @Get('refunds') async refunds(@Req() req: AuthRequest) {
+    return ok(await this.service.refunds(req.user.id));
   }
-  @Get('refunds/:id') refund(@Req() req: AuthRequest, @Param('id') id: string) {
-    return ok(this.service.refund(req.user.id, id));
-  }
-  @Get('notifications') notifications(@Req() req: AuthRequest) {
-    return ok(this.service.notifications(req.user.id));
-  }
-  @Post('notifications/:id/read') readNotification(
+  @Get('refunds/:id') async refund(
     @Req() req: AuthRequest,
     @Param('id') id: string,
   ) {
-    return ok(this.service.readNotification(req.user.id, id));
+    return ok(await this.service.refund(req.user.id, id));
   }
-  @Post('notifications/read-all') readAllNotifications(
+  @Get('notifications') async notifications(@Req() req: AuthRequest) {
+    return ok(await this.service.notifications(req.user.id));
+  }
+  @Post('notifications/:id/read') async readNotification(
+    @Req() req: AuthRequest,
+    @Param('id') id: string,
+  ) {
+    return ok(await this.service.readNotification(req.user.id, id));
+  }
+  @Post('notifications/read-all') async readAll(
     @Req() req: AuthRequest,
     @Body() body: { type?: string },
   ) {
-    return ok(this.service.readAllNotifications(req.user.id, body.type));
+    return ok(await this.service.readAllNotifications(req.user.id, body.type));
   }
-  @Get('notifications/unread-count') unreadNotificationCount(
-    @Req() req: AuthRequest,
-  ) {
-    return ok(this.service.unreadNotificationCount(req.user.id));
+  @Get('notifications/unread-count') async unread(@Req() req: AuthRequest) {
+    return ok(await this.service.unreadNotificationCount(req.user.id));
   }
 }
