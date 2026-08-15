@@ -1,11 +1,17 @@
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import type { NestExpressApplication } from '@nestjs/platform-express';
+import { mkdirSync } from 'node:fs';
+import { join } from 'node:path';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
   app.setGlobalPrefix('api/v1');
+  const uploadsRoot = join(process.cwd(), 'uploads');
+  mkdirSync(uploadsRoot, { recursive: true });
+  app.useStaticAssets(uploadsRoot, { prefix: '/api/v1/uploads' });
   const origins = (process.env.CORS_ORIGINS ?? '')
     .split(',')
     .map((value) => value.trim())

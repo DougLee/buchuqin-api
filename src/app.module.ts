@@ -10,6 +10,7 @@ import { FulfillmentController } from './fulfillment/fulfillment.controller';
 import { FulfillmentService } from './fulfillment/fulfillment.service';
 import { AdminController } from './admin/admin.controller';
 import { AdminService } from './admin/admin.service';
+import { FilesController } from './files/files.controller';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { AdminService } from './admin/admin.service';
     BusinessController,
     FulfillmentController,
     AdminController,
+    FilesController,
   ],
   providers: [
     PrismaService,
