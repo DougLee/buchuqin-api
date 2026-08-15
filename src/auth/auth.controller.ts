@@ -42,7 +42,11 @@ export class AuthController {
   @HttpCode(200)
   @ApiOperation({ summary: '联调测试账号登录（生产环境关闭）' })
   async login(@Body() body: TestLoginDto) {
-    if (process.env.NODE_ENV === 'production') throw new NotFoundException();
+    if (
+      process.env.NODE_ENV === 'production' &&
+      process.env.ALLOW_TEST_LOGIN !== 'true'
+    )
+      throw new NotFoundException();
     if (body.identity === 'user') {
       const user = await this.db.user.findUniqueOrThrow({
         where: { id: 'user-001' },
