@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../database/prisma.service';
 
 /** @deprecated Seed/test compatibility only; production services use Prisma. */
@@ -76,13 +77,7 @@ export class BusinessService {
     content: string,
   ) {
     return this.db.notification.create({
-      data: {
-        id: `notice-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-        userId,
-        type,
-        title,
-        content,
-      },
+      data: { userId, type, title, content },
     });
   }
   async campus() {
@@ -377,8 +372,7 @@ export class BusinessService {
   async createOrder(userId: string, dto: CreateOrderDto) {
     const { address } = await this.validateQuote(userId, dto);
     const settlement = await this.checkout(userId, dto);
-    const id = `order-${Date.now()}`,
-      now = new Date();
+    const now = new Date();
     const timeline: TimelineStep[] = [
       {
         key: 'paid',
@@ -421,8 +415,8 @@ export class BusinessService {
       }
       return tx.order.create({
         data: {
-          id,
-          orderNo: `BCQ${Date.now()}`,
+          // orderNo 唯一约束：时间戳 + 随机后缀防同毫秒并发冲突
+          orderNo: `BCQ${Date.now()}${Math.random().toString(36).slice(2, 6).toUpperCase()}`,
           userId,
           campusId: address.campusId,
           status: 'pending-payment',
@@ -458,23 +452,21 @@ export class BusinessService {
       select: { id: true, couponId: true },
     });
     if (!stale.length) return;
-    const couponIds = stale
-      .map((x) => x.couponId)
-      .filter((x): x is string => Boolean(x));
-    await this.db.$transaction([
-      this.db.order.updateMany({
-        where: { id: { in: stale.map((x) => x.id) } },
-        data: { status: 'cancelled', statusText: '支付超时已关闭' },
-      }),
-      ...(couponIds.length
-        ? [
-            this.db.userCoupon.updateMany({
-              where: { id: { in: couponIds }, status: 'locked' },
-              data: { status: 'released' },
-            }),
-          ]
-        : []),
-    ]);
+    await this.db.$transaction(async (tx) => {
+      for (const order of stale) {
+        // 逐单条件关单：仅当仍处于待支付时生效，避免与并发 pay/cancel 双写。
+        // 待支付单未扣库存，关单只需释放券，无需回补库存。
+        const closed = await tx.order.updateMany({
+          where: { id: order.id, status: 'pending-payment' },
+          data: { status: 'cancelled', statusText: '支付超时已关闭' },
+        });
+        if (closed.count && order.couponId)
+          await tx.userCoupon.updateMany({
+            where: { id: order.couponId, status: 'locked' },
+            data: { status: 'released' },
+          });
+      }
+    });
   }
   async orders(userId: string, status?: string) {
     await this.expirePendingOrders(userId);
@@ -502,10 +494,12 @@ export class BusinessService {
     return this.db.$transaction(async (tx) => {
       const raw = await tx.order.findFirst({ where: { id, userId } });
       if (!raw) throw new NotFoundException('订单不存在');
+      // 顺序重复点击：已支付直接幂等返回。
       if (raw.status === 'paid') return this.orderView(raw);
       if (Date.now() - raw.createdAt.getTime() >= 15 * 60 * 1000) {
-        await tx.order.update({
-          where: { id },
+        // 条件关单：仅当仍待支付才关闭并释放券（与并发 pay/cancel 互斥）。
+        await tx.order.updateMany({
+          where: { id, status: 'pending-payment' },
           data: { status: 'cancelled', statusText: '支付超时已关闭' },
         });
         if (raw.couponId)
@@ -525,27 +519,32 @@ export class BusinessService {
         if (!p || p.stock - p.lockedStock < line.quantity)
           throw new BadRequestException(`${line.product.name}库存不足`);
       }
-      for (const line of items)
-        await tx.product.update({
-          where: { id: line.product.id },
-          data: { stock: { decrement: line.quantity } },
-        });
       const timeline = raw.timeline as unknown as TimelineStep[],
         paidAt = new Date();
       timeline[0] = { ...timeline[0], done: true, time: paidAt.toISOString() };
-      const updated = await tx.order.update({
-        where: { id },
+      // 条件更新抢占支付权：并发的第二笔支付 count=0 直接失败，
+      // 库存扣减与后续副作用都移到抢占成功之后，防止双扣。
+      const won = await tx.order.updateMany({
+        where: { id, status: 'pending-payment' },
         data: {
           status: 'paid',
           statusText: '仓库正在接单',
           paidAt,
           timeline: json(timeline),
+          // 包裹码随支付生成（骑手取货扫码时须回传校验）
           package: json({
-            id: `package-${Date.now()}`,
+            id: `PKG-${randomUUID().slice(0, 8).toUpperCase()}`,
             status: 'waiting-pick',
           }),
         },
       });
+      if (!won.count) throw new BadRequestException('订单状态已变化');
+      for (const line of items)
+        await tx.product.update({
+          where: { id: line.product.id },
+          data: { stock: { decrement: line.quantity } },
+        });
+      const updated = await tx.order.findUniqueOrThrow({ where: { id } });
       if (raw.couponId) {
         // 支付成功：locked -> used，并累计券维度的已使用计数。
         const used = await tx.userCoupon.updateMany({
@@ -566,7 +565,6 @@ export class BusinessService {
       await tx.cartItem.deleteMany({ where: { userId } });
       await tx.notification.create({
         data: {
-          id: `notice-${Date.now()}`,
           userId,
           type: 'order',
           title: '支付成功',
@@ -641,6 +639,17 @@ export class BusinessService {
       const wasPaid = raw.status === 'paid';
       if (!['pending-payment', 'paid'].includes(raw.status))
         throw new BadRequestException('当前状态不可取消');
+      // 条件更新抢占取消权：并发双取消只有一单成功，
+      // 回补库存/释放券/退款等补偿动作全部移到抢占成功之后，防止双补。
+      const won = await tx.order.updateMany({
+        where: { id, status: raw.status },
+        data: {
+          status: 'cancelled',
+          statusText: wasPaid ? '订单已取消并退款' : '订单已取消',
+          stockRestored: wasPaid || raw.stockRestored,
+        },
+      });
+      if (!won.count) throw new BadRequestException('订单状态已变化');
       if (wasPaid && !raw.stockRestored)
         for (const line of raw.items as unknown as OrderLine[])
           await tx.product.update({
@@ -653,18 +662,10 @@ export class BusinessService {
           where: { id: raw.couponId, status: { in: ['locked', 'used'] } },
           data: { status: 'released' },
         });
-      const updated = await tx.order.update({
-        where: { id },
-        data: {
-          status: 'cancelled',
-          statusText: wasPaid ? '订单已取消并退款' : '订单已取消',
-          stockRestored: wasPaid || raw.stockRestored,
-        },
-      });
+      const updated = await tx.order.findUniqueOrThrow({ where: { id } });
       if (wasPaid)
         await tx.refund.create({
           data: {
-            id: `refund-${Date.now()}`,
             userId,
             orderId: id,
             amount: raw.payableAmount,
@@ -693,7 +694,6 @@ export class BusinessService {
     });
     return this.db.address.create({
       data: {
-        id: `address-${Date.now()}`,
         userId,
         campusId,
         campusName: campus.name,
@@ -805,7 +805,6 @@ export class BusinessService {
     return this.db.$transaction(async (tx) => {
       const record = await tx.afterSale.create({
         data: {
-          id: `after-${Date.now()}`,
           userId,
           orderId,
           type: dto.type,

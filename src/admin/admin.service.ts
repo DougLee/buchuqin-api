@@ -280,7 +280,6 @@ export class AdminService {
     if (!category) throw new BadRequestException('商品分类不存在');
     const product = await this.db.product.create({
       data: {
-        id: `p-${Date.now()}`,
         campusId: 'campus-hbut',
         barcode: body.barcode,
         name: body.name,
@@ -478,7 +477,6 @@ export class AdminService {
           : '兼职配送员';
     const staff = await this.db.staff.create({
       data: {
-        id: `staff-${Date.now()}`,
         campusId: 'campus-hbut',
         name: body.name,
         role: body.role,
@@ -705,7 +703,6 @@ export class AdminService {
         });
         await tx.refund.create({
           data: {
-            id: `refund-${Date.now()}`,
             userId: x.userId,
             orderId: x.orderId,
             amount: order.payableAmount,
@@ -783,7 +780,6 @@ export class AdminService {
       throw new BadRequestException('过期时间必须晚于当前时间');
     const coupon = await this.db.coupon.create({
       data: {
-        id: `coupon-${Date.now()}`,
         campusId: 'campus-hbut',
         name: body.name,
         amount: body.amount,

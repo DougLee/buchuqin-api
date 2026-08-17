@@ -8,7 +8,7 @@ datasource db {
 }
 
 model Campus {
-  id            String    @id
+  id            String    @id @default(cuid())
   name          String
   shortName     String
   warehouseName String
@@ -23,7 +23,7 @@ model Campus {
 }
 
 model User {
-  id            String         @id
+  id            String         @id @default(cuid())
   campusId      String
   campus        Campus         @relation(fields: [campusId], references: [id])
   nickname      String
@@ -41,14 +41,14 @@ model User {
 }
 
 model Category {
-  id       String    @id
+  id       String    @id @default(cuid())
   name     String
   sort     Int       @default(0)
   products Product[]
 }
 
 model Product {
-  id            String     @id
+  id            String     @id @default(cuid())
   barcode       String?    @unique
   campusId      String
   campus        Campus     @relation(fields: [campusId], references: [id])
@@ -81,7 +81,7 @@ model InventoryTxn {
 }
 
 model Banner {
-  id       String  @id
+  id       String  @id @default(cuid())
   campusId String
   title    String
   subtitle String
@@ -118,7 +118,7 @@ model Room {
 }
 
 model Address {
-  id           String  @id
+  id           String  @id @default(cuid())
   userId       String
   user         User    @relation(fields: [userId], references: [id])
   campusId     String
@@ -145,7 +145,7 @@ model CartItem {
 }
 
 model Coupon {
-  id           String        @id
+  id           String        @id @default(cuid())
   campusId     String
   name         String
   amount       Decimal       @db.Decimal(10, 2)
@@ -170,7 +170,7 @@ model UserCoupon {
 }
 
 model DeliverySlot {
-  id        String  @id
+  id        String  @id @default(cuid())
   campusId  String
   label     String
   available Boolean @default(true)
@@ -178,7 +178,8 @@ model DeliverySlot {
 }
 
 model Order {
-  id                String      @id
+  id                String      @id @default(cuid())
+  riderId           String?
   orderNo           String      @unique
   userId            String
   user              User        @relation(fields: [userId], references: [id])
@@ -209,7 +210,7 @@ model Order {
 }
 
 model Notification {
-  id        String   @id
+  id        String   @id @default(cuid())
   userId    String
   user      User     @relation(fields: [userId], references: [id])
   type      String
@@ -220,7 +221,7 @@ model Notification {
 }
 
 model AfterSale {
-  id          String   @id
+  id          String   @id @default(cuid())
   userId      String
   user        User     @relation(fields: [userId], references: [id])
   orderId     String
@@ -233,7 +234,7 @@ model AfterSale {
 }
 
 model Refund {
-  id        String   @id
+  id        String   @id @default(cuid())
   userId    String
   user      User     @relation(fields: [userId], references: [id])
   orderId   String
@@ -245,7 +246,7 @@ model Refund {
 }
 
 model Staff {
-  id                  String               @id
+  id                  String               @id @default(cuid())
   campusId            String
   campus              Campus               @relation(fields: [campusId], references: [id])
   name                String
@@ -265,7 +266,7 @@ model Staff {
 }
 
 model LeaveRequest {
-  id         String   @id
+  id         String   @id @default(cuid())
   staffId    String
   staff      Staff    @relation(fields: [staffId], references: [id])
   startAt    DateTime
@@ -277,7 +278,7 @@ model LeaveRequest {
 }
 
 model DispatchInvitation {
-  id         String   @id
+  id         String   @id @default(cuid())
   staffId    String
   staff      Staff    @relation(fields: [staffId], references: [id])
   building   String
