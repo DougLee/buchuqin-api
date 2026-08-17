@@ -186,8 +186,11 @@ export class FulfillmentController {
     void b;
     return ok(await this.service.respondDispatch(this.auth(r), id, false));
   }
-  @Get('commissions') async commissions(@Req() r: AuthRequest) {
-    return ok(await this.service.commissions(this.auth(r)));
+  @Get('commissions') async commissions(
+    @Req() r: AuthRequest,
+    @Query('month') month?: string,
+  ) {
+    return ok(await this.service.commissions(this.auth(r), month));
   }
   @Get('performance') async performance(@Req() r: AuthRequest) {
     return ok(await this.service.performance(this.auth(r)));

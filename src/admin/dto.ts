@@ -85,3 +85,17 @@ export class AdjustStockDto {
   @Type(() => Number) @IsInt() delta!: number;
   @IsString() @MaxLength(120) reason!: string;
 }
+/** 提成规则（IK8W5L）：四维（楼栋/楼层/重量档/模式）组合 → 单价。 */
+export class CreateCommissionRuleDto {
+  @IsOptional() @IsString() buildingId?: string;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) floor?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) weightFrom?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) weightTo?: number;
+  @IsOptional() @IsIn(['instant', 'scheduled']) mode?: string;
+  @Type(() => Number) @IsNumber() @Min(0.01) price!: number;
+  @IsOptional() @IsString() effectiveAt?: string;
+}
+export class UpdateCommissionRuleDto {
+  @IsOptional() @IsIn(['active', 'disabled']) status?: 'active' | 'disabled';
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0.01) price?: number;
+}

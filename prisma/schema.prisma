@@ -207,6 +207,7 @@ model Order {
   stockRestored     Boolean     @default(false)
   afterSales        AfterSale[]
   refunds           Refund[]
+  commissions       Commission[]
 }
 
 model Notification {
@@ -263,6 +264,8 @@ model Staff {
   income              Decimal              @db.Decimal(10, 2)
   leaveRequests       LeaveRequest[]
   dispatchInvitations DispatchInvitation[]
+  commissions         Commission[]
+  bills               BmBill[]
 }
 
 model LeaveRequest {
@@ -300,4 +303,62 @@ model AuditLog {
   before     Json?
   after      Json?
   createdAt  DateTime @default(now())
+}
+
+/** 提成规则（IK8W5L）：楼栋/楼层/重量档/配送模式四维组合 → 单价，版本号供快照引用。 */
+model CommissionRule {
+  id          String        @id @default(cuid())
+  campusId    String
+  buildingId  String? // 楼栋维度，null=不限
+  floor       Int? // 楼层维度，null=不限
+  weightFrom  Decimal?      @db.Decimal(10, 3) // 重量档下界（kg），null=不限
+  weightTo    Decimal?      @db.Decimal(10, 3) // 重量档上界（kg），null=不限
+  mode        String? // instant|scheduled，null=不限
+  price       Decimal       @db.Decimal(10, 2)
+  version     Int // 校园内递增版本号（Commission 快照引用）
+  status      String        @default("active") // active|disabled
+  effectiveAt DateTime      @default(now())
+  createdAt   DateTime      @default(now())
+  commissions Commission[]
+}
+
+/** 提成记录（IK8W5L）：订单送达时按规则快照生成；退款跨期调整记负向 amount。 */
+model Commission {
+  id          String          @id @default(cuid())
+  staffId     String
+  staff       Staff           @relation(fields: [staffId], references: [id])
+  orderId     String
+  order       Order           @relation(fields: [orderId], references: [id])
+  campusId    String
+  ruleId      String?
+  rule        CommissionRule? @relation(fields: [ruleId], references: [id])
+  ruleVersion Int?
+  amount      Decimal         @db.Decimal(10, 2) // 可为负（跨期调整）
+  kind        String          @default("commission") // commission|adjustment（负向调整独立成行）
+  status      String          @default("pending") // pending|settled|adjusted
+  fallback    Boolean         @default(false) // 无匹配规则时按 COMMISSION_PER_ORDER 兜底
+  period      String // 归属月 YYYY-MM（结算周期）
+  remark      String          @default("")
+  createdAt   DateTime        @default(now())
+
+  @@unique([orderId, staffId, kind])
+}
+
+/** 楼长/骑手月度账单（IK8W5L）：底薪 + 提成合计 + 调整 → 应发。 */
+model BmBill {
+  id              String    @id @default(cuid())
+  staffId         String
+  staff           Staff     @relation(fields: [staffId], references: [id])
+  campusId        String
+  period          String // YYYY-MM
+  baseSalary      Decimal   @db.Decimal(10, 2)
+  commissionTotal Decimal   @db.Decimal(10, 2)
+  adjustment      Decimal   @db.Decimal(10, 2)
+  payable         Decimal   @db.Decimal(10, 2)
+  status          String    @default("pending-review") // pending-review|confirmed|paid
+  createdAt       DateTime  @default(now())
+  confirmedAt     DateTime?
+  paidAt          DateTime?
+
+  @@unique([staffId, period])
 }

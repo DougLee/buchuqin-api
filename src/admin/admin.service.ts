@@ -6,9 +6,11 @@ import {
 import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
 import { BusinessService } from '../business/business.service';
+import { CommissionService } from '../commission/commission.service';
 import type {
   AdjustStockDto,
   CreateBuildingDto,
+  CreateCommissionRuleDto,
   CreateCouponDto,
   CreateProductDto,
   CreateRoomDto,
@@ -16,6 +18,7 @@ import type {
   IssueCouponDto,
   StockInDto,
   UpdateBuildingDto,
+  UpdateCommissionRuleDto,
   UpdateCouponDto,
   UpdateStaffDto,
 } from './dto';
@@ -25,6 +28,7 @@ export class AdminService {
   constructor(
     private readonly db: PrismaService,
     private readonly business: BusinessService,
+    private readonly commissions: CommissionService = new CommissionService(db),
   ) {}
   private num(x: unknown) {
     return Number(x);
@@ -935,6 +939,13 @@ export class AdminService {
           where: { id: x.orderId },
           data: { status: 'refunded', statusText: '已退款' },
         });
+        // 跨期调整（IK8W5L）：已结算提成记负向 Commission(adjusted) 挂当前月，
+        // 未结算提成原地翻负对冲本月账单。
+        await this.commissions.refundAdjust(
+          tx,
+          x.orderId,
+          '售后退款，提成跨期调整',
+        );
       }
       return after;
     });
@@ -949,20 +960,215 @@ export class AdminService {
     );
     return result;
   }
-  async settlements(campusId: string) {
-    const xs = await this.staff(campusId);
-    return xs.map((x, i) => ({
-      id: `bill-${i + 1}`,
-      staffId: x.id,
-      staffName: x.name,
-      roleText: x.roleText,
-      period: new Date().toISOString().slice(0, 7),
-      baseSalary: x.role === 'building-manager' ? 500 : 0,
-      commission: x.income,
-      adjustment: 0,
-      payable: (x.role === 'building-manager' ? 500 : 0) + x.income,
-      status: 'pending-review',
+  /** 提成规则列表（版本倒序，含失效规则）。 */
+  async commissionRules(campusId: string) {
+    const xs = await this.db.commissionRule.findMany({
+      where: { campusId },
+      orderBy: [{ status: 'asc' }, { version: 'desc' }],
+    });
+    return xs.map((x) => ({
+      ...x,
+      price: this.num(x.price),
+      weightFrom: x.weightFrom == null ? null : this.num(x.weightFrom),
+      weightTo: x.weightTo == null ? null : this.num(x.weightTo),
+      effectiveAt: x.effectiveAt.toISOString(),
+      createdAt: x.createdAt.toISOString(),
     }));
+  }
+  async createCommissionRule(
+    body: CreateCommissionRuleDto,
+    operator: string,
+    campusId: string,
+  ) {
+    if (body.buildingId) {
+      const building = await this.db.building.findFirst({
+        where: { id: body.buildingId, campusId },
+      });
+      if (!building) throw new BadRequestException('楼栋不存在');
+    }
+    if (body.floor && body.floor < 1)
+      throw new BadRequestException('楼层必须为正整数');
+    // 版本号：校园内自增，快照引用（同校园并发建规则极端情况下版本可能并列，择优时按版本+生效时间兜底）
+    const latest = await this.db.commissionRule.findFirst({
+      where: { campusId },
+      orderBy: { version: 'desc' },
+      select: { version: true },
+    });
+    const rule = await this.db.commissionRule.create({
+      data: {
+        campusId,
+        buildingId: body.buildingId ?? null,
+        floor: body.floor ?? null,
+        weightFrom: body.weightFrom ?? null,
+        weightTo: body.weightTo ?? null,
+        mode: body.mode ?? null,
+        price: body.price,
+        version: (latest?.version ?? 0) + 1,
+        status: 'active',
+        effectiveAt: body.effectiveAt ? new Date(body.effectiveAt) : new Date(),
+      },
+    });
+    await this.audit(
+      operator,
+      'commission-rule.create',
+      'commission-rule',
+      rule.id,
+      null,
+      { ...rule, price: this.num(rule.price) },
+      campusId,
+    );
+    return rule;
+  }
+  async updateCommissionRule(
+    id: string,
+    body: UpdateCommissionRuleDto,
+    operator: string,
+    campusId: string,
+  ) {
+    const before = await this.db.commissionRule.findFirst({
+      where: { id, campusId },
+    });
+    if (!before) throw new NotFoundException('提成规则不存在');
+    const changed =
+      (body.price !== undefined && body.price !== this.num(before.price)) ||
+      body.status !== undefined;
+    // 价格/状态变更即版本自增：在途 Commission 仍引用旧版本快照，不追溯。
+    const after = await this.db.commissionRule.update({
+      where: { id },
+      data: {
+        ...(body.price !== undefined ? { price: body.price } : {}),
+        ...(body.status !== undefined ? { status: body.status } : {}),
+        ...(changed ? { version: { increment: 1 } } : {}),
+      },
+    });
+    await this.audit(
+      operator,
+      'commission-rule.update',
+      'commission-rule',
+      id,
+      { ...before, price: this.num(before.price) },
+      { ...after, price: this.num(after.price) },
+      campusId,
+    );
+    return after;
+  }
+  /**
+   * 月度结算账单（IK8W5L）：按月聚合 Commission + 底薪，物化为 BmBill 返回。
+   * 已确认/已支付的账单金额锁定（历史凭证不可变），仅待复核账单跟随记录重算。
+   */
+  async settlements(campusId: string, month?: string) {
+    const period = month ?? new Date().toISOString().slice(0, 7);
+    if (!/^\d{4}-\d{2}$/.test(period))
+      throw new BadRequestException('月份格式必须为 YYYY-MM');
+    const staffList = await this.db.staff.findMany({
+      where: { campusId, status: { not: 'deleted' } },
+    });
+    for (const s of staffList) {
+      const { commissionTotal, adjustment } = await this.commissions.monthly(
+        s.id,
+        period,
+      );
+      const baseSalary = s.role === 'building-manager' ? 500 : 0;
+      const payable = Number(
+        (baseSalary + commissionTotal + adjustment).toFixed(2),
+      );
+      const existing = await this.db.bmBill.findUnique({
+        where: { staffId_period: { staffId: s.id, period } },
+      });
+      if (!existing) {
+        await this.db.bmBill.create({
+          data: {
+            staffId: s.id,
+            campusId,
+            period,
+            baseSalary,
+            commissionTotal,
+            adjustment,
+            payable,
+            status: 'pending-review',
+          },
+        });
+      } else if (existing.status === 'pending-review') {
+        await this.db.bmBill.update({
+          where: { id: existing.id },
+          data: { baseSalary, commissionTotal, adjustment, payable },
+        });
+      }
+    }
+    const bills = await this.db.bmBill.findMany({
+      where: { campusId, period },
+      include: { staff: { select: { name: true, roleText: true, staffNo: true } } },
+      orderBy: { createdAt: 'asc' },
+    });
+    return bills.map((x) => ({
+      id: x.id,
+      staffId: x.staffId,
+      staffName: x.staff.name,
+      staffNo: x.staff.staffNo,
+      roleText: x.staff.roleText,
+      period: x.period,
+      baseSalary: this.num(x.baseSalary),
+      commissionTotal: this.num(x.commissionTotal),
+      adjustment: this.num(x.adjustment),
+      payable: this.num(x.payable),
+      status: x.status,
+      confirmedAt: x.confirmedAt?.toISOString() ?? null,
+      paidAt: x.paidAt?.toISOString() ?? null,
+    }));
+  }
+  /** 账单确认：pending-review → confirmed（条件更新防重复确认）。 */
+  async confirmSettlement(
+    id: string,
+    operator: string,
+    campusId: string,
+  ) {
+    const bill = await this.db.bmBill.findFirst({ where: { id, campusId } });
+    if (!bill) throw new NotFoundException('结算账单不存在');
+    const won = await this.db.bmBill.updateMany({
+      where: { id, status: 'pending-review' },
+      data: { status: 'confirmed', confirmedAt: new Date() },
+    });
+    if (!won.count) throw new BadRequestException('账单已确认或已支付');
+    const after = await this.db.bmBill.findUniqueOrThrow({ where: { id } });
+    await this.audit(
+      operator,
+      'settlement.confirm',
+      'bm-bill',
+      id,
+      { status: bill.status },
+      { status: after.status },
+      campusId,
+    );
+    return after;
+  }
+  /** 账单支付：confirmed → paid，并把同期 pending 提成标记 settled（后续退款走跨期负向调整）。 */
+  async paySettlement(id: string, operator: string, campusId: string) {
+    const bill = await this.db.bmBill.findFirst({ where: { id, campusId } });
+    if (!bill) throw new NotFoundException('结算账单不存在');
+    const paid = await this.db.$transaction(async (tx) => {
+      // 条件更新：未确认的账单不可支付，重复支付只有一笔生效。
+      const won = await tx.bmBill.updateMany({
+        where: { id, status: 'confirmed' },
+        data: { status: 'paid', paidAt: new Date() },
+      });
+      if (!won.count)
+        throw new BadRequestException('账单未确认或已支付');
+      await tx.commission.updateMany({
+        where: { staffId: bill.staffId, period: bill.period, status: 'pending' },
+        data: { status: 'settled' },
+      });
+      return tx.bmBill.findUniqueOrThrow({ where: { id } });
+    });
+    await this.audit(
+      operator,
+      'settlement.pay',
+      'bm-bill',
+      id,
+      { status: bill.status },
+      { status: paid.status },
+      campusId,
+    );
+    return paid;
   }
   async campuses() {
     const xs = await this.db.campus.findMany();

@@ -20,6 +20,7 @@ import {
   AdjustStockDto,
   BarcodeDto,
   CreateBuildingDto,
+  CreateCommissionRuleDto,
   CreateCouponDto,
   CreateProductDto,
   CreateRoomDto,
@@ -27,6 +28,7 @@ import {
   IssueCouponDto,
   StockInDto,
   UpdateBuildingDto,
+  UpdateCommissionRuleDto,
   UpdateCouponDto,
   UpdateStaffDto,
 } from './dto';
@@ -278,9 +280,66 @@ export class AdminController {
       ),
     );
   }
-  @Get('settlements') async settlements(@Req() req: AuthRequest) {
+  @Get('commission-rules') async commissionRules(@Req() req: AuthRequest) {
     this.authorize(req);
-    return ok(await this.service.settlements(req.user.campusId));
+    return ok(await this.service.commissionRules(req.user.campusId));
+  }
+  @Post('commission-rules') async createCommissionRule(
+    @Req() req: AuthRequest,
+    @Body() body: CreateCommissionRuleDto,
+  ) {
+    this.authorize(req);
+    return ok(
+      await this.service.createCommissionRule(
+        body,
+        req.user.id,
+        req.user.campusId,
+      ),
+      '提成规则已创建',
+    );
+  }
+  @Patch('commission-rules/:id') async updateCommissionRule(
+    @Req() req: AuthRequest,
+    @Param('id') id: string,
+    @Body() body: UpdateCommissionRuleDto,
+  ) {
+    this.authorize(req);
+    return ok(
+      await this.service.updateCommissionRule(
+        id,
+        body,
+        req.user.id,
+        req.user.campusId,
+      ),
+      '提成规则已更新',
+    );
+  }
+  @Get('settlements') async settlements(
+    @Req() req: AuthRequest,
+    @Query('month') month?: string,
+  ) {
+    this.authorize(req);
+    return ok(await this.service.settlements(req.user.campusId, month));
+  }
+  @Post('settlements/:id/confirm') async confirmSettlement(
+    @Req() req: AuthRequest,
+    @Param('id') id: string,
+  ) {
+    this.authorize(req);
+    return ok(
+      await this.service.confirmSettlement(id, req.user.id, req.user.campusId),
+      '账单已确认',
+    );
+  }
+  @Post('settlements/:id/pay') async paySettlement(
+    @Req() req: AuthRequest,
+    @Param('id') id: string,
+  ) {
+    this.authorize(req);
+    return ok(
+      await this.service.paySettlement(id, req.user.id, req.user.campusId),
+      '账单已支付',
+    );
   }
   @Get('campuses') async campuses(@Req() req: AuthRequest) {
     this.authorize(req);

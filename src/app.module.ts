@@ -16,6 +16,7 @@ import { FulfillmentController } from './fulfillment/fulfillment.controller';
 import { FulfillmentService } from './fulfillment/fulfillment.service';
 import { AdminController } from './admin/admin.controller';
 import { AdminService } from './admin/admin.service';
+import { CommissionService } from './commission/commission.service';
 import { FilesController } from './files/files.controller';
 
 // 部署模式下由 API 容器托管管理后台静态站（ADMIN_DIST_DIR 指向挂载目录）；
@@ -57,6 +58,7 @@ const adminDistDir = process.env.ADMIN_DIST_DIR ?? '';
     BusinessService,
     FulfillmentService,
     AdminService,
+    CommissionService,
     JwtAuthGuard,
     UserRoleGuard,
     // 全局限流守卫：所有路由默认 120/分，路由级 @Throttle 可覆盖

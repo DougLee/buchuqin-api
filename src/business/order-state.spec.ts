@@ -96,6 +96,10 @@ describe('order state machine full chain (IK93GQ)', () => {
   afterAll(async () => {
     await db.notification.deleteMany({ where: { userId } });
     await db.refund.deleteMany({ where: { userId } });
+    // delivered 单已生成提成快照（IK8W5L），先清提成再删单。
+    await db.commission.deleteMany({
+      where: { orderId: { in: createdOrderIds } },
+    });
     await db.order.deleteMany({ where: { id: { in: createdOrderIds } } });
     await db.user.delete({ where: { id: userId } });
     await db.$disconnect();

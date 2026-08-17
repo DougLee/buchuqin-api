@@ -1,5 +1,6 @@
 import { Prisma, PrismaClient } from '@prisma/client';
 import { MockStore } from '../src/mock/mock.store';
+import { bestMatch, dimsOfOrder } from '../src/commission/commission.service';
 
 const prisma = new PrismaClient();
 const source = new MockStore();
@@ -16,6 +17,9 @@ async function main() {
     return;
   }
   await prisma.auditLog.deleteMany();
+  await prisma.bmBill.deleteMany();
+  await prisma.commission.deleteMany();
+  await prisma.commissionRule.deleteMany();
   await prisma.room.deleteMany();
   await prisma.building.deleteMany();
   await prisma.dispatchInvitation.deleteMany();
@@ -213,6 +217,63 @@ async function main() {
       where: { building: name },
       data: { buildingId },
     });
+  }
+  // IK8W5L 提成规则 seed：四维组合（楼栋/楼层/重量档/模式）→ 单价，版本号递增。
+  const west5Id = buildingIdByName.get('西区 5 栋') ?? null;
+  const commissionRules: Array<{
+    buildingId: string | null;
+    floor: number | null;
+    weightFrom: number | null;
+    weightTo: number | null;
+    mode: string | null;
+    price: number;
+  }> = [
+    // 兜底通配规则（specificity 0）
+    { buildingId: null, floor: null, weightFrom: null, weightTo: null, mode: null, price: 3 },
+    // 西区 5 栋专属单价
+    { buildingId: west5Id, floor: null, weightFrom: null, weightTo: null, mode: null, price: 3.5 },
+    // 西区 5 栋高层加价
+    { buildingId: west5Id, floor: 6, weightFrom: null, weightTo: null, mode: null, price: 4.2 },
+    // 重货档（≥2kg）
+    { buildingId: null, floor: null, weightFrom: 2, weightTo: null, mode: null, price: 3.8 },
+  ];
+  const createdRules = [];
+  for (const [index, rule] of commissionRules.entries())
+    createdRules.push(
+      await prisma.commissionRule.create({
+        data: { ...rule, campusId: source.campus.id, version: index + 1 },
+      }),
+    );
+  // 历史 delivered/completed 单回填提成（与 delivered 钩子同一择优口径）。
+  const staffList = await prisma.staff.findMany();
+  const historical = await prisma.order.findMany({
+    where: { status: { in: ['delivered', 'completed'] } },
+  });
+  for (const order of historical) {
+    const dims = dimsOfOrder(order as unknown as Record<string, any>);
+    const rule = bestMatch(createdRules, dims);
+    const amount = rule ? Number(rule.price) : 3;
+    const manager = staffList.find(
+      (s) =>
+        s.role === 'building-manager' &&
+        ((dims.buildingId && s.buildingId === dims.buildingId) ||
+          s.building === dims.buildingName),
+    );
+    for (const staffId of [order.riderId, manager?.id].filter(Boolean) as string[])
+      await prisma.commission.create({
+        data: {
+          staffId,
+          orderId: order.id,
+          campusId: order.campusId,
+          ruleId: rule?.id ?? null,
+          ruleVersion: rule?.version ?? null,
+          amount,
+          status: 'pending',
+          fallback: !rule,
+          period: order.createdAt.toISOString().slice(0, 7),
+          remark: '历史订单提成回填',
+        },
+      });
   }
   await prisma.leaveRequest.create({
     data: {

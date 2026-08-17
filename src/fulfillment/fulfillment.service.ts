@@ -6,18 +6,24 @@ import {
 import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
 import { markTimelineStep } from '../common/order-state';
+import {
+  bestMatch,
+  COMMISSION_PER_ORDER,
+  CommissionService,
+  dimsOfOrder,
+} from '../commission/commission.service';
 import type { LeaveRequestDto, TaskActionDto } from './dto';
 
 export type StaffRole =
   'building-manager' | 'fulltime-rider' | 'parttime-rider';
 type JsonMap = Record<string, any>;
 
-/** 简化提成规则：固定 3 元/单（完整规则快照见 IK8W5L）。 */
-export const COMMISSION_PER_ORDER = 3;
-
 @Injectable()
 export class FulfillmentService {
-  constructor(private readonly db: PrismaService) {}
+  constructor(
+    private readonly db: PrismaService,
+    private readonly commissionService: CommissionService = new CommissionService(db),
+  ) {}
 
   async profile(staffId: string) {
     const s = await this.db.staff.findUnique({ where: { id: staffId } });
@@ -122,6 +128,12 @@ export class FulfillmentService {
     });
     const rate = (n: number, d: number) =>
       d ? Number(((n / d) * 100).toFixed(1)) : 0;
+    // 收入口径统一（IK8W5L）：本月 Commission 记录合计（含负向调整），不再按单数×常量估算。
+    const period = new Date().toISOString().slice(0, 7);
+    const incomeAgg = await this.db.commission.aggregate({
+      where: { staffId, period },
+      _sum: { amount: true },
+    });
     return {
       period: 'today',
       pending: mine.filter((x) =>
@@ -136,7 +148,7 @@ export class FulfillmentService {
       ).length,
       completed: completedToday.length,
       completedTotal: completed.length,
-      income: Number((completed.length * COMMISSION_PER_ORDER).toFixed(2)),
+      income: Number(incomeAgg._sum.amount ?? 0),
       onTimeRate: rate(onTime.length, completed.length),
       proofRate: rate(withProof.length, completed.length),
       exceptionRate: rate(
@@ -168,8 +180,24 @@ export class FulfillmentService {
       },
       orderBy: { createdAt: 'desc' },
     });
+    // 提成展示口径统一（IK8W5L）：已生成的 Commission 记录优先，未送达单按规则预览。
+    const [rules, records] = await Promise.all([
+      this.commissionService.loadRules(this.db, staff.campusId),
+      this.db.commission.findMany({
+        where: { staffId, orderId: { in: orders.map((o) => o.id) } },
+      }),
+    ]);
+    const commissionByOrder = new Map(
+      records.map((r) => [r.orderId, Number(r.amount)]),
+    );
     const result = orders.map((o) =>
-      this.toTask(o as unknown as JsonMap, staff.role as StaffRole, staff.id),
+      this.toTask(
+        o as unknown as JsonMap,
+        staff.role as StaffRole,
+        staff.id,
+        commissionByOrder,
+        rules,
+      ),
     );
     return result.filter(
       (x) => !status || status === 'all' || x.status === status,
@@ -382,6 +410,12 @@ export class FulfillmentService {
       });
       if (!won.count)
         throw new BadRequestException('任务状态已变化，请刷新后重试');
+      // 送达即时生成提成快照（IK8W5L）：同一事务内按四维规则生成 Commission 记录。
+      if (action === 'delivered')
+        await this.commissionService.recordForDelivered(tx, {
+          ...order,
+          status: next.status,
+        });
     });
     return this.task(staffId, id);
   }
@@ -434,35 +468,42 @@ export class FulfillmentService {
       },
     });
   }
-  async commissions(staffId: string) {
+  /**
+   * 我的提成（IK8W5L）：统一从 Commission 记录读取（month=YYYY-MM，缺省当月）。
+   * 底薪口径：楼长 500/月，骑手 0（月度账单 BmBill 同口径）。
+   */
+  async commissions(staffId: string, month?: string) {
     const s = await this.profile(staffId);
-    const orders = await this.db.order.findMany({
-      where: { campusId: s.campusId, status: 'completed' },
-      orderBy: { createdAt: 'desc' },
-    });
-    const mine = this.attributedOrders(s, orders);
+    const period = month ?? new Date().toISOString().slice(0, 7);
+    const { records, commissionTotal, adjustment } =
+      await this.commissionService.monthly(staffId, period);
     const base = s.role === 'building-manager' ? 500 : 0;
-    const deliveryIncome = Number(
-      (mine.length * COMMISSION_PER_ORDER).toFixed(2),
-    );
     return {
-      month: new Date().toISOString().slice(0, 7),
+      month: period,
       baseSalary: base,
-      deliveryIncome,
-      adjustment: 0,
-      payable: Number((base + deliveryIncome).toFixed(2)),
-      records: mine.map((o) => ({
-        id: `commission-${o.id}`,
-        orderNo: o.orderNo,
-        building: String((o.address as JsonMap).buildingName),
-        amount: COMMISSION_PER_ORDER,
-        createdAt: o.createdAt,
-        status: 'pending',
+      deliveryIncome: commissionTotal,
+      adjustment,
+      payable: Number((base + commissionTotal + adjustment).toFixed(2)),
+      records: records.map((x) => ({
+        id: x.id,
+        orderNo: x.order.orderNo,
+        building: String((x.order.address as JsonMap).buildingName ?? ''),
+        amount: Number(x.amount),
+        status: x.status,
+        fallback: x.fallback,
+        remark: x.remark,
+        createdAt: x.createdAt.toISOString(),
       })),
     };
   }
 
-  private toTask(order: JsonMap, role: StaffRole, viewerId?: string) {
+  private toTask(
+    order: JsonMap,
+    role: StaffRole,
+    viewerId?: string,
+    commissionByOrder?: Map<string, number>,
+    rules?: Array<Parameters<typeof bestMatch>[0][number]>,
+  ) {
     const a = order.address as JsonMap,
       items = order.items as JsonMap[],
       manager = role === 'building-manager';
@@ -527,7 +568,18 @@ export class FulfillmentService {
       modeText: order.deliveryMode === 'instant' ? '立即配送' : '预约配送',
       deadline: order.estimatedArrival,
       warehouse: '湖北工业大学校园仓',
-      commission: Number((2.2 + Number(a.floor) * 0.35).toFixed(2)),
+      // 金额口径统一（IK8W5L）：Commission 记录优先，未送达按规则预览，兜底常量。
+      commission: Number(
+        Number(
+          commissionByOrder?.get(String(order.id)) ??
+            (rules
+              ? Number(
+                  bestMatch(rules, dimsOfOrder(order))?.price ??
+                    COMMISSION_PER_ORDER,
+                )
+              : COMMISSION_PER_ORDER),
+        ).toFixed(2),
+      ),
       items: items.map((x: JsonMap) => ({
         name: x.product?.name ?? x.name,
         quantity: x.quantity,
