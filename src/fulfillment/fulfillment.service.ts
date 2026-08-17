@@ -2,9 +2,11 @@ import {
   BadRequestException,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { markTimelineStep } from '../common/order-state';
 import {
   bestMatch,
@@ -36,7 +38,7 @@ export class FulfillmentService {
     private readonly db: PrismaService,
     private readonly commissionService: CommissionService = new CommissionService(db),
     // 渠道推送（IK8W5M）：可选注入——测试不传时跳过推送。
-    private readonly push?: import('../notifications/notifications.service').NotificationsService,
+    @Optional() private readonly push?: NotificationsService,
   ) {}
 
   async profile(staffId: string) {

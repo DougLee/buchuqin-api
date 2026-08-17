@@ -2,10 +2,12 @@ import {
   BadRequestException,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../database/prisma.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import {
   buildOrderTimeline,
   DELIVERING_STATUSES,
@@ -58,7 +60,7 @@ export class BusinessService {
   constructor(
     private readonly db: PrismaService,
     // 渠道推送（IK8W5M）：可选注入——测试直接 new BusinessService(db) 时不传，跳过推送。
-    private readonly push?: import('../notifications/notifications.service').NotificationsService,
+    @Optional() private readonly push?: NotificationsService,
   ) {}
   /** 金额单位:分（IK8W5K）：满 10 元起送 = 1000 分；即时配送 4 元 = 400 分、预约 2 元 = 200 分。 */
   static readonly DELIVERY_THRESHOLD_CENTS = 1000;
