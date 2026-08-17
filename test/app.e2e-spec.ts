@@ -17,10 +17,10 @@ describe('AppController (e2e)', () => {
     await app.init();
   });
 
-  it('/api/v1/auth/mock-login (POST)', () => {
+  it('/api/v1/auth/test-login (POST)', () => {
     return request(app.getHttpServer())
-      .post('/api/v1/auth/mock-login')
-      .send({ code: 'mock' })
+      .post('/api/v1/auth/test-login')
+      .send({ identity: 'user' })
       .expect(200)
       .expect((response) =>
         expect(
