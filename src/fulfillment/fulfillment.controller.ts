@@ -10,10 +10,11 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import type { AuthRequest } from '../auth/jwt-auth.guard';
 import { ok } from '../common/api-response';
+import { paginate } from '../common/pagination';
 import { FulfillmentService } from './fulfillment.service';
 import {
   LeaveRequestDto,
@@ -58,11 +59,15 @@ export class FulfillmentController {
   @Get('dashboard') async dashboard(@Req() r: AuthRequest) {
     return ok(await this.service.dashboard(this.auth(r)));
   }
-  @Get('tasks') async tasks(
+  @Get('tasks')
+  @ApiOperation({ summary: '任务列表（?status 过滤保留；?page&pageSize 统一分页包裹）' })
+  async tasks(
     @Req() r: AuthRequest,
     @Query('status') s?: string,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
   ) {
-    return ok(await this.service.tasks(this.auth(r), s));
+    return ok(paginate(await this.service.tasks(this.auth(r), s), page, pageSize));
   }
   @Get('tasks/available') async available(@Req() r: AuthRequest) {
     const id = this.auth(r);
@@ -201,11 +206,22 @@ export class FulfillmentController {
     void b;
     return ok(await this.service.respondDispatch(this.auth(r), id, false));
   }
-  @Get('commissions') async commissions(
+  @Get('commissions')
+  @ApiOperation({
+    summary:
+      '我的提成（?month 过滤保留；records 改为 items + ?page&pageSize 统一分页包裹，汇总字段平铺不变）',
+  })
+  async commissions(
     @Req() r: AuthRequest,
     @Query('month') month?: string,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
   ) {
-    return ok(await this.service.commissions(this.auth(r), month));
+    const { records, ...summary } = await this.service.commissions(
+      this.auth(r),
+      month,
+    );
+    return ok({ ...summary, ...paginate(records, page, pageSize) });
   }
   @Get('performance') async performance(@Req() r: AuthRequest) {
     return ok(await this.service.performance(this.auth(r)));

@@ -17,6 +17,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { USER_ROLES_KEY, UserRoleGuard } from '../auth/user-role.guard';
 import type { AuthRequest } from '../auth/jwt-auth.guard';
 import { ok } from '../common/api-response';
+import { paginate } from '../common/pagination';
 import { BusinessService } from './business.service';
 import {
   AddCartItemDto,
@@ -44,26 +45,22 @@ export class BusinessController {
   @Get('categories') async categories() {
     return ok(await this.service.categories());
   }
-  @Get('products') async products(
+  @Get('products')
+  @ApiOperation({ summary: '商品列表（?categoryId/keyword 过滤保留；?page&pageSize 统一分页包裹）' })
+  async products(
     @Req() req: AuthRequest,
     @Query('categoryId') category?: string,
     @Query('keyword') keyword?: string,
-    @Query('page') pv = '1',
-    @Query('pageSize') psv = '20',
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
   ) {
-    const all = await this.service.listProducts(
-        req.user.campusId,
-        category,
-        keyword,
+    return ok(
+      paginate(
+        await this.service.listProducts(req.user.campusId, category, keyword),
+        page,
+        pageSize,
       ),
-      page = Math.max(1, Number(pv) || 1),
-      pageSize = Math.min(50, Math.max(1, Number(psv) || 20));
-    return ok({
-      items: all.slice((page - 1) * pageSize, page * pageSize),
-      total: all.length,
-      page,
-      pageSize,
-    });
+    );
   }
   @Get('products/:id') async product(
     @Req() req: AuthRequest,
@@ -124,21 +121,17 @@ export class BusinessController {
       '下单成功',
     );
   }
-  @Get('orders') async orders(
+  @Get('orders')
+  @ApiOperation({ summary: '我的订单（?status 过滤保留；?page&pageSize 统一分页包裹）' })
+  async orders(
     @Req() req: AuthRequest,
     @Query('status') status?: string,
-    @Query('page') pv = '1',
-    @Query('pageSize') psv = '20',
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
   ) {
-    const all = await this.service.orders(req.user.id, status),
-      page = Math.max(1, Number(pv) || 1),
-      pageSize = Math.min(50, Math.max(1, Number(psv) || 20));
-    return ok({
-      items: all.slice((page - 1) * pageSize, page * pageSize),
-      total: all.length,
-      page,
-      pageSize,
-    });
+    return ok(
+      paginate(await this.service.orders(req.user.id, status), page, pageSize),
+    );
   }
   @Get('orders/:id') async order(
     @Req() req: AuthRequest,
@@ -164,8 +157,20 @@ export class BusinessController {
   ) {
     return ok(await this.service.confirmReceipt(req.user.id, id), '已确认收货');
   }
-  @Get('addresses') async addresses(@Req() req: AuthRequest) {
-    return ok(await this.service.addresses(req.user.id, req.user.campusId));
+  @Get('addresses')
+  @ApiOperation({ summary: '地址列表（?page&pageSize 统一分页包裹）' })
+  async addresses(
+    @Req() req: AuthRequest,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+  ) {
+    return ok(
+      paginate(
+        await this.service.addresses(req.user.id, req.user.campusId),
+        page,
+        pageSize,
+      ),
+    );
   }
   @Post('addresses') async addAddress(
     @Req() req: AuthRequest,
@@ -261,8 +266,16 @@ export class BusinessController {
   ) {
     return ok(await this.service.refund(req.user.id, id));
   }
-  @Get('notifications') async notifications(@Req() req: AuthRequest) {
-    return ok(await this.service.notifications(req.user.id));
+  @Get('notifications')
+  @ApiOperation({ summary: '站内消息列表（?page&pageSize 统一分页包裹）' })
+  async notifications(
+    @Req() req: AuthRequest,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+  ) {
+    return ok(
+      paginate(await this.service.notifications(req.user.id), page, pageSize),
+    );
   }
   @Post('notifications/:id/read') async readNotification(
     @Req() req: AuthRequest,

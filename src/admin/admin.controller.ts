@@ -15,6 +15,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import type { AuthRequest } from '../auth/jwt-auth.guard';
 import { ok } from '../common/api-response';
+import { paginate } from '../common/pagination';
 import { AdminService } from './admin.service';
 import {
   AdjustStockDto,
@@ -59,9 +60,17 @@ export class AdminController {
     this.authorize(req);
     return ok(await this.service.dashboard(req.user.campusId));
   }
-  @Get('products') async products(@Req() req: AuthRequest) {
+  @Get('products')
+  @ApiOperation({ summary: '商品列表（?page&pageSize 统一分页包裹）' })
+  async products(
+    @Req() req: AuthRequest,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+  ) {
     this.authorize(req);
-    return ok(await this.service.products(req.user.campusId));
+    return ok(
+      paginate(await this.service.products(req.user.campusId), page, pageSize),
+    );
   }
   @Post('products/barcode/lookup') async lookupBarcode(
     @Req() req: AuthRequest,
@@ -95,9 +104,17 @@ export class AdminController {
         ),
       );
   }
-  @Get('inventory') async inventory(@Req() req: AuthRequest) {
+  @Get('inventory')
+  @ApiOperation({ summary: '库存列表（?page&pageSize 统一分页包裹）' })
+  async inventory(
+    @Req() req: AuthRequest,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+  ) {
     this.authorize(req);
-    return ok(await this.service.inventory(req.user.campusId));
+    return ok(
+      paginate(await this.service.inventory(req.user.campusId), page, pageSize),
+    );
   }
   @Post('inventory/stock-in') async stockIn(
     @Req() req: AuthRequest,
@@ -119,19 +136,39 @@ export class AdminController {
       '库存已调整',
     );
   }
-  @Get('inventory/txns') async inventoryTxns(
+  @Get('inventory/txns')
+  @ApiOperation({ summary: '出入库流水（?page&pageSize 统一分页包裹）' })
+  async inventoryTxns(
     @Req() req: AuthRequest,
     @Query('productId') productId?: string,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
   ) {
     this.authorize(req);
-    return ok(await this.service.inventoryTxns(productId, req.user.campusId));
+    return ok(
+      paginate(
+        await this.service.inventoryTxns(productId, req.user.campusId),
+        page,
+        pageSize,
+      ),
+    );
   }
-  @Get('orders') async orders(
+  @Get('orders')
+  @ApiOperation({ summary: '订单列表（?status 过滤保留；?page&pageSize 统一分页包裹）' })
+  async orders(
     @Req() req: AuthRequest,
     @Query('status') status?: string,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
   ) {
     this.authorize(req);
-    return ok(await this.service.orders(status, req.user.campusId));
+    return ok(
+      paginate(
+        await this.service.orders(status, req.user.campusId),
+        page,
+        pageSize,
+      ),
+    );
   }
   @Get('orders/:id') async order(
     @Req() req: AuthRequest,
@@ -155,19 +192,49 @@ export class AdminController {
       ),
     );
   }
-  @Get('staff') async staff(@Req() req: AuthRequest) {
-    this.authorize(req);
-    return ok(await this.service.staff(req.user.campusId));
-  }
-  @Get('leave-requests') async leaveRequests(@Req() req: AuthRequest) {
-    this.authorize(req);
-    return ok(await this.service.leaveRequests(req.user.campusId));
-  }
-  @Get('dispatch-invitations') async dispatchInvitations(
+  @Get('staff')
+  @ApiOperation({ summary: '员工列表（?page&pageSize 统一分页包裹）' })
+  async staff(
     @Req() req: AuthRequest,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
   ) {
     this.authorize(req);
-    return ok(await this.service.dispatchInvitations(req.user.campusId));
+    return ok(
+      paginate(await this.service.staff(req.user.campusId), page, pageSize),
+    );
+  }
+  @Get('leave-requests')
+  @ApiOperation({ summary: '请假列表（?page&pageSize 统一分页包裹）' })
+  async leaveRequests(
+    @Req() req: AuthRequest,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+  ) {
+    this.authorize(req);
+    return ok(
+      paginate(
+        await this.service.leaveRequests(req.user.campusId),
+        page,
+        pageSize,
+      ),
+    );
+  }
+  @Get('dispatch-invitations')
+  @ApiOperation({ summary: '调配邀请列表（?page&pageSize 统一分页包裹）' })
+  async dispatchInvitations(
+    @Req() req: AuthRequest,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+  ) {
+    this.authorize(req);
+    return ok(
+      paginate(
+        await this.service.dispatchInvitations(req.user.campusId),
+        page,
+        pageSize,
+      ),
+    );
   }
   @Post('dispatch-invitations') async createDispatchInvitation(
     @Req() req: AuthRequest,
@@ -232,9 +299,17 @@ export class AdminController {
       '员工已删除',
     );
   }
-  @Get('buildings') async buildings(@Req() req: AuthRequest) {
+  @Get('buildings')
+  @ApiOperation({ summary: '楼栋列表（?page&pageSize 统一分页包裹）' })
+  async buildings(
+    @Req() req: AuthRequest,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+  ) {
     this.authorize(req);
-    return ok(await this.service.buildings(req.user.campusId));
+    return ok(
+      paginate(await this.service.buildings(req.user.campusId), page, pageSize),
+    );
   }
   @Post('buildings') async createBuilding(
     @Req() req: AuthRequest,
@@ -271,12 +346,16 @@ export class AdminController {
       '楼栋已删除',
     );
   }
-  @Get('buildings/:id/rooms') async rooms(
+  @Get('buildings/:id/rooms')
+  @ApiOperation({ summary: '楼栋寝室列表（?page&pageSize 统一分页包裹）' })
+  async rooms(
     @Req() req: AuthRequest,
     @Param('id') id: string,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
   ) {
     this.authorize(req);
-    return ok(await this.service.rooms(id, req.user.campusId));
+    return ok(paginate(await this.service.rooms(id, req.user.campusId), page, pageSize));
   }
   @Post('buildings/:id/rooms') async createRoom(
     @Req() req: AuthRequest,
@@ -300,9 +379,17 @@ export class AdminController {
       '寝室已删除',
     );
   }
-  @Get('after-sales') async afterSales(@Req() req: AuthRequest) {
+  @Get('after-sales')
+  @ApiOperation({ summary: '售后列表（?page&pageSize 统一分页包裹）' })
+  async afterSales(
+    @Req() req: AuthRequest,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+  ) {
     this.authorize(req);
-    return ok(await this.service.afterSales(req.user.campusId));
+    return ok(
+      paginate(await this.service.afterSales(req.user.campusId), page, pageSize),
+    );
   }
   @Post('after-sales/:id/review') async review(
     @Req() req: AuthRequest,
@@ -319,9 +406,21 @@ export class AdminController {
       ),
     );
   }
-  @Get('commission-rules') async commissionRules(@Req() req: AuthRequest) {
+  @Get('commission-rules')
+  @ApiOperation({ summary: '提成规则列表（?page&pageSize 统一分页包裹）' })
+  async commissionRules(
+    @Req() req: AuthRequest,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+  ) {
     this.authorize(req);
-    return ok(await this.service.commissionRules(req.user.campusId));
+    return ok(
+      paginate(
+        await this.service.commissionRules(req.user.campusId),
+        page,
+        pageSize,
+      ),
+    );
   }
   @Post('commission-rules') async createCommissionRule(
     @Req() req: AuthRequest,
@@ -353,12 +452,22 @@ export class AdminController {
       '提成规则已更新',
     );
   }
-  @Get('settlements') async settlements(
+  @Get('settlements')
+  @ApiOperation({ summary: '月度结算账单（?month 过滤保留；?page&pageSize 统一分页包裹）' })
+  async settlements(
     @Req() req: AuthRequest,
     @Query('month') month?: string,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
   ) {
     this.authorize(req);
-    return ok(await this.service.settlements(req.user.campusId, month));
+    return ok(
+      paginate(
+        await this.service.settlements(req.user.campusId, month),
+        page,
+        pageSize,
+      ),
+    );
   }
   @Post('settlements/:id/confirm') async confirmSettlement(
     @Req() req: AuthRequest,
@@ -384,13 +493,29 @@ export class AdminController {
     this.authorize(req);
     return ok(await this.service.campuses());
   }
-  @Get('coupons') async coupons(@Req() req: AuthRequest) {
+  @Get('coupons')
+  @ApiOperation({ summary: '优惠券列表（?page&pageSize 统一分页包裹）' })
+  async coupons(
+    @Req() req: AuthRequest,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+  ) {
     this.authorize(req);
-    return ok(await this.service.coupons(req.user.campusId));
+    return ok(
+      paginate(await this.service.coupons(req.user.campusId), page, pageSize),
+    );
   }
-  @Get('users') async users(@Req() req: AuthRequest) {
+  @Get('users')
+  @ApiOperation({ summary: '用户列表（?page&pageSize 统一分页包裹）' })
+  async users(
+    @Req() req: AuthRequest,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+  ) {
     this.authorize(req);
-    return ok(await this.service.users(req.user.campusId));
+    return ok(
+      paginate(await this.service.users(req.user.campusId), page, pageSize),
+    );
   }
   @Post('coupons') async createCoupon(
     @Req() req: AuthRequest,
@@ -428,8 +553,16 @@ export class AdminController {
       '发放完成',
     );
   }
-  @Get('audit-logs') async audits(@Req() req: AuthRequest) {
+  @Get('audit-logs')
+  @ApiOperation({ summary: '审计日志（?page&pageSize 统一分页包裹）' })
+  async audits(
+    @Req() req: AuthRequest,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+  ) {
     this.authorize(req);
-    return ok(await this.service.auditLogs(req.user.campusId));
+    return ok(
+      paginate(await this.service.auditLogs(req.user.campusId), page, pageSize),
+    );
   }
 }
