@@ -106,8 +106,10 @@ describe('BusinessService concurrency races (PostgreSQL)', () => {
       },
     });
     userId = user.id;
+    // 固定取默认地址（address-001，房间 612）：findFirst 无排序时数据库行序不稳定，
+    // 会取到其他地址导致 handover 用例拿错寝室 qrToken。
     const address = await db.address.findFirstOrThrow({
-      where: { userId: 'user-001' },
+      where: { userId: 'user-001', isDefault: true },
     });
     addressSnapshot = json(address);
     await db.address.create({
