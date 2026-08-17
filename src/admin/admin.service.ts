@@ -30,6 +30,8 @@ export class AdminService {
     private readonly db: PrismaService,
     private readonly business: BusinessService,
     private readonly commissions: CommissionService = new CommissionService(db),
+    // 渠道推送（IK8W5M）：可选注入——测试不传时跳过推送。
+    private readonly push?: import('../notifications/notifications.service').NotificationsService,
   ) {}
   private num(x: unknown) {
     return Number(x);
@@ -955,6 +957,18 @@ export class AdminService {
       result,
       campusId,
     );
+    // 渠道推送（IK8W5M）：退款结果（订阅消息 + 短信兜底），通过/拒绝都通知。
+    const refundedOrder = await this.db.order.findUnique({
+      where: { id: x.orderId },
+      select: { orderNo: true, payableAmount: true },
+    });
+    if (refundedOrder)
+      void this.push?.refundResultPush(
+        x.userId,
+        refundedOrder.orderNo,
+        refundedOrder.payableAmount,
+        approved,
+      );
     return result;
   }
   /** 提成规则列表（版本倒序，含失效规则）。 */

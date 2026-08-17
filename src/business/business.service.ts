@@ -55,7 +55,11 @@ const yuan = (cents: number) => (cents / 100).toFixed(2);
 
 @Injectable()
 export class BusinessService {
-  constructor(private readonly db: PrismaService) {}
+  constructor(
+    private readonly db: PrismaService,
+    // 渠道推送（IK8W5M）：可选注入——测试直接 new BusinessService(db) 时不传，跳过推送。
+    private readonly push?: import('../notifications/notifications.service').NotificationsService,
+  ) {}
   /** 金额单位:分（IK8W5K）：满 10 元起送 = 1000 分；即时配送 4 元 = 400 分、预约 2 元 = 200 分。 */
   static readonly DELIVERY_THRESHOLD_CENTS = 1000;
   static readonly DELIVERY_FEE_CENTS = { instant: 400, scheduled: 200 } as const;
@@ -602,6 +606,15 @@ export class BusinessService {
           content: '订单已进入湖工大校园仓，仓储人员即将开始拣货。',
         },
       });
+      // 渠道推送（IK8W5M）：支付成功订阅消息。fire-and-forget，不进事务、不阻断。
+      void this.push?.orderStatusPush({
+        id: updated.id,
+        userId,
+        orderNo: updated.orderNo,
+        status: 'paid',
+        statusText: '支付成功',
+        payableAmount: updated.payableAmount,
+      });
       return this.orderView(updated);
     });
   }
@@ -641,6 +654,15 @@ export class BusinessService {
       updated.statusText,
       `${updated.orderNo} 的履约状态已更新。`,
     );
+    // 渠道推送（IK8W5M）：出库/一级配送中/即将到楼/已送达 订阅消息（已送达带短信兜底）。
+    void this.push?.orderStatusPush({
+      id: updated.id,
+      userId,
+      orderNo: updated.orderNo,
+      status: updated.status,
+      statusText: updated.statusText,
+      payableAmount: updated.payableAmount,
+    });
     return this.orderView(updated);
   }
   async confirmReceipt(userId: string, id: string) {
@@ -705,6 +727,14 @@ export class BusinessService {
             status: 'succeeded',
           },
         });
+      // 渠道推送（IK8W5M）：已支付订单取消 → 退款结果（订阅消息 + 短信兜底）。
+      if (wasPaid)
+        void this.push?.refundResultPush(
+          userId,
+          raw.orderNo,
+          raw.payableAmount,
+          true,
+        );
       return this.orderView(updated);
     });
   }

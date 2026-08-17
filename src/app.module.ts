@@ -22,6 +22,7 @@ import { PaymentsController } from './payments/payments.controller';
 import { PaymentsService } from './payments/payments.service';
 import { OrderTimeoutService } from './payments/order-timeout.service';
 import { FilesController } from './files/files.controller';
+import { NotificationsService } from './notifications/notifications.service';
 
 // 部署模式下由 API 容器托管管理后台静态站（ADMIN_DIST_DIR 指向挂载目录）；
 // 本地开发不设置该变量，行为不变
@@ -68,6 +69,8 @@ const adminDistDir = process.env.ADMIN_DIST_DIR ?? '';
     CommissionService,
     PaymentsService,
     OrderTimeoutService,
+    // 消息渠道扇出（IK8W5M）：订阅消息/短信/企微，env 门控静默降级。
+    NotificationsService,
     JwtAuthGuard,
     UserRoleGuard,
     // 全局限流守卫：所有路由默认 120/分，路由级 @Throttle 可覆盖

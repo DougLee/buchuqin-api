@@ -17,12 +17,26 @@ import type { LeaveRequestDto, TaskActionDto } from './dto';
 export type StaffRole =
   'building-manager' | 'fulltime-rider' | 'parttime-rider';
 type JsonMap = Record<string, any>;
+/** 渠道推送上下文（IK8W5M）：事务内赋值、提交后发送。 */
+interface PushContext {
+  orderId: string;
+  userId: string;
+  orderNo: string;
+  status: string;
+  statusText: string;
+  payableAmount: number;
+  notifyManager: boolean;
+  campusId: string;
+  address: unknown;
+}
 
 @Injectable()
 export class FulfillmentService {
   constructor(
     private readonly db: PrismaService,
     private readonly commissionService: CommissionService = new CommissionService(db),
+    // 渠道推送（IK8W5M）：可选注入——测试不传时跳过推送。
+    private readonly push?: import('../notifications/notifications.service').NotificationsService,
   ) {}
 
   async profile(staffId: string) {
@@ -249,7 +263,8 @@ export class FulfillmentService {
     if (!id.startsWith(prefix)) throw new NotFoundException('履约任务不存在');
     const orderId = id.slice(prefix.length);
     // 读改写整体放入事务：校验、timeline 拼装、条件更新要么全部生效要么全部回滚。
-    await this.db.$transaction(async (tx) => {
+    // 返回值 = 渠道推送上下文（IK8W5M）：事务提交后 fire-and-forget；accept 不改状态返回 null。
+    const pushDone = await this.db.$transaction(async (tx): Promise<PushContext | null> => {
       const order = await tx.order.findFirst({
         where: { id: orderId, campusId: staff.campusId },
       });
@@ -420,7 +435,7 @@ export class FulfillmentService {
           data: { riderId: staffId, statusText: '配送员已接单' },
         });
         if (!won.count) throw new BadRequestException('任务已被其他配送员接取');
-        return;
+        return null;
       }
       // 状态条件更新：并发推进（双人操作/与后台同时改单）时仅一笔生效。
       const won = await tx.order.updateMany({
@@ -444,7 +459,50 @@ export class FulfillmentService {
           ...order,
           status: next.status,
         });
+      // 渠道推送上下文（IK8W5M）：事务提交后 fire-and-forget，不进事务。
+      return {
+        orderId: order.id,
+        userId: order.userId,
+        orderNo: order.orderNo,
+        status: next.status,
+        statusText: next.text,
+        payableAmount: order.payableAmount,
+        notifyManager: action === 'arrive',
+        campusId: staff.campusId,
+        address: order.address,
+      };
     });
+    // 渠道推送：一级配送中/即将到楼/已送达 订阅消息（已送达带短信兜底）；
+    // arrive（即将到楼）同步企微通知楼长（env 门控，未配置静默跳过）。
+    if (pushDone) {
+      void this.push?.orderStatusPush({
+        id: pushDone.orderId,
+        userId: pushDone.userId,
+        orderNo: pushDone.orderNo,
+        status: pushDone.status,
+        statusText: pushDone.statusText,
+        payableAmount: pushDone.payableAmount,
+      });
+      if (pushDone.notifyManager) {
+        const addr = pushDone.address as JsonMap;
+        const manager = await this.db.staff.findFirst({
+          where: {
+            campusId: pushDone.campusId,
+            role: 'building-manager',
+            status: { not: 'deleted' },
+            OR: [
+              { buildingId: String(addr?.buildingId ?? '') },
+              { building: String(addr?.buildingName ?? '') },
+            ],
+          },
+        });
+        if (manager)
+          void this.push?.wecomToStaff(
+            manager.staffNo,
+            `订单 ${pushDone.orderNo} 已到楼下，请准备交接`,
+          );
+      }
+    }
     return this.task(staffId, id);
   }
   async leave(staffId: string) {
