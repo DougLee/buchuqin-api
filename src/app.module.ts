@@ -4,6 +4,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { ScheduleModule } from '@nestjs/schedule';
 import { existsSync } from 'node:fs';
 import { AuthController } from './auth/auth.controller';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
@@ -17,6 +18,9 @@ import { FulfillmentService } from './fulfillment/fulfillment.service';
 import { AdminController } from './admin/admin.controller';
 import { AdminService } from './admin/admin.service';
 import { CommissionService } from './commission/commission.service';
+import { PaymentsController } from './payments/payments.controller';
+import { PaymentsService } from './payments/payments.service';
+import { OrderTimeoutService } from './payments/order-timeout.service';
 import { FilesController } from './files/files.controller';
 
 // 部署模式下由 API 容器托管管理后台静态站（ADMIN_DIST_DIR 指向挂载目录）；
@@ -26,6 +30,8 @@ const adminDistDir = process.env.ADMIN_DIST_DIR ?? '';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    // 支付超时关单 Cron（IK8W5I）：每分钟扫 pending-payment 超 15 分钟的单。
+    ScheduleModule.forRoot(),
     // 全局默认限流 120/分（APP_GUARD 全局生效）；敏感路由（test-login）
     // 用 @Throttle({ default: { limit: 10, ttl: 60_000 } }) 收紧，两者共存。
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 120 }]),
@@ -51,6 +57,7 @@ const adminDistDir = process.env.ADMIN_DIST_DIR ?? '';
     BusinessController,
     FulfillmentController,
     AdminController,
+    PaymentsController,
     FilesController,
   ],
   providers: [
@@ -59,6 +66,8 @@ const adminDistDir = process.env.ADMIN_DIST_DIR ?? '';
     FulfillmentService,
     AdminService,
     CommissionService,
+    PaymentsService,
+    OrderTimeoutService,
     JwtAuthGuard,
     UserRoleGuard,
     // 全局限流守卫：所有路由默认 120/分，路由级 @Throttle 可覆盖
