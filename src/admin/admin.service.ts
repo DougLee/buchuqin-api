@@ -512,13 +512,19 @@ export class AdminService {
       orderBy: { createdAt: 'desc' },
     });
   }
+  /** 手机号脱敏：保留前 3 后 4，中间四位打码（后台列表不落明文）。 */
+  private maskPhone(phone: string) {
+    return phone.length === 11 ? `${phone.slice(0, 3)}****${phone.slice(7)}` : phone;
+  }
   async orders(status: string | undefined, campusId: string) {
     const xs = await this.db.order.findMany({
       where: {
         campusId,
         ...(status && status !== 'all' ? { status } : {}),
       },
-      include: { user: true },
+      include: {
+        user: { select: { id: true, nickname: true, phone: true } },
+      },
       orderBy: { createdAt: 'desc' },
     });
     return xs.map((x) => ({
@@ -527,7 +533,13 @@ export class AdminService {
       deliveryFee: this.num(x.deliveryFee),
       discount: this.num(x.discount),
       payableAmount: this.num(x.payableAmount),
-      userPhone: x.user.phone,
+      // 用户信息脱敏：只回 id/昵称/打码手机号。
+      user: {
+        id: x.user.id,
+        nickname: x.user.nickname,
+        phone: this.maskPhone(x.user.phone),
+      },
+      userPhone: this.maskPhone(x.user.phone),
       packageNo: (x.package as any)?.id ?? '--',
     }));
   }

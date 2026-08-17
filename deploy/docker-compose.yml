@@ -30,6 +30,9 @@ services:
     env_file: .env
     environment:
       ADMIN_DIST_DIR: /app/admin-dist
+      # DATABASE_URL 单源化：密码只存 POSTGRES_PASSWORD 一份，compose 在此拼接注入。
+      # compose 的 environment 优先级高于 env_file，会覆盖 .env 里的同名键。
+      DATABASE_URL: postgresql://buchuqin:${POSTGRES_PASSWORD}@postgres:5432/buchuqinshishe?schema=public
     volumes:
       - ./admin-dist:/app/admin-dist:ro
     ports:

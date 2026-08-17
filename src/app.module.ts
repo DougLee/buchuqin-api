@@ -2,10 +2,13 @@ import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ServeStaticModule } from '@nestjs/serve-static';
-import { ThrottlerModule } from '@nestjs/throttler';
+import { APP_GUARD } from '@nestjs/core';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { existsSync } from 'node:fs';
 import { AuthController } from './auth/auth.controller';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
+import { UserRoleGuard } from './auth/user-role.guard';
+import { HealthController } from './health/health.controller';
 import { BusinessController } from './business/business.controller';
 import { BusinessService } from './business/business.service';
 import { PrismaService } from './database/prisma.service';
@@ -22,7 +25,8 @@ const adminDistDir = process.env.ADMIN_DIST_DIR ?? '';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
-    // 全局默认限流（宽松）；敏感路由（test-login）用 @Throttle 收紧
+    // 全局默认限流 120/分（APP_GUARD 全局生效）；敏感路由（test-login）
+    // 用 @Throttle({ default: { limit: 10, ttl: 60_000 } }) 收紧，两者共存。
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 120 }]),
     ...(adminDistDir && existsSync(adminDistDir)
       ? [
@@ -41,6 +45,7 @@ const adminDistDir = process.env.ADMIN_DIST_DIR ?? '';
     }),
   ],
   controllers: [
+    HealthController,
     AuthController,
     BusinessController,
     FulfillmentController,
@@ -53,6 +58,9 @@ const adminDistDir = process.env.ADMIN_DIST_DIR ?? '';
     FulfillmentService,
     AdminService,
     JwtAuthGuard,
+    UserRoleGuard,
+    // 全局限流守卫：所有路由默认 120/分，路由级 @Throttle 可覆盖
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
   ],
 })
 export class AppModule {}

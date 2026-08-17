@@ -18,6 +18,13 @@ import type { AuthRequest } from '../auth/jwt-auth.guard';
 import { ok } from '../common/api-response';
 
 const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
+// MIME 白名单：位图格式收敛，拒绝 svg+xml（可携带脚本导致存储型 XSS）。
+const ALLOWED_MIME_TYPES = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/gif',
+]);
 
 // 腾讯 COS 客户端（ADR-0003：替代本地磁盘存储）
 // 惰性初始化：模块求值早于 ConfigModule 加载 .env，顶层创建会拿到空密钥
@@ -70,8 +77,13 @@ export class FilesController {
       storage: memoryStorage(),
       limits: { fileSize: MAX_IMAGE_SIZE },
       fileFilter: (_req, file, cb) => {
-        if (!file.mimetype.startsWith('image/')) {
-          cb(new BadRequestException('只能上传图片文件'), false);
+        if (!ALLOWED_MIME_TYPES.has(file.mimetype)) {
+          cb(
+            new BadRequestException(
+              '只能上传 JPG、PNG、WebP 或 GIF 格式的图片文件',
+            ),
+            false,
+          );
           return;
         }
         cb(null, true);
