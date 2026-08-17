@@ -285,7 +285,7 @@ export class BusinessController {
   }
   @Post('notifications/read-all') async readAll(
     @Req() req: AuthRequest,
-    @Body() body: { type?: string },
+    @Body() body: { type?: string } = {},
   ) {
     return ok(await this.service.readAllNotifications(req.user.id, body.type));
   }
