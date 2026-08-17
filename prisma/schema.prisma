@@ -30,6 +30,7 @@ model User {
   phone         String
   avatar        String         @default("")
   role          String         @default("user")
+  openid        String?        @unique
   createdAt     DateTime       @default(now())
   addresses     Address[]
   cartItems     CartItem[]

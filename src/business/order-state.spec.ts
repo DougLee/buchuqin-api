@@ -21,6 +21,7 @@ describe('order state machine full chain (IK93GQ)', () => {
   const MANAGER = 'staff-bm-001';
   let userId = '';
   let addressSnapshot: Prisma.InputJsonValue;
+  let stockBefore = 0;
   const createdOrderIds: string[] = [];
   const json = (value: unknown) =>
     JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
@@ -91,6 +92,9 @@ describe('order state machine full chain (IK93GQ)', () => {
       where: { userId: 'user-001' },
     });
     addressSnapshot = json(address);
+    stockBefore = (
+      await db.product.findUniqueOrThrow({ where: { id: PRODUCT_ID } })
+    ).stock;
   });
 
   afterAll(async () => {
@@ -101,6 +105,11 @@ describe('order state machine full chain (IK93GQ)', () => {
       where: { orderId: { in: createdOrderIds } },
     });
     await db.order.deleteMany({ where: { id: { in: createdOrderIds } } });
+    // 本用例组直接删单不回补库存，恢复基线避免耗尽演示库存。
+    await db.product.update({
+      where: { id: PRODUCT_ID },
+      data: { stock: stockBefore },
+    });
     await db.user.delete({ where: { id: userId } });
     await db.$disconnect();
   });
