@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ServeStaticModule } from '@nestjs/serve-static';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { existsSync } from 'node:fs';
 import { AuthController } from './auth/auth.controller';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
@@ -21,6 +22,8 @@ const adminDistDir = process.env.ADMIN_DIST_DIR ?? '';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    // 全局默认限流（宽松）；敏感路由（test-login）用 @Throttle 收紧
+    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 120 }]),
     ...(adminDistDir && existsSync(adminDistDir)
       ? [
           ServeStaticModule.forRoot({
@@ -33,6 +36,7 @@ const adminDistDir = process.env.ADMIN_DIST_DIR ?? '';
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
         secret: config.getOrThrow<string>('JWT_SECRET'),
+        signOptions: { expiresIn: '7d' },
       }),
     }),
   ],

@@ -7,6 +7,14 @@ const json = (value: unknown) =>
   JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 
 async function main() {
+  // 守卫：库里已有校园数据时拒绝重灌（防止生产误配 SEED_ON_BOOT 每次重启清库）
+  const existing = await prisma.campus.findFirst();
+  if (existing) {
+    console.log(
+      `[seed] 数据库已有数据（campus: ${existing.id}），跳过重灌。如需强制重置请用 prisma migrate reset。`,
+    );
+    return;
+  }
   await prisma.auditLog.deleteMany();
   await prisma.room.deleteMany();
   await prisma.building.deleteMany();

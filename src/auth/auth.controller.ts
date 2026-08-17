@@ -10,7 +10,8 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtService } from '@nestjs/jwt';
-import { IsIn, IsString } from 'class-validator';
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
+import { IsString } from 'class-validator';
 import { ok } from '../common/api-response';
 import { PrismaService } from '../database/prisma.service';
 import { JwtAuthGuard } from './jwt-auth.guard';
@@ -40,6 +41,9 @@ export class AuthController {
 
   @Post('test-login')
   @HttpCode(200)
+  // 演示通道收敛：按 IP 限流，防枚举 staffNo 遍历登录
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @ApiOperation({ summary: '联调测试账号登录（生产环境关闭）' })
   async login(@Body() body: TestLoginDto) {
     if (
