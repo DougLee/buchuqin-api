@@ -11,7 +11,7 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import type { AuthRequest } from '../auth/jwt-auth.guard';
 import { ok } from '../common/api-response';
@@ -43,7 +43,16 @@ export class AdminController {
     )
       throw new ForbiddenException('无后台访问权限');
   }
-  @Get('dashboard') async dashboard(@Req() req: AuthRequest) {
+  @Get('dashboard')
+  @ApiOperation({
+    summary: '运营看板（PRD §8.4 口径）',
+    description:
+      'KPI 口径（返回体含 caliber 字段逐一说明）：今日订单=createdAt>=今日0点的有效单（排除待支付/已取消）；' +
+      '今日支付金额=paidAt 为今日的有效单（退款额单独统计）；新用户=createdAt>=今日0点；' +
+      '准时率=送达时间与支付时间同日（当日达口径，estimatedArrival 为展示文案不可机读）；' +
+      '履约超时=支付后超 90 分钟未送达；waitingHandover/lastMile 按 timeline 最后节点是否完成区分。',
+  })
+  async dashboard(@Req() req: AuthRequest) {
     this.authorize(req);
     return ok(await this.service.dashboard());
   }

@@ -29,33 +29,96 @@ export class AdminService {
   private num(x: unknown) {
     return Number(x);
   }
+  /** 履约超时阈值：支付后 90 分钟仍未送达视为超时（MVP 口径，正式 SLA 见规则快照 IK8W5L）。 */
+  private static readonly FULFILLMENT_TIMEOUT_MS = 90 * 60 * 1000;
+  /** timeline 指定节点是否已完成。 */
+  private stepDone(order: { timeline: Prisma.JsonValue }, key: string) {
+    const steps = (order.timeline as Array<Record<string, unknown>>) ?? [];
+    return Boolean(steps.find((s) => s.key === key)?.done);
+  }
   async dashboard() {
-    const [campus, orders, trend, activities] = await Promise.all([
+    const [campus, orders, buildings, trend, activities] = await Promise.all([
       this.db.campus.findFirstOrThrow(),
       this.db.order.findMany(),
+      this.db.building.findMany(),
       this.trend(),
       this.activities(),
     ]);
-    const paid = orders.filter(
+    // 有效单：排除待支付/已取消，后续所有口径基于有效单计算。
+    const effective = orders.filter(
       (x) => !['pending-payment', 'cancelled'].includes(x.status),
     );
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    // 今日订单口径：createdAt >= 今日 0 点的有效单。
+    const todayOrders = effective.filter(
+      (x) => x.createdAt.getTime() >= startOfToday.getTime(),
+    );
+    // 支付金额口径：paidAt 落在今日（今日支付后退款的单计入支付额，退款额单独统计）。
+    const paidToday = effective.filter(
+      (x) => x.paidAt && x.paidAt.getTime() >= startOfToday.getTime(),
+    );
+    const refundedToday = paidToday.filter((x) => x.status === 'refunded');
+    // 送达时间取 timeline 最后节点（与履约端绩效一致）。
+    const deliveredAt = (order: (typeof orders)[number]) => {
+      const steps = (order.timeline as Array<Record<string, unknown>>) ?? [];
+      const time = steps.at(-1)?.time;
+      return time ? new Date(String(time)) : null;
+    };
+    const completed = effective.filter((x) => x.status === 'completed');
+    // 准时口径：estimatedArrival 是展示文案（“预计 30-60 分钟送达”）不可机读，
+    // 暂按“支付当日送达”（当日达）计算，字段语义见 caliber 说明。
+    const isOnTime = (order: (typeof orders)[number]) => {
+      const time = deliveredAt(order);
+      return (
+        !!time &&
+        !!order.paidAt &&
+        time.toDateString() === order.paidAt.toDateString()
+      );
+    };
+    const onTime = completed.filter(isOnTime);
+    const rate = (n: number, d: number) =>
+      d ? Number(((n / d) * 100).toFixed(1)) : 0;
+    // 履约超时：真实统计支付后超过阈值仍未送达（未送达单按当前时刻算进行中超时）。
+    const timeout = effective.filter((x) => {
+      if (!x.paidAt) return false;
+      const end = deliveredAt(x)?.getTime() ?? Date.now();
+      return end - x.paidAt.getTime() > AdminService.FULFILLMENT_TIMEOUT_MS;
+    }).length;
+    // waiting-handover 尚未拆独立状态（不在本批）：status=last-mile 且
+    // last-mile 节点未完成 = 骑手到楼下等待楼长交接；节点已完成 = 楼长送上楼途中。
+    const lastMileOrders = effective.filter((x) => x.status === 'last-mile');
+    // 楼栋排行：优先用 Building 表关联（address.buildingId）取规范楼栋名，
+    // 关联缺失（历史快照/手填楼栋）时回退字符串聚合，保证不丢数据。
+    const buildingNameById = new Map(buildings.map((b) => [b.id, b.name]));
     const buildingMap = new Map<
       string,
-      { name: string; orders: number; revenue: number; completed: number }
+      {
+        name: string;
+        orders: number;
+        revenue: number;
+        completed: number;
+        onTime: number;
+      }
     >();
-    for (const order of orders) {
-      const name = String(
-        (order.address as Record<string, unknown>).buildingName ?? '未知楼栋',
-      );
+    for (const order of effective) {
+      const addr = order.address as Record<string, unknown>;
+      const name =
+        buildingNameById.get(String(addr.buildingId ?? '')) ??
+        String(addr.buildingName ?? '未知楼栋');
       const item = buildingMap.get(name) ?? {
         name,
         orders: 0,
         revenue: 0,
         completed: 0,
+        onTime: 0,
       };
       item.orders += 1;
       item.revenue += this.num(order.payableAmount);
-      if (order.status === 'completed') item.completed += 1;
+      if (order.status === 'completed') {
+        item.completed += 1;
+        if (isOnTime(order)) item.onTime += 1;
+      }
       buildingMap.set(name, item);
     }
     return {
@@ -63,30 +126,48 @@ export class AdminService {
       updatedAt: new Date().toISOString(),
       kpis: {
         revenue: Number(
-          paid.reduce((s, x) => s + this.num(x.payableAmount), 0).toFixed(2),
+          paidToday.reduce((s, x) => s + this.num(x.payableAmount), 0).toFixed(
+            2,
+          ),
         ),
-        orders: orders.length,
-        paidUsers: new Set(paid.map((x) => x.userId)).size,
-        newUsers: await this.db.user.count(),
-        fulfillmentRate: orders.length
-          ? Number(
-              (
-                (orders.filter((x) => x.status === 'completed').length /
-                  orders.length) *
-                100
-              ).toFixed(1),
-            )
-          : 0,
-        exceptions: orders.filter((x) => x.status === 'exception').length,
+        orders: todayOrders.length,
+        paidUsers: new Set(paidToday.map((x) => x.userId)).size,
+        newUsers: await this.db.user.count({
+          where: { createdAt: { gte: startOfToday } },
+        }),
+        refundedAmount: Number(
+          refundedToday
+            .reduce((s, x) => s + this.num(x.payableAmount), 0)
+            .toFixed(2),
+        ),
+        fulfillmentRate: rate(completed.length, effective.length),
+        exceptions: effective.filter((x) => x.status === 'exception').length,
+        onTimeRate: rate(onTime.length, completed.length),
+      },
+      // KPI 口径说明（前端标签需按此对齐 PRD §8.4）。
+      caliber: {
+        revenue: '今日支付金额：paidAt 为今日的有效单（待支付/已取消排除），含今日退款单',
+        refundedAmount: '今日退款金额：今日支付且当前状态为 refunded 的单',
+        orders: '今日订单：createdAt >= 今日 0 点的有效单（待支付/已取消排除）',
+        newUsers: '今日新用户：createdAt >= 今日 0 点',
+        fulfillmentRate: '履约完成率：全量有效单中 completed 占比',
+        onTimeRate: '准时率：送达时间（timeline 末节点）与支付时间同日（当日达口径）；estimatedArrival 为展示文案不可机读，结构化后切换真实 SLA',
+        timeout: `履约超时：支付后超过 ${AdminService.FULFILLMENT_TIMEOUT_MS / 60000} 分钟未送达（未送达单按当前时刻计）`,
+        waitingHandover: 'last-mile 且 last-mile 节点未完成（骑手到楼下等待楼长交接）',
+        lastMile: 'last-mile 且 last-mile 节点已完成（楼长送往寝室途中）',
       },
       trend,
       activities,
       fulfillment: {
-        waitingPick: orders.filter((x) => x.status === 'picking').length,
-        firstMile: orders.filter((x) => x.status === 'first-mile').length,
-        waitingHandover: orders.filter((x) => x.status === 'last-mile').length,
-        lastMile: orders.filter((x) => x.status === 'last-mile').length,
-        timeout: 0,
+        waitingPick: effective.filter((x) => x.status === 'picking').length,
+        firstMile: effective.filter((x) => x.status === 'first-mile').length,
+        waitingHandover: lastMileOrders.filter(
+          (x) => !this.stepDone(x, 'last-mile'),
+        ).length,
+        lastMile: lastMileOrders.filter((x) =>
+          this.stepDone(x, 'last-mile'),
+        ).length,
+        timeout,
       },
       hotBuildings: [...buildingMap.values()]
         .sort((a, b) => b.orders - a.orders)
@@ -95,9 +176,8 @@ export class AdminService {
           name: item.name,
           orders: item.orders,
           revenue: Number(item.revenue.toFixed(2)),
-          onTimeRate: item.orders
-            ? Number(((item.completed / item.orders) * 100).toFixed(1))
-            : 0,
+          completionRate: rate(item.completed, item.orders),
+          onTimeRate: rate(item.onTime, item.completed),
         })),
     };
   }
