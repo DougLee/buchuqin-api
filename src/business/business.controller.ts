@@ -9,10 +9,12 @@ import {
   Put,
   Query,
   Req,
+  SetMetadata,
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { USER_ROLES_KEY, UserRoleGuard } from '../auth/user-role.guard';
 import type { AuthRequest } from '../auth/jwt-auth.guard';
 import { ok } from '../common/api-response';
 import { BusinessService } from './business.service';
@@ -27,26 +29,33 @@ import {
 } from './dto';
 @ApiTags('用户端')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+// 用户端角色白名单：员工/admin token 调用用户端接口一律 403（IK93GT）。
+@SetMetadata(USER_ROLES_KEY, ['user'])
+@UseGuards(JwtAuthGuard, UserRoleGuard)
 @Controller()
 export class BusinessController {
   constructor(private readonly service: BusinessService) {}
-  @Get('home') async home() {
-    return ok(await this.service.home());
+  @Get('home') async home(@Req() req: AuthRequest) {
+    return ok(await this.service.home(req.user.campusId));
   }
-  @Get('campus/current') async campus() {
-    return ok(await this.service.campus());
+  @Get('campus/current') async campus(@Req() req: AuthRequest) {
+    return ok(await this.service.campus(req.user.campusId));
   }
   @Get('categories') async categories() {
     return ok(await this.service.categories());
   }
   @Get('products') async products(
+    @Req() req: AuthRequest,
     @Query('categoryId') category?: string,
     @Query('keyword') keyword?: string,
     @Query('page') pv = '1',
     @Query('pageSize') psv = '20',
   ) {
-    const all = await this.service.listProducts(category, keyword),
+    const all = await this.service.listProducts(
+        req.user.campusId,
+        category,
+        keyword,
+      ),
       page = Math.max(1, Number(pv) || 1),
       pageSize = Math.min(50, Math.max(1, Number(psv) || 20));
     return ok({
@@ -56,8 +65,11 @@ export class BusinessController {
       pageSize,
     });
   }
-  @Get('products/:id') async product(@Param('id') id: string) {
-    return ok(await this.service.product(id));
+  @Get('products/:id') async product(
+    @Req() req: AuthRequest,
+    @Param('id') id: string,
+  ) {
+    return ok(await this.service.product(id, req.user.campusId));
   }
   @Get('cart') async cart(@Req() req: AuthRequest) {
     return ok(await this.service.cart(req.user.id));
@@ -102,12 +114,15 @@ export class BusinessController {
     @Req() req: AuthRequest,
     @Body() dto: CreateOrderDto,
   ) {
-    return ok(await this.service.checkout(req.user.id, dto));
+    return ok(await this.service.checkout(req.user.id, req.user.campusId, dto));
   }
   @Post('orders')
   @ApiOperation({ summary: '创建待支付测试订单' })
   async createOrder(@Req() req: AuthRequest, @Body() dto: CreateOrderDto) {
-    return ok(await this.service.createOrder(req.user.id, dto), '下单成功');
+    return ok(
+      await this.service.createOrder(req.user.id, req.user.campusId, dto),
+      '下单成功',
+    );
   }
   @Get('orders') async orders(
     @Req() req: AuthRequest,
@@ -197,7 +212,7 @@ export class BusinessController {
     @Param('couponId') couponId: string,
   ) {
     return ok(
-      await this.service.claimCoupon(req.user.id, couponId),
+      await this.service.claimCoupon(req.user.id, couponId, req.user.campusId),
       '领取成功',
     );
   }
@@ -205,7 +220,9 @@ export class BusinessController {
     @Req() req: AuthRequest,
     @Body() dto: CreateOrderDto,
   ) {
-    return ok(await this.service.availableCoupons(req.user.id, dto));
+    return ok(
+      await this.service.availableCoupons(req.user.id, req.user.campusId, dto),
+    );
   }
   @Get('delivery/slots') async slots(@Req() req: AuthRequest) {
     return ok(await this.service.slots(req.user.campusId));

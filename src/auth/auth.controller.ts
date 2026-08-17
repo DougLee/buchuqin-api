@@ -13,6 +13,7 @@ import { JwtService } from '@nestjs/jwt';
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { IsString } from 'class-validator';
 import { ok } from '../common/api-response';
+import { ADMIN_CAMPUS_ID } from '../common/campus';
 import { PrismaService } from '../database/prisma.service';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import type { AuthRequest, AuthUser } from './jwt-auth.guard';
@@ -65,7 +66,7 @@ export class AuthController {
     if (body.identity === 'admin') {
       const claims: AuthUser = {
         id: 'admin-001',
-        campusId: 'campus-hbut',
+        campusId: ADMIN_CAMPUS_ID,
         role: 'admin',
       };
       return ok({

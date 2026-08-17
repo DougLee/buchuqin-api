@@ -5,7 +5,7 @@ describe('BusinessService PostgreSQL integration', () => {
   const service = new BusinessService(db);
   afterAll(() => db.$disconnect());
   it('reads seeded home and cart data', async () => {
-    const home = await service.home('user-001', 'campus-hbut');
+    const home = await service.home('campus-hbut');
     expect(home.hotProducts.length).toBeGreaterThan(10);
     const cart = await service.cart('user-001');
     expect(cart.totalQuantity).toBeGreaterThan(0);

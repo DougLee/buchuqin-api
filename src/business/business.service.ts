@@ -80,12 +80,13 @@ export class BusinessService {
       data: { userId, type, title, content },
     });
   }
-  async campus() {
-    const item = await this.db.campus.findFirst();
+  async campus(campusId: string) {
+    const item = await this.db.campus.findFirst({ where: { id: campusId } });
     if (!item) throw new NotFoundException('校园不存在');
     return item;
   }
   async categories() {
+    // 分类为全局字典（无 campusId 维度），商品侧按校园过滤。
     return this.db.category.findMany({ orderBy: { sort: 'asc' } });
   }
   private couponView(coupon: {
@@ -109,7 +110,7 @@ export class BusinessService {
       expiresAt: coupon.expiresAt.toISOString(),
     };
   }
-  async coupons(userId: string, campusId = 'campus-hbut') {
+  async coupons(userId: string, campusId: string) {
     const [items, mine] = await Promise.all([
       this.db.coupon.findMany({
         where: { campusId },
@@ -144,7 +145,7 @@ export class BusinessService {
       })),
     };
   }
-  async claimCoupon(userId: string, couponId: string) {
+  async claimCoupon(userId: string, couponId: string, campusId: string) {
     return this.db.$transaction(async (tx) => {
       const existing = await tx.userCoupon.findFirst({
         where: { userId, couponId },
@@ -157,6 +158,9 @@ export class BusinessService {
       }
       const coupon = await tx.coupon.findUnique({ where: { id: couponId } });
       if (!coupon) throw new NotFoundException('优惠券不存在');
+      // 券跨校园隔离：只能领取本校发放的券。
+      if (coupon.campusId !== campusId)
+        throw new BadRequestException('该优惠券不属于当前校园');
       if (coupon.status !== 'active')
         throw new BadRequestException('优惠券暂不可领取');
       if (coupon.expiresAt.getTime() <= Date.now())
@@ -173,13 +177,20 @@ export class BusinessService {
     });
   }
   /** 校验用于下单的 UserCoupon（couponId 语义为 UserCoupon id）。 */
-  private async validateUserCoupon(userId: string, userCouponId: string) {
+  private async validateUserCoupon(
+    userId: string,
+    userCouponId: string,
+    campusId: string,
+  ) {
     const record = await this.db.userCoupon.findUnique({
       where: { id: userCouponId },
       include: { coupon: true },
     });
     if (!record || record.userId !== userId)
       throw new BadRequestException('优惠券不存在或无权使用');
+    // 券跨校园隔离：只能使用本校发放的券。
+    if (record.coupon.campusId !== campusId)
+      throw new BadRequestException('该优惠券不属于当前校园');
     if (!['claimed', 'released'].includes(record.status))
       throw new BadRequestException('优惠券当前状态不可使用');
     if (record.coupon.status !== 'active')
@@ -188,7 +199,7 @@ export class BusinessService {
       throw new BadRequestException('优惠券已过期');
     return record;
   }
-  async buildings(campusId = 'campus-hbut') {
+  async buildings(campusId: string) {
     const xs = await this.db.building.findMany({
       where: { campusId, status: 'active' },
       orderBy: { createdAt: 'asc' },
@@ -203,22 +214,22 @@ export class BusinessService {
       available: true,
     }));
   }
-  async slots(campusId = 'campus-hbut') {
+  async slots(campusId: string) {
     return this.db.deliverySlot.findMany({
       where: { campusId },
       orderBy: { label: 'asc' },
     });
   }
-  async home() {
+  async home(campusId: string) {
     const [campus, banners, categories, products] = await Promise.all([
-      this.campus(),
+      this.campus(campusId),
       this.db.banner.findMany({
-        where: { status: 'active' },
+        where: { campusId, status: 'active' },
         orderBy: { sort: 'asc' },
       }),
       this.categories(),
       this.db.product.findMany({
-        where: { status: 'on-sale' },
+        where: { campusId, status: 'on-sale' },
         orderBy: { sales: 'desc' },
         take: 18,
       }),
@@ -230,9 +241,10 @@ export class BusinessService {
       hotProducts: products.map((p) => this.productView(p)),
     };
   }
-  async listProducts(categoryId?: string, keyword?: string) {
+  async listProducts(campusId: string, categoryId?: string, keyword?: string) {
     const products = await this.db.product.findMany({
       where: {
+        campusId,
         status: 'on-sale',
         ...(categoryId && categoryId !== 'all' ? { categoryId } : {}),
         ...(keyword
@@ -243,9 +255,9 @@ export class BusinessService {
     });
     return products.map((p) => this.productView(p));
   }
-  async product(id: string) {
+  async product(id: string, campusId: string) {
     const item = await this.db.product.findFirst({
-      where: { id, status: 'on-sale' },
+      where: { id, campusId, status: 'on-sale' },
     });
     if (!item) throw new NotFoundException('商品不存在');
     return this.productView(item);
@@ -347,11 +359,11 @@ export class BusinessService {
     }
     return { cart, address };
   }
-  async checkout(userId: string, dto: CreateOrderDto) {
+  async checkout(userId: string, campusId: string, dto: CreateOrderDto) {
     const { cart } = await this.validateQuote(userId, dto);
     const deliveryFee = dto.deliveryMode === 'instant' ? 4 : 2;
     const userCoupon = dto.couponId
-      ? await this.validateUserCoupon(userId, dto.couponId)
+      ? await this.validateUserCoupon(userId, dto.couponId, campusId)
       : null;
     const discount = userCoupon ? number(userCoupon.coupon.amount) : 0;
     if (userCoupon && cart.productAmount < number(userCoupon.coupon.threshold))
@@ -369,9 +381,9 @@ export class BusinessService {
           : `${dto.deliverySlot} 送达`,
     };
   }
-  async createOrder(userId: string, dto: CreateOrderDto) {
+  async createOrder(userId: string, campusId: string, dto: CreateOrderDto) {
     const { address } = await this.validateQuote(userId, dto);
-    const settlement = await this.checkout(userId, dto);
+    const settlement = await this.checkout(userId, campusId, dto);
     const now = new Date();
     const timeline: TimelineStep[] = [
       {
@@ -688,7 +700,7 @@ export class BusinessService {
         where: { userId, campusId },
         data: { isDefault: false },
       });
-    const campus = await this.campus();
+    const campus = await this.campus(campusId);
     const building = await this.db.building.findFirst({
       where: { campusId, name: dto.buildingName },
     });
@@ -750,13 +762,22 @@ export class BusinessService {
     ]);
     return { ...found, isDefault: true };
   }
-  async availableCoupons(userId: string, dto: CreateOrderDto) {
+  async availableCoupons(
+    userId: string,
+    campusId: string,
+    dto: CreateOrderDto,
+  ) {
     const { cart } = await this.validateQuote(userId, {
       ...dto,
       couponId: undefined,
     });
     const rows = await this.db.userCoupon.findMany({
-      where: { userId, status: { in: ['claimed', 'released'] } },
+      // 只看本校发放的券（跨校园券不可用）。
+      where: {
+        userId,
+        status: { in: ['claimed', 'released'] },
+        coupon: { campusId },
+      },
       include: { coupon: true },
       orderBy: { claimedAt: 'desc' },
     });

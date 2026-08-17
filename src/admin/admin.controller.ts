@@ -54,18 +54,18 @@ export class AdminController {
   })
   async dashboard(@Req() req: AuthRequest) {
     this.authorize(req);
-    return ok(await this.service.dashboard());
+    return ok(await this.service.dashboard(req.user.campusId));
   }
   @Get('products') async products(@Req() req: AuthRequest) {
     this.authorize(req);
-    return ok(await this.service.products());
+    return ok(await this.service.products(req.user.campusId));
   }
   @Post('products/barcode/lookup') async lookupBarcode(
     @Req() req: AuthRequest,
     @Body() body: BarcodeDto,
   ) {
     this.authorize(req);
-    return ok(await this.service.lookupBarcode(body.barcode));
+    return ok(await this.service.lookupBarcode(body.barcode, req.user.campusId));
   }
   @Post('products') async createProduct(
     @Req() req: AuthRequest,
@@ -73,7 +73,7 @@ export class AdminController {
   ) {
     this.authorize(req);
     return ok(
-      await this.service.createProduct(body, req.user.id),
+      await this.service.createProduct(body, req.user.id, req.user.campusId),
       '商品已创建',
     );
   }
@@ -83,46 +83,59 @@ export class AdminController {
     @Body() body: { price?: number; stock?: number },
   ) {
     this.authorize(req);
-    return ok(await this.service.updateProduct(id, body, req.user.id));
+    return ok(
+        await this.service.updateProduct(
+          id,
+          body,
+          req.user.id,
+          req.user.campusId,
+        ),
+      );
   }
   @Get('inventory') async inventory(@Req() req: AuthRequest) {
     this.authorize(req);
-    return ok(await this.service.inventory());
+    return ok(await this.service.inventory(req.user.campusId));
   }
   @Post('inventory/stock-in') async stockIn(
     @Req() req: AuthRequest,
     @Body() body: StockInDto,
   ) {
     this.authorize(req);
-    return ok(await this.service.stockIn(body, req.user.id), '入库完成');
+    return ok(
+      await this.service.stockIn(body, req.user.id, req.user.campusId),
+      '入库完成',
+    );
   }
   @Post('inventory/adjust') async adjustStock(
     @Req() req: AuthRequest,
     @Body() body: AdjustStockDto,
   ) {
     this.authorize(req);
-    return ok(await this.service.adjustStock(body, req.user.id), '库存已调整');
+    return ok(
+      await this.service.adjustStock(body, req.user.id, req.user.campusId),
+      '库存已调整',
+    );
   }
   @Get('inventory/txns') async inventoryTxns(
     @Req() req: AuthRequest,
     @Query('productId') productId?: string,
   ) {
     this.authorize(req);
-    return ok(await this.service.inventoryTxns(productId));
+    return ok(await this.service.inventoryTxns(productId, req.user.campusId));
   }
   @Get('orders') async orders(
     @Req() req: AuthRequest,
     @Query('status') status?: string,
   ) {
     this.authorize(req);
-    return ok(await this.service.orders(status));
+    return ok(await this.service.orders(status, req.user.campusId));
   }
   @Get('orders/:id') async order(
     @Req() req: AuthRequest,
     @Param('id') id: string,
   ) {
     this.authorize(req);
-    return ok(await this.service.order(id));
+    return ok(await this.service.order(id, req.user.campusId));
   }
   @Post('orders/:id/actions/:action') async orderAction(
     @Req() req: AuthRequest,
@@ -130,18 +143,28 @@ export class AdminController {
     @Param('action') action: string,
   ) {
     this.authorize(req);
-    return ok(await this.service.orderAction(id, action, req.user.id));
+    return ok(
+      await this.service.orderAction(
+        id,
+        action,
+        req.user.id,
+        req.user.campusId,
+      ),
+    );
   }
   @Get('staff') async staff(@Req() req: AuthRequest) {
     this.authorize(req);
-    return ok(await this.service.staff());
+    return ok(await this.service.staff(req.user.campusId));
   }
   @Post('staff') async createStaff(
     @Req() req: AuthRequest,
     @Body() body: CreateStaffDto,
   ) {
     this.authorize(req);
-    return ok(await this.service.createStaff(body, req.user.id), '员工已创建');
+    return ok(
+      await this.service.createStaff(body, req.user.id, req.user.campusId),
+      '员工已创建',
+    );
   }
   @Patch('staff/:id') async updateStaff(
     @Req() req: AuthRequest,
@@ -149,18 +172,28 @@ export class AdminController {
     @Body() body: UpdateStaffDto,
   ) {
     this.authorize(req);
-    return ok(await this.service.updateStaff(id, body, req.user.id));
+    return ok(
+      await this.service.updateStaff(
+        id,
+        body,
+        req.user.id,
+        req.user.campusId,
+      ),
+    );
   }
   @Delete('staff/:id') async deleteStaff(
     @Req() req: AuthRequest,
     @Param('id') id: string,
   ) {
     this.authorize(req);
-    return ok(await this.service.deleteStaff(id, req.user.id), '员工已删除');
+    return ok(
+      await this.service.deleteStaff(id, req.user.id, req.user.campusId),
+      '员工已删除',
+    );
   }
   @Get('buildings') async buildings(@Req() req: AuthRequest) {
     this.authorize(req);
-    return ok(await this.service.buildings());
+    return ok(await this.service.buildings(req.user.campusId));
   }
   @Post('buildings') async createBuilding(
     @Req() req: AuthRequest,
@@ -168,7 +201,7 @@ export class AdminController {
   ) {
     this.authorize(req);
     return ok(
-      await this.service.createBuilding(body, req.user.id),
+      await this.service.createBuilding(body, req.user.id, req.user.campusId),
       '楼栋已创建',
     );
   }
@@ -178,21 +211,31 @@ export class AdminController {
     @Body() body: UpdateBuildingDto,
   ) {
     this.authorize(req);
-    return ok(await this.service.updateBuilding(id, body, req.user.id));
+    return ok(
+      await this.service.updateBuilding(
+        id,
+        body,
+        req.user.id,
+        req.user.campusId,
+      ),
+    );
   }
   @Delete('buildings/:id') async deleteBuilding(
     @Req() req: AuthRequest,
     @Param('id') id: string,
   ) {
     this.authorize(req);
-    return ok(await this.service.deleteBuilding(id, req.user.id), '楼栋已删除');
+    return ok(
+      await this.service.deleteBuilding(id, req.user.id, req.user.campusId),
+      '楼栋已删除',
+    );
   }
   @Get('buildings/:id/rooms') async rooms(
     @Req() req: AuthRequest,
     @Param('id') id: string,
   ) {
     this.authorize(req);
-    return ok(await this.service.rooms(id));
+    return ok(await this.service.rooms(id, req.user.campusId));
   }
   @Post('buildings/:id/rooms') async createRoom(
     @Req() req: AuthRequest,
@@ -201,7 +244,7 @@ export class AdminController {
   ) {
     this.authorize(req);
     return ok(
-      await this.service.createRoom(id, body, req.user.id),
+      await this.service.createRoom(id, body, req.user.id, req.user.campusId),
       '寝室已创建',
     );
   }
@@ -212,13 +255,13 @@ export class AdminController {
   ) {
     this.authorize(req);
     return ok(
-      await this.service.deleteRoom(id, roomId, req.user.id),
+      await this.service.deleteRoom(id, roomId, req.user.id, req.user.campusId),
       '寝室已删除',
     );
   }
   @Get('after-sales') async afterSales(@Req() req: AuthRequest) {
     this.authorize(req);
-    return ok(await this.service.afterSales());
+    return ok(await this.service.afterSales(req.user.campusId));
   }
   @Post('after-sales/:id/review') async review(
     @Req() req: AuthRequest,
@@ -227,12 +270,17 @@ export class AdminController {
   ) {
     this.authorize(req);
     return ok(
-      await this.service.reviewAfterSale(id, body.approved, req.user.id),
+      await this.service.reviewAfterSale(
+        id,
+        body.approved,
+        req.user.id,
+        req.user.campusId,
+      ),
     );
   }
   @Get('settlements') async settlements(@Req() req: AuthRequest) {
     this.authorize(req);
-    return ok(await this.service.settlements());
+    return ok(await this.service.settlements(req.user.campusId));
   }
   @Get('campuses') async campuses(@Req() req: AuthRequest) {
     this.authorize(req);
@@ -240,11 +288,11 @@ export class AdminController {
   }
   @Get('coupons') async coupons(@Req() req: AuthRequest) {
     this.authorize(req);
-    return ok(await this.service.coupons());
+    return ok(await this.service.coupons(req.user.campusId));
   }
   @Get('users') async users(@Req() req: AuthRequest) {
     this.authorize(req);
-    return ok(await this.service.users());
+    return ok(await this.service.users(req.user.campusId));
   }
   @Post('coupons') async createCoupon(
     @Req() req: AuthRequest,
@@ -252,7 +300,7 @@ export class AdminController {
   ) {
     this.authorize(req);
     return ok(
-      await this.service.createCoupon(body, req.user.id),
+      await this.service.createCoupon(body, req.user.id, req.user.campusId),
       '优惠券已创建',
     );
   }
@@ -262,7 +310,14 @@ export class AdminController {
     @Body() body: UpdateCouponDto,
   ) {
     this.authorize(req);
-    return ok(await this.service.updateCoupon(id, body, req.user.id));
+    return ok(
+      await this.service.updateCoupon(
+        id,
+        body,
+        req.user.id,
+        req.user.campusId,
+      ),
+    );
   }
   @Post('coupons/:id/issue') async issueCoupon(
     @Req() req: AuthRequest,
@@ -271,12 +326,12 @@ export class AdminController {
   ) {
     this.authorize(req);
     return ok(
-      await this.service.issueCoupon(id, body, req.user.id),
+      await this.service.issueCoupon(id, body, req.user.id, req.user.campusId),
       '发放完成',
     );
   }
   @Get('audit-logs') async audits(@Req() req: AuthRequest) {
     this.authorize(req);
-    return ok(await this.service.auditLogs());
+    return ok(await this.service.auditLogs(req.user.campusId));
   }
 }
