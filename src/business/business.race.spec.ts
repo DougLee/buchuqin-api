@@ -47,17 +47,22 @@ describe('BusinessService concurrency races (PostgreSQL)', () => {
       weight: Number(product.weight),
       categoryId: product.categoryId,
     };
-    const steps = ['paid', 'picking', 'first-mile', 'last-mile'].map(
-      (key, index) => ({
-        key,
-        title: key,
-        description: '',
-        done: index < (overrides.timelineDone ?? 0),
-        ...(index < (overrides.timelineDone ?? 0)
-          ? { time: new Date().toISOString() }
-          : {}),
-      }),
-    );
+    // 12 态状态机 timeline（IK93GQ）：5 节点，含"楼下待交接"。
+    const steps = [
+      'paid',
+      'picking',
+      'first-mile',
+      'waiting-handover',
+      'last-mile',
+    ].map((key, index) => ({
+      key,
+      title: key,
+      description: '',
+      done: index < (overrides.timelineDone ?? 0),
+      ...(index < (overrides.timelineDone ?? 0)
+        ? { time: new Date().toISOString() }
+        : {}),
+    }));
     const order = await db.order.create({
       data: {
         orderNo: `BCQTEST${Date.now()}${Math.random()
@@ -209,10 +214,10 @@ describe('BusinessService concurrency races (PostgreSQL)', () => {
 
   it('concurrent rider accept: only one rider wins the task', async () => {
     const order = await makeOrder({
-      status: 'paid',
-      statusText: '仓库正在接单',
-      timelineDone: 1,
-      package: json({ id: 'PKG-RACE-01', status: 'paid' }),
+      status: 'waiting-first-mile',
+      statusText: '拣货完成，待配送员接单',
+      timelineDone: 2,
+      package: json({ id: 'PKG-RACE-01', status: 'waiting-pick' }),
     });
     const results = await Promise.allSettled([
       fulfillment.updateTask(
@@ -223,7 +228,7 @@ describe('BusinessService concurrency races (PostgreSQL)', () => {
       fulfillment.updateTask(
         'staff-rider-002',
         `task-parttime-rider-${order.id}`,
-        'accept',
+        'grab',
       ),
     ]);
     expect(results.filter((x) => x.status === 'fulfilled')).toHaveLength(1);
@@ -232,16 +237,18 @@ describe('BusinessService concurrency races (PostgreSQL)', () => {
     expect(message(rejected[0].reason)).toContain('任务已被其他配送员接取');
     const final = await db.order.findUniqueOrThrow({ where: { id: order.id } });
     expect(['staff-rider-001', 'staff-rider-002']).toContain(final.riderId);
+    // 抢单只写归属，状态保持待一级配送。
+    expect(final.status).toBe('waiting-first-mile');
     expect(final.statusText).toBe('配送员已接单');
   });
 
   it('pickup validates the real package code', async () => {
     const order = await makeOrder({
-      status: 'paid',
-      statusText: '仓库正在接单',
-      timelineDone: 1,
+      status: 'waiting-first-mile',
+      statusText: '拣货完成，待配送员接单',
+      timelineDone: 2,
       riderId: 'staff-rider-001',
-      package: json({ id: 'PKG-VERIFY-01', status: 'paid' }),
+      package: json({ id: 'PKG-VERIFY-01', status: 'waiting-pick' }),
     });
     const taskId = `task-fulltime-rider-${order.id}`;
     await expect(
@@ -258,18 +265,19 @@ describe('BusinessService concurrency races (PostgreSQL)', () => {
       },
     );
     expect(task.status).toBe('delivering');
-    expect(
-      (await db.order.findUniqueOrThrow({ where: { id: order.id } })).status,
-    ).toBe('first-mile');
+    // 取货后停留在待一级配送（package=picked），出发动作才进入 first-mile。
+    const final = await db.order.findUniqueOrThrow({ where: { id: order.id } });
+    expect(final.status).toBe('waiting-first-mile');
+    expect((final.package as any).status).toBe('picked');
   });
 
   it('handover validates the room qrToken', async () => {
     const order = await makeOrder({
-      status: 'last-mile',
+      status: 'waiting-handover',
       statusText: '已到楼下，等待楼长交接',
-      timelineDone: 3,
+      timelineDone: 4,
       riderId: 'staff-rider-001',
-      package: json({ id: 'PKG-VERIFY-02', status: 'last-mile' }),
+      package: json({ id: 'PKG-VERIFY-02', status: 'picked' }),
     });
     const taskId = `task-fulltime-rider-${order.id}`;
     await expect(
@@ -289,9 +297,10 @@ describe('BusinessService concurrency races (PostgreSQL)', () => {
       },
     );
     expect(task.id).toBe(taskId);
+    // 交接确认不改状态，仍为楼下待交接（楼长 receive 后才进入 last-mile）。
     expect(
       (await db.order.findUniqueOrThrow({ where: { id: order.id } })).status,
-    ).toBe('last-mile');
+    ).toBe('waiting-handover');
   });
 
   it('expirePendingOrders only closes orders still pending payment', async () => {

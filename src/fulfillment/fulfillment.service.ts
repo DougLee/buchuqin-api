@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
+import { markTimelineStep } from '../common/order-state';
 import type { LeaveRequestDto, TaskActionDto } from './dto';
 
 export type StaffRole =
@@ -95,11 +96,16 @@ export class FulfillmentService {
     const mine = this.attributedOrders(s, orders);
     const startOfToday = new Date();
     startOfToday.setHours(0, 0, 0, 0);
+    // 送达时间优先取送达凭证时间（delivered 动作写入），历史单回退 timeline 末节点。
     const deliveredAt = (order: (typeof orders)[number]) => {
-      const time = (order.timeline as JsonMap[]).at(-1)?.time;
+      const proof = (order.package as JsonMap | null)?.proof as JsonMap | undefined;
+      const time = proof?.time ?? (order.timeline as JsonMap[]).at(-1)?.time;
       return time ? new Date(String(time)) : null;
     };
-    const completed = mine.filter((x) => x.status === 'completed');
+    // delivered（已送达待确认）计入完成口径。
+    const completed = mine.filter((x) =>
+      ['delivered', 'completed'].includes(x.status),
+    );
     const completedToday = completed.filter(
       (x) => (deliveredAt(x)?.getTime() ?? 0) >= startOfToday.getTime(),
     );
@@ -119,7 +125,14 @@ export class FulfillmentService {
     return {
       period: 'today',
       pending: mine.filter((x) =>
-        ['paid', 'picking', 'first-mile', 'last-mile'].includes(x.status),
+        [
+          'paid',
+          'picking',
+          'waiting-first-mile',
+          'first-mile',
+          'waiting-handover',
+          'last-mile',
+        ].includes(x.status),
       ).length,
       completed: completedToday.length,
       completedTotal: completed.length,
@@ -170,9 +183,11 @@ export class FulfillmentService {
   async updateTask(
     staffId: string,
     id: string,
-    action: string,
+    rawAction: string,
     payload: TaskActionDto = {},
   ) {
+    // grab（抢单池，IK8W5U）与 accept 同语义：条件更新抢归属互斥。
+    const action = rawAction === 'grab' ? 'accept' : rawAction;
     const staff = await this.profile(staffId);
     const prefix = `task-${staff.role}-`;
     if (!id.startsWith(prefix)) throw new NotFoundException('履约任务不存在');
@@ -184,6 +199,12 @@ export class FulfillmentService {
       });
       if (!order) throw new NotFoundException('履约任务不存在');
       const manager = staff.role === 'building-manager';
+      // 动作迁移表（12 态状态机，迁移表全文见 src/common/order-state.ts，IK93GQ）：
+      // accept 抢单只写归属不改状态；pickup 取货后停留 waiting-first-mile（package=picked）；
+      // depart 后=first-mile，arrive 后=waiting-handover，receive 后=last-mile，
+      // delivered 与 completed 分离（用户 confirm-receipt 才终态完成）。
+      // 旧机兼容：paid/picking 仍可 accept/pickup（并入 waiting-first-mile）、
+      // first-mile 仍可 receive、last-mile 仍可 handover。
       const maps: Record<
         string,
         { status: string; text: string; from: string[] }
@@ -192,7 +213,7 @@ export class FulfillmentService {
             receive: {
               status: 'last-mile',
               text: '楼长已接货',
-              from: ['first-mile', 'last-mile'],
+              from: ['waiting-handover', 'first-mile', 'last-mile'],
             },
             'start-delivery': {
               status: 'last-mile',
@@ -200,7 +221,7 @@ export class FulfillmentService {
               from: ['last-mile'],
             },
             delivered: {
-              status: 'completed',
+              status: 'delivered',
               text: '已送达寝室',
               from: ['last-mile'],
             },
@@ -219,32 +240,38 @@ export class FulfillmentService {
             accept: {
               status: order.status,
               text: '配送员已接单',
-              from: ['paid', 'picking'],
+              from: ['waiting-first-mile', 'paid', 'picking'],
             },
             pickup: {
-              status: 'first-mile',
-              text: '已扫码取货',
-              from: ['paid', 'picking'],
+              status: 'waiting-first-mile',
+              text: '已扫码取货，待出发',
+              from: ['waiting-first-mile', 'paid', 'picking'],
             },
             depart: {
               status: 'first-mile',
               text: '已从校园仓出发',
-              from: ['first-mile'],
+              from: ['waiting-first-mile', 'paid', 'picking'],
             },
             arrive: {
-              status: 'last-mile',
+              status: 'waiting-handover',
               text: '已到楼下，等待楼长交接',
               from: ['first-mile'],
             },
             handover: {
-              status: 'last-mile',
+              status: order.status,
               text: '已与楼长完成交接',
-              from: ['last-mile'],
+              from: ['waiting-handover', 'last-mile'],
             },
             transfer: {
               status: 'exception',
               text: '转单申请处理中',
-              from: ['paid', 'picking', 'first-mile'],
+              from: [
+                'waiting-first-mile',
+                'first-mile',
+                'waiting-handover',
+                'paid',
+                'picking',
+              ],
             },
           };
       const next = maps[action];
@@ -293,23 +320,22 @@ export class FulfillmentService {
         if (!room || payload.handoverCode!.trim() !== room.qrToken)
           throw new BadRequestException('交接码不正确，请扫描寝室门口二维码');
       }
-      const timeline = (order.timeline as JsonMap[]).map((x) => ({ ...x }));
-      const keyByStatus: Record<string, string> = {
-        'first-mile': 'first-mile',
-        'last-mile': 'last-mile',
-        completed: 'completed',
-      };
-      const step = timeline.find((x) => x.key === keyByStatus[next.status]);
-      if (step) {
-        step.done = true;
-        step.time = new Date().toISOString();
+      // 出发前置校验：必须先扫码取货（package.status=picked；无包裹信息的旧单放行）。
+      if (action === 'depart') {
+        const pkg = order.package as JsonMap | null;
+        if (pkg && pkg.status !== 'picked')
+          throw new BadRequestException('请先扫码取货再出发');
       }
-      // delivered 时把送达凭证（照片/定位/坐标）写入包裹信息，供绩效凭证完整率统计。
+      // 进入目标状态时点亮对应 timeline 节点（楼下待交接节点由 arrive 写入）。
+      const timeline = markTimelineStep(order.timeline, next.status);
+      // delivered 时把送达凭证（照片/定位/坐标）写入包裹信息，供绩效凭证完整率统计；
+      // pickup 时把包裹标记为已取货（depart 的前置条件）。
       const packageUpdate =
         action === 'delivered'
           ? {
               package: {
                 ...((order.package as JsonMap | null) ?? {}),
+                status: 'delivered',
                 proof: {
                   images: payload.images ?? [],
                   location: payload.location ?? '',
@@ -319,14 +345,21 @@ export class FulfillmentService {
                 },
               } as Prisma.InputJsonValue,
             }
-          : {};
-      if (action === 'accept') {
-        // 抢单互斥：riderId 为空才允许写入归属，并发的第二个 accept count=0 失败。
+          : action === 'pickup'
+            ? {
+                package: {
+                  ...((order.package as JsonMap | null) ?? {}),
+                  status: 'picked',
+                } as Prisma.InputJsonValue,
+              }
+            : {};
+      if (action === 'accept' || action === 'grab') {
+        // 抢单互斥：riderId 为空才允许写入归属，并发的第二个 accept/grab count=0 失败。
         const won = await tx.order.updateMany({
           where: {
             id: order.id,
             riderId: null,
-            status: { in: ['paid', 'picking'] },
+            status: { in: ['waiting-first-mile', 'paid', 'picking'] },
           },
           data: { riderId: staffId, statusText: '配送员已接单' },
         });
@@ -433,19 +466,32 @@ export class FulfillmentService {
     const a = order.address as JsonMap,
       items = order.items as JsonMap[],
       manager = role === 'building-manager';
-    // 骑手视图映射修复：last-mile/exception/已被本人接走但未取货的单
-    // 不得再显示为“待接单”（available 仅保留给无归属的 paid/picking 单）。
+    const pkg = order.package as JsonMap | null;
+    // 12 态状态机的任务视图（IK93GQ）：
+    // available 仅保留给无归属的待一级配送单（waiting-first-mile/paid/picking）。
     let status: string, statusText: string;
-    if (order.status === 'completed') {
+    if (['completed', 'delivered'].includes(order.status)) {
       status = 'completed';
-      statusText = '已完成';
-    } else if (manager) {
-      status = order.status === 'last-mile' ? 'delivering' : 'waiting';
-      statusText = status === 'delivering' ? '配送中' : '待下楼接货';
-    } else if (order.status === 'exception') {
+      statusText = order.status === 'delivered' ? '已送达，待确认收货' : '已完成';
+    } else if (['exception', 'after-sales'].includes(order.status)) {
       status = 'exception';
       statusText = '异常处理中';
+    } else if (manager) {
+      if (order.status === 'last-mile') {
+        status = 'delivering';
+        statusText = '配送中';
+      } else if (order.status === 'waiting-handover') {
+        status = 'waiting';
+        statusText = '待下楼接货';
+      } else {
+        status = 'waiting';
+        statusText = '待到楼';
+      }
     } else if (order.status === 'last-mile') {
+      // 旧机残留（arrive 直达 last-mile 且未交接）仍归骑手待交接。
+      status = 'waiting';
+      statusText = '待交接';
+    } else if (order.status === 'waiting-handover') {
       status = 'waiting';
       statusText = '待交接';
     } else if (order.status === 'first-mile') {
@@ -453,7 +499,7 @@ export class FulfillmentService {
       statusText = '配送中';
     } else if (order.riderId) {
       status = 'delivering';
-      statusText = '已接单，待取货';
+      statusText = pkg?.status === 'picked' ? '已取货，待出发' : '已接单，待取货';
     } else {
       status = 'available';
       statusText = '待接单';
@@ -461,8 +507,7 @@ export class FulfillmentService {
     return {
       id: `task-${role}-${order.id}`,
       orderId: order.id,
-      packageNo:
-        (order.package as JsonMap)?.id ?? `PKG-${order.orderNo.slice(-8)}`,
+      packageNo: pkg?.id ?? `PKG-${order.orderNo.slice(-8)}`,
       status,
       statusText,
       building: String(a.buildingName),
@@ -494,6 +539,7 @@ export class FulfillmentService {
         order.status,
         order.riderId as string | null,
         viewerId,
+        pkg?.status === 'picked',
       ),
     };
   }
@@ -502,19 +548,25 @@ export class FulfillmentService {
     status: string,
     riderId?: string | null,
     viewerId?: string,
+    picked = false,
   ) {
     if (role === 'building-manager') {
-      if (status === 'first-mile') return ['receive'];
+      if (status === 'waiting-handover') return ['receive'];
       if (status === 'last-mile')
         return ['start-delivery', 'delivered', 'absent'];
       return [];
     }
-    if (['paid', 'picking'].includes(status)) {
-      // 无归属单只能抢（accept）；本人已抢到的单才能取货/转单。
-      return riderId ? ['pickup', 'transfer'] : ['accept'];
+    if (['waiting-first-mile', 'paid', 'picking'].includes(status)) {
+      // 无归属单只能抢（accept/grab）；本人已抢到的单才能取货/出发/转单。
+      if (!riderId) return ['accept'];
+      if (viewerId && riderId !== viewerId) return [];
+      return picked ? ['depart', 'transfer'] : ['pickup', 'transfer'];
     }
-    if (status === 'first-mile') return ['depart', 'arrive', 'transfer'];
-    if (status === 'last-mile') return ['handover'];
+    if (status === 'first-mile') return ['arrive', 'transfer'];
+    if (status === 'waiting-handover')
+      return viewerId && riderId === viewerId ? ['handover', 'transfer'] : [];
+    if (status === 'last-mile')
+      return viewerId && riderId === viewerId ? ['handover'] : [];
     return [];
   }
 }

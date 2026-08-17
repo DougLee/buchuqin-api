@@ -31,11 +31,6 @@ export class AdminService {
   }
   /** 履约超时阈值：支付后 90 分钟仍未送达视为超时（MVP 口径，正式 SLA 见规则快照 IK8W5L）。 */
   private static readonly FULFILLMENT_TIMEOUT_MS = 90 * 60 * 1000;
-  /** timeline 指定节点是否已完成。 */
-  private stepDone(order: { timeline: Prisma.JsonValue }, key: string) {
-    const steps = (order.timeline as Array<Record<string, unknown>>) ?? [];
-    return Boolean(steps.find((s) => s.key === key)?.done);
-  }
   async dashboard(campusId: string) {
     const [campus, orders, buildings, trend, activities] = await Promise.all([
       this.db.campus.findFirstOrThrow({ where: { id: campusId } }),
@@ -59,13 +54,17 @@ export class AdminService {
       (x) => x.paidAt && x.paidAt.getTime() >= startOfToday.getTime(),
     );
     const refundedToday = paidToday.filter((x) => x.status === 'refunded');
-    // 送达时间取 timeline 最后节点（与履约端绩效一致）。
+    // 送达时间优先取送达凭证时间（delivered 动作写入），历史单回退 timeline 末节点。
     const deliveredAt = (order: (typeof orders)[number]) => {
+      const proof = (order.package as Record<string, any> | null)?.proof;
       const steps = (order.timeline as Array<Record<string, unknown>>) ?? [];
-      const time = steps.at(-1)?.time;
+      const time = (proof as Record<string, unknown> | undefined)?.time ?? steps.at(-1)?.time;
       return time ? new Date(String(time)) : null;
     };
-    const completed = effective.filter((x) => x.status === 'completed');
+    // 送达口径：delivered（已送达待确认）与 completed 都计入履约完成。
+    const completed = effective.filter((x) =>
+      ['delivered', 'completed'].includes(x.status),
+    );
     // 准时口径：estimatedArrival 是展示文案（“预计 30-60 分钟送达”）不可机读，
     // 暂按“支付当日送达”（当日达）计算，字段语义见 caliber 说明。
     const isOnTime = (order: (typeof orders)[number]) => {
@@ -85,9 +84,6 @@ export class AdminService {
       const end = deliveredAt(x)?.getTime() ?? Date.now();
       return end - x.paidAt.getTime() > AdminService.FULFILLMENT_TIMEOUT_MS;
     }).length;
-    // waiting-handover 尚未拆独立状态（不在本批）：status=last-mile 且
-    // last-mile 节点未完成 = 骑手到楼下等待楼长交接；节点已完成 = 楼长送上楼途中。
-    const lastMileOrders = effective.filter((x) => x.status === 'last-mile');
     // 楼栋排行：优先用 Building 表关联（address.buildingId）取规范楼栋名，
     // 关联缺失（历史快照/手填楼栋）时回退字符串聚合，保证不丢数据。
     const buildingNameById = new Map(buildings.map((b) => [b.id, b.name]));
@@ -115,7 +111,7 @@ export class AdminService {
       };
       item.orders += 1;
       item.revenue += this.num(order.payableAmount);
-      if (order.status === 'completed') {
+      if (['delivered', 'completed'].includes(order.status)) {
         item.completed += 1;
         if (isOnTime(order)) item.onTime += 1;
       }
@@ -150,23 +146,25 @@ export class AdminService {
         refundedAmount: '今日退款金额：今日支付且当前状态为 refunded 的单',
         orders: '今日订单：createdAt >= 今日 0 点的有效单（待支付/已取消排除）',
         newUsers: '今日新用户：createdAt >= 今日 0 点',
-        fulfillmentRate: '履约完成率：全量有效单中 completed 占比',
-        onTimeRate: '准时率：送达时间（timeline 末节点）与支付时间同日（当日达口径）；estimatedArrival 为展示文案不可机读，结构化后切换真实 SLA',
+        fulfillmentRate: '履约完成率：全量有效单中 delivered+completed 占比（送达即完成，确认收货为终态）',
+        onTimeRate: '准时率：送达时间（送达凭证时间，历史单取 timeline 末节点）与支付时间同日（当日达口径）；estimatedArrival 为展示文案不可机读，结构化后切换真实 SLA',
         timeout: `履约超时：支付后超过 ${AdminService.FULFILLMENT_TIMEOUT_MS / 60000} 分钟未送达（未送达单按当前时刻计）`,
-        waitingHandover: 'last-mile 且 last-mile 节点未完成（骑手到楼下等待楼长交接）',
-        lastMile: 'last-mile 且 last-mile 节点已完成（楼长送往寝室途中）',
+        waitingHandover: 'status=waiting-handover（骑手到楼下等待楼长交接，IK93GQ 拆分后的独立状态）',
+        lastMile: 'status=last-mile（楼长送往寝室途中）',
       },
       trend,
       activities,
       fulfillment: {
         waitingPick: effective.filter((x) => x.status === 'picking').length,
+        waitingFirstMile: effective.filter(
+          (x) => x.status === 'waiting-first-mile',
+        ).length,
         firstMile: effective.filter((x) => x.status === 'first-mile').length,
-        waitingHandover: lastMileOrders.filter(
-          (x) => !this.stepDone(x, 'last-mile'),
+        waitingHandover: effective.filter(
+          (x) => x.status === 'waiting-handover',
         ).length,
-        lastMile: lastMileOrders.filter((x) =>
-          this.stepDone(x, 'last-mile'),
-        ).length,
+        lastMile: effective.filter((x) => x.status === 'last-mile').length,
+        delivered: effective.filter((x) => x.status === 'delivered').length,
         timeout,
       },
       hotBuildings: [...buildingMap.values()]

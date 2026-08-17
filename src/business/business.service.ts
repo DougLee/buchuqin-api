@@ -6,6 +6,12 @@ import {
 import { Prisma } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../database/prisma.service';
+import {
+  buildOrderTimeline,
+  DELIVERING_STATUSES,
+  markTimelineStep,
+  statusPhase,
+} from '../common/order-state';
 
 /** @deprecated Seed/test compatibility only; production services use Prisma. */
 export type MockOrder = any;
@@ -59,6 +65,10 @@ export class BusinessService {
   private orderView(order: any) {
     return {
       ...order,
+      // 用户端异常单统一话术（履约侧细分原因由后台/履约端展示）。
+      statusText:
+        order.status === 'exception' ? '履约异常，客服处理中' : order.statusText,
+      statusPhase: statusPhase(order.status),
       productAmount: number(order.productAmount),
       deliveryThreshold: number(order.deliveryThreshold),
       deliveryFee: number(order.deliveryFee),
@@ -385,32 +395,10 @@ export class BusinessService {
     const { address } = await this.validateQuote(userId, dto);
     const settlement = await this.checkout(userId, campusId, dto);
     const now = new Date();
-    const timeline: TimelineStep[] = [
-      {
-        key: 'paid',
-        title: '支付成功',
-        description: '订单将进入校园仓',
-        done: false,
-      },
-      {
-        key: 'picking',
-        title: '仓库拣货',
-        description: '预计 10 分钟完成',
-        done: false,
-      },
-      {
-        key: 'first-mile',
-        title: '送往楼下',
-        description: '配送员取货后展示',
-        done: false,
-      },
-      {
-        key: 'last-mile',
-        title: '送到寝室',
-        description: `${address.buildingName} ${address.room}`,
-        done: false,
-      },
-    ];
+    // 12 态状态机标准 timeline（IK93GQ）：含"楼下待交接"节点。
+    const timeline: TimelineStep[] = buildOrderTimeline(
+      `${address.buildingName} ${address.room}`,
+    );
     const order = await this.db.$transaction(async (tx) => {
       if (dto.couponId) {
         // 下单锁定优惠券：claimed/released -> locked，条件更新防并发重复占用。
@@ -453,16 +441,15 @@ export class BusinessService {
     });
     return this.orderView(order);
   }
-  private async expirePendingOrders(userId: string) {
-    const deadline = new Date(Date.now() - 15 * 60 * 1000);
-    const stale = await this.db.order.findMany({
-      where: {
-        userId,
-        status: 'pending-payment',
-        createdAt: { lt: deadline },
-      },
-      select: { id: true, couponId: true },
-    });
+  /** 待支付超时阈值：15 分钟。 */
+  static readonly PAYMENT_TIMEOUT_MS = 15 * 60 * 1000;
+  /**
+   * 条件关单一批超时待支付单（与并发 pay/cancel 互斥）。
+   * 用户侧懒执行（expirePendingOrders）与支付超时 Cron（IK8W5I）共用。
+   */
+  private async closeStalePendingOrders(
+    stale: Array<{ id: string; couponId: string | null }>,
+  ) {
     if (!stale.length) return;
     await this.db.$transaction(async (tx) => {
       for (const order of stale) {
@@ -480,9 +467,31 @@ export class BusinessService {
       }
     });
   }
+  private async expirePendingOrders(userId: string) {
+    const deadline = new Date(Date.now() - BusinessService.PAYMENT_TIMEOUT_MS);
+    const stale = await this.db.order.findMany({
+      where: {
+        userId,
+        status: 'pending-payment',
+        createdAt: { lt: deadline },
+      },
+      select: { id: true, couponId: true },
+    });
+    await this.closeStalePendingOrders(stale);
+  }
+  /** 全量超时待支付关单（支付超时 Cron 调用，见 IK8W5I）。 */
+  async expireAllPendingOrders() {
+    const deadline = new Date(Date.now() - BusinessService.PAYMENT_TIMEOUT_MS);
+    const stale = await this.db.order.findMany({
+      where: { status: 'pending-payment', createdAt: { lt: deadline } },
+      select: { id: true, couponId: true },
+    });
+    await this.closeStalePendingOrders(stale);
+    return stale.length;
+  }
   async orders(userId: string, status?: string) {
     await this.expirePendingOrders(userId);
-    const delivering = ['paid', 'picking', 'first-mile', 'last-mile'];
+    const delivering = DELIVERING_STATUSES;
     const rows = await this.db.order.findMany({
       where: {
         userId,
@@ -508,7 +517,10 @@ export class BusinessService {
       if (!raw) throw new NotFoundException('订单不存在');
       // 顺序重复点击：已支付直接幂等返回。
       if (raw.status === 'paid') return this.orderView(raw);
-      if (Date.now() - raw.createdAt.getTime() >= 15 * 60 * 1000) {
+      if (
+        Date.now() - raw.createdAt.getTime() >=
+        BusinessService.PAYMENT_TIMEOUT_MS
+      ) {
         // 条件关单：仅当仍待支付才关闭并释放券（与并发 pay/cancel 互斥）。
         await tx.order.updateMany({
           where: { id, status: 'pending-payment' },
@@ -586,34 +598,36 @@ export class BusinessService {
       return this.orderView(updated);
     });
   }
+  /**
+   * 管理端推进履约（orderAction advance）：沿 12 态状态机单步前进。
+   * 迁移表见 src/common/order-state.ts 注释（IK93GQ）。
+   */
+  private static readonly ADVANCE_MAP: Record<string, [string, string]> = {
+    paid: ['picking', '仓库正在拣货'],
+    picking: ['waiting-first-mile', '拣货完成，待配送员接单'],
+    'waiting-first-mile': ['first-mile', '配送员送往楼下'],
+    'first-mile': ['waiting-handover', '已到楼下，等待楼长交接'],
+    'waiting-handover': ['last-mile', '楼长送往寝室'],
+    'last-mile': ['delivered', '已送达寝室'],
+    delivered: ['completed', '已确认收货'],
+  };
   async advance(userId: string, id: string) {
     const raw = await this.db.order.findFirst({ where: { id, userId } });
     if (!raw) throw new NotFoundException('订单不存在');
-    if (!['paid', 'picking', 'first-mile', 'last-mile'].includes(raw.status))
-      throw new BadRequestException('当前状态不可推进履约');
-    const timeline = raw.timeline as unknown as TimelineStep[];
-    const next = timeline.findIndex((s) => !s.done);
-    if (next >= 0)
-      timeline[next] = {
-        ...timeline[next],
-        done: true,
-        time: new Date().toISOString(),
-      };
-    const states = [
-      ['picking', '仓库正在拣货'],
-      ['first-mile', '配送员送往楼下'],
-      ['last-mile', '楼长送往寝室'],
-      ['completed', '已送达寝室'],
-    ];
-    const [status, statusText] = states[Math.max(0, next - 1)] ?? states[3];
-    const updated = await this.db.order.update({
-      where: { id },
+    const next = BusinessService.ADVANCE_MAP[raw.status];
+    if (!next) throw new BadRequestException('当前状态不可推进履约');
+    const [status, statusText] = next;
+    // 条件更新：并发推进（双人操作/与履约端同时改单）时仅一笔生效。
+    const won = await this.db.order.updateMany({
+      where: { id, status: raw.status },
       data: {
-        status: timeline.every((s) => s.done) ? 'completed' : status,
-        statusText: timeline.every((s) => s.done) ? '已送达寝室' : statusText,
-        timeline: json(timeline),
+        status,
+        statusText,
+        timeline: markTimelineStep(raw.timeline, status),
       },
     });
+    if (!won.count) throw new BadRequestException('订单状态已变化');
+    const updated = await this.db.order.findUniqueOrThrow({ where: { id } });
     await this.notify(
       userId,
       'delivery',
@@ -625,23 +639,22 @@ export class BusinessService {
   async confirmReceipt(userId: string, id: string) {
     const raw = await this.db.order.findFirst({ where: { id, userId } });
     if (!raw) throw new NotFoundException('订单不存在');
-    if (!['last-mile', 'completed'].includes(raw.status))
+    // delivered（楼长已送达）与 completed 分离：确认收货才进入终态 completed。
+    if (!['delivered', 'completed'].includes(raw.status))
       throw new BadRequestException('当前状态不可确认收货');
-    const timeline = raw.timeline as unknown as TimelineStep[];
-    const last = timeline.at(-1);
-    if (last) {
-      last.done = true;
-      last.time ??= new Date().toISOString();
-    }
+    if (raw.status === 'completed') return this.orderView(raw);
+    // 条件更新：与售后退款/异常标记并发时仅一笔生效。
+    const won = await this.db.order.updateMany({
+      where: { id, status: 'delivered' },
+      data: {
+        status: 'completed',
+        statusText: '已确认收货',
+        timeline: markTimelineStep(raw.timeline, 'completed'),
+      },
+    });
+    if (!won.count) throw new BadRequestException('订单状态已变化');
     return this.orderView(
-      await this.db.order.update({
-        where: { id },
-        data: {
-          status: 'completed',
-          statusText: '已确认收货',
-          timeline: json(timeline),
-        },
-      }),
+      await this.db.order.findUniqueOrThrow({ where: { id } }),
     );
   }
   async cancel(userId: string, id: string) {
@@ -812,10 +825,13 @@ export class BusinessService {
       where: { id: orderId, userId },
     });
     if (!order) throw new NotFoundException('订单不存在');
-    if (order.status !== 'completed')
+    // delivered（已送达待确认）即可申请售后，不必等用户确认收货。
+    if (!['delivered', 'completed'].includes(order.status))
       throw new BadRequestException('订单送达后才能申请售后');
-    const timeline = order.timeline as unknown as TimelineStep[],
-      deliveredAt = timeline.at(-1)?.time;
+    // 送达时间优先取送达凭证时间（delivered 动作写入），历史单回退 timeline 末节点。
+    const proof = (order.package as unknown as Record<string, any> | null)?.proof;
+    const timeline = order.timeline as unknown as TimelineStep[];
+    const deliveredAt = proof?.time ?? timeline.at(-1)?.time;
     if (
       !deliveredAt ||
       Date.now() - new Date(deliveredAt).getTime() > 24 * 60 * 60 * 1000

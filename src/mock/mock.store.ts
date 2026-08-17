@@ -134,6 +134,7 @@ export class MockStore {
       productIds: string[],
       doneCount: number,
       minutesAgo: number,
+      riderId?: string,
     ): MockOrder => {
       const orderProducts = productIds.map((id) =>
         structuredClone(this.products.find((item) => item.id === id)!),
@@ -148,10 +149,12 @@ export class MockStore {
           .toFixed(2),
       );
       const createdAt = new Date(now - minutesAgo * 60 * 1000).toISOString();
+      // 12 态状态机 timeline（IK93GQ）：5 节点，含"楼下待交接"。
       const steps = [
         ['paid', '支付成功', '订单已进入湖工大校园仓'],
         ['picking', '仓库拣货', '仓储同学正在核对商品'],
-        ['first-mile', '送往楼下', '配送员正在前往西区 5 栋'],
+        ['first-mile', '送往楼下', '配送员取货后前往西区 5 栋'],
+        ['waiting-handover', '楼下待交接', '配送员已到楼下，等待楼长交接'],
         ['last-mile', '送到寝室', '楼长接力送到 612 寝室'],
       ].map(([key, title, description], index) => ({
         key,
@@ -174,6 +177,7 @@ export class MockStore {
         status,
         statusText,
         createdAt,
+        ...(riderId ? { riderId } : {}),
         address: structuredClone(this.addresses[0]),
         deliveryMode: 'instant',
         remark: '',
@@ -185,14 +189,33 @@ export class MockStore {
         discount: 0,
         payableAmount: Number((productAmount + 4).toFixed(2)),
         estimatedArrival:
-          status === 'completed' || status === 'refunded'
+          ['completed', 'delivered', 'refunded'].includes(status)
             ? '已送达寝室'
             : '预计 30-60 分钟送达',
         timeline: steps,
         ...(doneCount > 0
           ? {
               paidAt: steps[0].time,
-              package: { id: `package-${id}`, status },
+              // 取货后的单标记 picked；delivered 单补送达凭证（绩效凭证完整率统计用）。
+              package:
+                status === 'delivered'
+                  ? {
+                      id: `package-${id}`,
+                      status: 'delivered',
+                      proof: {
+                        images: [
+                          '/static/products/generated/strawberry-cup.webp',
+                        ],
+                        location: '西区 5 栋 612 门口',
+                        time: new Date(
+                          now - (minutesAgo - 20) * 60 * 1000,
+                        ).toISOString(),
+                      },
+                    }
+                  : {
+                      id: `package-${id}`,
+                      status: doneCount >= 3 ? 'picked' : status,
+                    },
             }
           : {}),
       };
@@ -206,6 +229,7 @@ export class MockStore {
         0,
         3,
       ),
+      makeOrder('order-mock-paid', 'paid', '仓库正在接单', ['p012'], 1, 8),
       makeOrder(
         'order-mock-picking',
         'picking',
@@ -215,27 +239,73 @@ export class MockStore {
         18,
       ),
       makeOrder(
+        'order-mock-waitingfm',
+        'waiting-first-mile',
+        '拣货完成，待配送员接单',
+        ['p009'],
+        2,
+        26,
+      ),
+      makeOrder(
         'order-mock-firstmile',
         'first-mile',
         '配送员送往楼下',
         ['p013', 'p010'],
         3,
         32,
+        'staff-rider-001',
+      ),
+      makeOrder(
+        'order-mock-waitingho',
+        'waiting-handover',
+        '已到楼下，等待楼长交接',
+        ['p008'],
+        4,
+        40,
+        'staff-rider-001',
+      ),
+      makeOrder(
+        'order-mock-lastmile',
+        'last-mile',
+        '楼长送往寝室',
+        ['p010'],
+        5,
+        46,
+        'staff-rider-001',
+      ),
+      makeOrder(
+        'order-mock-delivered',
+        'delivered',
+        '已送达寝室',
+        ['p011', 'p015'],
+        5,
+        60,
+        'staff-rider-001',
       ),
       makeOrder(
         'order-mock-completed',
         'completed',
-        '已送达寝室',
+        '已确认收货',
         ['p015', 'p008'],
-        4,
+        5,
         180,
+        'staff-rider-001',
+      ),
+      makeOrder(
+        'order-mock-exception',
+        'exception',
+        '用户不在，暂存楼长处',
+        ['p007'],
+        5,
+        120,
+        'staff-rider-001',
       ),
       makeOrder(
         'order-mock-refunded',
         'refunded',
         '售后退款完成',
         ['p015'],
-        4,
+        5,
         1440,
       ),
       makeOrder(
