@@ -71,3 +71,50 @@
 - 用户端 coupons 页：改用 `GET /coupons` 新结构 + 领取按钮；checkout `couponId` 改传 UserCoupon id
 - 履约端 KPI/profile：接真实 performance/commissions 返回
 - admin 四板块写操作 + dashboard trend/activities 消费新字段
+
+---
+
+# 功能与建模批次（2026-08-17，IK93GQ / IK8W5L / IK8W5H / IK8W5I / IK8W5U / IK8W5Y）
+
+## B1 订单状态机 12 态（IK93GQ，PRD §11.1）
+
+状态全集：`pending-payment / paid / picking / waiting-first-mile / first-mile / waiting-handover / last-mile / delivered / completed / cancelled / exception / refunded`
+
+迁移（动作=操作角色）：`pay(用户/回调)`、`advance(admin，单步)`、`grab|accept(骑手)`、`pickup(骑手扫码)`、`depart(骑手)`、`arrive(骑手)`、`handover(骑手扫码)`、`receive(楼长)`、`start-delivery|delivered(楼长)`、`confirm-receipt(用户)`、`transfer|absent|refused|mark-exception → exception`、`售后通过 → refunded`。
+
+- 用户端 `GET /orders`、`GET /orders/:id` 新增 **`statusPhase`**（`payment|fulfillment|done|exception`），前端 tab 直接映射；`delivering` 过滤参数含全部履约中状态（含 delivered）
+- timeline 5 节点：`paid / picking / first-mile / waiting-handover（楼下待交接，arrive 写入）/ last-mile`
+- exception 单用户端统一展示 `statusText:"履约异常，客服处理中"`；`delivered`（已送达待确认）与 `completed`（确认收货）已分离，`POST /orders/:id/confirm-receipt` 仅接受 delivered
+- 售后：`delivered|completed` 均可申请（24h 从送达凭证时间起算）
+
+## B2 财务结算（IK8W5L）
+
+- `GET /admin/commission-rules` — 列表；`POST /admin/commission-rules` — `{ buildingId?, floor?, weightFrom?, weightTo?, mode?, price, effectiveAt? }`（维度 null=通配，命中维度多者优先、版本高者优先）；`PATCH /admin/commission-rules/:id` — `{ status?: active|disabled, price? }`（价格/状态变更版本自增，在途提成不追溯）
+- `GET /admin/settlements?month=YYYY-MM` — 月度账单 BmBill 物化返回 `{ id, staffId, staffName, roleText, period, baseSalary, commissionTotal, adjustment, payable, status(pending-review|confirmed|paid), confirmedAt, paidAt }`（楼长底薪 500；已确认/已支付账单金额锁定）
+- `POST /admin/settlements/:id/confirm` / `:id/pay` — 条件流转（未确认不可支付、重复操作 400）；pay 时同期 pending 提成置 settled
+- `GET /fulfillment/commissions?month=YYYY-MM` — 从 Commission 记录读：`{ month, baseSalary, deliveryIncome, adjustment, payable, records:[{ id, orderNo, building, amount, status, fallback, remark, createdAt }] }`
+- 任务卡 `commission` 字段与绩效 `income` 均与 Commission 记录同口径（未送达单按规则预览，无规则兜底 3 元/单并标 fallback）
+- 退款跨期调整：settled 提成 → 负向 Commission(kind=adjustment) 挂当前月；pending 提成原地翻负对冲
+
+## B3 微信登录（IK8W5H，env 门控）
+
+- `POST /auth/wechat-login` — `{ code }` → wx.code2Session；`WX_APPID/WX_SECRET` 缺失返回 **501 `"微信登录未配置"`**（不回退 test-login）；成功 `{ token, user:{ id, campusId, role:'user', nickname, phone, avatar } }`（首登昵称"微信用户"）
+- `POST /auth/phone` — `{ phone }`（用户 token）绑定手机号；简化版：直接传号，真实实现需小程序手机号授权码（见代码 TODO）
+
+## B4 微信支付（IK8W5I，env 门控 + mock 回退）
+
+- `POST /payments/wechat/prepay` — `{ orderId }`（用户 token）；商户 env 齐备 → `{ mock:false, payParams:{ appId, timeStamp, nonceStr, package, signType:'RSA', paySign } }`；缺失 → `{ mock:true, orderId, orderNo, amount, hint }`（前端改走 `POST /orders/:id/pay` 演示通道，**原通道保留**）
+- `POST /payments/wechat/notify` — 微信回调（公开路由，响应裸 `{ code:'SUCCESS' }`）；AES-256-GCM 解密 + 复用 pay 条件更新幂等；验签 TODO；未配置 501
+- `GET /payments/:orderId/status` — `{ orderId, orderNo, status, statusText, paid, paidAt, amount, mock }`
+- 支付超时关单：Cron 每分钟扫 pending-payment 超 15 分钟（与用户侧懒执行并存）
+- env：`WX_MCH_ID / WX_APIV3_KEY / WX_SERIAL_NO / WX_PRIVATE_KEY_PATH / WX_NOTIFY_URL`（见 .env.example）
+
+## B5 抢单池与调配（IK8W5U / IK8W5Y）
+
+- `GET /fulfillment/tasks/available` — 骑手角色专用（楼长 403）：本校园 `waiting-first-mile` 且 `riderId=null` 的任务（老单优先，金额为规则预览）
+- `POST /fulfillment/tasks/:taskId/grab` — 与 accept 同语义同互斥（`taskId` 格式 `task-{role}-{orderId}`）
+- `GET /admin/leave-requests` — 含 `staff:{ name, role, roleText, building, buildingId }`
+- `POST /admin/dispatch-invitations` — `{ targetStaffId, buildingId, startAt, endAt, reward? }`；校验目标为在职楼长且非该楼绑定楼长
+- `GET /admin/dispatch-invitations` / `POST /admin/dispatch-invitations/:id/cancel`（仅 invited 可取消，条件更新）
+- 闭环：楼长请假（履约端已有）→ 平台邀请 → 楼长在履约端 accept（已有）
+
