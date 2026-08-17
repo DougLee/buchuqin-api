@@ -643,6 +643,10 @@ export class FulfillmentService {
       building: String(a.buildingName),
       floor: Number(a.floor),
       room: String(a.room),
+      // 收件人联系渠道（IK9AWW）：配送员「用户不在」时可直接拨打；
+      // 展示端做脱敏，拨号需真实号。隐私升级（虚拟中转号）后续评估。
+      recipientName: String(a.contactName ?? ''),
+      recipientPhone: String(a.phone ?? ''),
       itemCount: order.totalQuantity,
       weight: Number(
         items
