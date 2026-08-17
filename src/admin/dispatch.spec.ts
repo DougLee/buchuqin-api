@@ -96,14 +96,20 @@ describe('grab pool & dispatch invitations (IK8W5U/IK8W5Y)', () => {
 
   it('available pool lists only unclaimed waiting-first-mile orders of the campus', async () => {
     const claimable = await makeOrder('waiting-first-mile');
-    await makeOrder('waiting-first-mile', RIDER_1); // 已被接走
+    const claimed = await makeOrder('waiting-first-mile', RIDER_1); // 已被接走
     await makeOrder('paid'); // 仓库还没拣完，不可抢
     await makeOrder('first-mile', RIDER_1); // 已出发
     const pool = await fulfillment.availableTasks(RIDER_2);
     const ids = pool.map((x) => x.orderId);
-    expect(ids).toEqual([claimable.id]);
-    expect(pool[0].status).toBe('available');
-    expect(pool[0].availableActions).toEqual(['accept']);
+    // 池是全校园视图（含 seed 样本单），断言包含/排除而非全等：
+    // 无归属待接单在池中，已被接走/未拣完/已出发的单不在池中。
+    expect(ids).toContain(claimable.id);
+    expect(ids).not.toContain(claimed.id);
+    expect(
+      pool.every((x) => x.status === 'available' && x.availableActions.includes('accept')),
+    ).toBe(true);
+    const claimableView = pool.find((x) => x.orderId === claimable.id)!;
+    expect(claimableView.availableActions).toEqual(['accept']);
   });
 
   it('grab claims exclusively and removes the order from the pool', async () => {
