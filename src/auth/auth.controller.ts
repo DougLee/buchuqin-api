@@ -31,6 +31,13 @@ const IDENTITIES = [
   'admin',
 ] as const;
 
+/** 后台角色别名（IK8W5W）：admin 系细分岗位，token 不挂 Staff 记录，id 用 {role}-001 占位。 */
+const ADMIN_ROLE_ALIASES: Record<string, string> = {
+  operations: '平台运营',
+  warehouse: '仓储管理',
+  finance: '财务管理',
+};
+
 class TestLoginDto {
   // 支持 identity 角色别名，也支持具体 staffNo / staff id（演示后台增删的账号）。
   @IsString()
@@ -93,6 +100,23 @@ export class AuthController {
           ...claims,
           nickname: '平台管理员',
           phone: '027****8899',
+          avatar: '',
+        },
+      });
+    }
+    // 后台角色别名（IK8W5W）：各发对应 role 的 token，campusId 固定管理端默认校园。
+    if (body.identity in ADMIN_ROLE_ALIASES) {
+      const claims: AuthUser = {
+        id: `${body.identity}-001`,
+        campusId: ADMIN_CAMPUS_ID,
+        role: body.identity as AuthUser['role'],
+      };
+      return ok({
+        token: this.jwt.sign(claims),
+        user: {
+          ...claims,
+          nickname: ADMIN_ROLE_ALIASES[body.identity],
+          phone: '',
           avatar: '',
         },
       });
