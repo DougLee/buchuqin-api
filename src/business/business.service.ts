@@ -50,10 +50,15 @@ export interface TimelineStep {
 const json = (value: unknown) =>
   JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 const number = (value: Prisma.Decimal | number) => Number(value);
+/** 金额展示：分 → 元字符串（仅错误文案/通知文本用，接口一律返回分）。 */
+const yuan = (cents: number) => (cents / 100).toFixed(2);
 
 @Injectable()
 export class BusinessService {
   constructor(private readonly db: PrismaService) {}
+  /** 金额单位:分（IK8W5K）：满 10 元起送 = 1000 分；即时配送 4 元 = 400 分、预约 2 元 = 200 分。 */
+  static readonly DELIVERY_THRESHOLD_CENTS = 1000;
+  static readonly DELIVERY_FEE_CENTS = { instant: 400, scheduled: 200 } as const;
   private productView(product: any) {
     return {
       ...product,
@@ -102,8 +107,8 @@ export class BusinessService {
   private couponView(coupon: {
     id: string;
     name: string;
-    amount: Prisma.Decimal;
-    threshold: Prisma.Decimal;
+    amount: number;
+    threshold: number;
     total: number;
     claimed: number;
     status: string;
@@ -112,8 +117,8 @@ export class BusinessService {
     return {
       id: coupon.id,
       name: coupon.name,
-      amount: number(coupon.amount),
-      threshold: number(coupon.threshold),
+      amount: coupon.amount,
+      threshold: coupon.threshold,
       total: coupon.total,
       remain: Math.max(0, coupon.total - coupon.claimed),
       status: coupon.status,
@@ -281,16 +286,16 @@ export class BusinessService {
       product: this.productView(row.product),
       quantity: row.quantity,
     }));
-    const productAmount = Number(
-      items
-        .reduce((sum, i) => sum + i.product.price * i.quantity, 0)
-        .toFixed(2),
+    // 金额单位:分——全整数运算，无浮点误差（IK8W5K）。
+    const productAmount = items.reduce(
+      (sum, i) => sum + i.product.price * i.quantity,
+      0,
     );
     return {
       items,
       productAmount,
       totalQuantity: items.reduce((sum, i) => sum + i.quantity, 0),
-      deliveryThreshold: 10,
+      deliveryThreshold: BusinessService.DELIVERY_THRESHOLD_CENTS,
     };
   }
   async updateCart(userId: string, dto: UpdateCartDto) {
@@ -345,7 +350,7 @@ export class BusinessService {
     if (!cart.items.length) throw new BadRequestException('购物车为空');
     if (cart.productAmount < cart.deliveryThreshold)
       throw new BadRequestException(
-        `商品金额满${cart.deliveryThreshold}元起送`,
+        `商品金额满${yuan(cart.deliveryThreshold)}元起送`,
       );
     if (!address) throw new BadRequestException('地址不存在或无权使用');
     for (const line of cart.items) {
@@ -371,20 +376,22 @@ export class BusinessService {
   }
   async checkout(userId: string, campusId: string, dto: CreateOrderDto) {
     const { cart } = await this.validateQuote(userId, dto);
-    const deliveryFee = dto.deliveryMode === 'instant' ? 4 : 2;
+    // 运费（单位:分）：即时 400 / 预约 200（IK8W5K）。
+    const deliveryFee =
+      dto.deliveryMode === 'instant'
+        ? BusinessService.DELIVERY_FEE_CENTS.instant
+        : BusinessService.DELIVERY_FEE_CENTS.scheduled;
     const userCoupon = dto.couponId
       ? await this.validateUserCoupon(userId, dto.couponId, campusId)
       : null;
-    const discount = userCoupon ? number(userCoupon.coupon.amount) : 0;
-    if (userCoupon && cart.productAmount < number(userCoupon.coupon.threshold))
+    const discount = userCoupon ? userCoupon.coupon.amount : 0;
+    if (userCoupon && cart.productAmount < userCoupon.coupon.threshold)
       throw new BadRequestException('商品金额未达到优惠券使用门槛');
     return {
       ...cart,
       deliveryFee,
       discount,
-      payableAmount: Number(
-        (cart.productAmount + deliveryFee - discount).toFixed(2),
-      ),
+      payableAmount: cart.productAmount + deliveryFee - discount,
       estimatedArrival:
         dto.deliveryMode === 'instant'
           ? '预计 30-60 分钟送达'
@@ -796,13 +803,13 @@ export class BusinessService {
     });
     const now = new Date();
     return rows.map((row) => {
-      const amount = number(row.coupon.amount),
-        threshold = number(row.coupon.threshold);
+      const amount = row.coupon.amount,
+        threshold = row.coupon.threshold;
       let reason: string | undefined;
       if (row.coupon.status !== 'active') reason = '优惠券已下架';
       else if (row.coupon.expiresAt <= now) reason = '优惠券已过期';
       else if (cart.productAmount < threshold)
-        reason = `还差${Number((threshold - cart.productAmount).toFixed(2))}元可用`;
+        reason = `还差${yuan(threshold - cart.productAmount)}元可用`;
       return {
         id: row.id,
         couponId: row.couponId,

@@ -126,20 +126,16 @@ export class AdminService {
       campus,
       updatedAt: new Date().toISOString(),
       kpis: {
-        revenue: Number(
-          paidToday.reduce((s, x) => s + this.num(x.payableAmount), 0).toFixed(
-            2,
-          ),
-        ),
+        // 金额单位:分——整数求和，无浮点误差（IK8W5K）。
+        revenue: paidToday.reduce((s, x) => s + this.num(x.payableAmount), 0),
         orders: todayOrders.length,
         paidUsers: new Set(paidToday.map((x) => x.userId)).size,
         newUsers: await this.db.user.count({
           where: { campusId, createdAt: { gte: startOfToday } },
         }),
-        refundedAmount: Number(
-          refundedToday
-            .reduce((s, x) => s + this.num(x.payableAmount), 0)
-            .toFixed(2),
+        refundedAmount: refundedToday.reduce(
+          (s, x) => s + this.num(x.payableAmount),
+          0,
         ),
         fulfillmentRate: rate(completed.length, effective.length),
         exceptions: effective.filter((x) => x.status === 'exception').length,
@@ -178,7 +174,7 @@ export class AdminService {
         .map((item) => ({
           name: item.name,
           orders: item.orders,
-          revenue: Number(item.revenue.toFixed(2)),
+          revenue: item.revenue,
           completionRate: rate(item.completed, item.orders),
           onTimeRate: rate(item.onTime, item.completed),
         })),
@@ -191,7 +187,7 @@ export class AdminService {
     since.setDate(since.getDate() - 6);
     const [orderRows, userRows] = await Promise.all([
       this.db.$queryRaw<
-        Array<{ day: Date; orders: number; paidAmount: Prisma.Decimal }>
+        Array<{ day: Date; orders: number; paidAmount: number | string }>
       >`
         SELECT "createdAt"::date AS day,
                COUNT(*)::int AS orders,
@@ -226,7 +222,7 @@ export class AdminService {
       return {
         date: key(day),
         orders: bucket?.orders ?? 0,
-        paidAmount: Number((bucket?.paidAmount ?? 0).toFixed(2)),
+        paidAmount: bucket?.paidAmount ?? 0,
         newUsers: usersByDay.get(key(day)) ?? 0,
       };
     });
@@ -1069,10 +1065,9 @@ export class AdminService {
         s.id,
         period,
       );
-      const baseSalary = s.role === 'building-manager' ? 500 : 0;
-      const payable = Number(
-        (baseSalary + commissionTotal + adjustment).toFixed(2),
-      );
+      // 楼长底薪 500 元 = 50000 分（IK8W5K，金额单位:分）。
+      const baseSalary = s.role === 'building-manager' ? 50000 : 0;
+      const payable = baseSalary + commissionTotal + adjustment;
       const existing = await this.db.bmBill.findUnique({
         where: { staffId_period: { staffId: s.id, period } },
       });

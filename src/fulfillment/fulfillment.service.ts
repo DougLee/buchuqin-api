@@ -148,7 +148,7 @@ export class FulfillmentService {
       ).length,
       completed: completedToday.length,
       completedTotal: completed.length,
-      income: Number(incomeAgg._sum.amount ?? 0),
+      income: incomeAgg._sum.amount ?? 0,
       onTimeRate: rate(onTime.length, completed.length),
       proofRate: rate(withProof.length, completed.length),
       exceptionRate: rate(
@@ -188,7 +188,7 @@ export class FulfillmentService {
       }),
     ]);
     const commissionByOrder = new Map(
-      records.map((r) => [r.orderId, Number(r.amount)]),
+      records.map((r) => [r.orderId, r.amount]),
     );
     const result = orders.map((o) =>
       this.toTask(
@@ -505,13 +505,14 @@ export class FulfillmentService {
     const period = month ?? new Date().toISOString().slice(0, 7);
     const { records, commissionTotal, adjustment } =
       await this.commissionService.monthly(staffId, period);
-    const base = s.role === 'building-manager' ? 500 : 0;
+    // 楼长底薪 500 元 = 50000 分（IK8W5K，金额单位:分）。
+    const base = s.role === 'building-manager' ? 50000 : 0;
     return {
       month: period,
       baseSalary: base,
       deliveryIncome: commissionTotal,
       adjustment,
-      payable: Number((base + commissionTotal + adjustment).toFixed(2)),
+      payable: base + commissionTotal + adjustment,
       records: records.map((x) => ({
         id: x.id,
         orderNo: x.order.orderNo,
@@ -596,18 +597,12 @@ export class FulfillmentService {
       modeText: order.deliveryMode === 'instant' ? '立即配送' : '预约配送',
       deadline: order.estimatedArrival,
       warehouse: '湖北工业大学校园仓',
-      // 金额口径统一（IK8W5L）：Commission 记录优先，未送达按规则预览，兜底常量。
-      commission: Number(
-        Number(
-          commissionByOrder?.get(String(order.id)) ??
-            (rules
-              ? Number(
-                  bestMatch(rules, dimsOfOrder(order))?.price ??
-                    COMMISSION_PER_ORDER,
-                )
-              : COMMISSION_PER_ORDER),
-        ).toFixed(2),
-      ),
+      // 金额口径统一（IK8W5L）：Commission 记录优先，未送达按规则预览，兜底常量（单位:分）。
+      commission:
+        commissionByOrder?.get(String(order.id)) ??
+        (rules
+          ? (bestMatch(rules, dimsOfOrder(order))?.price ?? COMMISSION_PER_ORDER)
+          : COMMISSION_PER_ORDER),
       items: items.map((x: JsonMap) => ({
         name: x.product?.name ?? x.name,
         quantity: x.quantity,

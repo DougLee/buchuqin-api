@@ -95,7 +95,8 @@ export class PaymentsService {
       description: `不出寝食社订单 ${order.orderNo}`,
       out_trade_no: order.orderNo,
       notify_url: process.env.WX_NOTIFY_URL,
-      amount: { total: Math.round(amount * 100), currency: 'CNY' },
+      // 金额单位:分（IK8W5K）：payableAmount 已是整数分，直接作为微信支付 total。
+      amount: { total: amount, currency: 'CNY' },
       payer: { openid: user.openid },
     });
     const urlPath = '/v3/pay/transactions/jsapi';

@@ -117,7 +117,7 @@ export class MockStore {
         id: 'refund-mock-001',
         userId: 'user-001',
         orderId: 'order-mock-refunded',
-        amount: 41.6,
+        amount: 4160,
         reason: '水果杯封口松动，配送途中有少量洒漏',
         status: 'succeeded',
         createdAt: '2026-08-08T18:20:00.000Z',
@@ -143,10 +143,10 @@ export class MockStore {
         product,
         quantity: index === 0 ? 2 : 1,
       }));
-      const productAmount = Number(
-        items
-          .reduce((sum, item) => sum + item.product.price * item.quantity, 0)
-          .toFixed(2),
+      // 金额单位:分（IK8W5K）：价格已是整数分，直接整数求和。
+      const productAmount = items.reduce(
+        (sum, item) => sum + item.product.price * item.quantity,
+        0,
       );
       const createdAt = new Date(now - minutesAgo * 60 * 1000).toISOString();
       // 12 态状态机 timeline（IK93GQ）：5 节点，含"楼下待交接"。
@@ -184,10 +184,10 @@ export class MockStore {
         items,
         productAmount,
         totalQuantity: items.reduce((sum, item) => sum + item.quantity, 0),
-        deliveryThreshold: 10,
-        deliveryFee: 4,
+        deliveryThreshold: 1000,
+        deliveryFee: 400,
         discount: 0,
-        payableAmount: Number((productAmount + 4).toFixed(2)),
+        payableAmount: productAmount + 400,
         estimatedArrival:
           ['completed', 'delivered', 'refunded'].includes(status)
             ? '已送达寝室'

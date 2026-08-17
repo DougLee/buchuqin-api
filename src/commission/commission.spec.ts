@@ -57,10 +57,10 @@ describe('commission & settlement (IK8W5L)', () => {
         ]),
         productAmount: Number(product.price),
         totalQuantity: 1,
-        deliveryThreshold: 10,
-        deliveryFee: 4,
+        deliveryThreshold: 1000,
+        deliveryFee: 400,
         discount: 0,
-        payableAmount: Number(product.price) + 4,
+        payableAmount: Number(product.price) + 400,
         estimatedArrival: '预计 30-60 分钟送达',
         timeline: json([
           { key: 'paid', title: '支付成功', done: true, time: new Date().toISOString() },
@@ -130,16 +130,16 @@ describe('commission & settlement (IK8W5L)', () => {
         },
       ],
     });
-    // 规则：楼栋 3.5、楼栋+6 层 4.6（楼 Y 无规则 → 走兜底常量）。
+    // 规则（金额单位:分）：楼栋 350、楼栋+6 层 460（楼 Y 无规则 → 走兜底常量）。
     await db.commissionRule.create({
-      data: { campusId: CAMPUS, buildingId: buildingX, price: 3.5, version: 1 },
+      data: { campusId: CAMPUS, buildingId: buildingX, price: 350, version: 1 },
     });
     await db.commissionRule.create({
       data: {
         campusId: CAMPUS,
         buildingId: buildingX,
         floor: 6,
-        price: 4.6,
+        price: 460,
         version: 2,
       },
     });
@@ -160,7 +160,7 @@ describe('commission & settlement (IK8W5L)', () => {
   });
 
   it('delivered generates rule-snapshot commissions for rider and manager', async () => {
-    // 楼 X 6 层：命中"楼栋+楼层"规则（4.6）
+    // 楼 X 6 层：命中"楼栋+楼层"规则（460 分）
     const orderA = await makeOrder(buildingX, '提成楼 X', 6);
     await fulfillment.updateTask(
       MANAGER,
@@ -173,7 +173,7 @@ describe('commission & settlement (IK8W5L)', () => {
     });
     expect(recordsA).toHaveLength(2); // 骑手 + 楼长
     for (const record of recordsA) {
-      expect(Number(record.amount)).toBe(4.6);
+      expect(record.amount).toBe(460);
       expect(record.status).toBe('pending');
       expect(record.fallback).toBe(false);
       expect(record.ruleVersion).toBe(2);
@@ -191,7 +191,7 @@ describe('commission & settlement (IK8W5L)', () => {
     });
     expect(recordsB).toHaveLength(1);
     expect(recordsB[0].staffId).toBe(RIDER);
-    expect(Number(recordsB[0].amount)).toBe(COMMISSION_PER_ORDER);
+    expect(recordsB[0].amount).toBe(COMMISSION_PER_ORDER);
     expect(recordsB[0].fallback).toBe(true);
     expect(recordsB[0].ruleId).toBeNull();
     // 重复 delivered 重试（构造异常场景前的幂等基线）：同单同人唯一，不重复生成
@@ -218,13 +218,13 @@ describe('commission & settlement (IK8W5L)', () => {
     const rider = bills.find((x) => x.staffId === RIDER)!;
     const manager = bills.find((x) => x.staffId === MANAGER)!;
     billIds.push(rider.id, manager.id);
-    // 骑手：4.6 + 3 = 7.6，无底薪；楼长：4.6 + 500 底薪
+    // 骑手：460 + 300 = 760 分，无底薪；楼长：460 + 50000 分底薪
     expect(rider.baseSalary).toBe(0);
-    expect(rider.commissionTotal).toBe(7.6);
-    expect(rider.payable).toBe(7.6);
-    expect(manager.baseSalary).toBe(500);
-    expect(manager.commissionTotal).toBe(4.6);
-    expect(manager.payable).toBe(504.6);
+    expect(rider.commissionTotal).toBe(760);
+    expect(rider.payable).toBe(760);
+    expect(manager.baseSalary).toBe(50000);
+    expect(manager.commissionTotal).toBe(460);
+    expect(manager.payable).toBe(50460);
     expect(bills.every((x) => x.status === 'pending-review')).toBe(true);
     // 未确认不可支付
     await expect(
@@ -276,7 +276,7 @@ describe('commission & settlement (IK8W5L)', () => {
     });
     expect(
       riderRecords.filter(
-        (x) => x.status === 'adjusted' && Number(x.amount) === -4.6,
+        (x) => x.status === 'adjusted' && x.amount === -460,
       ),
     ).toHaveLength(1);
     // 楼长（pending）→ 原地翻负为 adjusted
@@ -285,10 +285,10 @@ describe('commission & settlement (IK8W5L)', () => {
     });
     expect(managerRecords).toHaveLength(1);
     expect(managerRecords[0].status).toBe('adjusted');
-    expect(Number(managerRecords[0].amount)).toBe(-4.6);
-    // 负向调整计入当月聚合：楼长提成合计 4.6 - 4.6 = 0
+    expect(managerRecords[0].amount).toBe(-460);
+    // 负向调整计入当月聚合：楼长提成合计 460 - 460 = 0
     const mine = await fulfillment.commissions(MANAGER, month);
-    expect(mine.adjustment).toBe(-4.6);
+    expect(mine.adjustment).toBe(-460);
     expect(mine.deliveryIncome).toBe(0);
   });
 });

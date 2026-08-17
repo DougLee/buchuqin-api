@@ -2,6 +2,9 @@ generator client {
   provider = "prisma-client-js"
 }
 
+// 金额单位总则（IK8W5K）：全 API 金额字段统一为整数分（Int），字段名不变；
+// 仅 weight / onTimeRate / proofRate 等非金额维度保留 Decimal。
+
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
@@ -57,8 +60,8 @@ model Product {
   category      Category   @relation(fields: [categoryId], references: [id])
   name          String
   subtitle      String
-  price         Decimal    @db.Decimal(10, 2)
-  originalPrice Decimal    @db.Decimal(10, 2)
+  price         Int // 金额单位:分（IK8W5K）
+  originalPrice Int
   stock         Int
   lockedStock   Int        @default(0)
   sales         Int        @default(0)
@@ -149,8 +152,8 @@ model Coupon {
   id           String        @id @default(cuid())
   campusId     String
   name         String
-  amount       Decimal       @db.Decimal(10, 2)
-  threshold    Decimal       @db.Decimal(10, 2)
+  amount       Int // 金额单位:分
+  threshold    Int
   total        Int           @default(0)
   status       String
   expiresAt    DateTime
@@ -196,12 +199,12 @@ model Order {
   couponId          String?
   remark            String      @default("")
   items             Json
-  productAmount     Decimal     @db.Decimal(10, 2)
+  productAmount     Int
   totalQuantity     Int
-  deliveryThreshold Decimal     @db.Decimal(10, 2)
-  deliveryFee       Decimal     @db.Decimal(10, 2)
-  discount          Decimal     @db.Decimal(10, 2)
-  payableAmount     Decimal     @db.Decimal(10, 2)
+  deliveryThreshold Int
+  deliveryFee       Int
+  discount          Int
+  payableAmount     Int
   estimatedArrival  String
   timeline          Json
   package           Json?
@@ -241,7 +244,7 @@ model Refund {
   user      User     @relation(fields: [userId], references: [id])
   orderId   String
   order     Order    @relation(fields: [orderId], references: [id])
-  amount    Decimal  @db.Decimal(10, 2)
+  amount    Int
   reason    String
   status    String
   createdAt DateTime @default(now())
@@ -262,7 +265,7 @@ model Staff {
   completedToday      Int                  @default(0)
   onTimeRate          Decimal              @db.Decimal(5, 2)
   proofRate           Decimal?             @db.Decimal(5, 2)
-  income              Decimal              @db.Decimal(10, 2)
+  income              Int
   leaveRequests       LeaveRequest[]
   dispatchInvitations DispatchInvitation[]
   commissions         Commission[]
@@ -289,7 +292,7 @@ model DispatchInvitation {
   building   String
   startAt    DateTime
   endAt      DateTime
-  reward     Decimal  @db.Decimal(10, 2)
+  reward     Int
   status     String
   statusText String
   createdAt  DateTime @default(now())
@@ -316,7 +319,7 @@ model CommissionRule {
   weightFrom  Decimal?      @db.Decimal(10, 3) // 重量档下界（kg），null=不限
   weightTo    Decimal?      @db.Decimal(10, 3) // 重量档上界（kg），null=不限
   mode        String? // instant|scheduled，null=不限
-  price       Decimal       @db.Decimal(10, 2)
+  price       Int
   version     Int // 校园内递增版本号（Commission 快照引用）
   status      String        @default("active") // active|disabled
   effectiveAt DateTime      @default(now())
@@ -335,7 +338,7 @@ model Commission {
   ruleId      String?
   rule        CommissionRule? @relation(fields: [ruleId], references: [id])
   ruleVersion Int?
-  amount      Decimal         @db.Decimal(10, 2) // 可为负（跨期调整）
+  amount      Int // 金额单位:分，可为负（跨期调整）
   kind        String          @default("commission") // commission|adjustment（负向调整独立成行）
   status      String          @default("pending") // pending|settled|adjusted
   fallback    Boolean         @default(false) // 无匹配规则时按 COMMISSION_PER_ORDER 兜底
@@ -353,10 +356,10 @@ model BmBill {
   staff           Staff     @relation(fields: [staffId], references: [id])
   campusId        String
   period          String // YYYY-MM
-  baseSalary      Decimal   @db.Decimal(10, 2)
-  commissionTotal Decimal   @db.Decimal(10, 2)
-  adjustment      Decimal   @db.Decimal(10, 2)
-  payable         Decimal   @db.Decimal(10, 2)
+  baseSalary      Int
+  commissionTotal Int
+  adjustment      Int
+  payable         Int
   status          String    @default("pending-review") // pending-review|confirmed|paid
   createdAt       DateTime  @default(now())
   confirmedAt     DateTime?

@@ -181,7 +181,7 @@ async function main() {
         completedToday: 18,
         onTimeRate: 96,
         proofRate: 99,
-        income: 42.6,
+        income: 4260, // 金额单位:分（IK8W5K）
       },
       {
         id: 'staff-rider-001',
@@ -194,7 +194,7 @@ async function main() {
         status: 'online',
         completedToday: 12,
         onTimeRate: 97,
-        income: 36.8,
+        income: 3680,
       },
       {
         id: 'staff-rider-002',
@@ -207,7 +207,7 @@ async function main() {
         status: 'offline',
         completedToday: 8,
         onTimeRate: 92,
-        income: 28.6,
+        income: 2860,
       },
     ],
   });
@@ -229,13 +229,13 @@ async function main() {
     price: number;
   }> = [
     // 兜底通配规则（specificity 0）
-    { buildingId: null, floor: null, weightFrom: null, weightTo: null, mode: null, price: 3 },
+    { buildingId: null, floor: null, weightFrom: null, weightTo: null, mode: null, price: 300 },
     // 西区 5 栋专属单价
-    { buildingId: west5Id, floor: null, weightFrom: null, weightTo: null, mode: null, price: 3.5 },
+    { buildingId: west5Id, floor: null, weightFrom: null, weightTo: null, mode: null, price: 350 },
     // 西区 5 栋高层加价
-    { buildingId: west5Id, floor: 6, weightFrom: null, weightTo: null, mode: null, price: 4.2 },
+    { buildingId: west5Id, floor: 6, weightFrom: null, weightTo: null, mode: null, price: 420 },
     // 重货档（≥2kg）
-    { buildingId: null, floor: null, weightFrom: 2, weightTo: null, mode: null, price: 3.8 },
+    { buildingId: null, floor: null, weightFrom: 2, weightTo: null, mode: null, price: 380 },
   ];
   const createdRules = [];
   for (const [index, rule] of commissionRules.entries())
@@ -252,7 +252,7 @@ async function main() {
   for (const order of historical) {
     const dims = dimsOfOrder(order as unknown as Record<string, any>);
     const rule = bestMatch(createdRules, dims);
-    const amount = rule ? Number(rule.price) : 3;
+    const amount = rule ? rule.price : 300; // 兜底 3 元=300 分
     const manager = staffList.find(
       (s) =>
         s.role === 'building-manager' &&
@@ -293,7 +293,7 @@ async function main() {
       building: '西区 7 栋',
       startAt: new Date('2026-08-14T18:00:00+08:00'),
       endAt: new Date('2026-08-14T22:30:00+08:00'),
-      reward: 28,
+      reward: 2800, // 金额单位:分
       status: 'invited',
       statusText: '待接受调配',
     },

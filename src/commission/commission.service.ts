@@ -2,8 +2,8 @@ import { Injectable } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
 
-/** 兜底提成：无命中规则时的固定单价（元/单）。fulfillment.service 从此处引用。 */
-export const COMMISSION_PER_ORDER = 3;
+/** 兜底提成：无命中规则时的固定单价（单位:分/单，IK8W5K）。fulfillment.service 从此处引用。 */
+export const COMMISSION_PER_ORDER = 300;
 
 type JsonMap = Record<string, any>;
 /** PrismaService 与事务客户端共用形态（都带各 model delegate）。 */
@@ -43,7 +43,7 @@ export interface RuleLike {
   weightFrom: Prisma.Decimal | number | null;
   weightTo: Prisma.Decimal | number | null;
   mode: string | null;
-  price: Prisma.Decimal | number;
+  price: number; // 金额单位:分（IK8W5K，schema 已转 Int）
   version: number;
 }
 
@@ -110,7 +110,7 @@ export class CommissionService {
       weightFrom: Prisma.Decimal | null;
       weightTo: Prisma.Decimal | null;
       mode: string | null;
-      price: Prisma.Decimal;
+      price: number; // 金额单位:分
       version: number;
     }>
   > {
@@ -126,7 +126,7 @@ export class CommissionService {
     const dims = dimsOfOrder(order);
     const rule = bestMatch(rules, dims);
     return {
-      amount: rule ? Number(rule.price) : COMMISSION_PER_ORDER,
+      amount: rule ? rule.price : COMMISSION_PER_ORDER,
       ruleId: rule?.id ?? null,
       ruleVersion: rule?.version ?? null,
       fallback: !rule,
@@ -145,7 +145,7 @@ export class CommissionService {
     const dims = dimsOfOrder(order);
     const rules = await this.loadRules(tx, String(order.campusId));
     const rule = bestMatch(rules, dims);
-    const amount = rule ? Number(rule.price) : COMMISSION_PER_ORDER;
+    const amount = rule ? rule.price : COMMISSION_PER_ORDER;
     const period = new Date().toISOString().slice(0, 7);
     // 楼长归属：优先 buildingId 关联，历史地址回退楼栋名。
     const manager =
@@ -214,7 +214,7 @@ export class CommissionService {
             campusId: record.campusId,
             ruleId: record.ruleId,
             ruleVersion: record.ruleVersion,
-            amount: -Number(record.amount),
+            amount: -record.amount,
             kind: 'adjustment',
             status: 'adjusted',
             fallback: record.fallback,
@@ -226,7 +226,7 @@ export class CommissionService {
         // pending：未结算的直接翻负，对冲本月聚合。
         await tx.commission.update({
           where: { id: record.id },
-          data: { amount: -Number(record.amount), status: 'adjusted', remark: reason },
+          data: { amount: -record.amount, status: 'adjusted', remark: reason },
         });
       }
     }
@@ -239,10 +239,10 @@ export class CommissionService {
       include: { order: { select: { orderNo: true, address: true } } },
       orderBy: { createdAt: 'desc' },
     });
-    const positive = records.filter((x) => Number(x.amount) > 0);
-    const negative = records.filter((x) => Number(x.amount) < 0);
+    const positive = records.filter((x) => x.amount > 0);
+    const negative = records.filter((x) => x.amount < 0);
     const sum = (xs: typeof records) =>
-      Number(xs.reduce((s, x) => s + Number(x.amount), 0).toFixed(2));
+      xs.reduce((s, x) => s + x.amount, 0);
     return { records, commissionTotal: sum(positive), adjustment: sum(negative) };
   }
 }
