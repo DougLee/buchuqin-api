@@ -99,3 +99,11 @@ export class UpdateCommissionRuleDto {
   @IsOptional() @IsIn(['active', 'disabled']) status?: 'active' | 'disabled';
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0.01) price?: number;
 }
+/** 调配邀请（IK8W5Y）：平台邀请楼长代管请假楼长的楼栋。 */
+export class CreateDispatchInvitationDto {
+  @IsString() targetStaffId!: string;
+  @IsString() buildingId!: string;
+  @IsString() startAt!: string;
+  @IsString() endAt!: string;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) reward?: number;
+}

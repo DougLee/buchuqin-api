@@ -12,6 +12,7 @@ import type {
   CreateBuildingDto,
   CreateCommissionRuleDto,
   CreateCouponDto,
+  CreateDispatchInvitationDto,
   CreateProductDto,
   CreateRoomDto,
   CreateStaffDto,
@@ -1184,6 +1185,129 @@ export class AdminService {
         users: await this.db.user.count({ where: { campusId: x.id } }),
       })),
     );
+  }
+  /** 请假列表（IK8W5Y）：含请假人角色与所属楼栋（楼长调配决策依据）。 */
+  async leaveRequests(campusId: string) {
+    const xs = await this.db.leaveRequest.findMany({
+      where: { staff: { campusId } },
+      include: {
+        staff: {
+          select: {
+            id: true,
+            name: true,
+            role: true,
+            roleText: true,
+            staffNo: true,
+            building: true,
+            buildingId: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    return xs.map((x) => ({
+      ...x,
+      startAt: x.startAt.toISOString(),
+      endAt: x.endAt.toISOString(),
+      createdAt: x.createdAt.toISOString(),
+    }));
+  }
+  /** 调配邀请列表（IK8W5Y）：含目标楼长信息。 */
+  async dispatchInvitations(campusId: string) {
+    const xs = await this.db.dispatchInvitation.findMany({
+      where: { staff: { campusId } },
+      include: {
+        staff: { select: { id: true, name: true, roleText: true, staffNo: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    return xs.map((x) => ({
+      ...x,
+      reward: this.num(x.reward),
+      startAt: x.startAt.toISOString(),
+      endAt: x.endAt.toISOString(),
+      createdAt: x.createdAt.toISOString(),
+    }));
+  }
+  /**
+   * 创建调配邀请（IK8W5Y）：楼长请假 → 平台邀请其他楼长代管楼栋。
+   * 校验：目标为在职楼长、且不是该楼当前绑定的楼长（自己无需被调配）。
+   */
+  async createDispatchInvitation(
+    body: CreateDispatchInvitationDto,
+    operator: string,
+    campusId: string,
+  ) {
+    const staff = await this.db.staff.findFirst({
+      where: { id: body.targetStaffId, campusId },
+    });
+    if (!staff || staff.status === 'deleted')
+      throw new NotFoundException('目标员工不存在');
+    if (staff.role !== 'building-manager')
+      throw new BadRequestException('调配目标必须是楼长');
+    const building = await this.db.building.findFirst({
+      where: { id: body.buildingId, campusId },
+    });
+    if (!building) throw new BadRequestException('楼栋不存在');
+    if (staff.buildingId === building.id)
+      throw new BadRequestException('目标楼长已是该楼绑定楼长，无需调配');
+    const startAt = new Date(body.startAt),
+      endAt = new Date(body.endAt);
+    if (Number.isNaN(startAt.getTime()) || Number.isNaN(endAt.getTime()))
+      throw new BadRequestException('时间格式不正确');
+    if (startAt.getTime() >= endAt.getTime())
+      throw new BadRequestException('结束时间必须晚于开始时间');
+    const invitation = await this.db.dispatchInvitation.create({
+      data: {
+        staffId: staff.id,
+        buildingId: building.id,
+        building: building.name,
+        startAt,
+        endAt,
+        reward: body.reward ?? 0,
+        status: 'invited',
+        statusText: '待接受调配',
+      },
+    });
+    await this.audit(
+      operator,
+      'dispatch-invitation.create',
+      'dispatch-invitation',
+      invitation.id,
+      null,
+      { ...invitation, reward: this.num(invitation.reward) },
+      campusId,
+    );
+    return invitation;
+  }
+  /** 取消调配邀请：仅"待接受"可取消（条件更新，与楼长接受/拒绝互斥）。 */
+  async cancelDispatchInvitation(
+    id: string,
+    operator: string,
+    campusId: string,
+  ) {
+    const before = await this.db.dispatchInvitation.findFirst({
+      where: { id, staff: { campusId } },
+    });
+    if (!before) throw new NotFoundException('调配邀请不存在');
+    const won = await this.db.dispatchInvitation.updateMany({
+      where: { id, status: 'invited' },
+      data: { status: 'cancelled', statusText: '平台已取消' },
+    });
+    if (!won.count) throw new BadRequestException('邀请已处理，无法取消');
+    const after = await this.db.dispatchInvitation.findUniqueOrThrow({
+      where: { id },
+    });
+    await this.audit(
+      operator,
+      'dispatch-invitation.cancel',
+      'dispatch-invitation',
+      id,
+      { status: before.status },
+      { status: after.status },
+      campusId,
+    );
+    return after;
   }
   users(campusId: string) {
     return this.db.user.findMany({

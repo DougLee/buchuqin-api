@@ -208,6 +208,34 @@ export class FulfillmentService {
     if (!task) throw new NotFoundException('履约任务不存在');
     return task;
   }
+  /**
+   * 抢单池（IK8W5U）：本校园"待一级配送"且无归属（riderId 为空）的任务。
+   * 骑手角色视图；老单优先。grab 与 accept 同互斥（updateTask 内条件更新抢归属）。
+   */
+  async availableTasks(staffId: string) {
+    const staff = await this.profile(staffId);
+    const orders = await this.db.order.findMany({
+      where: {
+        campusId: staff.campusId,
+        status: 'waiting-first-mile',
+        riderId: null,
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+    const rules = await this.commissionService.loadRules(
+      this.db,
+      staff.campusId,
+    );
+    return orders.map((o) =>
+      this.toTask(
+        o as unknown as JsonMap,
+        staff.role as StaffRole,
+        staff.id,
+        undefined,
+        rules,
+      ),
+    );
+  }
   async updateTask(
     staffId: string,
     id: string,

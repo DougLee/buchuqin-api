@@ -64,6 +64,13 @@ export class FulfillmentController {
   ) {
     return ok(await this.service.tasks(this.auth(r), s));
   }
+  @Get('tasks/available') async available(@Req() r: AuthRequest) {
+    const id = this.auth(r);
+    // 抢单池仅配送员角色（IK8W5U）；楼长的接货视图走 GET /fulfillment/tasks。
+    if (r.user.role === 'building-manager')
+      throw new ForbiddenException('抢单池仅配送员可用');
+    return ok(await this.service.availableTasks(id));
+  }
   @Get('tasks/:id') async task(@Req() r: AuthRequest, @Param('id') id: string) {
     return ok(await this.service.task(this.auth(r), id));
   }
@@ -84,6 +91,14 @@ export class FulfillmentController {
     @Body() b: TaskActionDto,
   ) {
     return this.action(r, id, 'accept', b);
+  }
+  // 抢单池动作（IK8W5U）：grab 与 accept 同语义同互斥。
+  @Post('tasks/:id/grab') grab(
+    @Req() r: AuthRequest,
+    @Param('id') id: string,
+    @Body() b: TaskActionDto,
+  ) {
+    return this.action(r, id, 'grab', b);
   }
   @Post('tasks/:id/pickup') pickup(
     @Req() r: AuthRequest,

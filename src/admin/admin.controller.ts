@@ -22,6 +22,7 @@ import {
   CreateBuildingDto,
   CreateCommissionRuleDto,
   CreateCouponDto,
+  CreateDispatchInvitationDto,
   CreateProductDto,
   CreateRoomDto,
   CreateStaffDto,
@@ -157,6 +158,44 @@ export class AdminController {
   @Get('staff') async staff(@Req() req: AuthRequest) {
     this.authorize(req);
     return ok(await this.service.staff(req.user.campusId));
+  }
+  @Get('leave-requests') async leaveRequests(@Req() req: AuthRequest) {
+    this.authorize(req);
+    return ok(await this.service.leaveRequests(req.user.campusId));
+  }
+  @Get('dispatch-invitations') async dispatchInvitations(
+    @Req() req: AuthRequest,
+  ) {
+    this.authorize(req);
+    return ok(await this.service.dispatchInvitations(req.user.campusId));
+  }
+  @Post('dispatch-invitations') async createDispatchInvitation(
+    @Req() req: AuthRequest,
+    @Body() body: CreateDispatchInvitationDto,
+  ) {
+    this.authorize(req);
+    return ok(
+      await this.service.createDispatchInvitation(
+        body,
+        req.user.id,
+        req.user.campusId,
+      ),
+      '调配邀请已发出',
+    );
+  }
+  @Post('dispatch-invitations/:id/cancel') async cancelDispatchInvitation(
+    @Req() req: AuthRequest,
+    @Param('id') id: string,
+  ) {
+    this.authorize(req);
+    return ok(
+      await this.service.cancelDispatchInvitation(
+        id,
+        req.user.id,
+        req.user.campusId,
+      ),
+      '调配邀请已取消',
+    );
   }
   @Post('staff') async createStaff(
     @Req() req: AuthRequest,

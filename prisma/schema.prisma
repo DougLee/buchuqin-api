@@ -285,6 +285,7 @@ model DispatchInvitation {
   id         String   @id @default(cuid())
   staffId    String
   staff      Staff    @relation(fields: [staffId], references: [id])
+  buildingId String? // IK8W5Y：调配目标楼栋（admin 创建时写入，履约端只读展示）
   building   String
   startAt    DateTime
   endAt      DateTime
