@@ -101,7 +101,7 @@ export const products = [
     stock: 46,
     sales: 418,
     tag: '人气',
-    image: '/static/products/generated/peach-soda.webp',
+    image: '/static/products/generated/peach-soda.jpg',
     weight: 0.33,
   },
   {
@@ -114,7 +114,7 @@ export const products = [
     stock: 58,
     sales: 369,
     tag: '清爽',
-    image: '/static/products/generated/jasmine-tea.webp',
+    image: '/static/products/generated/jasmine-tea.jpg',
     weight: 0.5,
   },
   {
@@ -127,7 +127,7 @@ export const products = [
     stock: 24,
     sales: 151,
     tag: '早餐',
-    image: '/static/products/generated/chocolate-milk.webp',
+    image: '/static/products/generated/chocolate-milk.jpg',
     weight: 0.25,
   },
   {
@@ -140,7 +140,7 @@ export const products = [
     stock: 37,
     sales: 288,
     tag: '追剧',
-    image: '/static/products/generated/seaweed-chips.webp',
+    image: '/static/products/generated/seaweed-chips.jpg',
     weight: 0.07,
   },
   {
@@ -153,7 +153,7 @@ export const products = [
     stock: 20,
     sales: 132,
     tag: '下午茶',
-    image: '/static/products/generated/butter-cookie.webp',
+    image: '/static/products/generated/butter-cookie.jpg',
     weight: 0.12,
   },
   {
@@ -166,7 +166,7 @@ export const products = [
     stock: 33,
     sales: 347,
     tag: '辣味',
-    image: '/static/products/generated/konjac-snack.webp',
+    image: '/static/products/generated/konjac-snack.jpg',
     weight: 0.18,
   },
   {
@@ -179,7 +179,7 @@ export const products = [
     stock: 29,
     sales: 231,
     tag: '夜宵',
-    image: '/static/products/generated/glass-noodle.webp',
+    image: '/static/products/generated/glass-noodle.jpg',
     weight: 0.135,
   },
   {
@@ -192,7 +192,7 @@ export const products = [
     stock: 14,
     sales: 89,
     tag: '顶饱',
-    image: '/static/products/generated/selfheat-rice.webp',
+    image: '/static/products/generated/selfheat-rice.jpg',
     weight: 0.42,
   },
   {
@@ -205,7 +205,7 @@ export const products = [
     stock: 9,
     sales: 76,
     tag: '鲜切',
-    image: '/static/products/generated/strawberry-cup.webp',
+    image: '/static/products/generated/strawberry-cup.jpg',
     weight: 0.28,
   },
   {
@@ -218,7 +218,7 @@ export const products = [
     stock: 18,
     sales: 164,
     tag: '今日鲜果',
-    image: '/static/products/generated/banana.webp',
+    image: '/static/products/generated/banana.jpg',
     weight: 0.6,
   },
   {
@@ -231,7 +231,7 @@ export const products = [
     stock: 22,
     sales: 117,
     tag: '宿舍必备',
-    image: '/static/products/generated/detergent.webp',
+    image: '/static/products/generated/detergent.jpg',
     weight: 1,
   },
   {
@@ -244,7 +244,7 @@ export const products = [
     stock: 40,
     sales: 205,
     tag: '安心',
-    image: '/static/products/generated/face-mask.webp',
+    image: '/static/products/generated/face-mask.jpg',
     weight: 0.12,
   },
 ];
