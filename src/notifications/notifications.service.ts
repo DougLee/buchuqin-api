@@ -81,11 +81,14 @@ export class NotificationsService {
         access_token?: string;
         errcode?: number;
       };
-      if (!tokenBody.access_token) throw new Error(`gettoken ${tokenBody.errcode}`);
+      if (!tokenBody.access_token)
+        throw new Error(`gettoken ${tokenBody.errcode}`);
       // TODO: userid 映射就绪前发到 env 配置的测试接收人，避免误发。
       const receiver = process.env.WECOM_TEST_USERID;
       if (!receiver) {
-        this.logger.debug(`WECOM_TEST_USERID 未配置，跳过 → ${staffNo}: ${text}`);
+        this.logger.debug(
+          `WECOM_TEST_USERID 未配置，跳过 → ${staffNo}: ${text}`,
+        );
         return;
       }
       const sendRes = await fetch(
@@ -133,7 +136,8 @@ export class NotificationsService {
     order: OrderPushContext,
     event: string,
   ): Promise<void> {
-    const templateId = process.env[NotificationsService.TEMPLATE_ENV[event] ?? ''];
+    const templateId =
+      process.env[NotificationsService.TEMPLATE_ENV[event] ?? ''];
     if (!process.env.WX_APPID || !process.env.WX_SECRET || !templateId) {
       this.logger.debug(
         `订阅消息未配置（${event}），跳过 → ${order.orderNo} ${order.statusText}`,
@@ -164,7 +168,11 @@ export class NotificationsService {
               thing1: { value: order.orderNo.slice(0, 20) },
               phrase2: { value: order.statusText },
               ...(order.payableAmount != null
-                ? { amount3: { value: `¥${(order.payableAmount / 100).toFixed(2)}` } }
+                ? {
+                    amount3: {
+                      value: `¥${(order.payableAmount / 100).toFixed(2)}`,
+                    },
+                  }
                 : {}),
             },
           }),
@@ -173,13 +181,16 @@ export class NotificationsService {
       const body = (await res.json()) as { errcode?: number; errmsg?: string };
       if (body.errcode) throw new Error(`${body.errcode} ${body.errmsg}`);
     } catch (error) {
-      this.logger.warn(`订阅消息推送失败（已忽略）: ${(error as Error).message}`);
+      this.logger.warn(
+        `订阅消息推送失败（已忽略）: ${(error as Error).message}`,
+      );
     }
   }
 
   /** 微信 access_token：client_credential 模式，带缓存与提前刷新。 */
   private async wechatAccessToken(): Promise<string> {
-    if (this.wxToken && this.wxToken.expiresAt > Date.now()) return this.wxToken.token;
+    if (this.wxToken && this.wxToken.expiresAt > Date.now())
+      return this.wxToken.token;
     const res = await fetch(
       `https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential` +
         `&appid=${process.env.WX_APPID}&secret=${process.env.WX_SECRET}`,
@@ -209,6 +220,8 @@ export class NotificationsService {
       return;
     }
     // TODO(短信服务商): 接入真实短信 SDK（需道哥提供服务商凭证与签名/模板）。
-    this.logger.warn(`短信渠道已启用但服务商未接入，跳过 → ${order.orderNo} ${scene}`);
+    this.logger.warn(
+      `短信渠道已启用但服务商未接入，跳过 → ${order.orderNo} ${scene}`,
+    );
   }
 }

@@ -79,7 +79,10 @@ describe('payments wechat (IK8W5I)', () => {
   });
 
   it('prepay falls back to mock channel when WX_* unset', async () => {
-    const result = (await service.prepay(userId, orderId)) as Record<string, unknown>;
+    const result = (await service.prepay(userId, orderId)) as Record<
+      string,
+      unknown
+    >;
     expect(result.mock).toBe(true);
     expect(result.orderNo).toBeTruthy();
     expect(String(result.hint)).toContain('/orders/:id/pay');

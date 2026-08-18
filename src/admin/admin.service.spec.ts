@@ -18,9 +18,7 @@ describe('AdminService PostgreSQL integration', () => {
   });
 
   it('wraps list endpoints in the unified pagination envelope (IK8W5X)', async () => {
-    const products = (
-      await controller.products(adminUser, '2', '5')
-    ).data;
+    const products = (await controller.products(adminUser, '2', '5')).data;
     expect(products.page).toBe(2);
     expect(products.pageSize).toBe(5);
     expect(products.items).toHaveLength(5);

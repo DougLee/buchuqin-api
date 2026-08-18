@@ -24,7 +24,8 @@ export function dimsOfOrder(order: JsonMap): CommissionDims {
   const items = (order.items ?? []) as JsonMap[];
   const weight = items.reduce(
     (sum: number, x: JsonMap) =>
-      sum + Number(x.product?.weight ?? x.weight ?? 0) * Number(x.quantity ?? 1),
+      sum +
+      Number(x.product?.weight ?? x.weight ?? 0) * Number(x.quantity ?? 1),
     0,
   );
   return {
@@ -79,7 +80,10 @@ export function bestMatch<T extends RuleLike>(
   for (const rule of rules) {
     const score = ruleSpecificity(rule, dims);
     if (score < 0) continue;
-    if (score > bestScore || (score === bestScore && best && rule.version > best.version)) {
+    if (
+      score > bestScore ||
+      (score === bestScore && best && rule.version > best.version)
+    ) {
       best = rule;
       bestScore = score;
     }
@@ -156,12 +160,19 @@ export class CommissionService {
               role: 'building-manager',
               status: { not: 'deleted' },
               ...(dims.buildingId
-                ? { OR: [{ buildingId: dims.buildingId }, { building: dims.buildingName ?? '' }] }
+                ? {
+                    OR: [
+                      { buildingId: dims.buildingId },
+                      { building: dims.buildingName ?? '' },
+                    ],
+                  }
                 : { building: dims.buildingName ?? '' }),
             },
           })
         : null;
-    const targets = [...new Set([order.riderId, manager?.id].filter(Boolean))] as string[];
+    const targets = [
+      ...new Set([order.riderId, manager?.id].filter(Boolean)),
+    ] as string[];
     for (const staffId of targets) {
       await tx.commission.upsert({
         where: {
@@ -241,8 +252,11 @@ export class CommissionService {
     });
     const positive = records.filter((x) => x.amount > 0);
     const negative = records.filter((x) => x.amount < 0);
-    const sum = (xs: typeof records) =>
-      xs.reduce((s, x) => s + x.amount, 0);
-    return { records, commissionTotal: sum(positive), adjustment: sum(negative) };
+    const sum = (xs: typeof records) => xs.reduce((s, x) => s + x.amount, 0);
+    return {
+      records,
+      commissionTotal: sum(positive),
+      adjustment: sum(negative),
+    };
   }
 }

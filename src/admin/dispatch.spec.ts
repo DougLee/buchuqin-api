@@ -106,7 +106,10 @@ describe('grab pool & dispatch invitations (IK8W5U/IK8W5Y)', () => {
     expect(ids).toContain(claimable.id);
     expect(ids).not.toContain(claimed.id);
     expect(
-      pool.every((x) => x.status === 'available' && x.availableActions.includes('accept')),
+      pool.every(
+        (x) =>
+          x.status === 'available' && x.availableActions.includes('accept'),
+      ),
     ).toBe(true);
     const claimableView = pool.find((x) => x.orderId === claimable.id)!;
     expect(claimableView.availableActions).toEqual(['accept']);
@@ -228,21 +231,16 @@ describe('grab pool & dispatch invitations (IK8W5U/IK8W5Y)', () => {
     expect(invitation.buildingId).toBe(west5);
     // 取消：invited → cancelled，重复取消被拦
     expect(
-      (
-        await admin.cancelDispatchInvitation(
-          invitation.id,
-          'admin-001',
-          CAMPUS,
-        )
-      ).status,
+      (await admin.cancelDispatchInvitation(invitation.id, 'admin-001', CAMPUS))
+        .status,
     ).toBe('cancelled');
     await expect(
       admin.cancelDispatchInvitation(invitation.id, 'admin-001', CAMPUS),
     ).rejects.toThrow('邀请已处理，无法取消');
     // 列表含目标楼长信息
     const list = await admin.dispatchInvitations(CAMPUS);
-    expect(
-      list.find((x) => x.id === invitation.id)?.staff.name,
-    ).toBe('调配测试楼长');
+    expect(list.find((x) => x.id === invitation.id)?.staff.name).toBe(
+      '调配测试楼长',
+    );
   });
 });

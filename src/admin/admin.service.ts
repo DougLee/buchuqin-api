@@ -67,7 +67,9 @@ export class AdminService {
     const deliveredAt = (order: (typeof orders)[number]) => {
       const proof = (order.package as Record<string, any> | null)?.proof;
       const steps = (order.timeline as Array<Record<string, unknown>>) ?? [];
-      const time = (proof as Record<string, unknown> | undefined)?.time ?? steps.at(-1)?.time;
+      const time =
+        (proof as Record<string, unknown> | undefined)?.time ??
+        steps.at(-1)?.time;
       return time ? new Date(String(time)) : null;
     };
     // 送达口径：delivered（已送达待确认）与 completed 都计入履约完成。
@@ -147,14 +149,18 @@ export class AdminService {
       },
       // KPI 口径说明（前端标签需按此对齐 PRD §8.4）。
       caliber: {
-        revenue: '今日支付金额：paidAt 为今日的有效单（待支付/已取消排除），含今日退款单',
+        revenue:
+          '今日支付金额：paidAt 为今日的有效单（待支付/已取消排除），含今日退款单',
         refundedAmount: '今日退款金额：今日支付且当前状态为 refunded 的单',
         orders: '今日订单：createdAt >= 今日 0 点的有效单（待支付/已取消排除）',
         newUsers: '今日新用户：createdAt >= 今日 0 点',
-        fulfillmentRate: '履约完成率：全量有效单中 delivered+completed 占比（送达即完成，确认收货为终态）',
-        onTimeRate: '准时率：送达时间（送达凭证时间，历史单取 timeline 末节点）与支付时间同日（当日达口径）；estimatedArrival 为展示文案不可机读，结构化后切换真实 SLA',
+        fulfillmentRate:
+          '履约完成率：全量有效单中 delivered+completed 占比（送达即完成，确认收货为终态）',
+        onTimeRate:
+          '准时率：送达时间（送达凭证时间，历史单取 timeline 末节点）与支付时间同日（当日达口径）；estimatedArrival 为展示文案不可机读，结构化后切换真实 SLA',
         timeout: `履约超时：支付后超过 ${AdminService.FULFILLMENT_TIMEOUT_MS / 60000} 分钟未送达（未送达单按当前时刻计）`,
-        waitingHandover: 'status=waiting-handover（骑手到楼下等待楼长交接，IK93GQ 拆分后的独立状态）',
+        waitingHandover:
+          'status=waiting-handover（骑手到楼下等待楼长交接，IK93GQ 拆分后的独立状态）',
         lastMile: 'status=last-mile（楼长送往寝室途中）',
       },
       trend,
@@ -517,7 +523,9 @@ export class AdminService {
   }
   /** 手机号脱敏：保留前 3 后 4，中间四位打码（后台列表不落明文）。 */
   private maskPhone(phone: string) {
-    return phone.length === 11 ? `${phone.slice(0, 3)}****${phone.slice(7)}` : phone;
+    return phone.length === 11
+      ? `${phone.slice(0, 3)}****${phone.slice(7)}`
+      : phone;
   }
   async orders(status: string | undefined, campusId: string) {
     const xs = await this.db.order.findMany({
@@ -596,11 +604,7 @@ export class AdminService {
       online: x.status === 'online',
     }));
   }
-  async createStaff(
-    body: CreateStaffDto,
-    operator: string,
-    campusId: string,
-  ) {
+  async createStaff(body: CreateStaffDto, operator: string, campusId: string) {
     const duplicate = await this.db.staff.findUnique({
       where: { staffNo: body.staffNo },
     });
@@ -1043,7 +1047,9 @@ export class AdminService {
     }
     const bills = await this.db.bmBill.findMany({
       where: { campusId, period },
-      include: { staff: { select: { name: true, roleText: true, staffNo: true } } },
+      include: {
+        staff: { select: { name: true, roleText: true, staffNo: true } },
+      },
       orderBy: { createdAt: 'asc' },
     });
     return bills.map((x) => ({
@@ -1063,11 +1069,7 @@ export class AdminService {
     }));
   }
   /** 账单确认：pending-review → confirmed（条件更新防重复确认）。 */
-  async confirmSettlement(
-    id: string,
-    operator: string,
-    campusId: string,
-  ) {
+  async confirmSettlement(id: string, operator: string, campusId: string) {
     const bill = await this.db.bmBill.findFirst({ where: { id, campusId } });
     if (!bill) throw new NotFoundException('结算账单不存在');
     const won = await this.db.bmBill.updateMany({
@@ -1097,10 +1099,13 @@ export class AdminService {
         where: { id, status: 'confirmed' },
         data: { status: 'paid', paidAt: new Date() },
       });
-      if (!won.count)
-        throw new BadRequestException('账单未确认或已支付');
+      if (!won.count) throw new BadRequestException('账单未确认或已支付');
       await tx.commission.updateMany({
-        where: { staffId: bill.staffId, period: bill.period, status: 'pending' },
+        where: {
+          staffId: bill.staffId,
+          period: bill.period,
+          status: 'pending',
+        },
         data: { status: 'settled' },
       });
       return tx.bmBill.findUniqueOrThrow({ where: { id } });
@@ -1162,7 +1167,9 @@ export class AdminService {
     const xs = await this.db.dispatchInvitation.findMany({
       where: { staff: { campusId } },
       include: {
-        staff: { select: { id: true, name: true, roleText: true, staffNo: true } },
+        staff: {
+          select: { id: true, name: true, roleText: true, staffNo: true },
+        },
       },
       orderBy: { createdAt: 'desc' },
     });

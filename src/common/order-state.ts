@@ -65,22 +65,24 @@ export const ORDER_STATUS_TEXT: Record<OrderStatus, string> = {
 };
 
 /** 用户端列表/详情的聚合阶段（前端 tab 映射用）。 */
-const PHASE_BY_STATUS: Record<string, 'payment' | 'fulfillment' | 'done' | 'exception'> =
-  {
-    'pending-payment': 'payment',
-    paid: 'fulfillment',
-    picking: 'fulfillment',
-    'waiting-first-mile': 'fulfillment',
-    'first-mile': 'fulfillment',
-    'waiting-handover': 'fulfillment',
-    'last-mile': 'fulfillment',
-    delivered: 'fulfillment',
-    completed: 'done',
-    cancelled: 'done',
-    refunded: 'done',
-    exception: 'exception',
-    'after-sales': 'exception',
-  };
+const PHASE_BY_STATUS: Record<
+  string,
+  'payment' | 'fulfillment' | 'done' | 'exception'
+> = {
+  'pending-payment': 'payment',
+  paid: 'fulfillment',
+  picking: 'fulfillment',
+  'waiting-first-mile': 'fulfillment',
+  'first-mile': 'fulfillment',
+  'waiting-handover': 'fulfillment',
+  'last-mile': 'fulfillment',
+  delivered: 'fulfillment',
+  completed: 'done',
+  cancelled: 'done',
+  refunded: 'done',
+  exception: 'exception',
+  'after-sales': 'exception',
+};
 export function statusPhase(status: string) {
   return PHASE_BY_STATUS[status] ?? 'done';
 }
@@ -132,7 +134,12 @@ export function buildOrderTimeline(buildingRoom: string): TimelineStepShape[] {
       description: '订单将进入校园仓',
       done: false,
     },
-    { key: 'picking', title: '仓库拣货', description: '预计 10 分钟完成', done: false },
+    {
+      key: 'picking',
+      title: '仓库拣货',
+      description: '预计 10 分钟完成',
+      done: false,
+    },
     {
       key: 'first-mile',
       title: '送往楼下',

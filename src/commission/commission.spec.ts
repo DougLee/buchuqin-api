@@ -52,7 +52,10 @@ describe('commission & settlement (IK8W5L)', () => {
         }),
         deliveryMode: 'instant',
         items: json([
-          { product: { ...product, price: Number(product.price) }, quantity: 1 },
+          {
+            product: { ...product, price: Number(product.price) },
+            quantity: 1,
+          },
         ]),
         productAmount: Number(product.price),
         totalQuantity: 1,
@@ -62,11 +65,36 @@ describe('commission & settlement (IK8W5L)', () => {
         payableAmount: Number(product.price) + 400,
         estimatedArrival: '预计 30-60 分钟送达',
         timeline: json([
-          { key: 'paid', title: '支付成功', done: true, time: new Date().toISOString() },
-          { key: 'picking', title: '仓库拣货', done: true, time: new Date().toISOString() },
-          { key: 'first-mile', title: '送往楼下', done: true, time: new Date().toISOString() },
-          { key: 'waiting-handover', title: '楼下待交接', done: true, time: new Date().toISOString() },
-          { key: 'last-mile', title: '送到寝室', done: true, time: new Date().toISOString() },
+          {
+            key: 'paid',
+            title: '支付成功',
+            done: true,
+            time: new Date().toISOString(),
+          },
+          {
+            key: 'picking',
+            title: '仓库拣货',
+            done: true,
+            time: new Date().toISOString(),
+          },
+          {
+            key: 'first-mile',
+            title: '送往楼下',
+            done: true,
+            time: new Date().toISOString(),
+          },
+          {
+            key: 'waiting-handover',
+            title: '楼下待交接',
+            done: true,
+            time: new Date().toISOString(),
+          },
+          {
+            key: 'last-mile',
+            title: '送到寝室',
+            done: true,
+            time: new Date().toISOString(),
+          },
         ]),
         paidAt: new Date(),
         package: json({ id: `PKG-COMM-${Date.now()}`, status: 'picked' }),
@@ -86,11 +114,21 @@ describe('commission & settlement (IK8W5L)', () => {
       },
     });
     const x = await db.building.create({
-      data: { campusId: CAMPUS, name: '提成楼 X', floors: 6, hasElevator: true },
+      data: {
+        campusId: CAMPUS,
+        name: '提成楼 X',
+        floors: 6,
+        hasElevator: true,
+      },
     });
     buildingX = x.id;
     const y = await db.building.create({
-      data: { campusId: CAMPUS, name: '提成楼 Y', floors: 6, hasElevator: false },
+      data: {
+        campusId: CAMPUS,
+        name: '提成楼 Y',
+        floors: 6,
+        hasElevator: false,
+      },
     });
     buildingY = y.id;
     const user = await db.user.create({
@@ -203,9 +241,9 @@ describe('commission & settlement (IK8W5L)', () => {
       'delivered',
       { images: ['https://cos.example/1.jpg'], location: '提成楼 X 601' },
     );
-    expect(
-      await db.commission.count({ where: { orderId: orderA.id } }),
-    ).toBe(2);
+    expect(await db.commission.count({ where: { orderId: orderA.id } })).toBe(
+      2,
+    );
   });
 
   it('settlements materialize BmBill and walk pending-review → confirmed → paid', async () => {
@@ -229,12 +267,16 @@ describe('commission & settlement (IK8W5L)', () => {
       admin.paySettlement(rider.id, 'admin-001', CAMPUS),
     ).rejects.toThrow('账单未确认或已支付');
     // 确认：pending-review → confirmed，重复确认被条件更新拦下
-    expect((await admin.confirmSettlement(rider.id, 'admin-001', CAMPUS)).status).toBe('confirmed');
+    expect(
+      (await admin.confirmSettlement(rider.id, 'admin-001', CAMPUS)).status,
+    ).toBe('confirmed');
     await expect(
       admin.confirmSettlement(rider.id, 'admin-001', CAMPUS),
     ).rejects.toThrow('账单已确认或已支付');
     // 支付：confirmed → paid，同期 pending 提成 → settled
-    expect((await admin.paySettlement(rider.id, 'admin-001', CAMPUS)).status).toBe('paid');
+    expect(
+      (await admin.paySettlement(rider.id, 'admin-001', CAMPUS)).status,
+    ).toBe('paid');
     expect(
       await db.commission.count({
         where: { staffId: RIDER, period: month, status: 'settled' },
@@ -262,9 +304,7 @@ describe('commission & settlement (IK8W5L)', () => {
       where: { orderId: orderA, staffId: RIDER },
     });
     expect(
-      riderRecords.filter(
-        (x) => x.status === 'adjusted' && x.amount === -460,
-      ),
+      riderRecords.filter((x) => x.status === 'adjusted' && x.amount === -460),
     ).toHaveLength(1);
     // 楼长（pending）→ 原地翻负为 adjusted
     const managerRecords = await db.commission.findMany({

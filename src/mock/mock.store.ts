@@ -188,10 +188,11 @@ export class MockStore {
         deliveryFee: 400,
         discount: 0,
         payableAmount: productAmount + 400,
-        estimatedArrival:
-          ['completed', 'delivered', 'refunded'].includes(status)
-            ? '已送达寝室'
-            : '预计 30-60 分钟送达',
+        estimatedArrival: ['completed', 'delivered', 'refunded'].includes(
+          status,
+        )
+          ? '已送达寝室'
+          : '预计 30-60 分钟送达',
         timeline: steps,
         ...(doneCount > 0
           ? {

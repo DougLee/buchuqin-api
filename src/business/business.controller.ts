@@ -46,7 +46,10 @@ export class BusinessController {
     return ok(await this.service.categories());
   }
   @Get('products')
-  @ApiOperation({ summary: '商品列表（?categoryId/keyword 过滤保留；?page&pageSize 统一分页包裹）' })
+  @ApiOperation({
+    summary:
+      '商品列表（?categoryId/keyword 过滤保留；?page&pageSize 统一分页包裹）',
+  })
   async products(
     @Req() req: AuthRequest,
     @Query('categoryId') category?: string,
@@ -122,7 +125,9 @@ export class BusinessController {
     );
   }
   @Get('orders')
-  @ApiOperation({ summary: '我的订单（?status 过滤保留；?page&pageSize 统一分页包裹）' })
+  @ApiOperation({
+    summary: '我的订单（?status 过滤保留；?page&pageSize 统一分页包裹）',
+  })
   async orders(
     @Req() req: AuthRequest,
     @Query('status') status?: string,

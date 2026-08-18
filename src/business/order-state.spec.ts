@@ -134,16 +134,25 @@ describe('order state machine full chain (IK93GQ)', () => {
       (await db.order.findUniqueOrThrow({ where: { id: order.id } }))
         .package as { id: string }
     ).id;
-    await fulfillment.updateTask(RIDER, `task-fulltime-rider-${order.id}`, 'grab');
+    await fulfillment.updateTask(
+      RIDER,
+      `task-fulltime-rider-${order.id}`,
+      'grab',
+    );
     expect(
       (await db.order.findUniqueOrThrow({ where: { id: order.id } })).riderId,
     ).toBe(RIDER);
     expect(await statusOf(order.id)).toBe('waiting-first-mile');
 
     // 扫码取货：仍 waiting-first-mile，包裹标记 picked
-    await fulfillment.updateTask(RIDER, `task-fulltime-rider-${order.id}`, 'pickup', {
-      packageCode,
-    });
+    await fulfillment.updateTask(
+      RIDER,
+      `task-fulltime-rider-${order.id}`,
+      'pickup',
+      {
+        packageCode,
+      },
+    );
     expect(await statusOf(order.id)).toBe('waiting-first-mile');
     expect(
       (
@@ -218,14 +227,23 @@ describe('order state machine full chain (IK93GQ)', () => {
     await service.pay(userId, order.id);
     await service.advance(userId, order.id);
     await service.advance(userId, order.id);
-    await fulfillment.updateTask(RIDER, `task-fulltime-rider-${order.id}`, 'accept');
+    await fulfillment.updateTask(
+      RIDER,
+      `task-fulltime-rider-${order.id}`,
+      'accept',
+    );
     const packageCode = (
       (await db.order.findUniqueOrThrow({ where: { id: order.id } }))
         .package as { id: string }
     ).id;
-    await fulfillment.updateTask(RIDER, `task-fulltime-rider-${order.id}`, 'pickup', {
-      packageCode,
-    });
+    await fulfillment.updateTask(
+      RIDER,
+      `task-fulltime-rider-${order.id}`,
+      'pickup',
+      {
+        packageCode,
+      },
+    );
     await fulfillment.updateTask(
       RIDER,
       `task-fulltime-rider-${order.id}`,
@@ -253,9 +271,7 @@ describe('order state machine full chain (IK93GQ)', () => {
     expect(userView.statusText).toBe('履约异常，客服处理中');
     expect(userView.statusPhase).toBe('exception');
     const mine = await service.orders(userId, 'all');
-    expect(
-      mine.find((x) => x.id === order.id)?.statusPhase,
-    ).toBe('exception');
+    expect(mine.find((x) => x.id === order.id)?.statusPhase).toBe('exception');
   });
 
   it('confirm-receipt rejects orders not yet delivered', async () => {

@@ -60,14 +60,18 @@ export class FulfillmentController {
     return ok(await this.service.dashboard(this.auth(r)));
   }
   @Get('tasks')
-  @ApiOperation({ summary: '任务列表（?status 过滤保留；?page&pageSize 统一分页包裹）' })
+  @ApiOperation({
+    summary: '任务列表（?status 过滤保留；?page&pageSize 统一分页包裹）',
+  })
   async tasks(
     @Req() r: AuthRequest,
     @Query('status') s?: string,
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
   ) {
-    return ok(paginate(await this.service.tasks(this.auth(r), s), page, pageSize));
+    return ok(
+      paginate(await this.service.tasks(this.auth(r), s), page, pageSize),
+    );
   }
   @Get('tasks/available') async available(@Req() r: AuthRequest) {
     const id = this.auth(r);

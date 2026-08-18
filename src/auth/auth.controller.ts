@@ -268,9 +268,7 @@ export class AuthController {
     ].filter((p): p is { appid: string; secret: string } =>
       Boolean(p.appid && p.secret),
     );
-    return appid
-      ? pairs.find((p) => p.appid === appid)
-      : pairs[0];
+    return appid ? pairs.find((p) => p.appid === appid) : pairs[0];
   }
 
   /** 微信登录环境是否已配置（任一对 WX_*_APPID/WX_*_SECRET 齐备）。 */
@@ -313,7 +311,9 @@ export class AuthController {
   @HttpCode(200)
   @UseGuards(ThrottlerGuard)
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
-  @ApiOperation({ summary: '微信小程序登录（wx.code2Session，未配置 WX_* 时返回 501）' })
+  @ApiOperation({
+    summary: '微信小程序登录（wx.code2Session，未配置 WX_* 时返回 501）',
+  })
   async wechatLogin(@Body() body: WechatLoginDto) {
     // env 门控：未配置微信凭证直接 501，不回退 test-login 演示通道。
     if (!this.wechatConfigured())
@@ -421,7 +421,9 @@ export class AuthController {
   @UseGuards(JwtAuthGuard, UserRoleGuard)
   @SetMetadata(USER_ROLES_KEY, ['user'])
   @ApiBearerAuth()
-  @ApiOperation({ summary: '绑定手机号（简化版：直接传号；真实实现见 PhoneDto TODO）' })
+  @ApiOperation({
+    summary: '绑定手机号（简化版：直接传号；真实实现见 PhoneDto TODO）',
+  })
   async bindPhone(@Req() req: AuthRequest, @Body() body: PhoneDto) {
     // service 层防御性复核：绕过管道的调用也不允许脏号落库。
     if (!/^1\d{10}$/.test(body.phone ?? ''))

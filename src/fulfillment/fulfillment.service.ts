@@ -36,7 +36,9 @@ interface PushContext {
 export class FulfillmentService {
   constructor(
     private readonly db: PrismaService,
-    private readonly commissionService: CommissionService = new CommissionService(db),
+    private readonly commissionService: CommissionService = new CommissionService(
+      db,
+    ),
     // 渠道推送（IK8W5M）：可选注入——测试不传时跳过推送。
     @Optional() private readonly push?: NotificationsService,
   ) {}
@@ -120,7 +122,8 @@ export class FulfillmentService {
     startOfToday.setHours(0, 0, 0, 0);
     // 送达时间优先取送达凭证时间（delivered 动作写入），历史单回退 timeline 末节点。
     const deliveredAt = (order: (typeof orders)[number]) => {
-      const proof = (order.package as JsonMap | null)?.proof as JsonMap | undefined;
+      const proof = (order.package as JsonMap | null)?.proof as
+        JsonMap | undefined;
       const time = proof?.time ?? (order.timeline as JsonMap[]).at(-1)?.time;
       return time ? new Date(String(time)) : null;
     };
@@ -266,214 +269,217 @@ export class FulfillmentService {
     const orderId = id.slice(prefix.length);
     // 读改写整体放入事务：校验、timeline 拼装、条件更新要么全部生效要么全部回滚。
     // 返回值 = 渠道推送上下文（IK8W5M）：事务提交后 fire-and-forget；accept 不改状态返回 null。
-    const pushDone = await this.db.$transaction(async (tx): Promise<PushContext | null> => {
-      const order = await tx.order.findFirst({
-        where: { id: orderId, campusId: staff.campusId },
-      });
-      if (!order) throw new NotFoundException('履约任务不存在');
-      const manager = staff.role === 'building-manager';
-      // 动作迁移表（12 态状态机，迁移表全文见 src/common/order-state.ts，IK93GQ）：
-      // accept 抢单只写归属不改状态；pickup 取货后停留 waiting-first-mile（package=picked）；
-      // depart 后=first-mile，arrive 后=waiting-handover，receive 后=last-mile，
-      // delivered 与 completed 分离（用户 confirm-receipt 才终态完成）。
-      // 旧机兼容：paid/picking 仍可 accept/pickup（并入 waiting-first-mile）、
-      // first-mile 仍可 receive、last-mile 仍可 handover。
-      const maps: Record<
-        string,
-        { status: string; text: string; from: string[] }
-      > = manager
-        ? {
-            receive: {
-              status: 'last-mile',
-              text: '楼长已接货',
-              from: ['waiting-handover', 'first-mile', 'last-mile'],
-            },
-            'start-delivery': {
-              status: 'last-mile',
-              text: '楼长送往寝室',
-              from: ['last-mile'],
-            },
-            delivered: {
-              status: 'delivered',
-              text: '已送达寝室',
-              from: ['last-mile'],
-            },
-            absent: {
-              status: 'exception',
-              text: '用户不在，暂存楼长处',
-              from: ['last-mile'],
-            },
-            refused: {
-              status: 'exception',
-              text: '用户拒收，待带回仓库',
-              from: ['last-mile'],
-            },
-          }
-        : {
-            accept: {
-              status: order.status,
-              text: '配送员已接单',
-              from: ['waiting-first-mile', 'paid', 'picking'],
-            },
-            pickup: {
-              status: 'waiting-first-mile',
-              text: '已扫码取货，待出发',
-              from: ['waiting-first-mile', 'paid', 'picking'],
-            },
-            depart: {
-              status: 'first-mile',
-              text: '已从校园仓出发',
-              from: ['waiting-first-mile', 'paid', 'picking'],
-            },
-            arrive: {
-              status: 'waiting-handover',
-              text: '已到楼下，等待楼长交接',
-              from: ['first-mile'],
-            },
-            handover: {
-              status: order.status,
-              text: '已与楼长完成交接',
-              from: ['waiting-handover', 'last-mile'],
-            },
-            transfer: {
-              status: 'exception',
-              text: '转单申请处理中',
-              from: [
-                'waiting-first-mile',
-                'first-mile',
-                'waiting-handover',
-                'paid',
-                'picking',
+    const pushDone = await this.db.$transaction(
+      async (tx): Promise<PushContext | null> => {
+        const order = await tx.order.findFirst({
+          where: { id: orderId, campusId: staff.campusId },
+        });
+        if (!order) throw new NotFoundException('履约任务不存在');
+        const manager = staff.role === 'building-manager';
+        // 动作迁移表（12 态状态机，迁移表全文见 src/common/order-state.ts，IK93GQ）：
+        // accept 抢单只写归属不改状态；pickup 取货后停留 waiting-first-mile（package=picked）；
+        // depart 后=first-mile，arrive 后=waiting-handover，receive 后=last-mile，
+        // delivered 与 completed 分离（用户 confirm-receipt 才终态完成）。
+        // 旧机兼容：paid/picking 仍可 accept/pickup（并入 waiting-first-mile）、
+        // first-mile 仍可 receive、last-mile 仍可 handover。
+        const maps: Record<
+          string,
+          { status: string; text: string; from: string[] }
+        > = manager
+          ? {
+              receive: {
+                status: 'last-mile',
+                text: '楼长已接货',
+                from: ['waiting-handover', 'first-mile', 'last-mile'],
+              },
+              'start-delivery': {
+                status: 'last-mile',
+                text: '楼长送往寝室',
+                from: ['last-mile'],
+              },
+              delivered: {
+                status: 'delivered',
+                text: '已送达寝室',
+                from: ['last-mile'],
+              },
+              absent: {
+                status: 'exception',
+                text: '用户不在，暂存楼长处',
+                from: ['last-mile'],
+              },
+              refused: {
+                status: 'exception',
+                text: '用户拒收，待带回仓库',
+                from: ['last-mile'],
+              },
+            }
+          : {
+              accept: {
+                status: order.status,
+                text: '配送员已接单',
+                from: ['waiting-first-mile', 'paid', 'picking'],
+              },
+              pickup: {
+                status: 'waiting-first-mile',
+                text: '已扫码取货，待出发',
+                from: ['waiting-first-mile', 'paid', 'picking'],
+              },
+              depart: {
+                status: 'first-mile',
+                text: '已从校园仓出发',
+                from: ['waiting-first-mile', 'paid', 'picking'],
+              },
+              arrive: {
+                status: 'waiting-handover',
+                text: '已到楼下，等待楼长交接',
+                from: ['first-mile'],
+              },
+              handover: {
+                status: order.status,
+                text: '已与楼长完成交接',
+                from: ['waiting-handover', 'last-mile'],
+              },
+              transfer: {
+                status: 'exception',
+                text: '转单申请处理中',
+                from: [
+                  'waiting-first-mile',
+                  'first-mile',
+                  'waiting-handover',
+                  'paid',
+                  'picking',
+                ],
+              },
+            };
+        const next = maps[action];
+        if (!next || !next.from.includes(order.status))
+          throw new BadRequestException('当前状态不允许此操作');
+        // 配送员动作仅限接单人本人操作（accept 通过下方条件更新抢归属）。
+        if (!manager && order.riderId && order.riderId !== staffId)
+          throw new BadRequestException('任务已被其他配送员接取');
+        if (action === 'pickup' && !payload.packageCode)
+          throw new BadRequestException('请提交包裹码');
+        if (action === 'handover' && !payload.handoverCode)
+          throw new BadRequestException('请提交交接码');
+        if (
+          action === 'delivered' &&
+          (!payload.images?.length || !payload.location)
+        )
+          throw new BadRequestException('请上传送达照片和定位');
+        // 取货扫码：校验真实包裹码（支付时生成的 package.id；历史单回退到展示包裹号）。
+        if (action === 'pickup') {
+          const pkg = order.package as JsonMap | null;
+          const expected = String(pkg?.id ?? `PKG-${order.orderNo.slice(-8)}`);
+          if (payload.packageCode!.trim() !== expected)
+            throw new BadRequestException('包裹码不正确，请扫描包裹上的条码');
+        }
+        // 交接扫码：校验寝室 qrToken（以寝室门口二维码为准）。
+        if (action === 'handover') {
+          const addr = order.address as JsonMap;
+          const building = await tx.building.findFirst({
+            where: {
+              campusId: staff.campusId,
+              OR: [
+                { id: String(addr.buildingId ?? '') },
+                { name: String(addr.buildingName ?? '') },
               ],
             },
-          };
-      const next = maps[action];
-      if (!next || !next.from.includes(order.status))
-        throw new BadRequestException('当前状态不允许此操作');
-      // 配送员动作仅限接单人本人操作（accept 通过下方条件更新抢归属）。
-      if (!manager && order.riderId && order.riderId !== staffId)
-        throw new BadRequestException('任务已被其他配送员接取');
-      if (action === 'pickup' && !payload.packageCode)
-        throw new BadRequestException('请提交包裹码');
-      if (action === 'handover' && !payload.handoverCode)
-        throw new BadRequestException('请提交交接码');
-      if (
-        action === 'delivered' &&
-        (!payload.images?.length || !payload.location)
-      )
-        throw new BadRequestException('请上传送达照片和定位');
-      // 取货扫码：校验真实包裹码（支付时生成的 package.id；历史单回退到展示包裹号）。
-      if (action === 'pickup') {
-        const pkg = order.package as JsonMap | null;
-        const expected = String(pkg?.id ?? `PKG-${order.orderNo.slice(-8)}`);
-        if (payload.packageCode!.trim() !== expected)
-          throw new BadRequestException('包裹码不正确，请扫描包裹上的条码');
-      }
-      // 交接扫码：校验寝室 qrToken（以寝室门口二维码为准）。
-      if (action === 'handover') {
-        const addr = order.address as JsonMap;
-        const building = await tx.building.findFirst({
-          where: {
-            campusId: staff.campusId,
-            OR: [
-              { id: String(addr.buildingId ?? '') },
-              { name: String(addr.buildingName ?? '') },
-            ],
-          },
-        });
-        const room = building
-          ? await tx.room.findFirst({
-              where: {
-                buildingId: building.id,
-                floor: Number(addr.floor),
-                roomNo: String(addr.room),
-              },
-            })
-          : null;
-        if (!room || payload.handoverCode!.trim() !== room.qrToken)
-          throw new BadRequestException('交接码不正确，请扫描寝室门口二维码');
-      }
-      // 出发前置校验：必须先扫码取货（package.status=picked；无包裹信息的旧单放行）。
-      if (action === 'depart') {
-        const pkg = order.package as JsonMap | null;
-        if (pkg && pkg.status !== 'picked')
-          throw new BadRequestException('请先扫码取货再出发');
-      }
-      // 进入目标状态时点亮对应 timeline 节点（楼下待交接节点由 arrive 写入）。
-      const timeline = markTimelineStep(order.timeline, next.status);
-      // delivered 时把送达凭证（照片/定位/坐标）写入包裹信息，供绩效凭证完整率统计；
-      // pickup 时把包裹标记为已取货（depart 的前置条件）。
-      const packageUpdate =
-        action === 'delivered'
-          ? {
-              package: {
-                ...((order.package as JsonMap | null) ?? {}),
-                status: 'delivered',
-                proof: {
-                  images: payload.images ?? [],
-                  location: payload.location ?? '',
-                  latitude: payload.latitude ?? null,
-                  longitude: payload.longitude ?? null,
-                  time: new Date().toISOString(),
+          });
+          const room = building
+            ? await tx.room.findFirst({
+                where: {
+                  buildingId: building.id,
+                  floor: Number(addr.floor),
+                  roomNo: String(addr.room),
                 },
-              } as Prisma.InputJsonValue,
-            }
-          : action === 'pickup'
+              })
+            : null;
+          if (!room || payload.handoverCode!.trim() !== room.qrToken)
+            throw new BadRequestException('交接码不正确，请扫描寝室门口二维码');
+        }
+        // 出发前置校验：必须先扫码取货（package.status=picked；无包裹信息的旧单放行）。
+        if (action === 'depart') {
+          const pkg = order.package as JsonMap | null;
+          if (pkg && pkg.status !== 'picked')
+            throw new BadRequestException('请先扫码取货再出发');
+        }
+        // 进入目标状态时点亮对应 timeline 节点（楼下待交接节点由 arrive 写入）。
+        const timeline = markTimelineStep(order.timeline, next.status);
+        // delivered 时把送达凭证（照片/定位/坐标）写入包裹信息，供绩效凭证完整率统计；
+        // pickup 时把包裹标记为已取货（depart 的前置条件）。
+        const packageUpdate =
+          action === 'delivered'
             ? {
                 package: {
                   ...((order.package as JsonMap | null) ?? {}),
-                  status: 'picked',
+                  status: 'delivered',
+                  proof: {
+                    images: payload.images ?? [],
+                    location: payload.location ?? '',
+                    latitude: payload.latitude ?? null,
+                    longitude: payload.longitude ?? null,
+                    time: new Date().toISOString(),
+                  },
                 } as Prisma.InputJsonValue,
               }
-            : {};
-      if (action === 'accept' || action === 'grab') {
-        // 抢单互斥：riderId 为空才允许写入归属，并发的第二个 accept/grab count=0 失败。
+            : action === 'pickup'
+              ? {
+                  package: {
+                    ...((order.package as JsonMap | null) ?? {}),
+                    status: 'picked',
+                  } as Prisma.InputJsonValue,
+                }
+              : {};
+        if (action === 'accept' || action === 'grab') {
+          // 抢单互斥：riderId 为空才允许写入归属，并发的第二个 accept/grab count=0 失败。
+          const won = await tx.order.updateMany({
+            where: {
+              id: order.id,
+              riderId: null,
+              status: { in: ['waiting-first-mile', 'paid', 'picking'] },
+            },
+            data: { riderId: staffId, statusText: '配送员已接单' },
+          });
+          if (!won.count)
+            throw new BadRequestException('任务已被其他配送员接取');
+          return null;
+        }
+        // 状态条件更新：并发推进（双人操作/与后台同时改单）时仅一笔生效。
         const won = await tx.order.updateMany({
           where: {
             id: order.id,
-            riderId: null,
-            status: { in: ['waiting-first-mile', 'paid', 'picking'] },
+            status: order.status,
+            ...(manager ? {} : { riderId: staffId }),
           },
-          data: { riderId: staffId, statusText: '配送员已接单' },
+          data: {
+            status: next.status,
+            statusText: next.text,
+            timeline: timeline,
+            ...packageUpdate,
+          },
         });
-        if (!won.count) throw new BadRequestException('任务已被其他配送员接取');
-        return null;
-      }
-      // 状态条件更新：并发推进（双人操作/与后台同时改单）时仅一笔生效。
-      const won = await tx.order.updateMany({
-        where: {
-          id: order.id,
-          status: order.status,
-          ...(manager ? {} : { riderId: staffId }),
-        },
-        data: {
+        if (!won.count)
+          throw new BadRequestException('任务状态已变化，请刷新后重试');
+        // 送达即时生成提成快照（IK8W5L）：同一事务内按四维规则生成 Commission 记录。
+        if (action === 'delivered')
+          await this.commissionService.recordForDelivered(tx, {
+            ...order,
+            status: next.status,
+          });
+        // 渠道推送上下文（IK8W5M）：事务提交后 fire-and-forget，不进事务。
+        return {
+          orderId: order.id,
+          userId: order.userId,
+          orderNo: order.orderNo,
           status: next.status,
           statusText: next.text,
-          timeline: timeline as Prisma.InputJsonValue,
-          ...packageUpdate,
-        },
-      });
-      if (!won.count)
-        throw new BadRequestException('任务状态已变化，请刷新后重试');
-      // 送达即时生成提成快照（IK8W5L）：同一事务内按四维规则生成 Commission 记录。
-      if (action === 'delivered')
-        await this.commissionService.recordForDelivered(tx, {
-          ...order,
-          status: next.status,
-        });
-      // 渠道推送上下文（IK8W5M）：事务提交后 fire-and-forget，不进事务。
-      return {
-        orderId: order.id,
-        userId: order.userId,
-        orderNo: order.orderNo,
-        status: next.status,
-        statusText: next.text,
-        payableAmount: order.payableAmount,
-        notifyManager: action === 'arrive',
-        campusId: staff.campusId,
-        address: order.address,
-      };
-    });
+          payableAmount: order.payableAmount,
+          notifyManager: action === 'arrive',
+          campusId: staff.campusId,
+          address: order.address,
+        };
+      },
+    );
     // 渠道推送：一级配送中/即将到楼/已送达 订阅消息（已送达带短信兜底）；
     // arrive（即将到楼）同步企微通知楼长（env 门控，未配置静默跳过）。
     if (pushDone) {
@@ -602,7 +608,8 @@ export class FulfillmentService {
     let status: string, statusText: string;
     if (['completed', 'delivered'].includes(order.status)) {
       status = 'completed';
-      statusText = order.status === 'delivered' ? '已送达，待确认收货' : '已完成';
+      statusText =
+        order.status === 'delivered' ? '已送达，待确认收货' : '已完成';
     } else if (['exception', 'after-sales'].includes(order.status)) {
       status = 'exception';
       statusText = '异常处理中';
@@ -629,7 +636,8 @@ export class FulfillmentService {
       statusText = '配送中';
     } else if (order.riderId) {
       status = 'delivering';
-      statusText = pkg?.status === 'picked' ? '已取货，待出发' : '已接单，待取货';
+      statusText =
+        pkg?.status === 'picked' ? '已取货，待出发' : '已接单，待取货';
     } else {
       status = 'available';
       statusText = '待接单';
@@ -665,7 +673,8 @@ export class FulfillmentService {
       commission:
         commissionByOrder?.get(String(order.id)) ??
         (rules
-          ? (bestMatch(rules, dimsOfOrder(order))?.price ?? COMMISSION_PER_ORDER)
+          ? (bestMatch(rules, dimsOfOrder(order))?.price ??
+            COMMISSION_PER_ORDER)
           : COMMISSION_PER_ORDER),
       items: items.map((x: JsonMap) => ({
         name: x.product?.name ?? x.name,

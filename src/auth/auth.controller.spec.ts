@@ -28,14 +28,14 @@ describe('auth wechat-login env gate (IK8W5H)', () => {
 
   it('returns 501 微信登录未配置 when WX env missing', async () => {
     await expect(
-      controller.wechatLogin({ code: 'wx-code' } as never),
+      controller.wechatLogin({ code: 'wx-code' }),
     ).rejects.toMatchObject({
       status: 501,
       message: '微信登录未配置',
     });
     // 显式断言异常类型，避免 MatchObject 掩盖非 HttpException 错误
     try {
-      await controller.wechatLogin({ code: 'wx-code' } as never);
+      await controller.wechatLogin({ code: 'wx-code' });
     } catch (error) {
       expect(error).toBeInstanceOf(HttpException);
       expect((error as HttpException).getStatus()).toBe(501);
@@ -52,8 +52,12 @@ describe('auth wechat-login env gate (IK8W5H)', () => {
       },
     });
     userId = user.id;
-    const request = { user: { id: user.id, campusId: 'campus-hbut', role: 'user' } } as unknown as AuthRequest;
-    const result = await controller.bindPhone(request, { phone: '13800001234' });
+    const request = {
+      user: { id: user.id, campusId: 'campus-hbut', role: 'user' },
+    } as unknown as AuthRequest;
+    const result = await controller.bindPhone(request, {
+      phone: '13800001234',
+    });
     expect(result.data.phone).toBe('13800001234');
     expect(
       (await db.user.findUniqueOrThrow({ where: { id: user.id } })).phone,
@@ -61,10 +65,12 @@ describe('auth wechat-login env gate (IK8W5H)', () => {
   });
 
   it('rejects malformed phone numbers before touching the database', async () => {
-    const request = { user: { id: 'user-001', campusId: 'campus-hbut', role: 'user' } } as unknown as AuthRequest;
+    const request = {
+      user: { id: 'user-001', campusId: 'campus-hbut', role: 'user' },
+    } as unknown as AuthRequest;
     // service 层防御性复核：绕过管道的非法号直接拒绝，不落库
     await expect(
-      controller.bindPhone(request, { phone: 'abc' } as never),
+      controller.bindPhone(request, { phone: 'abc' }),
     ).rejects.toThrow('手机号格式不正确');
     expect(
       (await db.user.findUniqueOrThrow({ where: { id: 'user-001' } })).phone,

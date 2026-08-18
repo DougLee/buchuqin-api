@@ -30,11 +30,11 @@ export class PaymentsService {
   configured() {
     return Boolean(
       process.env.WX_APPID &&
-        process.env.WX_MCH_ID &&
-        process.env.WX_APIV3_KEY &&
-        process.env.WX_SERIAL_NO &&
-        (process.env.WX_PRIVATE_KEY_PATH || process.env.WX_PRIVATE_KEY) &&
-        process.env.WX_NOTIFY_URL,
+      process.env.WX_MCH_ID &&
+      process.env.WX_APIV3_KEY &&
+      process.env.WX_SERIAL_NO &&
+      (process.env.WX_PRIVATE_KEY_PATH || process.env.WX_PRIVATE_KEY) &&
+      process.env.WX_NOTIFY_URL,
     );
   }
   private privateKey() {

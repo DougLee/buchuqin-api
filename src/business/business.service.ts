@@ -64,7 +64,10 @@ export class BusinessService {
   ) {}
   /** 金额单位:分（IK8W5K）：满 10 元起送 = 1000 分；即时配送 4 元 = 400 分、预约 2 元 = 200 分。 */
   static readonly DELIVERY_THRESHOLD_CENTS = 1000;
-  static readonly DELIVERY_FEE_CENTS = { instant: 400, scheduled: 200 } as const;
+  static readonly DELIVERY_FEE_CENTS = {
+    instant: 400,
+    scheduled: 200,
+  } as const;
   private productView(product: any) {
     return {
       ...product,
@@ -78,7 +81,9 @@ export class BusinessService {
       ...order,
       // 用户端异常单统一话术（履约侧细分原因由后台/履约端展示）。
       statusText:
-        order.status === 'exception' ? '履约异常，客服处理中' : order.statusText,
+        order.status === 'exception'
+          ? '履约异常，客服处理中'
+          : order.statusText,
       statusPhase: statusPhase(order.status),
       productAmount: number(order.productAmount),
       deliveryThreshold: number(order.deliveryThreshold),
@@ -843,7 +848,8 @@ export class BusinessService {
     if (!['delivered', 'completed'].includes(order.status))
       throw new BadRequestException('订单送达后才能申请售后');
     // 送达时间优先取送达凭证时间（delivered 动作写入），历史单回退 timeline 末节点。
-    const proof = (order.package as unknown as Record<string, any> | null)?.proof;
+    const proof = (order.package as unknown as Record<string, any> | null)
+      ?.proof;
     const timeline = order.timeline as unknown as TimelineStep[];
     const deliveredAt = proof?.time ?? timeline.at(-1)?.time;
     if (

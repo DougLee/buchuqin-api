@@ -44,9 +44,7 @@ export class PaymentsController {
   @HttpCode(200)
   @ApiOperation({ summary: '微信支付回调（验签占位 + 幂等处理）' })
   async notify(@Body() body: Record<string, unknown>) {
-    return this.service.notify(
-      body as Parameters<PaymentsService['notify']>[0],
-    );
+    return this.service.notify(body);
   }
 
   @Get(':orderId/status')
