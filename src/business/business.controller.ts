@@ -144,12 +144,6 @@ export class BusinessController {
   ) {
     return ok(await this.service.order(req.user.id, id));
   }
-  @Post('orders/:id/pay') async pay(
-    @Req() req: AuthRequest,
-    @Param('id') id: string,
-  ) {
-    return ok(await this.service.pay(req.user.id, id), '测试支付成功');
-  }
   @Post('orders/:id/cancel') async cancel(
     @Req() req: AuthRequest,
     @Param('id') id: string,

@@ -12,7 +12,10 @@ const envFlag = (name: string) => {
 };
 
 async function bootstrap() {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  // rawBody：微信支付回调验签需要原始请求体字节。
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    rawBody: true,
+  });
   app.setGlobalPrefix('api/v1');
   // 本地 uploads 静态目录（历史图片访问通道）：默认仅开发开启，生产需显式
   // LOCAL_UPLOADS_ENABLED=true（ADR-0003 后新图片走 COS 绝对 URL）。

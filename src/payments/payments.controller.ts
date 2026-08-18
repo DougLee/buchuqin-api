@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Headers,
   HttpCode,
   Param,
   Post,
@@ -9,8 +10,10 @@ import {
   SetMetadata,
   UseGuards,
 } from '@nestjs/common';
+import type { RawBodyRequest } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { IsString } from 'class-validator';
+import type { Request } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { USER_ROLES_KEY, UserRoleGuard } from '../auth/user-role.guard';
 import type { AuthRequest } from '../auth/jwt-auth.guard';
@@ -32,19 +35,27 @@ export class PaymentsController {
   @SetMetadata(USER_ROLES_KEY, ['user'])
   @ApiBearerAuth()
   @ApiOperation({
-    summary:
-      '微信小程序预下单（未配置 WX_* 商户参数时返回 { mock: true }，走 /orders/:id/pay 演示通道）',
+    summary: '微信小程序预下单（未配置商户参数返回 501，ADR-0004 后无演示通道）',
   })
   async prepay(@Req() req: AuthRequest, @Body() body: PrepayDto) {
     return ok(await this.service.prepay(req.user.id, body.orderId));
   }
 
   // 微信服务器回调：公网公开不走 JWT；响应体按微信规范裸返回 { code, message }。
+  // 验签必须拿原始请求体（main.ts rawBody:true），JSON 再序列化字节序会变。
   @Post('wechat/notify')
   @HttpCode(200)
-  @ApiOperation({ summary: '微信支付回调（验签占位 + 幂等处理）' })
-  async notify(@Body() body: Record<string, unknown>) {
-    return this.service.notify(body);
+  @ApiOperation({ summary: '微信支付回调（平台证书验签 + 幂等处理）' })
+  async notify(
+    @Req() req: RawBodyRequest<Request>,
+    @Headers() headers: Record<string, string | string[] | undefined>,
+    @Body() body: Record<string, unknown>,
+  ) {
+    return this.service.notify(
+      headers,
+      req.rawBody?.toString('utf8') ?? '',
+      body,
+    );
   }
 
   @Get(':orderId/status')

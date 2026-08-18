@@ -4,19 +4,23 @@ import {
   HttpStatus,
   Injectable,
   NotFoundException,
+  UnauthorizedException,
 } from '@nestjs/common';
-import { createSign, createDecipheriv, randomUUID } from 'node:crypto';
+import { createSign, createVerify, createDecipheriv, randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { PrismaService } from '../database/prisma.service';
 import { BusinessService } from '../business/business.service';
 
+/** 微信支付 v3 商户 API 主机（下单/证书下载都走这里，不是 api.weixin.qq.com）。 */
+const WX_PAY_HOST = 'https://api.mch.weixin.qq.com';
+
 /**
- * 微信支付后端（IK8W5I，env 门控 + mock 回退）：
- * - WX_MCH_ID/WX_APIV3_KEY/WX_SERIAL_NO/WX_PRIVATE_KEY_PATH/WX_NOTIFY_URL 齐备时走
- *   微信支付 v3（JSAPI 统一下单 + 小程序支付参数签名）；缺失时 prepay 返回 { mock: true }，
- *   前端继续走 POST /orders/:id/pay 演示支付通道。
- * - 回调 /payments/wechat/notify：APIv3 AES-256-GCM 解密 + 复用 business.pay 的
- *   条件更新幂等处理；验签为占位实现（TODO：平台证书验签）。
+ * 微信支付后端（IK8W5I → ADR-0004 真实化）：
+ * - WX_APPID_USER + WX_MCH_ID/WX_APIV3_KEY/WX_SERIAL_NO/WX_PRIVATE_KEY(_PATH)/
+ *   WX_NOTIFY_URL 齐备才可用；缺失时 prepay/notify 一律 501，无 mock 回退
+ *   （演示支付通道 POST /orders/:id/pay 已随 ADR-0004 删除）。
+ * - 回调 /payments/wechat/notify：平台证书验签（Wechatpay-Signature，防伪造
+ *   回调）+ 时间戳防重放 + APIv3 AES-256-GCM 解密 + business.pay 条件更新幂等。
  */
 @Injectable()
 export class PaymentsService {
@@ -25,11 +29,14 @@ export class PaymentsService {
     private readonly business: BusinessService,
   ) {}
   private privateKeyCache: string | null = null;
+  /** 微信平台证书缓存：serialNo → PEM（验签用），未知序列号时刷新一次。 */
+  private platformCerts = new Map<string, string>();
+  private platformCertsFetchedAt = 0;
 
-  /** 支付商户侧配置是否齐备（不齐备 → prepay mock 回退、notify 501）。 */
+  /** 支付商户侧配置是否齐备（不齐备 → prepay/notify 501）。 */
   configured() {
     return Boolean(
-      process.env.WX_APPID &&
+      process.env.WX_APPID_USER &&
       process.env.WX_MCH_ID &&
       process.env.WX_APIV3_KEY &&
       process.env.WX_SERIAL_NO &&
@@ -62,9 +69,11 @@ export class PaymentsService {
 
   /**
    * JSAPI 统一下单：返回小程序 wx.requestPayment 所需参数。
-   * 未配置商户参数 → { mock: true }（演示支付通道）。
+   * 未配置商户参数 → 501 硬错误（ADR-0004：不再有 mock 演示通道）。
    */
   async prepay(userId: string, orderId: string) {
+    if (!this.configured())
+      throw new HttpException('微信支付未配置', HttpStatus.NOT_IMPLEMENTED);
     const order = await this.db.order.findFirst({
       where: { id: orderId, userId },
     });
@@ -72,15 +81,7 @@ export class PaymentsService {
     if (order.status !== 'pending-payment')
       throw new BadRequestException('当前状态不可支付');
     const amount = Number(order.payableAmount);
-    if (!this.configured())
-      return {
-        mock: true,
-        orderId: order.id,
-        orderNo: order.orderNo,
-        amount,
-        // 前端拿到 mock 后调用 POST /orders/:id/pay 完成演示支付。
-        hint: '微信支付未配置，走演示支付通道 POST /orders/:id/pay',
-      };
+    const appid = process.env.WX_APPID_USER!;
     const user = await this.db.user.findUniqueOrThrow({
       where: { id: userId },
       select: { openid: true },
@@ -90,7 +91,7 @@ export class PaymentsService {
         '当前用户无微信 openid，无法发起小程序支付（请用微信登录账号支付）',
       );
     const body = JSON.stringify({
-      appid: process.env.WX_APPID,
+      appid,
       mchid: process.env.WX_MCH_ID,
       description: `不出寝食社订单 ${order.orderNo}`,
       out_trade_no: order.orderNo,
@@ -102,7 +103,7 @@ export class PaymentsService {
     const urlPath = '/v3/pay/transactions/jsapi';
     let response: Response;
     try {
-      response = await fetch(`https://api.weixin.qq.com${urlPath}`, {
+      response = await fetch(`${WX_PAY_HOST}${urlPath}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -130,19 +131,16 @@ export class PaymentsService {
       nonceStr = randomUUID().replace(/-/g, ''),
       pkg = `prepay_id=${result.prepay_id}`;
     return {
-      mock: false,
       orderId: order.id,
       orderNo: order.orderNo,
       amount,
       payParams: {
-        appId: process.env.WX_APPID,
+        appId: appid,
         timeStamp,
         nonceStr,
         package: pkg,
         signType: 'RSA',
-        paySign: this.sign(
-          `${process.env.WX_APPID}\n${timeStamp}\n${nonceStr}\n${pkg}\n`,
-        ),
+        paySign: this.sign(`${appid}\n${timeStamp}\n${nonceStr}\n${pkg}\n`),
       },
     };
   }
@@ -161,26 +159,31 @@ export class PaymentsService {
       paid: order.paidAt != null,
       paidAt: order.paidAt?.toISOString() ?? null,
       amount: Number(order.payableAmount),
-      // 未配置商户参数时前端应走演示支付通道。
-      mock: !this.configured(),
     };
   }
 
   /**
    * 支付回调（微信服务器 → 本服务，公网公开）：
-   * - 验签占位（TODO(IK8W5I)：加载平台证书验 Wechatpay-Signature，当前仅解密校验）；
+   * - 验签：Wechatpay-Signature 用微信平台证书 RSA-SHA256 校验
+   *   `${timestamp}\n${nonce}\n${rawBody}\n`，防伪造回调把订单置已支付；
+   * - 防重放：timestamp 偏离当前超 5 分钟拒绝；
    * - 幂等：复用 business.pay（条件更新抢占支付权，重复通知/并发回调只生效一次）。
    */
-  async notify(body: {
-    event_type?: string;
-    resource?: {
-      ciphertext?: string;
-      nonce?: string;
-      associated_data?: string;
-    };
-  }) {
+  async notify(
+    headers: Record<string, string | string[] | undefined>,
+    rawBody: string,
+    body: {
+      event_type?: string;
+      resource?: {
+        ciphertext?: string;
+        nonce?: string;
+        associated_data?: string;
+      };
+    },
+  ) {
     if (!this.configured())
       throw new HttpException('微信支付未配置', HttpStatus.NOT_IMPLEMENTED);
+    await this.verifyNotifySignature(headers, rawBody);
     const resource = body.resource;
     if (!resource?.ciphertext || !resource.nonce)
       throw new BadRequestException('回调报文缺少加密资源');
@@ -228,5 +231,93 @@ export class PaymentsService {
     return Buffer.concat([decipher.update(data), decipher.final()]).toString(
       'utf8',
     );
+  }
+
+  /** 回调验签：平台证书 + RSA-SHA256 + 5 分钟时间戳容差（防伪造/防重放）。 */
+  private async verifyNotifySignature(
+    headers: Record<string, string | string[] | undefined>,
+    rawBody: string,
+  ) {
+    const pick = (name: string) => {
+      const value = headers[name];
+      return Array.isArray(value) ? value[0] : value;
+    };
+    const signature = pick('wechatpay-signature'),
+      timestamp = pick('wechatpay-timestamp'),
+      nonce = pick('wechatpay-nonce'),
+      serial = pick('wechatpay-serial');
+    if (!signature || !timestamp || !nonce || !serial)
+      throw new UnauthorizedException('回调缺少验签头');
+    if (Math.abs(Math.floor(Date.now() / 1000) - Number(timestamp)) > 300)
+      throw new UnauthorizedException('回调时间戳超出容差');
+    const cert = await this.platformCertificate(serial);
+    const verifier = createVerify('RSA-SHA256');
+    verifier.update(`${timestamp}\n${nonce}\n${rawBody}\n`);
+    if (!verifier.verify(cert, signature, 'base64'))
+      throw new UnauthorizedException('回调验签失败');
+  }
+
+  /** 取指定序列号的微信平台证书（缓存 miss 先刷新一次再判定）。 */
+  private async platformCertificate(serial: string): Promise<string> {
+    if (!this.platformCerts.has(serial))
+      await this.refreshPlatformCertificates();
+    const cert = this.platformCerts.get(serial);
+    if (!cert) throw new UnauthorizedException('未知的微信平台证书序列号');
+    return cert;
+  }
+
+  /**
+   * 下载微信平台证书（GET /v3/certificates，商户私钥签名请求，
+   * 响应用 APIv3Key AES-GCM 解密）。60 秒内不重复拉取。
+   */
+  private async refreshPlatformCertificates() {
+    if (
+      this.platformCerts.size &&
+      Date.now() - this.platformCertsFetchedAt < 60_000
+    )
+      return;
+    const urlPath = '/v3/certificates';
+    let response: Response;
+    try {
+      response = await fetch(`${WX_PAY_HOST}${urlPath}`, {
+        headers: {
+          Accept: 'application/json',
+          Authorization: this.authorization('GET', urlPath, ''),
+        },
+        signal: AbortSignal.timeout(6000),
+      });
+    } catch {
+      throw new HttpException(
+        '微信平台证书服务暂不可用',
+        HttpStatus.BAD_GATEWAY,
+      );
+    }
+    if (!response.ok)
+      throw new HttpException(
+        `微信平台证书下载失败（${response.status}）`,
+        HttpStatus.BAD_GATEWAY,
+      );
+    const result = (await response.json()) as {
+      data?: Array<{
+        serial_no: string;
+        encrypt_certificate: {
+          ciphertext: string;
+          nonce: string;
+          associated_data?: string;
+        };
+      }>;
+    };
+    for (const item of result.data ?? []) {
+      const encrypted = item.encrypt_certificate;
+      this.platformCerts.set(
+        item.serial_no,
+        this.decryptResource(
+          encrypted.ciphertext,
+          encrypted.nonce,
+          encrypted.associated_data ?? '',
+        ),
+      );
+    }
+    this.platformCertsFetchedAt = Date.now();
   }
 }

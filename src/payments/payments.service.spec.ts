@@ -5,7 +5,7 @@ import { BusinessService } from '../business/business.service';
 import { buildOrderTimeline } from '../common/order-state';
 import { PaymentsService } from './payments.service';
 
-/** 微信支付 env 门控 + mock 回退 + 超时关单（IK8W5I）。 */
+/** 微信支付 env 门控（501 硬错误，无 mock 回退）+ 回调验签 + 超时关单（IK8W5I → ADR-0004）。 */
 describe('payments wechat (IK8W5I)', () => {
   const db = new PrismaService();
   const business = new BusinessService(db);
@@ -15,11 +15,12 @@ describe('payments wechat (IK8W5I)', () => {
   const json = (value: unknown) =>
     JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
   const WX_KEYS = [
-    'WX_APPID',
+    'WX_APPID_USER',
     'WX_MCH_ID',
     'WX_APIV3_KEY',
     'WX_SERIAL_NO',
     'WX_PRIVATE_KEY_PATH',
+    'WX_PRIVATE_KEY',
     'WX_NOTIFY_URL',
   ] as const;
   const saved = new Map<string, string | undefined>();
@@ -78,34 +79,44 @@ describe('payments wechat (IK8W5I)', () => {
     await db.$disconnect();
   });
 
-  it('prepay falls back to mock channel when WX_* unset', async () => {
-    const result = (await service.prepay(userId, orderId)) as Record<
-      string,
-      unknown
-    >;
-    expect(result.mock).toBe(true);
-    expect(result.orderNo).toBeTruthy();
-    expect(String(result.hint)).toContain('/orders/:id/pay');
+  it('prepay returns 501 when WX_* merchant config missing (no mock fallback)', async () => {
+    try {
+      await service.prepay(userId, orderId);
+      throw new Error('should have thrown');
+    } catch (error) {
+      expect(error).toBeInstanceOf(HttpException);
+      expect((error as HttpException).getStatus()).toBe(501);
+      expect((error as HttpException).message).toContain('微信支付未配置');
+    }
   });
 
-  it('prepay rejects orders not pending payment', async () => {
-    await db.order.update({
-      where: { id: orderId },
-      data: { status: 'paid', statusText: '仓库正在接单', paidAt: new Date() },
-    });
-    await expect(service.prepay(userId, orderId)).rejects.toThrow(
-      '当前状态不可支付',
-    );
-    await expect(service.prepay(userId, 'no-such-order')).rejects.toThrow(
-      '订单不存在',
-    );
+  it('prepay rejects orders not pending payment (config present)', async () => {
+    process.env.WX_APPID_USER = 'wx-spec';
+    process.env.WX_MCH_ID = 'mch-spec';
+    process.env.WX_APIV3_KEY = 'a'.repeat(32);
+    process.env.WX_SERIAL_NO = 'serial-spec';
+    process.env.WX_PRIVATE_KEY = 'dummy-key';
+    process.env.WX_NOTIFY_URL = 'https://example.com/notify';
+    try {
+      await db.order.update({
+        where: { id: orderId },
+        data: { status: 'paid', statusText: '仓库正在接单', paidAt: new Date() },
+      });
+      await expect(service.prepay(userId, orderId)).rejects.toThrow(
+        '当前状态不可支付',
+      );
+      await expect(service.prepay(userId, 'no-such-order')).rejects.toThrow(
+        '订单不存在',
+      );
+    } finally {
+      for (const key of WX_KEYS) delete process.env[key];
+    }
   });
 
-  it('status reports payment state and mock channel', async () => {
+  it('status reports payment state', async () => {
     const result = await service.status(userId, orderId);
     expect(result.paid).toBe(true);
     expect(result.status).toBe('paid');
-    expect(result.mock).toBe(true);
     await expect(service.status(userId, 'no-such-order')).rejects.toThrow(
       '订单不存在',
     );
@@ -113,11 +124,41 @@ describe('payments wechat (IK8W5I)', () => {
 
   it('notify returns 501 when merchant config missing', async () => {
     try {
-      await service.notify({});
+      await service.notify({}, '', {});
       throw new Error('should have thrown');
     } catch (error) {
       expect(error).toBeInstanceOf(HttpException);
       expect((error as HttpException).getStatus()).toBe(501);
+    }
+  });
+
+  it('notify rejects callbacks without signature headers (401, no network)', async () => {
+    process.env.WX_APPID_USER = 'wx-spec';
+    process.env.WX_MCH_ID = 'mch-spec';
+    process.env.WX_APIV3_KEY = 'a'.repeat(32);
+    process.env.WX_SERIAL_NO = 'serial-spec';
+    process.env.WX_PRIVATE_KEY = 'dummy-key';
+    process.env.WX_NOTIFY_URL = 'https://example.com/notify';
+    try {
+      await expect(service.notify({}, '{}', {})).rejects.toThrow(
+        '回调缺少验签头',
+      );
+      // 时间戳超 5 分钟容差 → 防重放拒绝
+      const stale = Math.floor(Date.now() / 1000) - 600;
+      await expect(
+        service.notify(
+          {
+            'wechatpay-signature': 'x',
+            'wechatpay-timestamp': String(stale),
+            'wechatpay-nonce': 'n',
+            'wechatpay-serial': 's',
+          },
+          '{}',
+          {},
+        ),
+      ).rejects.toThrow('回调时间戳超出容差');
+    } finally {
+      for (const key of WX_KEYS) delete process.env[key];
     }
   });
 
