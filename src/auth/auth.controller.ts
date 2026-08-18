@@ -17,7 +17,7 @@ import { JwtService } from '@nestjs/jwt';
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { IsOptional, IsString, Matches, MinLength } from 'class-validator';
 import { SetMetadata } from '@nestjs/common';
-import { compare } from 'bcryptjs';
+import { compare, hash } from 'bcryptjs';
 import { ok } from '../common/api-response';
 import { ADMIN_CAMPUS_ID } from '../common/campus';
 import { PrismaService } from '../database/prisma.service';
@@ -31,6 +31,14 @@ class AdminLoginDto {
   @IsString()
   @MinLength(1)
   password!: string;
+}
+
+class ChangePasswordDto {
+  @IsString()
+  oldPassword!: string;
+  @IsString()
+  @MinLength(8, { message: '新密码至少 8 位' })
+  newPassword!: string;
 }
 
 class WechatLoginDto {
@@ -106,6 +114,33 @@ export class AuthController {
         avatar: '',
       },
     });
+  }
+
+  /**
+   * 后台账号自助改密（IK9KWO）：验旧密码 → 更新 hash。
+   * 仅 AdminAccount 持有者可用（小程序用户/员工无密码体系）。
+   */
+  @Post('change-password')
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '自助修改密码（需旧密码，仅后台账号）' })
+  async changePassword(
+    @Req() req: AuthRequest,
+    @Body() body: ChangePasswordDto,
+  ) {
+    const account = await this.db.adminAccount.findUnique({
+      where: { id: req.user.id },
+    });
+    if (!account)
+      throw new BadRequestException('该账号类型不支持修改密码');
+    if (!(await compare(body.oldPassword ?? '', account.passwordHash)))
+      throw new UnauthorizedException('原密码不正确');
+    await this.db.adminAccount.update({
+      where: { id: account.id },
+      data: { passwordHash: await hash(body.newPassword, 10) },
+    });
+    return ok({ id: account.id }, '密码已更新');
   }
 
   @Get('profile')

@@ -10,6 +10,7 @@ import {
   Matches,
   MaxLength,
   Min,
+  MinLength,
 } from 'class-validator';
 
 export class BarcodeDto {
@@ -106,4 +107,28 @@ export class CreateDispatchInvitationDto {
   @IsString() startAt!: string;
   @IsString() endAt!: string;
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) reward?: number;
+}
+
+/** 后台账号管理（IK9KWO）：仅 admin 可增删改；角色口径同 permissions.ts。 */
+export const ADMIN_ACCOUNT_ROLES = [
+  'admin',
+  'operations',
+  'warehouse',
+  'finance',
+] as const;
+export class CreateAccountDto {
+  @Matches(/^[a-zA-Z0-9_]{3,20}$/, {
+    message: '用户名需为 3-20 位字母/数字/下划线',
+  })
+  username!: string;
+  @IsString() @MinLength(8, { message: '密码至少 8 位' }) password!: string;
+  @IsOptional() @IsString() @MaxLength(30) nickname?: string;
+  @IsIn(ADMIN_ACCOUNT_ROLES) role!: string;
+}
+export class UpdateAccountDto {
+  @IsOptional() @IsString() @MaxLength(30) nickname?: string;
+  @IsOptional() @IsIn(ADMIN_ACCOUNT_ROLES) role?: string;
+  /** 重置密码（超管操作，无需旧密码）。 */
+  @IsOptional() @IsString() @MinLength(8, { message: '密码至少 8 位' })
+  password?: string;
 }

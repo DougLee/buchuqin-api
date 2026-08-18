@@ -21,6 +21,7 @@ import { canAdmin, type AdminAccess, type AdminSection } from './permissions';
 import {
   AdjustStockDto,
   BarcodeDto,
+  CreateAccountDto,
   CreateBuildingDto,
   CreateCommissionRuleDto,
   CreateCouponDto,
@@ -30,6 +31,7 @@ import {
   CreateStaffDto,
   IssueCouponDto,
   StockInDto,
+  UpdateAccountDto,
   UpdateBuildingDto,
   UpdateCommissionRuleDto,
   UpdateCouponDto,
@@ -557,6 +559,47 @@ export class AdminController {
     this.authorize(req, 'audit');
     return ok(
       paginate(await this.service.auditLogs(req.user.campusId), page, pageSize),
+    );
+  }
+  /* ---------- 后台账号管理（IK9KWO）：accounts 板块仅 admin ---------- */
+  @Get('accounts')
+  @ApiOperation({ summary: '后台账号列表（不含密码散列，统一分页包裹）' })
+  async accounts(
+    @Req() req: AuthRequest,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+  ) {
+    this.authorize(req, 'accounts');
+    return ok(paginate(await this.service.accounts(), page, pageSize));
+  }
+  @Post('accounts')
+  @ApiOperation({ summary: '新建后台账号（用户名唯一，密码 ≥8 位）' })
+  async createAccount(@Req() req: AuthRequest, @Body() body: CreateAccountDto) {
+    this.authorize(req, 'accounts', 'write');
+    return ok(
+      await this.service.createAccount(body, req.user.id, req.user.campusId),
+      '账号已创建',
+    );
+  }
+  @Patch('accounts/:id')
+  @ApiOperation({ summary: '改昵称/角色或重置密码；最后一个 admin 不可降级' })
+  async updateAccount(
+    @Req() req: AuthRequest,
+    @Param('id') id: string,
+    @Body() body: UpdateAccountDto,
+  ) {
+    this.authorize(req, 'accounts', 'write');
+    return ok(
+      await this.service.updateAccount(id, body, req.user.id, req.user.campusId),
+    );
+  }
+  @Delete('accounts/:id')
+  @ApiOperation({ summary: '删除后台账号；不可删自己/最后一个 admin' })
+  async deleteAccount(@Req() req: AuthRequest, @Param('id') id: string) {
+    this.authorize(req, 'accounts', 'write');
+    return ok(
+      await this.service.deleteAccount(id, req.user.id, req.user.campusId),
+      '账号已删除',
     );
   }
 }

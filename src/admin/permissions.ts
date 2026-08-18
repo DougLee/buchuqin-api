@@ -11,7 +11,8 @@ export type AdminSection =
   | 'after-sales'
   | 'finance'
   | 'marketing'
-  | 'audit';
+  | 'audit'
+  | 'accounts';
 export type AdminAccess = 'read' | 'write';
 
 const ALL: AdminRole[] = ['admin', 'operations', 'warehouse', 'finance'];
@@ -50,6 +51,8 @@ export const ADMIN_MATRIX: Record<
   finance: { read: [...OPS, 'finance'], write: ['admin', 'finance'] },
   marketing: { read: OPS, write: OPS },
   audit: { read: [...OPS, 'finance'], write: [] },
+  // 账号管理（IK9KWO）：仅超管，防越权提权。
+  accounts: { read: ['admin'], write: ['admin'] },
 };
 
 /** 判断后台角色对板块的读/写权限。非后台角色一律 false。 */

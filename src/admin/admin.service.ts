@@ -5,12 +5,14 @@ import {
   Optional,
 } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
+import { hash } from 'bcryptjs';
 import { PrismaService } from '../database/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { BusinessService } from '../business/business.service';
 import { CommissionService } from '../commission/commission.service';
 import type {
   AdjustStockDto,
+  CreateAccountDto,
   CreateBuildingDto,
   CreateCommissionRuleDto,
   CreateCouponDto,
@@ -20,6 +22,7 @@ import type {
   CreateStaffDto,
   IssueCouponDto,
   StockInDto,
+  UpdateAccountDto,
   UpdateBuildingDto,
   UpdateCommissionRuleDto,
   UpdateCouponDto,
@@ -1409,6 +1412,112 @@ export class AdminService {
       where: { campusId },
       orderBy: { createdAt: 'desc' },
     });
+  }
+
+  /* ---------- 后台账号管理（IK9KWO）：仅 admin 可达（矩阵守卫在 controller） ---------- */
+  /** 列表不回 passwordHash。 */
+  async accounts() {
+    const xs = await this.db.adminAccount.findMany({
+      orderBy: { createdAt: 'asc' },
+      select: {
+        id: true,
+        username: true,
+        nickname: true,
+        role: true,
+        campusId: true,
+        createdAt: true,
+      },
+    });
+    return xs;
+  }
+  async createAccount(
+    body: CreateAccountDto,
+    operator: string,
+    campusId: string,
+  ) {
+    const duplicate = await this.db.adminAccount.findUnique({
+      where: { username: body.username },
+    });
+    if (duplicate) throw new BadRequestException('用户名已存在');
+    const account = await this.db.adminAccount.create({
+      data: {
+        username: body.username,
+        passwordHash: await hash(body.password, 10),
+        nickname: body.nickname ?? '',
+        role: body.role,
+        campusId,
+      },
+    });
+    await this.audit(
+      operator,
+      'account.create',
+      'admin-account',
+      account.id,
+      null,
+      { username: account.username, role: account.role },
+      campusId,
+    );
+    return { id: account.id, username: account.username, role: account.role };
+  }
+  async updateAccount(
+    id: string,
+    body: UpdateAccountDto,
+    operator: string,
+    campusId: string,
+  ) {
+    const before = await this.db.adminAccount.findUnique({ where: { id } });
+    if (!before) throw new NotFoundException('账号不存在');
+    // 保护：最后一个 admin 不可降级（否则后台再无超管，权限体系锁死）。
+    if (before.role === 'admin' && body.role && body.role !== 'admin')
+      await this.assertNotLastAdmin(id);
+    const after = await this.db.adminAccount.update({
+      where: { id },
+      data: {
+        ...(body.nickname != null ? { nickname: body.nickname } : {}),
+        ...(body.role ? { role: body.role } : {}),
+        ...(body.password
+          ? { passwordHash: await hash(body.password, 10) }
+          : {}),
+      },
+      select: { id: true, username: true, nickname: true, role: true },
+    });
+    await this.audit(
+      operator,
+      body.password ? 'account.reset-password' : 'account.update',
+      'admin-account',
+      id,
+      { username: before.username, role: before.role },
+      after,
+      campusId,
+    );
+    return after;
+  }
+  async deleteAccount(
+    id: string,
+    operator: string,
+    campusId: string,
+  ) {
+    const before = await this.db.adminAccount.findUnique({ where: { id } });
+    if (!before) throw new NotFoundException('账号不存在');
+    if (id === operator) throw new BadRequestException('不能删除当前登录账号');
+    if (before.role === 'admin') await this.assertNotLastAdmin(id);
+    await this.db.adminAccount.delete({ where: { id } });
+    await this.audit(
+      operator,
+      'account.delete',
+      'admin-account',
+      id,
+      { username: before.username, role: before.role },
+      null,
+      campusId,
+    );
+    return { id, deleted: true };
+  }
+  private async assertNotLastAdmin(id: string) {
+    const admins = await this.db.adminAccount.count({
+      where: { role: 'admin', id: { not: id } },
+    });
+    if (!admins) throw new BadRequestException('至少需要保留一个超管账号');
   }
   private audit(
     operator: string,
