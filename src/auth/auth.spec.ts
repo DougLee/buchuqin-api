@@ -17,7 +17,9 @@ describe('auth test-login admin role aliases (IK8W5W)', () => {
     signOptions: { expiresIn: '7d' },
   });
   const controller = new AuthController(jwt, db);
-  const admin = new AdminController(new AdminService(db, new BusinessService(db)));
+  const admin = new AdminController(
+    new AdminService(db, new BusinessService(db)),
+  );
 
   afterAll(() => db.$disconnect());
 
@@ -32,26 +34,36 @@ describe('auth test-login admin role aliases (IK8W5W)', () => {
       expect(claims.id).toBe(`${identity}-001`);
       expect(claims.campusId).toBe(ADMIN_CAMPUS_ID);
       expect(result.data.user.nickname).toBeTruthy();
-      // 后台守卫：别名 token 与 admin 同族放行。
+      // 后台守卫：别名 token 与 admin 同族放行（工作台读权限）。
       expect(() =>
-        (admin as unknown as { authorize: (u: AuthUser) => void }).authorize({
-          user: claims,
-        }),
+        (
+          admin as unknown as { authorize: (u: unknown, s: string) => void }
+        ).authorize({ user: claims }, 'dashboard'),
       ).not.toThrow();
     },
   );
 
   it('rejects non-admin roles in admin.authorize', () => {
     const authorize = (
-      admin as unknown as { authorize: (u: AuthUser) => void }
+      admin as unknown as { authorize: (u: unknown, s: string) => void }
     ).authorize;
     expect(() =>
-      authorize({ user: { id: 'u', campusId: ADMIN_CAMPUS_ID, role: 'user' } }),
+      authorize(
+        { user: { id: 'u', campusId: ADMIN_CAMPUS_ID, role: 'user' } },
+        'dashboard',
+      ),
     ).toThrow(ForbiddenException);
     expect(() =>
-      authorize({
-        user: { id: 's', campusId: ADMIN_CAMPUS_ID, role: 'building-manager' },
-      }),
+      authorize(
+        {
+          user: {
+            id: 's',
+            campusId: ADMIN_CAMPUS_ID,
+            role: 'building-manager',
+          },
+        },
+        'dashboard',
+      ),
     ).toThrow(ForbiddenException);
   });
 });

@@ -17,6 +17,7 @@ import type { AuthRequest } from '../auth/jwt-auth.guard';
 import { ok } from '../common/api-response';
 import { paginate } from '../common/pagination';
 import { AdminService } from './admin.service';
+import { canAdmin, type AdminAccess, type AdminSection } from './permissions';
 import {
   AdjustStockDto,
   BarcodeDto,
@@ -41,11 +42,17 @@ import {
 @Controller('admin')
 export class AdminController {
   constructor(private readonly service: AdminService) {}
-  private authorize(req: AuthRequest) {
-    if (
-      !['admin', 'operations', 'warehouse', 'finance'].includes(req.user.role)
-    )
-      throw new ForbiddenException('无后台访问权限');
+  /**
+   * RBAC（IK9JHR）：按 ADR-0004 签字矩阵校验 角色×板块×读写，
+   * 矩阵定义在 ./permissions.ts，改权限只改那张表。
+   */
+  private authorize(
+    req: AuthRequest,
+    section: AdminSection,
+    access: AdminAccess = 'read',
+  ) {
+    if (!canAdmin(req.user.role, section, access))
+      throw new ForbiddenException('当前角色无权访问该板块');
   }
   @Get('dashboard')
   @ApiOperation({
@@ -57,7 +64,7 @@ export class AdminController {
       '履约超时=支付后超 90 分钟未送达；waitingHandover/lastMile 按 timeline 最后节点是否完成区分。',
   })
   async dashboard(@Req() req: AuthRequest) {
-    this.authorize(req);
+    this.authorize(req, 'dashboard');
     return ok(await this.service.dashboard(req.user.campusId));
   }
   @Get('products')
@@ -67,7 +74,7 @@ export class AdminController {
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
   ) {
-    this.authorize(req);
+    this.authorize(req, 'products');
     return ok(
       paginate(await this.service.products(req.user.campusId), page, pageSize),
     );
@@ -76,14 +83,16 @@ export class AdminController {
     @Req() req: AuthRequest,
     @Body() body: BarcodeDto,
   ) {
-    this.authorize(req);
-    return ok(await this.service.lookupBarcode(body.barcode, req.user.campusId));
+    this.authorize(req, 'products');
+    return ok(
+      await this.service.lookupBarcode(body.barcode, req.user.campusId),
+    );
   }
   @Post('products') async createProduct(
     @Req() req: AuthRequest,
     @Body() body: CreateProductDto,
   ) {
-    this.authorize(req);
+    this.authorize(req, 'products', 'write');
     return ok(
       await this.service.createProduct(body, req.user.id, req.user.campusId),
       '商品已创建',
@@ -94,15 +103,15 @@ export class AdminController {
     @Param('id') id: string,
     @Body() body: { price?: number; stock?: number },
   ) {
-    this.authorize(req);
+    this.authorize(req, 'products', 'write');
     return ok(
-        await this.service.updateProduct(
-          id,
-          body,
-          req.user.id,
-          req.user.campusId,
-        ),
-      );
+      await this.service.updateProduct(
+        id,
+        body,
+        req.user.id,
+        req.user.campusId,
+      ),
+    );
   }
   @Get('inventory')
   @ApiOperation({ summary: '库存列表（?page&pageSize 统一分页包裹）' })
@@ -111,7 +120,7 @@ export class AdminController {
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
   ) {
-    this.authorize(req);
+    this.authorize(req, 'inventory');
     return ok(
       paginate(await this.service.inventory(req.user.campusId), page, pageSize),
     );
@@ -120,7 +129,7 @@ export class AdminController {
     @Req() req: AuthRequest,
     @Body() body: StockInDto,
   ) {
-    this.authorize(req);
+    this.authorize(req, 'inventory', 'write');
     return ok(
       await this.service.stockIn(body, req.user.id, req.user.campusId),
       '入库完成',
@@ -130,7 +139,7 @@ export class AdminController {
     @Req() req: AuthRequest,
     @Body() body: AdjustStockDto,
   ) {
-    this.authorize(req);
+    this.authorize(req, 'inventory', 'write');
     return ok(
       await this.service.adjustStock(body, req.user.id, req.user.campusId),
       '库存已调整',
@@ -144,7 +153,7 @@ export class AdminController {
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
   ) {
-    this.authorize(req);
+    this.authorize(req, 'inventory');
     return ok(
       paginate(
         await this.service.inventoryTxns(productId, req.user.campusId),
@@ -154,14 +163,16 @@ export class AdminController {
     );
   }
   @Get('orders')
-  @ApiOperation({ summary: '订单列表（?status 过滤保留；?page&pageSize 统一分页包裹）' })
+  @ApiOperation({
+    summary: '订单列表（?status 过滤保留；?page&pageSize 统一分页包裹）',
+  })
   async orders(
     @Req() req: AuthRequest,
     @Query('status') status?: string,
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
   ) {
-    this.authorize(req);
+    this.authorize(req, 'orders');
     return ok(
       paginate(
         await this.service.orders(status, req.user.campusId),
@@ -174,7 +185,7 @@ export class AdminController {
     @Req() req: AuthRequest,
     @Param('id') id: string,
   ) {
-    this.authorize(req);
+    this.authorize(req, 'orders');
     return ok(await this.service.order(id, req.user.campusId));
   }
   @Post('orders/:id/actions/:action') async orderAction(
@@ -182,7 +193,7 @@ export class AdminController {
     @Param('id') id: string,
     @Param('action') action: string,
   ) {
-    this.authorize(req);
+    this.authorize(req, 'orders', 'write');
     return ok(
       await this.service.orderAction(
         id,
@@ -199,7 +210,7 @@ export class AdminController {
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
   ) {
-    this.authorize(req);
+    this.authorize(req, 'staff');
     return ok(
       paginate(await this.service.staff(req.user.campusId), page, pageSize),
     );
@@ -211,7 +222,7 @@ export class AdminController {
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
   ) {
-    this.authorize(req);
+    this.authorize(req, 'staff');
     return ok(
       paginate(
         await this.service.leaveRequests(req.user.campusId),
@@ -227,7 +238,7 @@ export class AdminController {
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
   ) {
-    this.authorize(req);
+    this.authorize(req, 'staff');
     return ok(
       paginate(
         await this.service.dispatchInvitations(req.user.campusId),
@@ -240,7 +251,7 @@ export class AdminController {
     @Req() req: AuthRequest,
     @Body() body: CreateDispatchInvitationDto,
   ) {
-    this.authorize(req);
+    this.authorize(req, 'staff', 'write');
     return ok(
       await this.service.createDispatchInvitation(
         body,
@@ -254,7 +265,7 @@ export class AdminController {
     @Req() req: AuthRequest,
     @Param('id') id: string,
   ) {
-    this.authorize(req);
+    this.authorize(req, 'staff', 'write');
     return ok(
       await this.service.cancelDispatchInvitation(
         id,
@@ -268,7 +279,7 @@ export class AdminController {
     @Req() req: AuthRequest,
     @Body() body: CreateStaffDto,
   ) {
-    this.authorize(req);
+    this.authorize(req, 'staff', 'write');
     return ok(
       await this.service.createStaff(body, req.user.id, req.user.campusId),
       '员工已创建',
@@ -279,21 +290,16 @@ export class AdminController {
     @Param('id') id: string,
     @Body() body: UpdateStaffDto,
   ) {
-    this.authorize(req);
+    this.authorize(req, 'staff', 'write');
     return ok(
-      await this.service.updateStaff(
-        id,
-        body,
-        req.user.id,
-        req.user.campusId,
-      ),
+      await this.service.updateStaff(id, body, req.user.id, req.user.campusId),
     );
   }
   @Delete('staff/:id') async deleteStaff(
     @Req() req: AuthRequest,
     @Param('id') id: string,
   ) {
-    this.authorize(req);
+    this.authorize(req, 'staff', 'write');
     return ok(
       await this.service.deleteStaff(id, req.user.id, req.user.campusId),
       '员工已删除',
@@ -306,7 +312,7 @@ export class AdminController {
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
   ) {
-    this.authorize(req);
+    this.authorize(req, 'campuses');
     return ok(
       paginate(await this.service.buildings(req.user.campusId), page, pageSize),
     );
@@ -315,7 +321,7 @@ export class AdminController {
     @Req() req: AuthRequest,
     @Body() body: CreateBuildingDto,
   ) {
-    this.authorize(req);
+    this.authorize(req, 'campuses', 'write');
     return ok(
       await this.service.createBuilding(body, req.user.id, req.user.campusId),
       '楼栋已创建',
@@ -326,7 +332,7 @@ export class AdminController {
     @Param('id') id: string,
     @Body() body: UpdateBuildingDto,
   ) {
-    this.authorize(req);
+    this.authorize(req, 'campuses', 'write');
     return ok(
       await this.service.updateBuilding(
         id,
@@ -340,7 +346,7 @@ export class AdminController {
     @Req() req: AuthRequest,
     @Param('id') id: string,
   ) {
-    this.authorize(req);
+    this.authorize(req, 'campuses', 'write');
     return ok(
       await this.service.deleteBuilding(id, req.user.id, req.user.campusId),
       '楼栋已删除',
@@ -354,15 +360,17 @@ export class AdminController {
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
   ) {
-    this.authorize(req);
-    return ok(paginate(await this.service.rooms(id, req.user.campusId), page, pageSize));
+    this.authorize(req, 'campuses');
+    return ok(
+      paginate(await this.service.rooms(id, req.user.campusId), page, pageSize),
+    );
   }
   @Post('buildings/:id/rooms') async createRoom(
     @Req() req: AuthRequest,
     @Param('id') id: string,
     @Body() body: CreateRoomDto,
   ) {
-    this.authorize(req);
+    this.authorize(req, 'campuses', 'write');
     return ok(
       await this.service.createRoom(id, body, req.user.id, req.user.campusId),
       '寝室已创建',
@@ -373,7 +381,7 @@ export class AdminController {
     @Param('id') id: string,
     @Param('roomId') roomId: string,
   ) {
-    this.authorize(req);
+    this.authorize(req, 'campuses', 'write');
     return ok(
       await this.service.deleteRoom(id, roomId, req.user.id, req.user.campusId),
       '寝室已删除',
@@ -386,9 +394,13 @@ export class AdminController {
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
   ) {
-    this.authorize(req);
+    this.authorize(req, 'after-sales');
     return ok(
-      paginate(await this.service.afterSales(req.user.campusId), page, pageSize),
+      paginate(
+        await this.service.afterSales(req.user.campusId),
+        page,
+        pageSize,
+      ),
     );
   }
   @Get('commission-rules')
@@ -398,7 +410,7 @@ export class AdminController {
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
   ) {
-    this.authorize(req);
+    this.authorize(req, 'finance');
     return ok(
       paginate(
         await this.service.commissionRules(req.user.campusId),
@@ -411,7 +423,7 @@ export class AdminController {
     @Req() req: AuthRequest,
     @Body() body: CreateCommissionRuleDto,
   ) {
-    this.authorize(req);
+    this.authorize(req, 'finance', 'write');
     return ok(
       await this.service.createCommissionRule(
         body,
@@ -426,7 +438,7 @@ export class AdminController {
     @Param('id') id: string,
     @Body() body: UpdateCommissionRuleDto,
   ) {
-    this.authorize(req);
+    this.authorize(req, 'finance', 'write');
     return ok(
       await this.service.updateCommissionRule(
         id,
@@ -438,14 +450,16 @@ export class AdminController {
     );
   }
   @Get('settlements')
-  @ApiOperation({ summary: '月度结算账单（?month 过滤保留；?page&pageSize 统一分页包裹）' })
+  @ApiOperation({
+    summary: '月度结算账单（?month 过滤保留；?page&pageSize 统一分页包裹）',
+  })
   async settlements(
     @Req() req: AuthRequest,
     @Query('month') month?: string,
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
   ) {
-    this.authorize(req);
+    this.authorize(req, 'finance');
     return ok(
       paginate(
         await this.service.settlements(req.user.campusId, month),
@@ -458,7 +472,7 @@ export class AdminController {
     @Req() req: AuthRequest,
     @Param('id') id: string,
   ) {
-    this.authorize(req);
+    this.authorize(req, 'finance', 'write');
     return ok(
       await this.service.confirmSettlement(id, req.user.id, req.user.campusId),
       '账单已确认',
@@ -468,14 +482,14 @@ export class AdminController {
     @Req() req: AuthRequest,
     @Param('id') id: string,
   ) {
-    this.authorize(req);
+    this.authorize(req, 'finance', 'write');
     return ok(
       await this.service.paySettlement(id, req.user.id, req.user.campusId),
       '账单已支付',
     );
   }
   @Get('campuses') async campuses(@Req() req: AuthRequest) {
-    this.authorize(req);
+    this.authorize(req, 'dashboard');
     return ok(await this.service.campuses());
   }
   @Get('coupons')
@@ -485,7 +499,7 @@ export class AdminController {
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
   ) {
-    this.authorize(req);
+    this.authorize(req, 'marketing');
     return ok(
       paginate(await this.service.coupons(req.user.campusId), page, pageSize),
     );
@@ -497,7 +511,7 @@ export class AdminController {
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
   ) {
-    this.authorize(req);
+    this.authorize(req, 'marketing');
     return ok(
       paginate(await this.service.users(req.user.campusId), page, pageSize),
     );
@@ -506,7 +520,7 @@ export class AdminController {
     @Req() req: AuthRequest,
     @Body() body: CreateCouponDto,
   ) {
-    this.authorize(req);
+    this.authorize(req, 'marketing', 'write');
     return ok(
       await this.service.createCoupon(body, req.user.id, req.user.campusId),
       '优惠券已创建',
@@ -517,14 +531,9 @@ export class AdminController {
     @Param('id') id: string,
     @Body() body: UpdateCouponDto,
   ) {
-    this.authorize(req);
+    this.authorize(req, 'marketing', 'write');
     return ok(
-      await this.service.updateCoupon(
-        id,
-        body,
-        req.user.id,
-        req.user.campusId,
-      ),
+      await this.service.updateCoupon(id, body, req.user.id, req.user.campusId),
     );
   }
   @Post('coupons/:id/issue') async issueCoupon(
@@ -532,7 +541,7 @@ export class AdminController {
     @Param('id') id: string,
     @Body() body: IssueCouponDto,
   ) {
-    this.authorize(req);
+    this.authorize(req, 'marketing', 'write');
     return ok(
       await this.service.issueCoupon(id, body, req.user.id, req.user.campusId),
       '发放完成',
@@ -545,7 +554,7 @@ export class AdminController {
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
   ) {
-    this.authorize(req);
+    this.authorize(req, 'audit');
     return ok(
       paginate(await this.service.auditLogs(req.user.campusId), page, pageSize),
     );
