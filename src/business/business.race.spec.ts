@@ -183,14 +183,10 @@ describe('BusinessService concurrency races (PostgreSQL)', () => {
     });
   });
 
-  it('concurrent cancel of a paid order: single refund and single stock restore', async () => {
+  it('concurrent cancel of a pending-payment order: only one wins', async () => {
     const order = await makeOrder({
       status: 'pending-payment',
       statusText: '等待支付',
-    });
-    await service.pay(userId, order.id);
-    const paid = await db.product.findUniqueOrThrow({
-      where: { id: PRODUCT_ID },
     });
     const results = await Promise.allSettled([
       service.cancel(userId, order.id),
@@ -199,19 +195,28 @@ describe('BusinessService concurrency races (PostgreSQL)', () => {
     expect(results.filter((x) => x.status === 'fulfilled')).toHaveLength(1);
     const rejected = results.filter((x) => x.status === 'rejected');
     expect(rejected).toHaveLength(1);
-    // 两种正确交错：并发窗口内读到 paid → 条件更新失败“订单状态已变化”；
+    // 两种正确交错：并发窗口内读到 pending-payment → 条件更新失败“订单状态已变化”；
     // 读到已提交的 cancelled → 前置校验拦下“当前状态不可取消”。
     expect(['订单状态已变化', '当前状态不可取消']).toContain(
       message(rejected[0].reason),
     );
-    const restored = await db.product.findUniqueOrThrow({
-      where: { id: PRODUCT_ID },
-    });
-    expect(restored.stock - paid.stock).toBe(QUANTITY);
-    expect(await db.refund.count({ where: { orderId: order.id } })).toBe(1);
     const final = await db.order.findUniqueOrThrow({ where: { id: order.id } });
     expect(final.status).toBe('cancelled');
-    expect(final.stockRestored).toBe(true);
+  });
+
+  it('paid order cannot be self-cancelled (ADR-0004: no refund in pilot, contact support)', async () => {
+    const order = await makeOrder({
+      status: 'pending-payment',
+      statusText: '等待支付',
+    });
+    await service.pay(userId, order.id);
+    await expect(service.cancel(userId, order.id)).rejects.toThrow(
+      '订单已支付，如需取消请联系客服处理',
+    );
+    // 无退款记录、无库存回补、订单状态不变
+    expect(await db.refund.count({ where: { orderId: order.id } })).toBe(0);
+    const final = await db.order.findUniqueOrThrow({ where: { id: order.id } });
+    expect(final.status).toBe('paid');
   });
 
   it('concurrent rider accept: only one rider wins the task', async () => {

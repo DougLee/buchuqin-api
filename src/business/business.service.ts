@@ -692,26 +692,19 @@ export class BusinessService {
     return this.db.$transaction(async (tx) => {
       const raw = await tx.order.findFirst({ where: { id, userId } });
       if (!raw) throw new NotFoundException('订单不存在');
-      const wasPaid = raw.status === 'paid';
-      if (!['pending-payment', 'paid'].includes(raw.status))
+      // ADR-0004：试点期不退款，已支付订单不可自助取消（客服人工处理），
+      // 系统任何路径都不再创建 Refund 记录。
+      if (raw.status === 'paid')
+        throw new BadRequestException('订单已支付，如需取消请联系客服处理');
+      if (raw.status !== 'pending-payment')
         throw new BadRequestException('当前状态不可取消');
       // 条件更新抢占取消权：并发双取消只有一单成功，
-      // 回补库存/释放券/退款等补偿动作全部移到抢占成功之后，防止双补。
+      // 释放券等补偿动作全部移到抢占成功之后，防止双补。
       const won = await tx.order.updateMany({
         where: { id, status: raw.status },
-        data: {
-          status: 'cancelled',
-          statusText: wasPaid ? '订单已取消并退款' : '订单已取消',
-          stockRestored: wasPaid || raw.stockRestored,
-        },
+        data: { status: 'cancelled', statusText: '订单已取消' },
       });
       if (!won.count) throw new BadRequestException('订单状态已变化');
-      if (wasPaid && !raw.stockRestored)
-        for (const line of raw.items as unknown as OrderLine[])
-          await tx.product.update({
-            where: { id: line.product.id },
-            data: { stock: { increment: line.quantity } },
-          });
       if (raw.couponId)
         // 取消订单：locked/used -> released，released 状态可再次选用。
         await tx.userCoupon.updateMany({
@@ -719,24 +712,6 @@ export class BusinessService {
           data: { status: 'released' },
         });
       const updated = await tx.order.findUniqueOrThrow({ where: { id } });
-      if (wasPaid)
-        await tx.refund.create({
-          data: {
-            userId,
-            orderId: id,
-            amount: raw.payableAmount,
-            reason: '用户取消订单',
-            status: 'succeeded',
-          },
-        });
-      // 渠道推送（IK8W5M）：已支付订单取消 → 退款结果（订阅消息 + 短信兜底）。
-      if (wasPaid)
-        void this.push?.refundResultPush(
-          userId,
-          raw.orderNo,
-          raw.payableAmount,
-          true,
-        );
       return this.orderView(updated);
     });
   }

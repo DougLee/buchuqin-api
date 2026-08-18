@@ -24,7 +24,6 @@ describe('commission & settlement (IK8W5L)', () => {
   let userId = '';
   const orderIds: string[] = [];
   const billIds: string[] = [];
-  let afterSaleId = '';
 
   const makeOrder = async (
     buildingId: string,
@@ -148,7 +147,6 @@ describe('commission & settlement (IK8W5L)', () => {
   afterAll(async () => {
     await db.commission.deleteMany({ where: { campusId: CAMPUS } });
     await db.bmBill.deleteMany({ where: { campusId: CAMPUS } });
-    if (afterSaleId) await db.afterSale.delete({ where: { id: afterSaleId } });
     await db.refund.deleteMany({ where: { orderId: { in: orderIds } } });
     await db.order.deleteMany({ where: { id: { in: orderIds } } });
     await db.staff.deleteMany({ where: { campusId: CAMPUS } });
@@ -250,26 +248,15 @@ describe('commission & settlement (IK8W5L)', () => {
     expect(again.find((x) => x.id === rider.id)?.status).toBe('paid');
   });
 
-  it('refund of settled commissions books a negative adjustment in current month', async () => {
+  it('refundAdjust books a negative adjustment in current month (mechanism kept for refund milestone)', async () => {
     const month = new Date().toISOString().slice(0, 7);
     const orderA = orderIds[0];
+    // ADR-0004：售后审核假退款路径已拆除，refundAdjust 暂无生产调用方，
+    // 机制保留给后续真实退款里程碑，此处直接调佣金服验证跨期调整行为。
     // 场景：骑手提成已被 paid 账单覆盖（settled），楼长提成仍 pending
-    const afterSale = await db.afterSale.create({
-      data: {
-        userId,
-        orderId: orderA,
-        type: 'quality',
-        description: '商品破损，全额退款',
-        images: json([]),
-        status: 'pending',
-      },
+    await db.$transaction(async (tx) => {
+      await commissions.refundAdjust(tx, orderA, '售后退款，提成跨期调整');
     });
-    afterSaleId = afterSale.id;
-    await admin.reviewAfterSale(afterSale.id, true, 'admin-001', CAMPUS);
-    const refunded = await db.order.findUniqueOrThrow({
-      where: { id: orderA },
-    });
-    expect(refunded.status).toBe('refunded');
     // 骑手（settled）→ 追加负向 adjusted 记录挂当前月
     const riderRecords = await db.commission.findMany({
       where: { orderId: orderA, staffId: RIDER },

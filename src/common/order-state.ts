@@ -18,10 +18,10 @@ import type { Prisma } from '@prisma/client';
  *
  * 旁路/终态：
  *   pending-payment --cancel(用户)/超时关单(懒执行+Cron)-->  cancelled
- *   paid            --cancel(用户，自动退款)-->              cancelled
+ *   paid            不可自助取消（ADR-0004 试点期不退款，客服人工处理）
  *   waiting-first-mile/first-mile/waiting-handover/last-mile
  *                   --transfer(骑手转单)/absent(用户不在)/refused(拒收)/mark-exception(admin)--> exception
- *   delivered/completed --售后审核通过(admin)-->            refunded
+ *   refunded        仅历史数据（ADR-0004：售后审核假退款路径已拆除，无新增入口）
  *
  * 历史单兼容（旧 9 态语义并入新机）：
  *   paid/picking 仍可 accept/pickup（pickup 后统一落入 waiting-first-mile）；

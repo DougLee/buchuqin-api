@@ -391,21 +391,6 @@ export class AdminController {
       paginate(await this.service.afterSales(req.user.campusId), page, pageSize),
     );
   }
-  @Post('after-sales/:id/review') async review(
-    @Req() req: AuthRequest,
-    @Param('id') id: string,
-    @Body() body: { approved: boolean },
-  ) {
-    this.authorize(req);
-    return ok(
-      await this.service.reviewAfterSale(
-        id,
-        body.approved,
-        req.user.id,
-        req.user.campusId,
-      ),
-    );
-  }
   @Get('commission-rules')
   @ApiOperation({ summary: '提成规则列表（?page&pageSize 统一分页包裹）' })
   async commissionRules(
