@@ -258,6 +258,8 @@ model Staff {
   role                String
   roleText            String
   staffNo             String               @unique
+  /** 微信登录绑定（IK8W5Q）：员工首次登录用工号+姓名换绑，之后 openid 直登 */
+  openid              String?              @unique
   buildingId          String?
   buildingRef         Building?            @relation(fields: [buildingId], references: [id])
   building            String

@@ -61,6 +61,20 @@ class PhoneDto {
   phone!: string;
 }
 
+/** 员工微信绑定（IK8W5Q）：首次登录用工号+姓名换绑 openid。
+ *  姓名双因子是 MVP 折衷（无短信/邮箱校验通道），防纯工号枚举绑定。 */
+class StaffBindDto {
+  @IsString()
+  code!: string;
+  @IsString()
+  staffNo!: string;
+  @IsString()
+  name!: string;
+  @IsString()
+  @IsOptional()
+  appid?: string;
+}
+
 @ApiTags('认证')
 @Controller('auth')
 export class AuthController {
@@ -183,7 +197,9 @@ export class AuthController {
    * 双小程序凭证路由（IK8W5Q）：用户端/履约端各一对 appid+secret，
    * 客户端登录时带 appid 挑选对应凭证；未传 appid 用第一对配好的（兼容旧单对部署）。
    */
-  private wechatCredentials(appid?: string) {
+  private wechatCredentials(
+    appid?: string,
+  ): { appid: string; secret: string } | undefined {
     const pairs = [
       { appid: process.env.WX_APPID_USER, secret: process.env.WX_SECRET_USER },
       {
@@ -191,7 +207,9 @@ export class AuthController {
         secret: process.env.WX_SECRET_DELIVERY,
       },
       { appid: process.env.WX_APPID, secret: process.env.WX_SECRET }, // 旧单对配置
-    ].filter((p) => p.appid && p.secret);
+    ].filter((p): p is { appid: string; secret: string } =>
+      Boolean(p.appid && p.secret),
+    );
     return appid
       ? pairs.find((p) => p.appid === appid)
       : pairs[0];
@@ -200,6 +218,37 @@ export class AuthController {
   /** 微信登录环境是否已配置（任一对 WX_*_APPID/WX_*_SECRET 齐备）。 */
   private wechatConfigured() {
     return Boolean(this.wechatCredentials());
+  }
+
+  /** wx.code2session 换 openid（双小程序共用，凭证由 appid 路由） */
+  private async code2Session(
+    credentials: { appid: string; secret: string },
+    code: string,
+  ) {
+    let session: {
+      openid?: string;
+      unionid?: string;
+      errcode?: number;
+      errmsg?: string;
+    };
+    try {
+      const response = await fetch(
+        `https://api.weixin.qq.com/sns/jscode2session?appid=${encodeURIComponent(
+          credentials.appid,
+        )}&secret=${encodeURIComponent(
+          credentials.secret,
+        )}&js_code=${encodeURIComponent(code)}&grant_type=authorization_code`,
+        { signal: AbortSignal.timeout(5000) },
+      );
+      session = (await response.json()) as typeof session;
+    } catch {
+      throw new HttpException('微信登录服务暂不可用', HttpStatus.BAD_GATEWAY);
+    }
+    if (!session.openid || session.errcode)
+      throw new BadRequestException(
+        `微信登录失败：${session.errmsg ?? '未返回 openid'}`,
+      );
+    return session;
   }
 
   @Post('wechat-login')
@@ -216,26 +265,26 @@ export class AuthController {
     const credentials = this.wechatCredentials(body.appid?.trim());
     if (!credentials)
       throw new BadRequestException('该小程序未配置微信登录凭证');
-    let session: { openid?: string; unionid?: string; errcode?: number; errmsg?: string };
-    try {
-      const response = await fetch(
-        `https://api.weixin.qq.com/sns/jscode2session?appid=${encodeURIComponent(
-          credentials.appid!,
-        )}&secret=${encodeURIComponent(credentials.secret!)}&js_code=${encodeURIComponent(
-          body.code.trim(),
-        )}&grant_type=authorization_code`,
-        { signal: AbortSignal.timeout(5000) },
-      );
-      session = (await response.json()) as typeof session;
-    } catch {
-      throw new HttpException('微信登录服务暂不可用', HttpStatus.BAD_GATEWAY);
+    const session = await this.code2Session(credentials, body.code.trim());
+    // 履约端小程序 → 员工通道：openid 必须已绑定 Staff，未绑定引导走 staff-bind
+    if (credentials.appid === process.env.WX_APPID_DELIVERY) {
+      const staff = await this.db.staff.findUnique({
+        where: { openid: session.openid },
+      });
+      if (!staff || staff.status === 'deleted')
+        throw new NotFoundException('该微信未绑定员工账号，请用工号绑定后登录');
+      const claims: AuthUser = {
+        id: staff.id,
+        campusId: staff.campusId,
+        role: staff.role as AuthUser['role'],
+      };
+      return ok({
+        token: this.jwt.sign(claims),
+        user: { ...claims, nickname: staff.name, phone: '', avatar: '' },
+      });
     }
-    if (!session.openid || session.errcode)
-      throw new BadRequestException(
-        `微信登录失败：${session.errmsg ?? '未返回 openid'}`,
-      );
-    // 首次登录创建用户：昵称"微信用户"、手机号空（后续 POST /auth/phone 绑定），
-    // campusId 取默认校园（第一个 campus）。
+    // 用户端小程序 → 买家通道：首次登录创建用户（昵称"微信用户"、手机号空，
+    // 后续 POST /auth/phone 绑定），campusId 取默认校园（第一个 campus）。
     let user = await this.db.user.findUnique({
       where: { openid: session.openid },
     });
@@ -267,6 +316,47 @@ export class AuthController {
         avatar: user.avatar,
       },
     });
+  }
+
+  /** 员工微信绑定（IK8W5Q）：履约端小程序首次登录，工号+姓名换绑 openid 后直接下发 token */
+  @Post('staff-bind')
+  @HttpCode(200)
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @ApiOperation({ summary: '员工绑定微信（工号+姓名换绑 openid，绑定即登录）' })
+  async staffBind(@Body() body: StaffBindDto) {
+    const credentials = this.wechatCredentials(
+      body.appid?.trim() || process.env.WX_APPID_DELIVERY,
+    );
+    if (!credentials || credentials.appid !== process.env.WX_APPID_DELIVERY)
+      throw new HttpException('员工微信登录未配置', HttpStatus.NOT_IMPLEMENTED);
+    if (!body.code?.trim() || !body.staffNo?.trim() || !body.name?.trim())
+      throw new BadRequestException('缺少微信凭证/工号/姓名');
+    const session = await this.code2Session(credentials, body.code.trim());
+    const staff = await this.db.staff.findUnique({
+      where: { staffNo: body.staffNo.trim() },
+    });
+    if (!staff || staff.status === 'deleted')
+      throw new NotFoundException('工号不存在');
+    // 姓名双因子：防纯工号枚举绑定他人账号（换绑即覆盖旧 openid）
+    if (staff.name !== body.name.trim())
+      throw new BadRequestException('工号与姓名不匹配');
+    const after = await this.db.staff.update({
+      where: { id: staff.id },
+      data: { openid: session.openid },
+    });
+    const claims: AuthUser = {
+      id: after.id,
+      campusId: after.campusId,
+      role: after.role as AuthUser['role'],
+    };
+    return ok(
+      {
+        token: this.jwt.sign(claims),
+        user: { ...claims, nickname: after.name, phone: '', avatar: '' },
+      },
+      '绑定成功',
+    );
   }
 
   @Post('phone')
