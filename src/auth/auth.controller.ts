@@ -25,27 +25,6 @@ import { JwtAuthGuard } from './jwt-auth.guard';
 import { USER_ROLES_KEY, UserRoleGuard } from './user-role.guard';
 import type { AuthRequest, AuthUser } from './jwt-auth.guard';
 
-const IDENTITIES = [
-  'user',
-  'building-manager',
-  'fulltime-rider',
-  'parttime-rider',
-  'admin',
-] as const;
-
-/** 后台角色别名（IK8W5W）：admin 系细分岗位，token 不挂 Staff 记录，id 用 {role}-001 占位。 */
-const ADMIN_ROLE_ALIASES: Record<string, string> = {
-  operations: '平台运营',
-  warehouse: '仓储管理',
-  finance: '财务管理',
-};
-
-class TestLoginDto {
-  // 支持 identity 角色别名，也支持具体 staffNo / staff id（演示后台增删的账号）。
-  @IsString()
-  identity!: string;
-}
-
 class AdminLoginDto {
   @IsString()
   username!: string;
@@ -93,88 +72,6 @@ export class AuthController {
     private readonly db: PrismaService,
   ) {}
 
-  @Post('test-login')
-  @HttpCode(200)
-  // 演示通道收敛：按 IP 限流，防枚举 staffNo 遍历登录
-  @UseGuards(ThrottlerGuard)
-  @Throttle({ default: { limit: 10, ttl: 60_000 } })
-  @ApiOperation({ summary: '联调测试账号登录（生产环境关闭）' })
-  async login(@Body() body: TestLoginDto) {
-    if (
-      process.env.NODE_ENV === 'production' &&
-      process.env.ALLOW_TEST_LOGIN !== 'true'
-    )
-      throw new NotFoundException();
-    if (body.identity === 'user') {
-      const user = await this.db.user.findUniqueOrThrow({
-        where: { id: 'user-001' },
-      });
-      const claims: AuthUser = {
-        id: user.id,
-        campusId: user.campusId,
-        role: 'user',
-      };
-      return ok({ token: this.jwt.sign(claims), user });
-    }
-    if (body.identity === 'admin') {
-      const claims: AuthUser = {
-        id: 'admin-001',
-        campusId: ADMIN_CAMPUS_ID,
-        role: 'admin',
-      };
-      return ok({
-        token: this.jwt.sign(claims),
-        user: {
-          ...claims,
-          nickname: '平台管理员',
-          phone: '027****8899',
-          avatar: '',
-        },
-      });
-    }
-    // 后台角色别名（IK8W5W）：各发对应 role 的 token，campusId 固定管理端默认校园。
-    if (body.identity in ADMIN_ROLE_ALIASES) {
-      const claims: AuthUser = {
-        id: `${body.identity}-001`,
-        campusId: ADMIN_CAMPUS_ID,
-        role: body.identity as AuthUser['role'],
-      };
-      return ok({
-        token: this.jwt.sign(claims),
-        user: {
-          ...claims,
-          nickname: ADMIN_ROLE_ALIASES[body.identity],
-          phone: '',
-          avatar: '',
-        },
-      });
-    }
-    const staff = IDENTITIES.includes(
-      body.identity as (typeof IDENTITIES)[number],
-    )
-      ? await this.db.staff.findFirstOrThrow({
-          where: {
-            role: body.identity,
-            status: { not: 'deleted' },
-          },
-        })
-      : await this.db.staff.findFirst({
-          where: {
-            OR: [{ staffNo: body.identity }, { id: body.identity }],
-            status: { not: 'deleted' },
-          },
-        });
-    if (!staff) throw new NotFoundException('测试账号不存在');
-    const claims: AuthUser = {
-      id: staff.id,
-      campusId: staff.campusId,
-      role: staff.role as AuthUser['role'],
-    };
-    return ok({
-      token: this.jwt.sign(claims),
-      user: { ...claims, nickname: staff.name, phone: '', avatar: '' },
-    });
-  }
 
   /**
    * 后台账号密码登录（ADR-0004 / IK9JHP）：AdminAccount 表 + bcrypt 校验，

@@ -16,7 +16,6 @@ import {
 } from '../common/order-state';
 
 /** @deprecated Seed/test compatibility only; production services use Prisma. */
-export type MockOrder = any;
 import {
   CreateAddressDto,
   CreateAfterSalesDto,

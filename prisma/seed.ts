@@ -1,5 +1,5 @@
 import { Prisma, PrismaClient } from '@prisma/client';
-import { MockStore } from '../src/mock/mock.store';
+import { MockStore } from './seed-data/mock.store';
 import { bestMatch, dimsOfOrder } from '../src/commission/commission.service';
 
 const prisma = new PrismaClient();

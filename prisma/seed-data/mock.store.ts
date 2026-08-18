@@ -1,5 +1,4 @@
-import { Injectable } from '@nestjs/common';
-import type { MockOrder } from '../business/business.service';
+type MockOrder = any; // eslint-disable-line @typescript-eslint/no-explicit-any
 import {
   addresses,
   banners,
@@ -9,7 +8,6 @@ import {
   deliverySlots,
   products,
 } from './mock.data';
-@Injectable()
 export class MockStore {
   campus = structuredClone(campus);
   categories = structuredClone(categories);

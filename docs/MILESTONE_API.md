@@ -43,11 +43,11 @@
 - `DELETE /admin/buildings/:id/rooms/:roomId`
 - `POST /admin/staff` — `{ name, role, staffNo, buildingId?, status }`（role: building-manager|fulltime-rider|parttime-rider）
 - `PATCH /admin/staff/:id` — 上述字段部分更新
-- `DELETE /admin/staff/:id`（软删除：status=deleted，test-login 不再可用）
+- `DELETE /admin/staff/:id`（软删除：status=deleted）
 
-### test-login 兼容
-- 现有 identity 语义不变（user / building-manager / fulltime-rider / parttime-rider / admin 系）
-- 若传入 identity 为具体 staffNo 或 staff id，则映射到该员工记录（演示登录后台增删的账号）
+### test-login（已于 IK9JHV / ADR-0004 彻底删除）
+- 演示通道已下线，后台登录改用 `POST /auth/admin-login`（账号密码 + bcrypt，IK9JHP）
+- 初始超管：`ADMIN_INITIAL_PASSWORD=xxx pnpm db:seed:admin`
 - 新增 Building/Room 模型需 seed 迁移：从现有 Address.buildingName 归并生成
 
 ## A4 出入库 + 聚合 + 绩效（IK8W7B）
