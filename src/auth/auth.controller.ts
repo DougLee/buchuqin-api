@@ -9,13 +9,15 @@ import {
   NotFoundException,
   Post,
   Req,
+  UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtService } from '@nestjs/jwt';
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
-import { IsOptional, IsString, Matches } from 'class-validator';
+import { IsOptional, IsString, Matches, MinLength } from 'class-validator';
 import { SetMetadata } from '@nestjs/common';
+import { compare } from 'bcryptjs';
 import { ok } from '../common/api-response';
 import { ADMIN_CAMPUS_ID } from '../common/campus';
 import { PrismaService } from '../database/prisma.service';
@@ -42,6 +44,14 @@ class TestLoginDto {
   // 支持 identity 角色别名，也支持具体 staffNo / staff id（演示后台增删的账号）。
   @IsString()
   identity!: string;
+}
+
+class AdminLoginDto {
+  @IsString()
+  username!: string;
+  @IsString()
+  @MinLength(1)
+  password!: string;
 }
 
 class WechatLoginDto {
@@ -166,6 +176,41 @@ export class AuthController {
     });
   }
 
+  /**
+   * 后台账号密码登录（ADR-0004 / IK9JHP）：AdminAccount 表 + bcrypt 校验，
+   * 取代 test-login 角色卡直通。统一 401 文案防账号枚举；按 IP 限流防爆破。
+   */
+  @Post('admin-login')
+  @HttpCode(200)
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @ApiOperation({ summary: '管理后台账号密码登录（AdminAccount + bcrypt）' })
+  async adminLogin(@Body() body: AdminLoginDto) {
+    const account = await this.db.adminAccount.findUnique({
+      where: { username: body.username?.trim() ?? '' },
+    });
+    // 账号不存在与密码错误同文案同状态码，防枚举。
+    const passwordOk = account
+      ? await compare(body.password ?? '', account.passwordHash)
+      : false;
+    if (!account || !passwordOk)
+      throw new UnauthorizedException('账号或密码不正确');
+    const claims: AuthUser = {
+      id: account.id,
+      campusId: account.campusId,
+      role: account.role as AuthUser['role'],
+    };
+    return ok({
+      token: this.jwt.sign(claims),
+      user: {
+        ...claims,
+        nickname: account.nickname || account.username,
+        phone: '',
+        avatar: '',
+      },
+    });
+  }
+
   @Get('profile')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
@@ -181,6 +226,19 @@ export class AuthController {
         phone: user.phone,
         avatar: user.avatar,
         defaultAddressId: user.addresses.find((a) => a.isDefault)?.id ?? null,
+      });
+    }
+    // 后台账号（admin/operations/warehouse/finance）来自 AdminAccount 表。
+    if (
+      ['admin', 'operations', 'warehouse', 'finance'].includes(req.user.role)
+    ) {
+      const account = await this.db.adminAccount.findUnique({
+        where: { id: req.user.id },
+      });
+      return ok({
+        ...req.user,
+        nickname: account?.nickname || account?.username || '平台管理员',
+        phone: '',
       });
     }
     const staff = await this.db.staff.findUnique({
