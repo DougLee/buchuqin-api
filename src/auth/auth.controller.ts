@@ -14,7 +14,7 @@ import {
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtService } from '@nestjs/jwt';
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
-import { IsString, Matches } from 'class-validator';
+import { IsOptional, IsString, Matches } from 'class-validator';
 import { SetMetadata } from '@nestjs/common';
 import { ok } from '../common/api-response';
 import { ADMIN_CAMPUS_ID } from '../common/campus';
@@ -48,6 +48,10 @@ class WechatLoginDto {
   // wx.login 返回的临时登录凭证 code。
   @IsString()
   code!: string;
+  // 发起登录的小程序 appid（双小程序各自一对凭证，后端按 appid 路由 secret）。
+  @IsString()
+  @IsOptional()
+  appid?: string;
 }
 
 class PhoneDto {
@@ -175,9 +179,27 @@ export class AuthController {
     );
   }
 
-  /** 微信登录环境是否已配置（WX_APPID/WX_SECRET 齐备）。 */
+  /**
+   * 双小程序凭证路由（IK8W5Q）：用户端/履约端各一对 appid+secret，
+   * 客户端登录时带 appid 挑选对应凭证；未传 appid 用第一对配好的（兼容旧单对部署）。
+   */
+  private wechatCredentials(appid?: string) {
+    const pairs = [
+      { appid: process.env.WX_APPID_USER, secret: process.env.WX_SECRET_USER },
+      {
+        appid: process.env.WX_APPID_DELIVERY,
+        secret: process.env.WX_SECRET_DELIVERY,
+      },
+      { appid: process.env.WX_APPID, secret: process.env.WX_SECRET }, // 旧单对配置
+    ].filter((p) => p.appid && p.secret);
+    return appid
+      ? pairs.find((p) => p.appid === appid)
+      : pairs[0];
+  }
+
+  /** 微信登录环境是否已配置（任一对 WX_*_APPID/WX_*_SECRET 齐备）。 */
   private wechatConfigured() {
-    return Boolean(process.env.WX_APPID && process.env.WX_SECRET);
+    return Boolean(this.wechatCredentials());
   }
 
   @Post('wechat-login')
@@ -191,12 +213,15 @@ export class AuthController {
       throw new HttpException('微信登录未配置', HttpStatus.NOT_IMPLEMENTED);
     if (!body.code?.trim())
       throw new BadRequestException('缺少微信登录凭证 code');
+    const credentials = this.wechatCredentials(body.appid?.trim());
+    if (!credentials)
+      throw new BadRequestException('该小程序未配置微信登录凭证');
     let session: { openid?: string; unionid?: string; errcode?: number; errmsg?: string };
     try {
       const response = await fetch(
         `https://api.weixin.qq.com/sns/jscode2session?appid=${encodeURIComponent(
-          process.env.WX_APPID!,
-        )}&secret=${encodeURIComponent(process.env.WX_SECRET!)}&js_code=${encodeURIComponent(
+          credentials.appid!,
+        )}&secret=${encodeURIComponent(credentials.secret!)}&js_code=${encodeURIComponent(
           body.code.trim(),
         )}&grant_type=authorization_code`,
         { signal: AbortSignal.timeout(5000) },
