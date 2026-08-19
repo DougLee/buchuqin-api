@@ -15,7 +15,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import type { AuthRequest } from '../auth/jwt-auth.guard';
 import { ok } from '../common/api-response';
-import { paginate } from '../common/pagination';
+import { filterByKeyword, paginate } from '../common/pagination';
 import { AdminService } from './admin.service';
 import { canAdmin, type AdminAccess, type AdminSection } from './permissions';
 import {
@@ -75,10 +75,11 @@ export class AdminController {
     @Req() req: AuthRequest,
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
+    @Query('keyword') keyword?: string,
   ) {
     this.authorize(req, 'products');
     return ok(
-      paginate(await this.service.products(req.user.campusId), page, pageSize),
+      paginate(await this.service.products(req.user.campusId), page, pageSize, keyword),
     );
   }
   @Post('products/barcode/lookup') async lookupBarcode(
@@ -121,10 +122,11 @@ export class AdminController {
     @Req() req: AuthRequest,
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
+    @Query('keyword') keyword?: string,
   ) {
     this.authorize(req, 'inventory');
     return ok(
-      paginate(await this.service.inventory(req.user.campusId), page, pageSize),
+      paginate(await this.service.inventory(req.user.campusId), page, pageSize, keyword),
     );
   }
   @Post('inventory/stock-in') async stockIn(
@@ -154,6 +156,7 @@ export class AdminController {
     @Query('productId') productId?: string,
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
+    @Query('keyword') keyword?: string,
   ) {
     this.authorize(req, 'inventory');
     return ok(
@@ -161,6 +164,7 @@ export class AdminController {
         await this.service.inventoryTxns(productId, req.user.campusId),
         page,
         pageSize,
+        keyword,
       ),
     );
   }
@@ -173,6 +177,7 @@ export class AdminController {
     @Query('status') status?: string,
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
+    @Query('keyword') keyword?: string,
   ) {
     this.authorize(req, 'orders');
     return ok(
@@ -180,6 +185,7 @@ export class AdminController {
         await this.service.orders(status, req.user.campusId),
         page,
         pageSize,
+        keyword,
       ),
     );
   }
@@ -211,10 +217,11 @@ export class AdminController {
     @Req() req: AuthRequest,
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
+    @Query('keyword') keyword?: string,
   ) {
     this.authorize(req, 'staff');
     return ok(
-      paginate(await this.service.staff(req.user.campusId), page, pageSize),
+      paginate(await this.service.staff(req.user.campusId), page, pageSize, keyword),
     );
   }
   @Get('leave-requests')
@@ -223,6 +230,7 @@ export class AdminController {
     @Req() req: AuthRequest,
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
+    @Query('keyword') keyword?: string,
   ) {
     this.authorize(req, 'staff');
     return ok(
@@ -230,6 +238,7 @@ export class AdminController {
         await this.service.leaveRequests(req.user.campusId),
         page,
         pageSize,
+        keyword,
       ),
     );
   }
@@ -239,6 +248,7 @@ export class AdminController {
     @Req() req: AuthRequest,
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
+    @Query('keyword') keyword?: string,
   ) {
     this.authorize(req, 'staff');
     return ok(
@@ -246,6 +256,7 @@ export class AdminController {
         await this.service.dispatchInvitations(req.user.campusId),
         page,
         pageSize,
+        keyword,
       ),
     );
   }
@@ -313,10 +324,11 @@ export class AdminController {
     @Req() req: AuthRequest,
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
+    @Query('keyword') keyword?: string,
   ) {
     this.authorize(req, 'campuses');
     return ok(
-      paginate(await this.service.buildings(req.user.campusId), page, pageSize),
+      paginate(await this.service.buildings(req.user.campusId), page, pageSize, keyword),
     );
   }
   @Post('buildings') async createBuilding(
@@ -361,10 +373,11 @@ export class AdminController {
     @Param('id') id: string,
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
+    @Query('keyword') keyword?: string,
   ) {
     this.authorize(req, 'campuses');
     return ok(
-      paginate(await this.service.rooms(id, req.user.campusId), page, pageSize),
+      paginate(await this.service.rooms(id, req.user.campusId), page, pageSize, keyword),
     );
   }
   @Post('buildings/:id/rooms') async createRoom(
@@ -395,6 +408,7 @@ export class AdminController {
     @Req() req: AuthRequest,
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
+    @Query('keyword') keyword?: string,
   ) {
     this.authorize(req, 'after-sales');
     return ok(
@@ -402,6 +416,7 @@ export class AdminController {
         await this.service.afterSales(req.user.campusId),
         page,
         pageSize,
+        keyword,
       ),
     );
   }
@@ -411,6 +426,7 @@ export class AdminController {
     @Req() req: AuthRequest,
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
+    @Query('keyword') keyword?: string,
   ) {
     this.authorize(req, 'finance');
     return ok(
@@ -418,6 +434,7 @@ export class AdminController {
         await this.service.commissionRules(req.user.campusId),
         page,
         pageSize,
+        keyword,
       ),
     );
   }
@@ -460,6 +477,7 @@ export class AdminController {
     @Query('month') month?: string,
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
+    @Query('keyword') keyword?: string,
   ) {
     this.authorize(req, 'finance');
     return ok(
@@ -467,6 +485,7 @@ export class AdminController {
         await this.service.settlements(req.user.campusId, month),
         page,
         pageSize,
+        keyword,
       ),
     );
   }
@@ -492,7 +511,7 @@ export class AdminController {
   }
   @Get('campuses') async campuses(@Req() req: AuthRequest) {
     this.authorize(req, 'dashboard');
-    return ok(await this.service.campuses());
+    return ok(filterByKeyword(await this.service.campuses(), keyword));
   }
   @Get('coupons')
   @ApiOperation({ summary: '优惠券列表（?page&pageSize 统一分页包裹）' })
@@ -500,10 +519,11 @@ export class AdminController {
     @Req() req: AuthRequest,
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
+    @Query('keyword') keyword?: string,
   ) {
     this.authorize(req, 'marketing');
     return ok(
-      paginate(await this.service.coupons(req.user.campusId), page, pageSize),
+      paginate(await this.service.coupons(req.user.campusId), page, pageSize, keyword),
     );
   }
   @Get('users')
@@ -512,10 +532,11 @@ export class AdminController {
     @Req() req: AuthRequest,
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
+    @Query('keyword') keyword?: string,
   ) {
     this.authorize(req, 'marketing');
     return ok(
-      paginate(await this.service.users(req.user.campusId), page, pageSize),
+      paginate(await this.service.users(req.user.campusId), page, pageSize, keyword),
     );
   }
   @Post('coupons') async createCoupon(
@@ -555,10 +576,11 @@ export class AdminController {
     @Req() req: AuthRequest,
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
+    @Query('keyword') keyword?: string,
   ) {
     this.authorize(req, 'audit');
     return ok(
-      paginate(await this.service.auditLogs(req.user.campusId), page, pageSize),
+      paginate(await this.service.auditLogs(req.user.campusId), page, pageSize, keyword),
     );
   }
   /* ---------- 后台账号管理（IK9KWO）：accounts 板块仅 admin ---------- */
@@ -568,9 +590,10 @@ export class AdminController {
     @Req() req: AuthRequest,
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
+    @Query('keyword') keyword?: string,
   ) {
     this.authorize(req, 'accounts');
-    return ok(paginate(await this.service.accounts(), page, pageSize));
+    return ok(paginate(await this.service.accounts(), page, pageSize, keyword));
   }
   @Post('accounts')
   @ApiOperation({ summary: '新建后台账号（用户名唯一，密码 ≥8 位）' })
