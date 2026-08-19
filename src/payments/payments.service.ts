@@ -158,10 +158,28 @@ export class PaymentsService {
 
   /** 查单：订单支付状态（供前端轮询支付结果）。 */
   async status(userId: string, orderId: string) {
-    const order = await this.db.order.findFirst({
+    let order = await this.db.order.findFirst({
       where: { id: orderId, userId },
     });
     if (!order) throw new NotFoundException('订单不存在');
+    // IK9SO7 兜底：回调链路故障（公钥/证书配置错误、微信重试中）时，前端支付
+    // 完成后的这次查询主动向微信查单，SUCCESS 即落账——不依赖回调也能推进。
+    if (
+      order.status === 'pending-payment' &&
+      Date.now() - order.createdAt.getTime() > 30_000
+    ) {
+      try {
+        const trade = await this.queryWechatTrade(order.orderNo);
+        if (trade.trade_state === 'SUCCESS') {
+          await this.applyPayment(order, trade.transaction_id);
+          order = await this.db.order.findUniqueOrThrow({
+            where: { id: order.id },
+          });
+        }
+      } catch {
+        // 查单/落账失败不阻塞本地状态返回（异常单已由 applyPayment 内部处理）
+      }
+    }
     return {
       orderId: order.id,
       orderNo: order.orderNo,
@@ -214,14 +232,25 @@ export class PaymentsService {
       where: { orderNo: event.out_trade_no ?? '' },
     });
     if (!order) return { code: 'SUCCESS', message: '订单不存在，忽略' };
-    // 幂等：已支付单 pay 直接返回；超时已关单不再复活（条件更新拦截）。
+    await this.applyPayment(order, event.transaction_id);
+    return { code: 'SUCCESS', message: 'OK' };
+  }
+
+  /**
+   * 落账（notify 回调与 status 查单补偿共用）：
+   * 幂等——已支付单 pay 直接返回；超时已关单不再复活（条件更新拦截）。
+   * G1（2026-08-19 发版 grilling）：微信侧扣款已成功但落账失败（库存不足/
+   * 超时关单竞态/用户取消后又完成支付等）。不能吞错放任订单被超时 Cron
+   * 关单——转 exception 冻结现场，站内通知安抚用户，客服在商户平台手动
+   * 退款或补发（ADR-0004 试点期不自动退款）。
+   */
+  private async applyPayment(
+    order: { id: string; userId: string; orderNo: string },
+    transactionId?: string,
+  ) {
     try {
       await this.business.pay(order.userId, order.id);
     } catch (error) {
-      // G1（2026-08-19 发版 grilling）：微信侧扣款已成功但落账失败（库存不足/
-      // 超时关单竞态/用户取消后又完成支付等）。不能吞错放任订单被超时 Cron
-      // 关单——转 exception 冻结现场，站内通知安抚用户，客服在商户平台手动
-      // 退款或补发（ADR-0004 试点期不自动退款）。
       const frozen = await this.db.order.updateMany({
         where: {
           id: order.id,
@@ -244,12 +273,42 @@ export class PaymentsService {
         });
         this.logger.error(
           `支付落账失败转异常单：order=${order.id} orderNo=${order.orderNo} ` +
-            `wxTradeId=${event.transaction_id ?? '未知'} ` +
+            `wxTradeId=${transactionId ?? '未知'} ` +
             `reason=${error instanceof Error ? error.message : String(error)}`,
         );
       }
     }
-    return { code: 'SUCCESS', message: 'OK' };
+  }
+
+  /**
+   * 主动查单（IK9SO7 兜底）：按商户单号向微信查询交易状态。
+   * 签名串的 url 必须带 query（微信 v3 规范），失败抛错由调用方决定兜底。
+   */
+  private async queryWechatTrade(orderNo: string): Promise<{
+    trade_state?: string;
+    transaction_id?: string;
+  }> {
+    const urlPath = `/v3/pay/transactions/out-trade-no/${orderNo}?mchid=${process.env.WX_MCH_ID}`;
+    let response: Response;
+    try {
+      response = await fetch(`${WX_PAY_HOST}${urlPath}`, {
+        headers: {
+          Accept: 'application/json',
+          Authorization: this.authorization('GET', urlPath, ''),
+        },
+        signal: AbortSignal.timeout(6000),
+      });
+    } catch {
+      throw new HttpException('微信查单服务暂不可用', HttpStatus.BAD_GATEWAY);
+    }
+    if (response.status === 404)
+      return { trade_state: 'NOTFOUND' }; // 微信侧无此单（未拉起过支付）
+    if (!response.ok)
+      throw new HttpException(
+        `微信查单失败（${response.status}）`,
+        HttpStatus.BAD_GATEWAY,
+      );
+    return (await response.json()) as { trade_state?: string };
   }
 
   /** APIv3 回调资源解密：AES-256-GCM（key=APIv3Key，尾 16 字节为 authTag）。 */
@@ -288,6 +347,11 @@ export class PaymentsService {
       serial = pick('wechatpay-serial');
     if (!signature || !timestamp || !nonce || !serial)
       throw new UnauthorizedException('回调缺少验签头');
+    // IK9SO7 排查：serial 只用于「选哪把钥」，真正的信任锚是验签本身。
+    // 记录 incoming serial 与配置的公钥 ID 对比，配置抄录有误时一眼可辨。
+    this.logger.debug(
+      `回调验签头 serial=${serial} 配置公钥ID=${process.env.WX_WXPAY_PUBLIC_KEY_ID ?? '未配置'}`,
+    );
     if (Math.abs(Math.floor(Date.now() / 1000) - Number(timestamp)) > 300)
       throw new UnauthorizedException('回调时间戳超出容差');
     // 验签钥二选一：微信支付公钥（2024+ 新商户，WX_WXPAY_PUBLIC_KEY[_ID] 配置）
@@ -297,20 +361,31 @@ export class PaymentsService {
       (await this.platformCertificate(serial));
     const verifier = createVerify('RSA-SHA256');
     verifier.update(`${timestamp}\n${nonce}\n${rawBody}\n`);
-    if (!verifier.verify(cert, signature, 'base64'))
+    if (!verifier.verify(cert, signature, 'base64')) {
+      // IK9SO7：验签失败要区分「选错钥」还是「伪造回调」——serial 与选钥
+      // 来源都在日志里，公钥配置错误（下载错文件/复制错行）可当场定位
+      this.logger.error(
+        `回调验签失败 serial=${serial}（配置公钥ID=${process.env.WX_WXPAY_PUBLIC_KEY_ID ?? '未配置'}）`,
+      );
       throw new UnauthorizedException('回调验签失败');
+    }
   }
 
   /**
    * 微信支付公钥验签（2024 年后新入驻商户：无平台证书，只有公钥）：
    * 配置 WX_WXPAY_PUBLIC_KEY（PEM，可单行 \n 转义）+ WX_WXPAY_PUBLIC_KEY_ID
    * （PUB_KEY_ID_…，商户平台 API 安全页下载公钥时同页展示）。
-   * 序列号不匹配（或未配置）返回 null，回落平台证书模式 —— 两种商户兼容。
+   * IK9SO7：serial 仅是选钥索引，公钥本身才是信任锚——微信回调 serial 与配置
+   * ID 不完全相等（抄录有误/商户侧换了公钥）但同为 PUB_KEY_ID_ 前缀时，仍选
+   * 公钥验签。否则会错误回落平台证书模式，公钥商户调 /v3/certificates 微信
+   * 返回 406 → 抛 502 → 微信无限重试，真实回调永远进不来（生产已发生）。
+   * 老商户（平台证书模式）回调 serial 是 hex 序列号，不带该前缀，不受影响。
    */
   private wechatPayPublicKey(serial: string): string | null {
     const key = process.env.WX_WXPAY_PUBLIC_KEY,
       id = process.env.WX_WXPAY_PUBLIC_KEY_ID;
-    if (!key || !id || serial !== id) return null;
+    if (!key || !id) return null;
+    if (serial !== id && !serial.startsWith('PUB_KEY_ID_')) return null;
     return key.includes('\\n')
       ? key.replaceAll('\\n', '\n') // .env 单行转义还原为多行 PEM
       : key;
@@ -351,11 +426,18 @@ export class PaymentsService {
         HttpStatus.BAD_GATEWAY,
       );
     }
-    if (!response.ok)
+    if (!response.ok) {
+      const detail = await response.text();
+      // IK9SO7：公钥模式商户（2024+）调 /v3/certificates 微信返回
+      // 406 PARAM_ERROR——此前报文被吞只剩 502，微信无限重试且无从排查
+      this.logger.error(
+        `微信平台证书下载失败 status=${response.status} body=${detail.slice(0, 200)}`,
+      );
       throw new HttpException(
         `微信平台证书下载失败（${response.status}）`,
         HttpStatus.BAD_GATEWAY,
       );
+    }
     const result = (await response.json()) as {
       data?: Array<{
         serial_no: string;

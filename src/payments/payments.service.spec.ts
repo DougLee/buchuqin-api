@@ -193,6 +193,43 @@ describe('payments wechat (IK8W5I)', () => {
     await db.order.delete({ where: { id: stale.id } });
   });
 
+  it('IK9SO7: 公钥模式 serial 与配置 ID 不一致仍选公钥验签，不回落平台证书', async () => {
+    process.env.WX_APPID_USER = 'wx-spec';
+    process.env.WX_MCH_ID = 'mch-spec';
+    process.env.WX_APIV3_KEY = 'a'.repeat(32);
+    process.env.WX_SERIAL_NO = 'serial-spec';
+    process.env.WX_PRIVATE_KEY = 'dummy-key';
+    process.env.WX_NOTIFY_URL = 'https://example.com/notify';
+    // 真实格式 RSA 公钥（单行 \n 转义，与生产 .env 同形态）；
+    // serial 故意配成另一个 PUB_KEY_ID_（模拟配置 ID 抄录有误）——
+    // 选钥放行、验签本身失败 401，而不是回落平台证书模式打微信接口 502
+    process.env.WX_WXPAY_PUBLIC_KEY =
+      '-----BEGIN PUBLIC KEY-----\\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAxniefSmxedoL9lH/mUDS\\neT1Jqy0KLaTKKhCOPNruDVw+ov/nl4TPyfhH6/fGJowPgNh3PwnwwSS5wAxR1BUn\\nMDSOanircN8s59aB8p/Lhh3fxOG9iovcdwULumXvvkye3lxLro5fAFv3kW1wn8Ld\\nQu6drZ4iFUGFryxx2FFrUZTMMtBnJh8C6vrlGbukvrb+OC7uVkyHYh2Kq4t3rT1D\\nSo0F69VZHdLqBi8q6jjen/dg/zTocGO2imGqmVzjD2D+JKCiU2+K3VlTi+hBvUcZ\\nafnT1Fu3x14n0sB78h+z3jUpbTp83GPte5sm03D3TolplJd9bgF7DMofwRspBcrM\\nWwIDAQAB\\n-----END PUBLIC KEY-----\\n';
+    process.env.WX_WXPAY_PUBLIC_KEY_ID = 'PUB_KEY_ID_configured';
+    const savedKeys = ['WX_WXPAY_PUBLIC_KEY', 'WX_WXPAY_PUBLIC_KEY_ID'].map(
+      (key) => [key, process.env[key]] as const,
+    );
+    try {
+      const now = Math.floor(Date.now() / 1000);
+      await expect(
+        service.notify(
+          {
+            'wechatpay-signature': 'invalid-signature',
+            'wechatpay-timestamp': String(now),
+            'wechatpay-nonce': 'nonce-spec',
+            'wechatpay-serial': 'PUB_KEY_ID_actual_from_wechat',
+          },
+          '{}',
+          {},
+        ),
+      ).rejects.toThrow('回调验签失败');
+    } finally {
+      for (const [key, value] of savedKeys)
+        if (value == null) delete process.env[key];
+        else process.env[key] = value;
+    }
+  });
+
   it('notify freezes order to exception when pay() fails (G1 资损兜底)', async () => {
     process.env.WX_APPID_USER = 'wx-spec';
     process.env.WX_MCH_ID = 'mch-spec';
