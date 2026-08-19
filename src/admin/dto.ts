@@ -132,3 +132,12 @@ export class UpdateAccountDto {
   @IsOptional() @IsString() @MinLength(8, { message: '密码至少 8 位' })
   password?: string;
 }
+/** 商品类别（全局字典）：名称 + 排序，删除时有关联商品拒绝。 */
+export class CreateCategoryDto {
+  @IsString() @MinLength(1) @MaxLength(20) name!: string;
+  @IsOptional() @Type(() => Number) @IsInt() sort?: number;
+}
+export class UpdateCategoryDto {
+  @IsOptional() @IsString() @MinLength(1) @MaxLength(20) name?: string;
+  @IsOptional() @Type(() => Number) @IsInt() sort?: number;
+}

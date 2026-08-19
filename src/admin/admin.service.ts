@@ -14,6 +14,7 @@ import type {
   AdjustStockDto,
   CreateAccountDto,
   CreateBuildingDto,
+  CreateCategoryDto,
   CreateCommissionRuleDto,
   CreateCouponDto,
   CreateDispatchInvitationDto,
@@ -24,6 +25,7 @@ import type {
   StockInDto,
   UpdateAccountDto,
   UpdateBuildingDto,
+  UpdateCategoryDto,
   UpdateCommissionRuleDto,
   UpdateCouponDto,
   UpdateStaffDto,
@@ -291,6 +293,95 @@ export class AdminService {
       availableStock: x.stock,
       status: x.stock ? x.status : 'sold-out',
     }));
+  }
+  /**
+   * 商品类别管理（2026-08-19 grilling）：全局字典（无 campusId 维度），
+   * 名称应用层唯一（DB 无约束，避免迁移）；sort 升序 = 小程序分类 tab 顺序；
+   * 有关联商品的类别拒绝删除（决策：提示数量，运营先转移再删）。
+   */
+  async categories() {
+    const rows = await this.db.category.findMany({
+      orderBy: [{ sort: 'asc' }, { name: 'asc' }],
+      include: { _count: { select: { products: true } } },
+    });
+    return rows.map(({ _count, ...row }) => ({
+      ...row,
+      productCount: _count.products,
+    }));
+  }
+  async createCategory(
+    body: CreateCategoryDto,
+    operator: string,
+    campusId: string,
+  ) {
+    const duplicate = await this.db.category.findFirst({
+      where: { name: body.name },
+    });
+    if (duplicate) throw new BadRequestException('类别名称已存在');
+    const category = await this.db.category.create({
+      data: { name: body.name, sort: body.sort ?? 0 },
+    });
+    await this.audit(
+      operator,
+      'category.create',
+      'category',
+      category.id,
+      null,
+      { name: category.name, sort: category.sort },
+      campusId,
+    );
+    return category;
+  }
+  async updateCategory(
+    id: string,
+    body: UpdateCategoryDto,
+    operator: string,
+    campusId: string,
+  ) {
+    const found = await this.db.category.findUnique({ where: { id } });
+    if (!found) throw new NotFoundException('类别不存在');
+    if (body.name && body.name !== found.name) {
+      const duplicate = await this.db.category.findFirst({
+        where: { name: body.name, id: { not: id } },
+      });
+      if (duplicate) throw new BadRequestException('类别名称已存在');
+    }
+    const category = await this.db.category.update({
+      where: { id },
+      // Prisma 惯例：undefined 字段跳过更新
+      data: { name: body.name, sort: body.sort },
+    });
+    await this.audit(
+      operator,
+      'category.update',
+      'category',
+      id,
+      { name: found.name, sort: found.sort },
+      { name: category.name, sort: category.sort },
+      campusId,
+    );
+    return category;
+  }
+  async deleteCategory(id: string, operator: string, campusId: string) {
+    const found = await this.db.category.findUnique({
+      where: { id },
+      include: { _count: { select: { products: true } } },
+    });
+    if (!found) throw new NotFoundException('类别不存在');
+    if (found._count.products)
+      throw new BadRequestException(
+        `该类别下还有 ${found._count.products} 个商品，请先在商品管理中转移到其他类别`,
+      );
+    await this.db.category.delete({ where: { id } });
+    await this.audit(
+      operator,
+      'category.delete',
+      'category',
+      id,
+      { name: found.name, sort: found.sort },
+      null,
+      campusId,
+    );
   }
   async lookupBarcode(barcode: string, campusId: string) {
     const product = await this.db.product.findUnique({ where: { barcode } });
