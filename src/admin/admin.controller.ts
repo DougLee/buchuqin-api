@@ -509,7 +509,10 @@ export class AdminController {
       '账单已支付',
     );
   }
-  @Get('campuses') async campuses(@Req() req: AuthRequest) {
+  @Get('campuses') async campuses(
+    @Req() req: AuthRequest,
+    @Query('keyword') keyword?: string,
+  ) {
     this.authorize(req, 'dashboard');
     return ok(filterByKeyword(await this.service.campuses(), keyword));
   }
