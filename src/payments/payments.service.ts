@@ -290,11 +290,30 @@ export class PaymentsService {
       throw new UnauthorizedException('回调缺少验签头');
     if (Math.abs(Math.floor(Date.now() / 1000) - Number(timestamp)) > 300)
       throw new UnauthorizedException('回调时间戳超出容差');
-    const cert = await this.platformCertificate(serial);
+    // 验签钥二选一：微信支付公钥（2024+ 新商户，WX_WXPAY_PUBLIC_KEY[_ID] 配置）
+    // 或平台证书（老商户，GET /v3/certificates 下载缓存）。
+    const cert =
+      this.wechatPayPublicKey(serial) ??
+      (await this.platformCertificate(serial));
     const verifier = createVerify('RSA-SHA256');
     verifier.update(`${timestamp}\n${nonce}\n${rawBody}\n`);
     if (!verifier.verify(cert, signature, 'base64'))
       throw new UnauthorizedException('回调验签失败');
+  }
+
+  /**
+   * 微信支付公钥验签（2024 年后新入驻商户：无平台证书，只有公钥）：
+   * 配置 WX_WXPAY_PUBLIC_KEY（PEM，可单行 \n 转义）+ WX_WXPAY_PUBLIC_KEY_ID
+   * （PUB_KEY_ID_…，商户平台 API 安全页下载公钥时同页展示）。
+   * 序列号不匹配（或未配置）返回 null，回落平台证书模式 —— 两种商户兼容。
+   */
+  private wechatPayPublicKey(serial: string): string | null {
+    const key = process.env.WX_WXPAY_PUBLIC_KEY,
+      id = process.env.WX_WXPAY_PUBLIC_KEY_ID;
+    if (!key || !id || serial !== id) return null;
+    return key.includes('\\n')
+      ? key.replaceAll('\\n', '\n') // .env 单行转义还原为多行 PEM
+      : key;
   }
 
   /** 取指定序列号的微信平台证书（缓存 miss 先刷新一次再判定）。 */
