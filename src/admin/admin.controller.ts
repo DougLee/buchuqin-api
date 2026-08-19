@@ -87,14 +87,14 @@ export class AdminController {
   @Get('categories')
   @ApiOperation({ summary: '商品类别列表（全局字典，带每类商品数）' })
   async categories(@Req() req: AuthRequest) {
-    this.authorize(req, 'products');
+    this.authorize(req, 'categories');
     return ok(await this.service.categories());
   }
   @Post('categories') async createCategory(
     @Req() req: AuthRequest,
     @Body() body: CreateCategoryDto,
   ) {
-    this.authorize(req, 'products', 'write');
+    this.authorize(req, 'categories', 'write');
     return ok(
       await this.service.createCategory(body, req.user.id, req.user.campusId),
       '类别已创建',
@@ -105,7 +105,7 @@ export class AdminController {
     @Param('id') id: string,
     @Body() body: UpdateCategoryDto,
   ) {
-    this.authorize(req, 'products', 'write');
+    this.authorize(req, 'categories', 'write');
     return ok(
       await this.service.updateCategory(
         id,
@@ -119,7 +119,7 @@ export class AdminController {
     @Req() req: AuthRequest,
     @Param('id') id: string,
   ) {
-    this.authorize(req, 'products', 'write');
+    this.authorize(req, 'categories', 'write');
     return ok(
       await this.service.deleteCategory(id, req.user.id, req.user.campusId),
       '类别已删除',

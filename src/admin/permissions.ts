@@ -5,6 +5,7 @@ export type AdminSection =
   | 'dashboard'
   | 'orders'
   | 'products'
+  | 'categories'
   | 'inventory'
   | 'staff'
   | 'campuses'
@@ -26,6 +27,7 @@ const OPS: AdminRole[] = ['admin', 'operations'];
  * | dashboard 工作台 | 读    | 读        | 读   | 读        |
  * | orders 订单      | 读写  | 读写      | 读   | 读        |
  * | products 商品    | 读写  | 读写      | 读写 | —         |
+ * | categories 类别  | 读写  | 读写      | 读写 | —         |
  * | inventory 库存   | 读写  | 读写      | 读写 | —         |
  * | staff 员工/请假  | 读写  | 读写      | —    | —         |
  * | campuses 楼栋    | 读写  | 读写      | —    | —         |
@@ -44,6 +46,8 @@ export const ADMIN_MATRIX: Record<
   dashboard: { read: ALL, write: [] },
   orders: { read: ALL, write: OPS },
   products: { read: [...OPS, 'warehouse'], write: [...OPS, 'warehouse'] },
+  // 类别字典（2026-08-19 独立菜单）：人群与商品板块一致。
+  categories: { read: [...OPS, 'warehouse'], write: [...OPS, 'warehouse'] },
   inventory: { read: [...OPS, 'warehouse'], write: [...OPS, 'warehouse'] },
   staff: { read: OPS, write: OPS },
   campuses: { read: OPS, write: OPS },
