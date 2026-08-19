@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Controller,
   Post,
+  Query,
   Req,
   UploadedFile,
   UseGuards,
@@ -48,6 +49,10 @@ const monthlyFolder = () => {
   return `uploads/${now.getFullYear()}/${month}`;
 };
 
+// IK9VBI：目录白名单——app/ 放小程序静态素材（Banner 背景图等），
+// 缺省 uploads/（按月归档）放运营素材；其余值拒绝，防任意前缀落桶。
+const FOLDERS = new Set(['uploads', 'app']);
+
 const putToCos = (key: string, buffer: Buffer, mimetype: string) =>
   new Promise<string>((resolve, reject) => {
     getCos().putObject(
@@ -93,15 +98,23 @@ export class FilesController {
   @ApiConsumes('multipart/form-data')
   async uploadImage(
     @Req() _req: AuthRequest,
+    @Query('folder') folder?: string,
     @UploadedFile() file?: Express.Multer.File,
   ) {
     if (!file) throw new BadRequestException('请上传文件');
     if (!COS_BUCKET || !COS_REGION)
       throw new BadRequestException('文件存储未配置，请检查 COS 环境变量');
+    const target = folder ?? 'uploads';
+    if (!FOLDERS.has(target))
+      throw new BadRequestException(
+        `不支持的目录：${target}（可选 ${[...FOLDERS].join(' / ')}）`,
+      );
 
     const ext = extname(file.originalname || '').toLowerCase();
     const safeExt = /^\.[a-z0-9]{1,5}$/.test(ext) ? ext : '.jpg';
-    const key = `${monthlyFolder()}/${randomUUID()}${safeExt}`;
+    // app/（小程序素材，IK9VBI）平铺一级；uploads/ 按月归档
+    const dir = target === 'app' ? 'app' : monthlyFolder();
+    const key = `${dir}/${randomUUID()}${safeExt}`;
 
     try {
       await putToCos(key, file.buffer, file.mimetype);
