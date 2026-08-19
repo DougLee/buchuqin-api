@@ -62,7 +62,8 @@ export class BusinessService {
     @Optional() private readonly push?: NotificationsService,
   ) {}
   /** 金额单位:分（IK8W5K）：满 10 元起送 = 1000 分；即时配送 4 元 = 400 分、预约 2 元 = 200 分。 */
-  static readonly DELIVERY_THRESHOLD_CENTS = 1000;
+  /** 临时放开起送门槛测真实支付流程，测完改回 1000。 */
+  static readonly DELIVERY_THRESHOLD_CENTS = 0;
   static readonly DELIVERY_FEE_CENTS = {
     instant: 400,
     scheduled: 200,
