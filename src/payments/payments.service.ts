@@ -3,6 +3,7 @@ import {
   HttpException,
   HttpStatus,
   Injectable,
+  Logger,
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -24,6 +25,7 @@ const WX_PAY_HOST = 'https://api.mch.weixin.qq.com';
  */
 @Injectable()
 export class PaymentsService {
+  private readonly logger = new Logger(PaymentsService.name);
   constructor(
     private readonly db: PrismaService,
     private readonly business: BusinessService,
@@ -215,8 +217,37 @@ export class PaymentsService {
     // 幂等：已支付单 pay 直接返回；超时已关单不再复活（条件更新拦截）。
     try {
       await this.business.pay(order.userId, order.id);
-    } catch {
-      // 关单/取消与回调并发时以先到者为准，仍回 SUCCESS 避免微信重试风暴。
+    } catch (error) {
+      // G1（2026-08-19 发版 grilling）：微信侧扣款已成功但落账失败（库存不足/
+      // 超时关单竞态/用户取消后又完成支付等）。不能吞错放任订单被超时 Cron
+      // 关单——转 exception 冻结现场，站内通知安抚用户，客服在商户平台手动
+      // 退款或补发（ADR-0004 试点期不自动退款）。
+      const frozen = await this.db.order.updateMany({
+        where: {
+          id: order.id,
+          status: { in: ['pending-payment', 'cancelled'] },
+        },
+        data: {
+          status: 'exception',
+          statusText: '支付已收到但订单异常，请联系客服处理',
+        },
+      });
+      // 微信重复回调时第二次不命中（已是 exception），不重复通知/告警
+      if (frozen.count) {
+        await this.db.notification.create({
+          data: {
+            userId: order.userId,
+            type: 'order',
+            title: '订单异常提醒',
+            content: `订单 ${order.orderNo} 的支付已收到，但处理出现异常，客服会尽快联系你处理，请勿重复支付。`,
+          },
+        });
+        this.logger.error(
+          `支付落账失败转异常单：order=${order.id} orderNo=${order.orderNo} ` +
+            `wxTradeId=${event.transaction_id ?? '未知'} ` +
+            `reason=${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
     }
     return { code: 'SUCCESS', message: 'OK' };
   }

@@ -192,4 +192,77 @@ describe('payments wechat (IK8W5I)', () => {
     ).toBe('cancelled');
     await db.order.delete({ where: { id: stale.id } });
   });
+
+  it('notify freezes order to exception when pay() fails (G1 资损兜底)', async () => {
+    process.env.WX_APPID_USER = 'wx-spec';
+    process.env.WX_MCH_ID = 'mch-spec';
+    process.env.WX_APIV3_KEY = 'a'.repeat(32);
+    process.env.WX_SERIAL_NO = 'serial-spec';
+    process.env.WX_PRIVATE_KEY = 'dummy-key';
+    process.env.WX_NOTIFY_URL = 'https://example.com/notify';
+    // 单测聚焦落账失败兜底：覆写私有方法跳过验签/解密（401 拒绝另有用例覆盖）
+    const order = await db.order.create({
+      data: {
+        orderNo: `BCQG1${Date.now()}${Math.random()
+          .toString(36)
+          .slice(2, 6)
+          .toUpperCase()}`,
+        userId,
+        campusId: 'campus-hbut',
+        status: 'pending-payment',
+        statusText: '等待支付',
+        address: json({ buildingName: '西区 5 栋', floor: 6, room: '612' }),
+        deliveryMode: 'instant',
+        // 商品不存在 → pay() 库存校验抛错，模拟"扣款成功但落账失败"
+        items: json([
+          { product: { id: 'ghost-product', name: '幽灵商品', price: 1 }, quantity: 1 },
+        ]),
+        productAmount: 12,
+        totalQuantity: 1,
+        deliveryThreshold: 10,
+        deliveryFee: 2,
+        discount: 0,
+        payableAmount: 14,
+        estimatedArrival: '预计 30-60 分钟送达',
+        timeline: json(buildOrderTimeline('西区 5 栋 612')),
+      },
+    });
+    const stub = service as unknown as {
+      verifyNotifySignature: () => Promise<void>;
+      decryptResource: () => string;
+    };
+    stub.verifyNotifySignature = async () => {};
+    stub.decryptResource = () =>
+      JSON.stringify({
+        out_trade_no: order.orderNo,
+        transaction_id: 'wx-tid-g1',
+        trade_state: 'SUCCESS',
+      });
+    try {
+      const cbBody = { resource: { ciphertext: 'x', nonce: 'y' } };
+      // 第一次回调：pay 抛错 → 转 exception + 站内通知
+      const res = await service.notify({}, '{}', cbBody);
+      expect(res.code).toBe('SUCCESS');
+      const after = await db.order.findUniqueOrThrow({
+        where: { id: order.id },
+      });
+      expect(after.status).toBe('exception');
+      expect(after.statusText).toContain('联系客服');
+      expect(
+        await db.notification.count({
+          where: { userId, title: '订单异常提醒' },
+        }),
+      ).toBe(1);
+      // 微信重复回调：pay 仍抛错，但已是 exception → 幂等，不重复通知
+      await service.notify({}, '{}', cbBody);
+      expect(
+        await db.notification.count({
+          where: { userId, title: '订单异常提醒' },
+        }),
+      ).toBe(1);
+    } finally {
+      for (const key of WX_KEYS) delete process.env[key];
+      await db.order.delete({ where: { id: order.id } });
+    }
+  });
 });
