@@ -58,6 +58,15 @@ export class PaymentsController {
     );
   }
 
+  @Get('wechat/templates')
+  @UseGuards(JwtAuthGuard, UserRoleGuard)
+  @SetMetadata(USER_ROLES_KEY, ['user'])
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '订阅消息模板 ID（支付成功/送达，供支付前请求授权）' })
+  async templates() {
+    return ok({ templates: this.service.subscribeTemplates() });
+  }
+
   @Get(':orderId/status')
   @UseGuards(JwtAuthGuard, UserRoleGuard)
   @SetMetadata(USER_ROLES_KEY, ['user'])

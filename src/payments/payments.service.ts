@@ -134,6 +134,8 @@ export class PaymentsService {
       orderId: order.id,
       orderNo: order.orderNo,
       amount,
+      // 订阅消息模板（ADR-0004 两条）：随预下单下发，小程序支付前请求授权
+      subscribeTemplates: this.subscribeTemplates(),
       payParams: {
         appId: appid,
         timeStamp,
@@ -143,6 +145,13 @@ export class PaymentsService {
         paySign: this.sign(`${appid}\n${timeStamp}\n${nonceStr}\n${pkg}\n`),
       },
     };
+  }
+
+  /** 订阅消息模板 ID（ADR-0004 精简两条；未配置返回空数组，前端静默跳过授权）。 */
+  subscribeTemplates(): string[] {
+    return [process.env.WX_TMPL_PAID, process.env.WX_TMPL_DELIVERED].filter(
+      (id): id is string => Boolean(id),
+    );
   }
 
   /** 查单：订单支付状态（供前端轮询支付结果）。 */
