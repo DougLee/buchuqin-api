@@ -5,7 +5,8 @@ RUN apk add --no-cache openssl && corepack enable && corepack prepare pnpm@9.15.
 COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
 COPY . .
-RUN pnpm db:generate && pnpm build && pnpm exec tsc --module commonjs --moduleResolution node --target es2022 --lib es2022 --experimentalDecorators --emitDecoratorMetadata --esModuleInterop --skipLibCheck --strict false --outDir dist-seed prisma/seed.ts
+# seed/seed-admin 预编译成 JS（生产容器 ts-node 按 ESM 报错，见部署踩坑记录）
+RUN pnpm db:generate && pnpm build && pnpm exec tsc --module commonjs --moduleResolution node --target es2022 --lib es2022 --experimentalDecorators --emitDecoratorMetadata --esModuleInterop --skipLibCheck --strict false --outDir dist-seed prisma/seed.ts prisma/seed-admin.ts
 
 # 运行阶段：alpine + openssl（prisma 引擎需要），携带全量 node_modules（seed 依赖 ts-node）
 FROM node:20-alpine
