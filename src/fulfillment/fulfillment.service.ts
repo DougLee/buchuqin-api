@@ -528,6 +528,8 @@ export class FulfillmentService {
         startAt: new Date(dto.startAt),
         endAt: new Date(dto.endAt),
         reason: dto.reason,
+        // IK9U4B：调配方式随请假单落库，后台审核按此核对派单策略
+        dispatchMode: dto.dispatchMode ?? 'platform',
         status: 'pending',
         statusText: '待审核',
       },

@@ -59,10 +59,15 @@ class WechatLoginDto {
 }
 
 class PhoneDto {
-  // TODO(IK8W5H)：真实实现应传小程序手机号授权码（getPhoneNumber code），
-  // 由后端调微信 phonenumber.getPhoneNumber 解密；本批演示通道直接传号绑定。
+  // IK9SO4：button open-type="getPhoneNumber" 下发的动态令牌，
+  // 后端调微信 getuserphonenumber 换真实号码（优先通道）。
+  @IsOptional()
+  @IsString()
+  code?: string;
+  // 直传号码为兼容通道（演示/回调失败兜底），二选一。
+  @IsOptional()
   @Matches(/^1\d{10}$/, { message: '手机号格式不正确' })
-  phone!: string;
+  phone?: string;
 }
 
 /** 用户资料自助修改（IK9ROG）：昵称/头像落库。 */
@@ -391,16 +396,91 @@ export class AuthController {
     );
   }
 
+  /** 用户端小程序 access_token 内存缓存（IK9SO4）：7200s 失效，提前 5 分钟刷新 */
+  private userAccessToken?: { token: string; expiresAt: number };
+
+  private async getUserAccessToken() {
+    // 手机号解析只走用户端凭证（getPhoneNumber code 由用户端小程序下发）
+    const credentials = this.wechatCredentials(process.env.WX_APPID_USER);
+    if (!credentials || credentials.appid !== process.env.WX_APPID_USER)
+      throw new HttpException('微信手机号服务未配置', HttpStatus.NOT_IMPLEMENTED);
+    if (this.userAccessToken && this.userAccessToken.expiresAt > Date.now())
+      return this.userAccessToken.token;
+    let data: {
+      access_token?: string;
+      expires_in?: number;
+      errcode?: number;
+      errmsg?: string;
+    };
+    try {
+      const response = await fetch(
+        `https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid=${encodeURIComponent(
+          credentials.appid,
+        )}&secret=${encodeURIComponent(credentials.secret)}`,
+        { signal: AbortSignal.timeout(5000) },
+      );
+      data = (await response.json()) as typeof data;
+    } catch {
+      throw new HttpException('微信服务暂不可用', HttpStatus.BAD_GATEWAY);
+    }
+    if (!data.access_token || data.errcode)
+      throw new BadRequestException(
+        `获取 access_token 失败：${data.errmsg ?? '微信未返回凭证'}`,
+      );
+    this.userAccessToken = {
+      token: data.access_token,
+      expiresAt: Date.now() + ((data.expires_in ?? 7200) - 300) * 1000,
+    };
+    return data.access_token;
+  }
+
+  /** getPhoneNumber 动态令牌换手机号（IK9SO4），取纯号码（无区号）。 */
+  private async phoneFromWechatCode(code: string) {
+    const accessToken = await this.getUserAccessToken();
+    let data: {
+      phone_info?: { purePhoneNumber?: string; phoneNumber?: string };
+      errcode?: number;
+      errmsg?: string;
+    };
+    try {
+      const response = await fetch(
+        `https://api.weixin.qq.com/wxa/business/getuserphonenumber?access_token=${encodeURIComponent(
+          accessToken,
+        )}`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ code }),
+          signal: AbortSignal.timeout(5000),
+        },
+      );
+      data = (await response.json()) as typeof data;
+    } catch {
+      throw new HttpException('微信服务暂不可用', HttpStatus.BAD_GATEWAY);
+    }
+    const phone = data.phone_info?.purePhoneNumber ?? data.phone_info?.phoneNumber;
+    if (!phone || data.errcode)
+      throw new BadRequestException(
+        `手机号授权失败：${data.errmsg ?? '微信未返回手机号'}`,
+      );
+    return phone;
+  }
+
   @Post('phone')
   @UseGuards(JwtAuthGuard, UserRoleGuard)
   @SetMetadata(USER_ROLES_KEY, ['user'])
   @ApiBearerAuth()
   @ApiOperation({
-    summary: '绑定手机号（简化版：直接传号；真实实现见 PhoneDto TODO）',
+    summary: '绑定手机号（IK9SO4：优先微信授权码换号，直传号码兼容）',
   })
   async bindPhone(@Req() req: AuthRequest, @Body() body: PhoneDto) {
+    // IK9SO4：授权码优先——号码由微信侧解析，不可伪造；
+    // 无 code 时回退直传（演示通道），仍走格式复核。
+    const phone = body.code?.trim()
+      ? await this.phoneFromWechatCode(body.code.trim())
+      : body.phone;
     // service 层防御性复核：绕过管道的调用也不允许脏号落库。
-    if (!/^1\d{10}$/.test(body.phone ?? ''))
+    if (!/^1\d{10}$/.test(phone ?? ''))
       throw new BadRequestException('手机号格式不正确');
     const user = await this.db.user.findUnique({
       where: { id: req.user.id },

@@ -61,7 +61,8 @@ export class BusinessService {
     // 渠道推送（IK8W5M）：可选注入——测试直接 new BusinessService(db) 时不传，跳过推送。
     @Optional() private readonly push?: NotificationsService,
   ) {}
-  /** 金额单位:分（IK8W5K）：满 10 元起送 = 1000 分；即时配送 4 元 = 400 分、预约 2 元 = 200 分。 */
+  /** 金额单位:分（IK8W5K）。IK9SO6：生效值存 Campus 表（后台可配置），
+   *  以下常量仅在 Campus 行缺失/字段为空时的兜底默认。 */
   static readonly DELIVERY_THRESHOLD_CENTS = 1000;
   static readonly DELIVERY_FEE_CENTS = {
     instant: 400,
@@ -288,10 +289,23 @@ export class BusinessService {
     return this.productView(item);
   }
   async cart(userId: string) {
-    const rows = await this.db.cartItem.findMany({
-      where: { userId, quantity: { gt: 0 } },
-      include: { product: true },
-    });
+    const [rows, user] = await Promise.all([
+      this.db.cartItem.findMany({
+        where: { userId, quantity: { gt: 0 } },
+        include: { product: true },
+      }),
+      this.db.user.findUnique({
+        where: { id: userId },
+        select: { campusId: true },
+      }),
+    ]);
+    // IK9SO6：起送门槛读校园配置（后台可改），缺省回退常量
+    const campus = user
+      ? await this.db.campus.findUnique({
+          where: { id: user.campusId },
+          select: { deliveryThreshold: true },
+        })
+      : null;
     const items = rows.map((row) => ({
       product: this.productView(row.product),
       quantity: row.quantity,
@@ -305,7 +319,8 @@ export class BusinessService {
       items,
       productAmount,
       totalQuantity: items.reduce((sum, i) => sum + i.quantity, 0),
-      deliveryThreshold: BusinessService.DELIVERY_THRESHOLD_CENTS,
+      deliveryThreshold:
+        campus?.deliveryThreshold ?? BusinessService.DELIVERY_THRESHOLD_CENTS,
     };
   }
   async updateCart(userId: string, dto: UpdateCartDto) {
@@ -386,11 +401,16 @@ export class BusinessService {
   }
   async checkout(userId: string, campusId: string, dto: CreateOrderDto) {
     const { cart } = await this.validateQuote(userId, dto);
-    // 运费（单位:分）：即时 400 / 预约 200（IK8W5K）。
+    // 运费（单位:分，IK9SO6）：读校园配置（后台可改），缺省回退常量。
+    const campus = await this.db.campus.findUnique({
+      where: { id: campusId },
+      select: { deliveryFeeInstant: true, deliveryFeeScheduled: true },
+    });
     const deliveryFee =
       dto.deliveryMode === 'instant'
-        ? BusinessService.DELIVERY_FEE_CENTS.instant
-        : BusinessService.DELIVERY_FEE_CENTS.scheduled;
+        ? campus?.deliveryFeeInstant ?? BusinessService.DELIVERY_FEE_CENTS.instant
+        : campus?.deliveryFeeScheduled ??
+          BusinessService.DELIVERY_FEE_CENTS.scheduled;
     const userCoupon = dto.couponId
       ? await this.validateUserCoupon(userId, dto.couponId, campusId)
       : null;

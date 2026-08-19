@@ -31,6 +31,7 @@ import type {
   UpdateCategoryDto,
   UpdateCommissionRuleDto,
   UpdateCouponDto,
+  UpdateDeliveryConfigDto,
   UpdateStaffDto,
 } from './dto';
 
@@ -406,6 +407,8 @@ export class AdminService {
         badge: body.badge ?? '',
         color: body.color,
         image: body.image || null,
+        // IK9SNN：图文详情，空 = 不可点
+        content: body.content || null,
         sort: body.sort ?? 0,
       },
     });
@@ -437,6 +440,8 @@ export class AdminService {
         badge: body.badge,
         color: body.color,
         image: body.image,
+        // IK9SNN：undefined 跳过；空串语义清空（存 null）
+        content: body.content === undefined ? undefined : body.content || null,
         sort: body.sort,
         status: body.status,
       },
@@ -566,6 +571,9 @@ export class AdminService {
         stock: body.stock,
         tag: body.tag ?? '新品',
         image: body.image ?? '',
+        // IK9SNS/IK9U40：详情多图（顺序即轮播顺序）与库位拣货指引
+        images: body.images,
+        location: body.location ?? '',
         weight: body.weight ?? 0,
         sales: 0,
         status: 'on-sale',
@@ -786,6 +794,22 @@ export class AdminService {
       where: { staffNo: body.staffNo },
     });
     if (duplicate) throw new BadRequestException('工号已存在');
+    // IK9U3Y：骑手不绑楼栋；IK9U3X：楼长必须绑定且一楼一在职楼长
+    const RIDER_ROLES = ['fulltime-rider', 'parttime-rider'];
+    if (RIDER_ROLES.includes(body.role) && body.buildingId)
+      throw new BadRequestException('配送员角色无需绑定楼栋');
+    if (body.role === 'building-manager') {
+      if (!body.buildingId)
+        throw new BadRequestException('楼长必须绑定楼栋');
+      const clash = await this.db.staff.findFirst({
+        where: {
+          buildingId: body.buildingId,
+          role: 'building-manager',
+          status: { not: 'deleted' },
+        },
+      });
+      if (clash) throw new BadRequestException('该楼栋已有在职楼长');
+    }
     let buildingName = '湖北工业大学';
     if (body.buildingId) {
       const building = await this.db.building.findFirst({
@@ -851,6 +875,37 @@ export class AdminService {
     if (body.staffNo !== undefined) data.staffNo = body.staffNo;
     if (body.status !== undefined) data.status = body.status;
     let buildingName = before.building;
+    // IK9U3X/IK9U3Y：仅在本次请求改角色或改楼栋时校验，避免历史数据阻塞改名等普通编辑
+    if (body.role !== undefined || body.buildingId !== undefined) {
+      const nextRole = body.role ?? before.role;
+      const nextBuildingId =
+        body.buildingId !== undefined ? body.buildingId : before.buildingId;
+      if (['fulltime-rider', 'parttime-rider'].includes(nextRole)) {
+        // 骑手自动解绑楼栋（角色切换场景无需两步操作）
+        if (nextBuildingId) {
+          data.buildingRef = { disconnect: true };
+          data.building = '湖北工业大学';
+          buildingName = '湖北工业大学';
+        }
+      } else {
+        if (!nextBuildingId)
+          throw new BadRequestException('楼长必须绑定楼栋');
+        if (
+          nextBuildingId !== before.buildingId ||
+          nextRole !== before.role
+        ) {
+          const clash = await this.db.staff.findFirst({
+            where: {
+              buildingId: nextBuildingId,
+              role: 'building-manager',
+              status: { not: 'deleted' },
+              id: { not: id },
+            },
+          });
+          if (clash) throw new BadRequestException('该楼栋已有在职楼长');
+        }
+      }
+    }
     if (body.buildingId !== undefined) {
       if (body.buildingId === null) {
         data.buildingRef = { disconnect: true };
@@ -906,6 +961,48 @@ export class AdminService {
       campusId,
     );
     return { id, deleted: true };
+  }
+  /** IK9SO6：配送费/起送门槛按校园配置（business.cart/checkout 已按此生效）。 */
+  async deliveryConfig(campusId: string) {
+    const campus = await this.db.campus.findFirstOrThrow({
+      where: { id: campusId },
+      select: {
+        deliveryFeeInstant: true,
+        deliveryFeeScheduled: true,
+        deliveryThreshold: true,
+      },
+    });
+    return campus;
+  }
+  async updateDeliveryConfig(
+    body: UpdateDeliveryConfigDto,
+    operator: string,
+    campusId: string,
+  ) {
+    const before = await this.deliveryConfig(campusId);
+    const after = await this.db.campus.update({
+      where: { id: campusId },
+      data: {
+        deliveryFeeInstant: body.deliveryFeeInstant,
+        deliveryFeeScheduled: body.deliveryFeeScheduled,
+        deliveryThreshold: body.deliveryThreshold,
+      },
+      select: {
+        deliveryFeeInstant: true,
+        deliveryFeeScheduled: true,
+        deliveryThreshold: true,
+      },
+    });
+    await this.audit(
+      operator,
+      'campus.updateDeliveryConfig',
+      'campus',
+      campusId,
+      before,
+      after,
+      campusId,
+    );
+    return after;
   }
   async buildings(campusId: string) {
     const xs = await this.db.building.findMany({

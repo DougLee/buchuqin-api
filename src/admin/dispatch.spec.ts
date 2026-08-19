@@ -136,9 +136,9 @@ describe('grab pool & dispatch invitations (IK8W5U/IK8W5Y)', () => {
     const list = await admin.leaveRequests(CAMPUS);
     const seed = list.find((x) => x.id === 'leave-001');
     expect(seed).toBeTruthy();
-    expect(seed.staff.name).toBe('陈晨');
-    expect(seed.staff.role).toBe('building-manager');
-    expect(seed.staff.building).toBe('西区 5 栋');
+    expect(seed!.staff.name).toBe('陈晨');
+    expect(seed!.staff.role).toBe('building-manager');
+    expect(seed!.staff.building).toBe('西区 5 栋');
   });
 
   it('dispatch invitation creation validates target and building', async () => {

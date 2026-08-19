@@ -120,14 +120,14 @@ describe('order state machine full chain (IK93GQ)', () => {
     const paid = await service.pay(userId, order.id);
     expect(paid.status).toBe('paid');
     expect(paid.statusPhase).toBe('fulfillment');
-    expect((await step(order.id, 'paid')).done).toBe(true);
+    expect((await step(order.id, 'paid'))?.done).toBe(true);
 
     // 管理端推进：paid → picking → waiting-first-mile（待一级配送，骑手可抢）
     await service.advance(userId, order.id);
     expect(await statusOf(order.id)).toBe('picking');
     await service.advance(userId, order.id);
     expect(await statusOf(order.id)).toBe('waiting-first-mile');
-    expect((await step(order.id, 'picking')).done).toBe(true);
+    expect((await step(order.id, 'picking'))?.done).toBe(true);
 
     // 骑手抢单（grab=accept 同语义）：写归属，状态不变
     const packageCode = (
@@ -168,7 +168,7 @@ describe('order state machine full chain (IK93GQ)', () => {
       'depart',
     );
     expect(await statusOf(order.id)).toBe('first-mile');
-    expect((await step(order.id, 'first-mile')).done).toBe(true);
+    expect((await step(order.id, 'first-mile'))?.done).toBe(true);
 
     // 到楼下：→ waiting-handover，写入"楼下待交接"节点
     await fulfillment.updateTask(
@@ -188,7 +188,7 @@ describe('order state machine full chain (IK93GQ)', () => {
       'receive',
     );
     expect(await statusOf(order.id)).toBe('last-mile');
-    expect((await step(order.id, 'last-mile')).done).toBe(true);
+    expect((await step(order.id, 'last-mile'))?.done).toBe(true);
 
     // 楼长上楼送达：→ delivered（与 completed 分离），写入送达凭证
     await fulfillment.updateTask(

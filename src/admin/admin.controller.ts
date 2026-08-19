@@ -40,6 +40,7 @@ import {
   UpdateCategoryDto,
   UpdateCommissionRuleDto,
   UpdateCouponDto,
+  UpdateDeliveryConfigDto,
   UpdateStaffDto,
 } from './dto';
 
@@ -406,6 +407,30 @@ export class AdminController {
     return ok(
       await this.service.deleteStaff(id, req.user.id, req.user.campusId),
       '员工已删除',
+    );
+  }
+  @Get('delivery-config')
+  @ApiOperation({
+    summary: '配送费/起送门槛配置（IK9SO6，单位分）',
+    description: '即时达/次日达配送费与起送门槛，business 端 cart/checkout 按此生效。',
+  })
+  async deliveryConfig(@Req() req: AuthRequest) {
+    this.authorize(req, 'campuses');
+    return ok(await this.service.deliveryConfig(req.user.campusId));
+  }
+  @Patch('delivery-config')
+  async updateDeliveryConfig(
+    @Req() req: AuthRequest,
+    @Body() body: UpdateDeliveryConfigDto,
+  ) {
+    this.authorize(req, 'campuses', 'write');
+    return ok(
+      await this.service.updateDeliveryConfig(
+        body,
+        req.user.id,
+        req.user.campusId,
+      ),
+      '配送配置已更新',
     );
   }
   @Get('buildings')

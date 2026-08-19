@@ -11,17 +11,26 @@ describe('auth wechat-login env gate (IK8W5H)', () => {
     new JwtService({ secret: 'test-secret' }),
     db,
   );
-  const hadAppid = process.env.WX_APPID;
-  const hadSecret = process.env.WX_SECRET;
+  // 双小程序凭证下「未配置」须三对全清（IK8W5Q），只清旧单对会被 WX_APPID_USER 兜住
+  const WX_ENV_KEYS = [
+    'WX_APPID',
+    'WX_SECRET',
+    'WX_APPID_USER',
+    'WX_SECRET_USER',
+    'WX_APPID_DELIVERY',
+    'WX_SECRET_DELIVERY',
+  ] as const;
+  const hadEnv = Object.fromEntries(
+    WX_ENV_KEYS.map((k) => [k, process.env[k]]),
+  );
   let userId = '';
 
   beforeAll(() => {
-    delete process.env.WX_APPID;
-    delete process.env.WX_SECRET;
+    for (const key of WX_ENV_KEYS) delete process.env[key];
   });
   afterAll(async () => {
-    if (hadAppid) process.env.WX_APPID = hadAppid;
-    if (hadSecret) process.env.WX_SECRET = hadSecret;
+    for (const [key, value] of Object.entries(hadEnv))
+      if (value !== undefined) process.env[key] = value;
     if (userId) await db.user.delete({ where: { id: userId } }).catch(() => {});
     await db.$disconnect();
   });

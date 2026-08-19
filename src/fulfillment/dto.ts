@@ -30,6 +30,8 @@ export class LeaveRequestDto {
   @IsString() startAt!: string;
   @IsString() endAt!: string;
   @IsString() @MaxLength(200) reason!: string;
+  /** 请假期间订单调配方式（IK9U4B）：缺省平台自动派单 */
+  @IsOptional() @IsIn(['self', 'platform']) dispatchMode?: string;
 }
 
 export class RejectDto {

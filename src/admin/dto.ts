@@ -1,5 +1,6 @@
 import { Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
   IsArray,
   IsBoolean,
   IsIn,
@@ -29,6 +30,15 @@ export class CreateProductDto extends BarcodeDto {
   @IsOptional() @IsString() tag?: string;
   @IsOptional() @IsString() image?: string;
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) weight?: number;
+  /** 详情多图（IK9SNS）：COS URL 数组，顺序即详情页轮播顺序。 */
+  @IsOptional()
+  @IsArray()
+  @Matches(/^https?:\/\//, { each: true, message: '图片地址必须是 http(s) URL' })
+  @MaxLength(500, { each: true })
+  @ArrayMaxSize(9)
+  images?: string[];
+  /** 库位（IK9U40）：区域代码+序号（如 冷A-03）。 */
+  @IsOptional() @IsString() @MaxLength(20) location?: string;
 }
 /** 商品改价/改库存/换头图（IK9RWX）：image 走 COS 上传后的公网 URL。 */
 export class UpdateProductDto {
@@ -38,6 +48,15 @@ export class UpdateProductDto {
   @Matches(/^https?:\/\//, { message: '图片地址必须是 http(s) URL' })
   @MaxLength(500)
   image?: string;
+  /** 详情多图（IK9SNS）：整组提交覆盖，空数组清空回退单图。 */
+  @IsOptional()
+  @IsArray()
+  @Matches(/^https?:\/\//, { each: true, message: '图片地址必须是 http(s) URL' })
+  @MaxLength(500, { each: true })
+  @ArrayMaxSize(9)
+  images?: string[];
+  /** 库位（IK9U40）。 */
+  @IsOptional() @IsString() @MaxLength(20) location?: string;
 }
 /** 首页 Banner（IK9RX2）：后台可管；color 为预置主题键（green/orange/dark）或自定义 hex。 */
 export class CreateBannerDto {
@@ -54,6 +73,8 @@ export class CreateBannerDto {
   @Matches(/^https?:\/\//, { message: '图片地址必须是 http(s) URL' })
   @MaxLength(500)
   image?: string;
+  /** 图文详情（IK9SNN）：多行文本，https:// 开头的行渲染为图片；空 = 不可点。 */
+  @IsOptional() @IsString() @MaxLength(5000) content?: string;
   @IsOptional() @Type(() => Number) @IsInt() sort?: number;
 }
 export class UpdateBannerDto {
@@ -70,8 +91,16 @@ export class UpdateBannerDto {
   @Matches(/^https?:\/\//, { message: '图片地址必须是 http(s) URL' })
   @MaxLength(500)
   image?: string;
+  /** 图文详情（IK9SNN）：空串语义清空（Banner 回到不可点）。 */
+  @IsOptional() @IsString() @MaxLength(5000) content?: string;
   @IsOptional() @Type(() => Number) @IsInt() sort?: number;
   @IsOptional() @IsIn(['active', 'hidden']) status?: 'active' | 'hidden';
+}
+/** 配送费/起送门槛配置（IK9SO6）：金额单位分。 */
+export class UpdateDeliveryConfigDto {
+  @Type(() => Number) @IsInt() @Min(0) deliveryFeeInstant!: number;
+  @Type(() => Number) @IsInt() @Min(0) deliveryFeeScheduled!: number;
+  @Type(() => Number) @IsInt() @Min(0) deliveryThreshold!: number;
 }
 export class CreateCouponDto {
   @IsString() @MaxLength(40) name!: string;
