@@ -16,15 +16,16 @@ export interface OrderPushContext {
  * 消息通知渠道扇出（IK8W5M，PRD §15.1 矩阵）。
  *
  * 站内信已实现（Notification 模型，业务服务直接写入）；本服务负责 App 外渠道：
- * - 小程序订阅消息：支付成功/出库/一级配送中/即将到楼/已送达/退款结果
+ * - 小程序订阅消息：ADR-0004 精简为支付成功 + 已送达两条（其余状态不再推）
  * - 短信兜底：已送达、退款结果（服务商待定，预留接入点）
  * - 楼长企微：关键节点（需企微自建应用，另行立项，预留接入点）
  *
  * 全部 env 门控 + 静默降级：凭证未配置记 debug 日志跳过；发送失败仅 warn 不抛出，
  * 绝不阻断订单业务流。调用方一律 fire-and-forget（void 调用，勿 await 进事务）。
  *
- * 待道哥提供：WX_APPID/WX_SECRET（同微信登录）+ 各事件订阅消息模板 ID、
- * 短信服务商凭证、企微 corpid/secret/agentId。
+ * 凭证（ADR-0004 发版批次对齐）：WX_APPID_USER/WX_SECRET_USER（同微信登录/支付），
+ * 模板精简为 2 条（WX_TMPL_PAID/WX_TMPL_DELIVERED）。待道哥在微信公众平台
+ * 申请通过后填入 .env 即可发，代码无需再改。短信/企微仍为预留接入点。
  */
 @Injectable()
 export class NotificationsService {
@@ -131,14 +132,18 @@ export class NotificationsService {
     refund: 'WX_TMPL_REFUND',
   };
 
-  /** 小程序订阅消息（env 门控）：WX_APPID/WX_SECRET + 对应事件模板 ID 齐备才发送。 */
+  /** 小程序订阅消息（env 门控）：WX_APPID_USER/WX_SECRET_USER + 模板 ID 齐备才发送。 */
   private async sendSubscribeMessage(
     order: OrderPushContext,
     event: string,
   ): Promise<void> {
     const templateId =
       process.env[NotificationsService.TEMPLATE_ENV[event] ?? ''];
-    if (!process.env.WX_APPID || !process.env.WX_SECRET || !templateId) {
+    if (
+      !process.env.WX_APPID_USER ||
+      !process.env.WX_SECRET_USER ||
+      !templateId
+    ) {
       this.logger.debug(
         `订阅消息未配置（${event}），跳过 → ${order.orderNo} ${order.statusText}`,
       );
@@ -193,7 +198,7 @@ export class NotificationsService {
       return this.wxToken.token;
     const res = await fetch(
       `https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential` +
-        `&appid=${process.env.WX_APPID}&secret=${process.env.WX_SECRET}`,
+        `&appid=${process.env.WX_APPID_USER}&secret=${process.env.WX_SECRET_USER}`,
     );
     const body = (await res.json()) as {
       access_token?: string;
