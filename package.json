@@ -23,7 +23,8 @@
     "db:migrate:dev": "prisma migrate dev",
     "db:seed": "ts-node prisma/seed.ts",
     "db:seed:admin": "ts-node prisma/seed-admin.ts",
-    "db:reset": "prisma migrate reset --force"
+    "db:reset": "prisma migrate reset --force",
+    "db:clean": "ts-node prisma/clean-transactions.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",
