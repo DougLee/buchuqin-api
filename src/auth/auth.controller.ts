@@ -7,6 +7,7 @@ import {
   HttpException,
   HttpStatus,
   NotFoundException,
+  Patch,
   Post,
   Req,
   UnauthorizedException,
@@ -15,7 +16,13 @@ import {
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtService } from '@nestjs/jwt';
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
-import { IsOptional, IsString, Matches, MinLength } from 'class-validator';
+import {
+  IsOptional,
+  IsString,
+  Matches,
+  MaxLength,
+  MinLength,
+} from 'class-validator';
 import { SetMetadata } from '@nestjs/common';
 import { compare, hash } from 'bcryptjs';
 import { ok } from '../common/api-response';
@@ -56,6 +63,20 @@ class PhoneDto {
   // 由后端调微信 phonenumber.getPhoneNumber 解密；本批演示通道直接传号绑定。
   @Matches(/^1\d{10}$/, { message: '手机号格式不正确' })
   phone!: string;
+}
+
+/** 用户资料自助修改（IK9ROG）：昵称/头像落库。 */
+class UpdateProfileDto {
+  @IsOptional()
+  @IsString()
+  @Matches(/^.{1,12}$/, { message: '昵称为 1-12 个字符' })
+  nickname?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^https?:\/\//, { message: '头像须为 http(s) 地址' })
+  @MaxLength(500)
+  avatar?: string;
 }
 
 /** 员工微信绑定（IK8W5Q）：首次登录用工号+姓名换绑 openid。
@@ -141,6 +162,27 @@ export class AuthController {
       data: { passwordHash: await hash(body.newPassword, 10) },
     });
     return ok({ id: account.id }, '密码已更新');
+  }
+
+  /** 用户资料自助修改（IK9ROG）：昵称/头像落库，DB 为准（前端本地 storage 仅展示加速）。 */
+  @Patch('profile')
+  @UseGuards(JwtAuthGuard, UserRoleGuard)
+  @SetMetadata(USER_ROLES_KEY, ['user'])
+  @ApiBearerAuth()
+  async updateProfile(
+    @Req() req: AuthRequest,
+    @Body() body: UpdateProfileDto,
+  ) {
+    const data: { nickname?: string; avatar?: string } = {};
+    if (body.nickname?.trim()) data.nickname = body.nickname.trim();
+    if (body.avatar) data.avatar = body.avatar;
+    if (!Object.keys(data).length)
+      throw new BadRequestException('没有可更新的资料字段');
+    const user = await this.db.user.update({
+      where: { id: req.user.id },
+      data,
+    });
+    return ok({ nickname: user.nickname, avatar: user.avatar }, '资料已更新');
   }
 
   @Get('profile')
