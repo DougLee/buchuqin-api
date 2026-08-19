@@ -13,17 +13,20 @@ import { CommissionService } from '../commission/commission.service';
 import type {
   AdjustStockDto,
   CreateAccountDto,
+  CreateBannerDto,
   CreateBuildingDto,
   CreateCategoryDto,
   CreateCommissionRuleDto,
   CreateCouponDto,
   CreateDispatchInvitationDto,
   CreateProductDto,
+  UpdateProductDto,
   CreateRoomDto,
   CreateStaffDto,
   IssueCouponDto,
   StockInDto,
   UpdateAccountDto,
+  UpdateBannerDto,
   UpdateBuildingDto,
   UpdateCategoryDto,
   UpdateCommissionRuleDto,
@@ -319,7 +322,7 @@ export class AdminService {
     });
     if (duplicate) throw new BadRequestException('类别名称已存在');
     const category = await this.db.category.create({
-      data: { name: body.name, sort: body.sort ?? 0 },
+      data: { name: body.name, sort: body.sort ?? 0, image: body.image ?? '' },
     });
     await this.audit(
       operator,
@@ -327,7 +330,7 @@ export class AdminService {
       'category',
       category.id,
       null,
-      { name: category.name, sort: category.sort },
+      { name: category.name, sort: category.sort, image: category.image },
       campusId,
     );
     return category;
@@ -349,15 +352,15 @@ export class AdminService {
     const category = await this.db.category.update({
       where: { id },
       // Prisma 惯例：undefined 字段跳过更新
-      data: { name: body.name, sort: body.sort },
+      data: { name: body.name, sort: body.sort, image: body.image },
     });
     await this.audit(
       operator,
       'category.update',
       'category',
       id,
-      { name: found.name, sort: found.sort },
-      { name: category.name, sort: category.sort },
+      { name: found.name, sort: found.sort, image: found.image },
+      { name: category.name, sort: category.sort, image: category.image },
       campusId,
     );
     return category;
@@ -379,6 +382,86 @@ export class AdminService {
       'category',
       id,
       { name: found.name, sort: found.sort },
+      null,
+      campusId,
+    );
+  }
+  /** 首页 Banner 管理（IK9RX2）：校园维度，sort 升序；删除为物理删。 */
+  async banners(campusId: string) {
+    return this.db.banner.findMany({
+      where: { campusId },
+      orderBy: [{ sort: 'asc' }, { id: 'asc' }],
+    });
+  }
+  async createBanner(
+    body: CreateBannerDto,
+    operator: string,
+    campusId: string,
+  ) {
+    const banner = await this.db.banner.create({
+      data: {
+        campusId,
+        title: body.title,
+        subtitle: body.subtitle ?? '',
+        badge: body.badge ?? '',
+        color: body.color,
+        image: body.image || null,
+        sort: body.sort ?? 0,
+      },
+    });
+    await this.audit(
+      operator,
+      'banner.create',
+      'banner',
+      banner.id,
+      null,
+      { title: banner.title, sort: banner.sort },
+      campusId,
+    );
+    return banner;
+  }
+  async updateBanner(
+    id: string,
+    body: UpdateBannerDto,
+    operator: string,
+    campusId: string,
+  ) {
+    const found = await this.db.banner.findFirst({ where: { id, campusId } });
+    if (!found) throw new NotFoundException('Banner 不存在');
+    const banner = await this.db.banner.update({
+      where: { id },
+      // Prisma 惯例：undefined 跳过更新；image 用空串语义清空（DTO 已限制非空 URL）
+      data: {
+        title: body.title,
+        subtitle: body.subtitle,
+        badge: body.badge,
+        color: body.color,
+        image: body.image,
+        sort: body.sort,
+        status: body.status,
+      },
+    });
+    await this.audit(
+      operator,
+      'banner.update',
+      'banner',
+      id,
+      { title: found.title, sort: found.sort, status: found.status },
+      { title: banner.title, sort: banner.sort, status: banner.status },
+      campusId,
+    );
+    return banner;
+  }
+  async deleteBanner(id: string, operator: string, campusId: string) {
+    const found = await this.db.banner.findFirst({ where: { id, campusId } });
+    if (!found) throw new NotFoundException('Banner 不存在');
+    await this.db.banner.delete({ where: { id } });
+    await this.audit(
+      operator,
+      'banner.delete',
+      'banner',
+      id,
+      { title: found.title },
       null,
       campusId,
     );
@@ -501,7 +584,7 @@ export class AdminService {
   }
   async updateProduct(
     id: string,
-    body: { price?: number; stock?: number },
+    body: UpdateProductDto,
     operator: string,
     campusId: string,
   ) {

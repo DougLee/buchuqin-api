@@ -61,6 +61,7 @@ model Category {
   id       String    @id @default(cuid())
   name     String
   sort     Int       @default(0)
+  image    String    @default("")
   products Product[]
 }
 

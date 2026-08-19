@@ -30,6 +30,49 @@ export class CreateProductDto extends BarcodeDto {
   @IsOptional() @IsString() image?: string;
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) weight?: number;
 }
+/** 商品改价/改库存/换头图（IK9RWX）：image 走 COS 上传后的公网 URL。 */
+export class UpdateProductDto {
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) price?: number;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(0) stock?: number;
+  @IsOptional()
+  @Matches(/^https?:\/\//, { message: '图片地址必须是 http(s) URL' })
+  @MaxLength(500)
+  image?: string;
+}
+/** 首页 Banner（IK9RX2）：后台可管；color 为预置主题键（green/orange/dark）或自定义 hex。 */
+export class CreateBannerDto {
+  @IsString() @MinLength(1) @MaxLength(30) title!: string;
+  @IsOptional() @IsString() @MaxLength(50) subtitle?: string;
+  @IsOptional() @IsString() @MaxLength(20) badge?: string;
+  @IsString()
+  @Matches(/^(green|orange|dark|#[0-9a-fA-F]{6})$/, {
+    message: '主题色必须是 green/orange/dark 或 #RRGGBB',
+  })
+  color!: string;
+  /** Banner 背景图：COS 上传后的公网 URL，空 = 纯色主题帧。 */
+  @IsOptional()
+  @Matches(/^https?:\/\//, { message: '图片地址必须是 http(s) URL' })
+  @MaxLength(500)
+  image?: string;
+  @IsOptional() @Type(() => Number) @IsInt() sort?: number;
+}
+export class UpdateBannerDto {
+  @IsOptional() @IsString() @MinLength(1) @MaxLength(30) title?: string;
+  @IsOptional() @IsString() @MaxLength(50) subtitle?: string;
+  @IsOptional() @IsString() @MaxLength(20) badge?: string;
+  @IsOptional()
+  @IsString()
+  @Matches(/^(green|orange|dark|#[0-9a-fA-F]{6})$/, {
+    message: '主题色必须是 green/orange/dark 或 #RRGGBB',
+  })
+  color?: string;
+  @IsOptional()
+  @Matches(/^https?:\/\//, { message: '图片地址必须是 http(s) URL' })
+  @MaxLength(500)
+  image?: string;
+  @IsOptional() @Type(() => Number) @IsInt() sort?: number;
+  @IsOptional() @IsIn(['active', 'hidden']) status?: 'active' | 'hidden';
+}
 export class CreateCouponDto {
   @IsString() @MaxLength(40) name!: string;
   @Type(() => Number) @IsNumber() @Min(0.01) amount!: number;
@@ -132,12 +175,21 @@ export class UpdateAccountDto {
   @IsOptional() @IsString() @MinLength(8, { message: '密码至少 8 位' })
   password?: string;
 }
-/** 商品类别（全局字典）：名称 + 排序，删除时有关联商品拒绝。 */
+/** 商品类别（全局字典）：名称 + 排序 + 类别图，删除时有关联商品拒绝。 */
 export class CreateCategoryDto {
   @IsString() @MinLength(1) @MaxLength(20) name!: string;
   @IsOptional() @Type(() => Number) @IsInt() sort?: number;
+  /** 类别图（IK9RX0）：COS 上传后的公网 URL，空 = 无图。 */
+  @IsOptional()
+  @Matches(/^https?:\/\//, { message: '类别图必须是 http(s) URL' })
+  @MaxLength(500)
+  image?: string;
 }
 export class UpdateCategoryDto {
   @IsOptional() @IsString() @MinLength(1) @MaxLength(20) name?: string;
   @IsOptional() @Type(() => Number) @IsInt() sort?: number;
+  @IsOptional()
+  @Matches(/^https?:\/\//, { message: '类别图必须是 http(s) URL' })
+  @MaxLength(500)
+  image?: string;
 }

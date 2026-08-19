@@ -22,17 +22,20 @@ import {
   AdjustStockDto,
   BarcodeDto,
   CreateAccountDto,
+  CreateBannerDto,
   CreateBuildingDto,
   CreateCategoryDto,
   CreateCommissionRuleDto,
   CreateCouponDto,
   CreateDispatchInvitationDto,
   CreateProductDto,
+  UpdateProductDto,
   CreateRoomDto,
   CreateStaffDto,
   IssueCouponDto,
   StockInDto,
   UpdateAccountDto,
+  UpdateBannerDto,
   UpdateBuildingDto,
   UpdateCategoryDto,
   UpdateCommissionRuleDto,
@@ -125,6 +128,50 @@ export class AdminController {
       '类别已删除',
     );
   }
+  /** 首页 Banner 管理（IK9RX2）：营销活动板块权限，全量审计。 */
+  @Get('banners')
+  @ApiOperation({ summary: 'Banner 列表（校园维度，?page&pageSize 统一分页包裹）' })
+  async banners(
+    @Req() req: AuthRequest,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+    @Query('keyword') keyword?: string,
+  ) {
+    this.authorize(req, 'marketing');
+    return ok(
+      paginate(await this.service.banners(req.user.campusId), page, pageSize, keyword),
+    );
+  }
+  @Post('banners') async createBanner(
+    @Req() req: AuthRequest,
+    @Body() body: CreateBannerDto,
+  ) {
+    this.authorize(req, 'marketing', 'write');
+    return ok(
+      await this.service.createBanner(body, req.user.id, req.user.campusId),
+      'Banner 已创建',
+    );
+  }
+  @Patch('banners/:id') async updateBanner(
+    @Req() req: AuthRequest,
+    @Param('id') id: string,
+    @Body() body: UpdateBannerDto,
+  ) {
+    this.authorize(req, 'marketing', 'write');
+    return ok(
+      await this.service.updateBanner(id, body, req.user.id, req.user.campusId),
+    );
+  }
+  @Delete('banners/:id') async deleteBanner(
+    @Req() req: AuthRequest,
+    @Param('id') id: string,
+  ) {
+    this.authorize(req, 'marketing', 'write');
+    return ok(
+      await this.service.deleteBanner(id, req.user.id, req.user.campusId),
+      'Banner 已删除',
+    );
+  }
   @Post('products/barcode/lookup') async lookupBarcode(
     @Req() req: AuthRequest,
     @Body() body: BarcodeDto,
@@ -147,7 +194,7 @@ export class AdminController {
   @Patch('products/:id') async updateProduct(
     @Req() req: AuthRequest,
     @Param('id') id: string,
-    @Body() body: { price?: number; stock?: number },
+    @Body() body: UpdateProductDto,
   ) {
     this.authorize(req, 'products', 'write');
     return ok(
