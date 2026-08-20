@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
   Optional,
 } from '@nestjs/common';
@@ -56,6 +57,8 @@ const yuan = (cents: number) => (cents / 100).toFixed(2);
 
 @Injectable()
 export class BusinessService {
+  /** IKA0BI：赠券额度/模板异常只记日志，不阻断支付主流程 */
+  private static readonly logger = new Logger(BusinessService.name);
   constructor(
     private readonly db: PrismaService,
     // 渠道推送（IK8W5M）：可选注入——测试直接 new BusinessService(db) 时不传，跳过推送。
@@ -219,7 +222,9 @@ export class BusinessService {
       throw new BadRequestException('该优惠券不属于当前校园');
     if (!['claimed', 'released'].includes(record.status))
       throw new BadRequestException('优惠券当前状态不可使用');
-    if (record.coupon.status !== 'active')
+    // IKA0BI：bonus 为 2 小时送达专属赠券模板状态——不进公开可领列表、
+    // 领取接口拒收，但已发放到账的券正常可用（active=常规券）
+    if (!['active', 'bonus'].includes(record.coupon.status))
       throw new BadRequestException('优惠券已下架');
     if (record.coupon.expiresAt.getTime() <= Date.now())
       throw new BadRequestException('优惠券已过期');
@@ -624,6 +629,44 @@ export class BusinessService {
         }
       }
       await tx.cartItem.deleteMany({ where: { userId } });
+      // IKA0BI：2 小时送达赠券（结算页对用户的承诺）——预约单支付成功随
+      // 事务发放。券模板由运营在后台创建后切 status=paused（隐藏于公开
+      // 可领列表，领取接口也拒非 active），再配 SCHEDULED_BONUS_COUPON_ID
+      // 启用；额度不足/未配置只记日志，绝不影响支付主流程。
+      // pay() 幂等（已支付早退）保证不重发。
+      const bonusCouponId = process.env.SCHEDULED_BONUS_COUPON_ID;
+      if (bonusCouponId && raw.deliveryMode === 'scheduled') {
+        const bonus = await tx.coupon.findUnique({
+          where: { id: bonusCouponId },
+        });
+        if (bonus && bonus.expiresAt.getTime() > Date.now()) {
+          const wonBonus = await tx.coupon.updateMany({
+            where: { id: bonus.id, claimed: { lt: bonus.total } },
+            data: { claimed: { increment: 1 }, issued: { increment: 1 } },
+          });
+          if (wonBonus.count) {
+            await tx.userCoupon.create({
+              data: { userId, couponId: bonus.id },
+            });
+            await tx.notification.create({
+              data: {
+                userId,
+                type: 'coupon',
+                title: '赠券到账',
+                content: `感谢选择 2 小时送达，${bonus.name} 已放入你的账户，下次下单可用。`,
+              },
+            });
+          } else {
+            BusinessService.logger.warn(
+              `赠券额度不足：order=${raw.orderNo} coupon=${bonusCouponId}`,
+            );
+          }
+        } else {
+          BusinessService.logger.warn(
+            `赠券模板未配置/停用/已过期：order=${raw.orderNo} coupon=${bonusCouponId ?? '未配置'}`,
+          );
+        }
+      }
       await tx.notification.create({
         data: {
           userId,

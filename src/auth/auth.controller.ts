@@ -489,7 +489,10 @@ export class AuthController {
     if (!user) throw new NotFoundException('用户不存在');
     const after = await this.db.user.update({
       where: { id: req.user.id },
-      data: { phone: body.phone },
+      // IKA090：落库用解析后的号码——授权码路径 body.phone 为 undefined，
+      // 旧写法 data:{phone: body.phone} 被 Prisma 当「不更新」静默跳过，
+      // 接口 201 成功但手机号永远存不上
+      data: { phone },
     });
     return ok({ id: after.id, phone: after.phone }, '手机号已绑定');
   }
