@@ -49,9 +49,10 @@ const monthlyFolder = () => {
   return `uploads/${now.getFullYear()}/${month}`;
 };
 
-// IK9VBI：目录白名单——app/ 放小程序静态素材（Banner 背景图等），
-// 缺省 uploads/（按月归档）放运营素材；其余值拒绝，防任意前缀落桶。
-const FOLDERS = new Set(['uploads', 'app']);
+// IK9VBI/IK9VBM：目录白名单——app/ 系放小程序静态素材（Banner 背景 app/、
+// 商品图 app/product/、分类图 app/category/），缺省 uploads/（按月归档）放
+// 运营素材；其余值拒绝，防任意前缀落桶。
+const FOLDERS = new Set(['uploads', 'app', 'app/product', 'app/category']);
 
 const putToCos = (key: string, buffer: Buffer, mimetype: string) =>
   new Promise<string>((resolve, reject) => {
