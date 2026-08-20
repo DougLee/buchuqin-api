@@ -277,11 +277,10 @@ export class FulfillmentService {
         if (!order) throw new NotFoundException('履约任务不存在');
         const manager = staff.role === 'building-manager';
         // 动作迁移表（12 态状态机，迁移表全文见 src/common/order-state.ts，IK93GQ）：
-        // accept 抢单只写归属不改状态；pickup 取货后停留 waiting-first-mile（package=picked）；
-        // depart 后=first-mile，arrive 后=waiting-handover，receive 后=last-mile，
-        // delivered 与 completed 分离（用户 confirm-receipt 才终态完成）。
-        // 旧机兼容：paid/picking 仍可 accept/pickup（并入 waiting-first-mile）、
-        // first-mile 仍可 receive、last-mile 仍可 handover。
+        // v1 履约简化（IKA0UM，2026-08-20）：去掉扫码取货/配送单——骑手 accept 抢单
+        // 只写归属不改状态，depart 按钮直接进 first-mile（配送中），无 pickup 动作；
+        // 交接（IKA0UP）改为拍照凭证，不再扫寝室二维码。
+        // 旧机兼容：first-mile 仍可 receive、last-mile 仍可 handover。
         const maps: Record<
           string,
           { status: string; text: string; from: string[] }
@@ -317,17 +316,12 @@ export class FulfillmentService {
               accept: {
                 status: order.status,
                 text: '配送员已接单',
-                from: ['waiting-first-mile', 'paid', 'picking'],
-              },
-              pickup: {
-                status: 'waiting-first-mile',
-                text: '已扫码取货，待出发',
-                from: ['waiting-first-mile', 'paid', 'picking'],
+                from: ['waiting-first-mile'],
               },
               depart: {
                 status: 'first-mile',
-                text: '已从校园仓出发',
-                from: ['waiting-first-mile', 'paid', 'picking'],
+                text: '配送中，骑手已出发',
+                from: ['waiting-first-mile'],
               },
               arrive: {
                 status: 'waiting-handover',
@@ -342,71 +336,32 @@ export class FulfillmentService {
               transfer: {
                 status: 'exception',
                 text: '转单申请处理中',
-                from: [
-                  'waiting-first-mile',
-                  'first-mile',
-                  'waiting-handover',
-                  'paid',
-                  'picking',
-                ],
+                from: ['waiting-first-mile', 'first-mile', 'waiting-handover'],
               },
             };
         const next = maps[action];
         if (!next || !next.from.includes(order.status))
-          throw new BadRequestException('当前状态不允许此操作');
+          // IKA0UO 状态机断链提示：未出库的单给出具体缺口，其余报当前状态。
+          throw new BadRequestException(
+            ['paid', 'picking'].includes(order.status)
+              ? '订单尚未出库，请先在管理后台完成出库'
+              : `当前订单状态为「${order.statusText}」，不能执行此操作`,
+          );
         // 配送员动作仅限接单人本人操作（accept 通过下方条件更新抢归属）。
         if (!manager && order.riderId && order.riderId !== staffId)
           throw new BadRequestException('任务已被其他配送员接取');
-        if (action === 'pickup' && !payload.packageCode)
-          throw new BadRequestException('请提交包裹码');
-        if (action === 'handover' && !payload.handoverCode)
-          throw new BadRequestException('请提交交接码');
+        // 交接凭证（IKA0UP）：拍照上传取代扫寝室二维码，至少 1 张。
+        if (action === 'handover' && !payload.images?.length)
+          throw new BadRequestException('请拍摄交接凭证照片');
         if (
           action === 'delivered' &&
           (!payload.images?.length || !payload.location)
         )
           throw new BadRequestException('请上传送达照片和定位');
-        // 取货扫码：校验真实包裹码（支付时生成的 package.id；历史单回退到展示包裹号）。
-        if (action === 'pickup') {
-          const pkg = order.package as JsonMap | null;
-          const expected = String(pkg?.id ?? `PKG-${order.orderNo.slice(-8)}`);
-          if (payload.packageCode!.trim() !== expected)
-            throw new BadRequestException('包裹码不正确，请扫描包裹上的条码');
-        }
-        // 交接扫码：校验寝室 qrToken（以寝室门口二维码为准）。
-        if (action === 'handover') {
-          const addr = order.address as JsonMap;
-          const building = await tx.building.findFirst({
-            where: {
-              campusId: staff.campusId,
-              OR: [
-                { id: String(addr.buildingId ?? '') },
-                { name: String(addr.buildingName ?? '') },
-              ],
-            },
-          });
-          const room = building
-            ? await tx.room.findFirst({
-                where: {
-                  buildingId: building.id,
-                  floor: Number(addr.floor),
-                  roomNo: String(addr.room),
-                },
-              })
-            : null;
-          if (!room || payload.handoverCode!.trim() !== room.qrToken)
-            throw new BadRequestException('交接码不正确，请扫描寝室门口二维码');
-        }
-        // 出发前置校验：必须先扫码取货（package.status=picked；无包裹信息的旧单放行）。
-        if (action === 'depart') {
-          const pkg = order.package as JsonMap | null;
-          if (pkg && pkg.status !== 'picked')
-            throw new BadRequestException('请先扫码取货再出发');
-        }
         // 进入目标状态时点亮对应 timeline 节点（楼下待交接节点由 arrive 写入）。
         const timeline = markTimelineStep(order.timeline, next.status);
         // delivered 时把送达凭证（照片/定位/坐标）写入包裹信息，供绩效凭证完整率统计；
-        // pickup 时把包裹标记为已取货（depart 的前置条件）。
+        // handover（IKA0UP）把交接照片凭证写入包裹信息（1 分钟复用由客户端实现）。
         const packageUpdate =
           action === 'delivered'
             ? {
@@ -422,21 +377,25 @@ export class FulfillmentService {
                   },
                 } as Prisma.InputJsonValue,
               }
-            : action === 'pickup'
+            : action === 'handover'
               ? {
                   package: {
                     ...((order.package as JsonMap | null) ?? {}),
-                    status: 'picked',
+                    handoverProof: {
+                      images: payload.images ?? [],
+                      time: new Date().toISOString(),
+                    },
                   } as Prisma.InputJsonValue,
                 }
               : {};
         if (action === 'accept' || action === 'grab') {
           // 抢单互斥：riderId 为空才允许写入归属，并发的第二个 accept/grab count=0 失败。
+          // 仅已出库（waiting-first-mile）可接单——未出库单先走后台出库（IKA0UO 断链修复）。
           const won = await tx.order.updateMany({
             where: {
               id: order.id,
               riderId: null,
-              status: { in: ['waiting-first-mile', 'paid', 'picking'] },
+              status: 'waiting-first-mile',
             },
             data: { riderId: staffId, statusText: '配送员已接单' },
           });
@@ -638,8 +597,7 @@ export class FulfillmentService {
       statusText = '配送中';
     } else if (order.riderId) {
       status = 'delivering';
-      statusText =
-        pkg?.status === 'picked' ? '已取货，待出发' : '已接单，待取货';
+      statusText = '已接单，待出发';
     } else {
       status = 'available';
       statusText = '待接单';
@@ -689,7 +647,6 @@ export class FulfillmentService {
         order.status,
         order.riderId as string | null,
         viewerId,
-        pkg?.status === 'picked',
       ),
     };
   }
@@ -698,7 +655,6 @@ export class FulfillmentService {
     status: string,
     riderId?: string | null,
     viewerId?: string,
-    picked = false,
   ) {
     if (role === 'building-manager') {
       if (status === 'waiting-handover') return ['receive'];
@@ -706,11 +662,12 @@ export class FulfillmentService {
         return ['start-delivery', 'delivered', 'absent'];
       return [];
     }
-    if (['waiting-first-mile', 'paid', 'picking'].includes(status)) {
-      // 无归属单只能抢（accept/grab）；本人已抢到的单才能取货/出发/转单。
+    // 骑手动作仅认已出库的单（IKA0UM 简化：无扫码取货，depart 直接配送中）。
+    if (status === 'waiting-first-mile') {
+      // 无归属单只能抢（accept/grab）；本人已抢到的单才能出发/转单。
       if (!riderId) return ['accept'];
       if (viewerId && riderId !== viewerId) return [];
-      return picked ? ['depart', 'transfer'] : ['pickup', 'transfer'];
+      return ['depart', 'transfer'];
     }
     if (status === 'first-mile') return ['arrive', 'transfer'];
     if (status === 'waiting-handover')

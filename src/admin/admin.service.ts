@@ -19,6 +19,7 @@ import type {
   CreateCommissionRuleDto,
   CreateCouponDto,
   CreateDispatchInvitationDto,
+  CreateLocationDto,
   CreateProductDto,
   UpdateProductDto,
   CreateRoomDto,
@@ -32,8 +33,16 @@ import type {
   UpdateCommissionRuleDto,
   UpdateCouponDto,
   UpdateDeliveryConfigDto,
+  UpdateLocationDto,
+  UpdateOrderStatusDto,
   UpdateStaffDto,
 } from './dto';
+import {
+  ORDER_STATUSES,
+  ORDER_STATUS_TEXT,
+  markTimelineStep,
+  type OrderStatus,
+} from '../common/order-state';
 
 @Injectable()
 export class AdminService {
@@ -613,15 +622,14 @@ export class AdminService {
     return after;
   }
   async inventory(campusId: string) {
+    // IKA0VB 去批次：合成批次号/有效期已移除（零食饮料初期不做效期批次管理）。
     const [items, campus] = await Promise.all([
       this.products(campusId),
       this.db.campus.findFirstOrThrow({ where: { id: campusId } }),
     ]);
-    return items.map((x, i) => ({
+    return items.map((x) => ({
       ...x,
       warehouse: campus.warehouseName,
-      batchNo: `B${new Date().toISOString().slice(0, 10).replaceAll('-', '')}${String(i + 1).padStart(2, '0')}`,
-      expiryDate: '2026-12-31',
       warning: x.availableStock < 20,
     }));
   }
@@ -758,6 +766,9 @@ export class AdminService {
       result = await this.business.cancel(order.userId, id);
     else if (action === 'advance')
       result = await this.business.advance(order.userId, id);
+    // 仓库出库（IKA0UQ）：paid/picking 一步转待配送 + 出库流水，仓储角色可用。
+    else if (action === 'outbound')
+      result = await this.business.outbound(id, operator);
     else if (action === 'mark-exception')
       result = await this.db.order.update({
         where: { id },
@@ -774,6 +785,99 @@ export class AdminService {
       campusId,
     );
     return result;
+  }
+  /**
+   * 手动改订单状态（IKA0UT）：测试与上线初期兜底。仅接受 12 态白名单，
+   * statusText 用标准文案，原因写入审计日志（after.reason）留痕。
+   */
+  async updateOrderStatus(
+    id: string,
+    body: UpdateOrderStatusDto,
+    operator: string,
+    campusId: string,
+  ) {
+    const before = await this.order(id, campusId);
+    if (!ORDER_STATUSES.includes(body.status as OrderStatus))
+      throw new BadRequestException(`未知订单状态：${body.status}`);
+    if (before.status === body.status) return before;
+    const after = await this.db.order.update({
+      where: { id },
+      data: {
+        status: body.status,
+        statusText: ORDER_STATUS_TEXT[body.status as OrderStatus],
+        timeline: markTimelineStep(before.timeline, body.status),
+      },
+    });
+    await this.audit(
+      operator,
+      'order.manual-status',
+      'order',
+      id,
+      { status: before.status, statusText: before.statusText },
+      { status: after.status, reason: body.reason ?? '' },
+      campusId,
+    );
+    return after;
+  }
+  /* ---------- 库位管理（IKA0VG）：库位字典 CRUD，商品表单下拉消费 ---------- */
+  async locations(campusId: string) {
+    return this.db.storageLocation.findMany({
+      where: { campusId },
+      orderBy: [{ sort: 'asc' }, { createdAt: 'asc' }],
+    });
+  }
+  async createLocation(
+    body: CreateLocationDto,
+    operator: string,
+    campusId: string,
+  ) {
+    const after = await this.db.storageLocation.create({
+      data: {
+        campusId,
+        name: body.name.trim(),
+        note: body.note?.trim() ?? '',
+        sort: body.sort ?? 0,
+      },
+    });
+    await this.audit(operator, 'location.create', 'location', after.id, null, after, campusId);
+    return after;
+  }
+  async updateLocation(
+    id: string,
+    body: UpdateLocationDto,
+    operator: string,
+    campusId: string,
+  ) {
+    const before = await this.db.storageLocation.findFirst({
+      where: { id, campusId },
+    });
+    if (!before) throw new NotFoundException('库位不存在');
+    const after = await this.db.storageLocation.update({
+      where: { id },
+      data: {
+        ...(body.name !== undefined ? { name: body.name.trim() } : {}),
+        ...(body.note !== undefined ? { note: body.note.trim() } : {}),
+        ...(body.sort !== undefined ? { sort: body.sort } : {}),
+      },
+    });
+    await this.audit(operator, 'location.update', 'location', id, before, after, campusId);
+    return after;
+  }
+  async deleteLocation(id: string, operator: string, campusId: string) {
+    const before = await this.db.storageLocation.findFirst({
+      where: { id, campusId },
+    });
+    if (!before) throw new NotFoundException('库位不存在');
+    // 商品仍引用该库位时拒绝删除，避免商品表单下拉出现空引用。
+    const using = await this.db.product.count({
+      where: { campusId, location: before.name },
+    });
+    if (using > 0)
+      throw new BadRequestException(
+        `仍有 ${using} 个商品使用该库位，请先调整商品的库位`,
+      );
+    await this.db.storageLocation.delete({ where: { id } });
+    await this.audit(operator, 'location.delete', 'location', id, before, null, campusId);
   }
   async staff(campusId: string) {
     const xs = await this.db.staff.findMany({

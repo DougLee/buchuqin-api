@@ -9,8 +9,7 @@ import {
 } from 'class-validator';
 
 export class TaskActionDto {
-  @IsOptional() @IsString() packageCode?: string;
-  @IsOptional() @IsString() handoverCode?: string;
+  // IKA0UP：交接改为拍照凭证（images）；旧扫码字段已随 IKA0UM 一并移除。
   @IsOptional() @IsString() location?: string;
   @IsOptional() @IsArray() @IsString({ each: true }) images?: string[];
   // delivered 动作携带的定位坐标（B 线 H5 端上传）。

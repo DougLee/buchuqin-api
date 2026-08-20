@@ -249,36 +249,57 @@ describe('BusinessService concurrency races (PostgreSQL)', () => {
     expect(final.statusText).toBe('配送员已接单');
   });
 
-  it('pickup validates the real package code', async () => {
+  it('depart moves waiting-first-mile straight to first-mile (IKA0UM no-scan)', async () => {
     const order = await makeOrder({
       status: 'waiting-first-mile',
-      statusText: '拣货完成，待配送员接单',
+      statusText: '已出库，待配送员接单',
       timelineDone: 2,
       riderId: 'staff-rider-001',
       package: json({ id: 'PKG-VERIFY-01', status: 'waiting-pick' }),
     });
     const taskId = `task-fulltime-rider-${order.id}`;
-    await expect(
-      fulfillment.updateTask('staff-rider-001', taskId, 'pickup', {
-        packageCode: 'PKG-WRONG',
-      }),
-    ).rejects.toThrow('包裹码不正确');
     const task = await fulfillment.updateTask(
       'staff-rider-001',
       taskId,
-      'pickup',
-      {
-        packageCode: 'PKG-VERIFY-01',
-      },
+      'depart',
     );
     expect(task.status).toBe('delivering');
-    // 取货后停留在待一级配送（package=picked），出发动作才进入 first-mile。
+    // v1 简化：无扫码取货前置，一键出发即配送中。
     const final = await db.order.findUniqueOrThrow({ where: { id: order.id } });
-    expect(final.status).toBe('waiting-first-mile');
-    expect((final.package as any).status).toBe('picked');
+    expect(final.status).toBe('first-mile');
+    expect(final.statusText).toBe('配送中，骑手已出发');
   });
 
-  it('handover validates the room qrToken', async () => {
+  it('outbound moves paid/picking to waiting-first-mile and logs txns (IKA0UQ)', async () => {
+    const order = await makeOrder({
+      status: 'paid',
+      statusText: '仓库正在接单',
+      timelineDone: 1,
+    });
+    const before = await db.product.findUniqueOrThrow({
+      where: { id: PRODUCT_ID },
+    });
+    const view = await service.outbound(order.id, 'admin-test');
+    expect(view.status).toBe('waiting-first-mile');
+    expect(view.statusText).toBe('已出库，待配送员接单');
+    // 库存已在支付时扣减，出库不二次扣，仅记出库流水。
+    const after = await db.product.findUniqueOrThrow({
+      where: { id: PRODUCT_ID },
+    });
+    expect(after.stock).toBe(before.stock);
+    const txn = await db.inventoryTxn.findFirst({
+      where: { reason: { contains: order.orderNo } },
+      orderBy: { createdAt: 'desc' },
+    });
+    expect(txn?.type).toBe('out');
+    expect(txn?.delta).toBe(-QUANTITY);
+    // 重复出库：给出已出库提示，不报状态机死话术。
+    await expect(service.outbound(order.id, 'admin-test')).rejects.toThrow(
+      '该订单已出库',
+    );
+  });
+
+  it('handover requires photo proof (IKA0UP)', async () => {
     const order = await makeOrder({
       status: 'waiting-handover',
       statusText: '已到楼下，等待楼长交接',
@@ -287,27 +308,26 @@ describe('BusinessService concurrency races (PostgreSQL)', () => {
       package: json({ id: 'PKG-VERIFY-02', status: 'picked' }),
     });
     const taskId = `task-fulltime-rider-${order.id}`;
+    // 未带照片：明确提示拍照（不再校验寝室二维码）。
     await expect(
-      fulfillment.updateTask('staff-rider-001', taskId, 'handover', {
-        handoverCode: 'qr-wrong-token',
-      }),
-    ).rejects.toThrow('交接码不正确');
-    const room = await db.room.findFirstOrThrow({
-      where: { qrToken: 'qr-seed-address-001' },
-    });
+      fulfillment.updateTask('staff-rider-001', taskId, 'handover', {}),
+    ).rejects.toThrow('请拍摄交接凭证照片');
     const task = await fulfillment.updateTask(
       'staff-rider-001',
       taskId,
       'handover',
       {
-        handoverCode: room.qrToken,
+        images: ['https://cos.example.com/handover-1.jpg'],
       },
     );
     expect(task.id).toBe(taskId);
-    // 交接确认不改状态，仍为楼下待交接（楼长 receive 后才进入 last-mile）。
-    expect(
-      (await db.order.findUniqueOrThrow({ where: { id: order.id } })).status,
-    ).toBe('waiting-handover');
+    // 交接确认不改状态，仍为楼下待交接（楼长 receive 后才进入 last-mile）；
+    // 交接凭证写入包裹信息。
+    const final = await db.order.findUniqueOrThrow({
+      where: { id: order.id },
+    });
+    expect(final.status).toBe('waiting-handover');
+    expect((final.package as any).handoverProof.images).toHaveLength(1);
   });
 
   it('expirePendingOrders only closes orders still pending payment', async () => {

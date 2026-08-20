@@ -109,13 +109,7 @@ export class FulfillmentController {
   ) {
     return this.action(r, id, 'grab', b);
   }
-  @Post('tasks/:id/pickup') pickup(
-    @Req() r: AuthRequest,
-    @Param('id') id: string,
-    @Body() b: TaskActionDto,
-  ) {
-    return this.action(r, id, 'pickup', b);
-  }
+  // IKA0UM：pickup 扫码取货快捷端点已随「去扫码」简化移除，走 actions/:action。
   @Post('tasks/:id/depart') depart(
     @Req() r: AuthRequest,
     @Param('id') id: string,

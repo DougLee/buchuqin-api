@@ -37,8 +37,10 @@ export class CreateProductDto extends BarcodeDto {
   @MaxLength(500, { each: true })
   @ArrayMaxSize(9)
   images?: string[];
-  /** 库位（IK9U40）：区域代码+序号（如 冷A-03）。 */
+  /** 库位（IK9U40 / IKA0VG）：库位管理字典里的区域名。 */
   @IsOptional() @IsString() @MaxLength(20) location?: string;
+  /** 库位编号（IKA0VG）：区域内具体位置，规则人工控制，可不填。 */
+  @IsOptional() @IsString() @MaxLength(20) locationCode?: string;
 }
 /** 商品改价/改库存/换头图（IK9RWX）：image 走 COS 上传后的公网 URL。 */
 export class UpdateProductDto {
@@ -55,8 +57,9 @@ export class UpdateProductDto {
   @MaxLength(500, { each: true })
   @ArrayMaxSize(9)
   images?: string[];
-  /** 库位（IK9U40）。 */
+  /** 库位（IKA0VG）：字典区域名 + 编号手填。 */
   @IsOptional() @IsString() @MaxLength(20) location?: string;
+  @IsOptional() @IsString() @MaxLength(20) locationCode?: string;
 }
 /** 首页 Banner（IK9RX2）：后台可管；color 为预置主题键（green/orange/dark）或自定义 hex。 */
 export class CreateBannerDto {
@@ -221,4 +224,21 @@ export class UpdateCategoryDto {
   @Matches(/^https?:\/\//, { message: '类别图必须是 http(s) URL' })
   @MaxLength(500)
   image?: string;
+}
+
+/** 库位字典（IKA0VG）：人工维护库位区域列表，商品表单下拉选择。 */
+export class CreateLocationDto {
+  @IsString() @MinLength(1) @MaxLength(20) name!: string;
+  @IsOptional() @IsString() @MaxLength(100) note?: string;
+  @IsOptional() @Type(() => Number) @IsInt() sort?: number;
+}
+export class UpdateLocationDto {
+  @IsOptional() @IsString() @MinLength(1) @MaxLength(20) name?: string;
+  @IsOptional() @IsString() @MaxLength(100) note?: string;
+  @IsOptional() @Type(() => Number) @IsInt() sort?: number;
+}
+/** 手动改订单状态（IKA0UT）：测试/上线初期兜底，原因进审计日志。 */
+export class UpdateOrderStatusDto {
+  @IsString() status!: string;
+  @IsOptional() @IsString() @MaxLength(200) reason?: string;
 }

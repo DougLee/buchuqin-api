@@ -41,6 +41,9 @@ import {
   UpdateCommissionRuleDto,
   UpdateCouponDto,
   UpdateDeliveryConfigDto,
+  UpdateLocationDto,
+  CreateLocationDto,
+  UpdateOrderStatusDto,
   UpdateStaffDto,
 } from './dto';
 
@@ -292,7 +295,8 @@ export class AdminController {
     @Param('id') id: string,
     @Param('action') action: string,
   ) {
-    this.authorize(req, 'orders', 'write');
+    // 仓库出库（IKA0UQ）落在库存板块：仓储角色对 orders 只读但可出库。
+    this.authorize(req, action === 'outbound' ? 'inventory' : 'orders', 'write');
     return ok(
       await this.service.orderAction(
         id,
@@ -301,6 +305,63 @@ export class AdminController {
         req.user.campusId,
       ),
     );
+  }
+  /** 手动改订单状态（IKA0UT）：12 态白名单 + 原因进审计日志。 */
+  @Post('orders/:id/status')
+  async updateOrderStatus(
+    @Req() req: AuthRequest,
+    @Param('id') id: string,
+    @Body() body: UpdateOrderStatusDto,
+  ) {
+    this.authorize(req, 'orders', 'write');
+    return ok(
+      await this.service.updateOrderStatus(
+        id,
+        body,
+        req.user.id,
+        req.user.campusId,
+      ),
+      '订单状态已更新',
+    );
+  }
+  /* ---------- 库位管理（IKA0VG）：随库存板块权限走 ---------- */
+  @Get('locations') async locations(@Req() req: AuthRequest) {
+    this.authorize(req, 'inventory');
+    return ok(await this.service.locations(req.user.campusId));
+  }
+  @Post('locations')
+  async createLocation(
+    @Req() req: AuthRequest,
+    @Body() body: CreateLocationDto,
+  ) {
+    this.authorize(req, 'inventory', 'write');
+    return ok(
+      await this.service.createLocation(body, req.user.id, req.user.campusId),
+      '库位已创建',
+    );
+  }
+  @Patch('locations/:id')
+  async updateLocation(
+    @Req() req: AuthRequest,
+    @Param('id') id: string,
+    @Body() body: UpdateLocationDto,
+  ) {
+    this.authorize(req, 'inventory', 'write');
+    return ok(
+      await this.service.updateLocation(
+        id,
+        body,
+        req.user.id,
+        req.user.campusId,
+      ),
+      '库位已更新',
+    );
+  }
+  @Delete('locations/:id')
+  async deleteLocation(@Req() req: AuthRequest, @Param('id') id: string) {
+    this.authorize(req, 'inventory', 'write');
+    await this.service.deleteLocation(id, req.user.id, req.user.campusId);
+    return ok({ id }, '库位已删除');
   }
   @Get('staff')
   @ApiOperation({ summary: '员工列表（?page&pageSize 统一分页包裹）' })

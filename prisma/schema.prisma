@@ -27,6 +27,20 @@ model Campus {
   addresses     Address[]
   orders        Order[]
   staff         Staff[]
+  storageLocations StorageLocation[]
+}
+
+/** 库位字典（IKA0VG）：人工维护的库位区域列表，商品表单下拉选择。 */
+model StorageLocation {
+  id        String   @id @default(cuid())
+  campusId  String
+  campus    Campus   @relation(fields: [campusId], references: [id])
+  name      String
+  note      String   @default("")
+  sort      Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@index([campusId, sort])
 }
 
 // 后台账号（ADR-0004 / IK9JHP）：账号密码认证，role ∈ admin/operations/warehouse/finance。
@@ -87,8 +101,10 @@ model Product {
   image         String
   /** 详情多图（IK9SNS）：string[] JSON，首图兼容 image 字段；空数组用 image */
   images        Json?
-  /** 库位（IK9U40 反馈#7）：区域代码+序号（如 冷A-03），拣货指引 */
+  /** 库位（IK9U40 反馈#7 / IKA0VG）：库位管理字典里的区域名（下拉选择） */
   location      String     @default("")
+  /** 库位编号（IKA0VG）：区域内具体位置，规则人工控制，可不填 */
+  locationCode  String     @default("")
   weight        Decimal    @db.Decimal(10, 3)
   status        String     @default("on-sale")
   cartItems     CartItem[]

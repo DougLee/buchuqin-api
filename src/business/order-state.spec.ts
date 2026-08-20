@@ -130,10 +130,6 @@ describe('order state machine full chain (IK93GQ)', () => {
     expect((await step(order.id, 'picking'))?.done).toBe(true);
 
     // 骑手抢单（grab=accept 同语义）：写归属，状态不变
-    const packageCode = (
-      (await db.order.findUniqueOrThrow({ where: { id: order.id } }))
-        .package as { id: string }
-    ).id;
     await fulfillment.updateTask(
       RIDER,
       `task-fulltime-rider-${order.id}`,
@@ -144,24 +140,7 @@ describe('order state machine full chain (IK93GQ)', () => {
     ).toBe(RIDER);
     expect(await statusOf(order.id)).toBe('waiting-first-mile');
 
-    // 扫码取货：仍 waiting-first-mile，包裹标记 picked
-    await fulfillment.updateTask(
-      RIDER,
-      `task-fulltime-rider-${order.id}`,
-      'pickup',
-      {
-        packageCode,
-      },
-    );
-    expect(await statusOf(order.id)).toBe('waiting-first-mile');
-    expect(
-      (
-        (await db.order.findUniqueOrThrow({ where: { id: order.id } }))
-          .package as { status: string }
-      ).status,
-    ).toBe('picked');
-
-    // 出发：→ first-mile
+    // 出发（IKA0UM 简化：无扫码取货前置）：→ first-mile
     await fulfillment.updateTask(
       RIDER,
       `task-fulltime-rider-${order.id}`,
@@ -231,18 +210,6 @@ describe('order state machine full chain (IK93GQ)', () => {
       RIDER,
       `task-fulltime-rider-${order.id}`,
       'accept',
-    );
-    const packageCode = (
-      (await db.order.findUniqueOrThrow({ where: { id: order.id } }))
-        .package as { id: string }
-    ).id;
-    await fulfillment.updateTask(
-      RIDER,
-      `task-fulltime-rider-${order.id}`,
-      'pickup',
-      {
-        packageCode,
-      },
     );
     await fulfillment.updateTask(
       RIDER,

@@ -693,8 +693,8 @@ export class BusinessService {
    */
   private static readonly ADVANCE_MAP: Record<string, [string, string]> = {
     paid: ['picking', '仓库正在拣货'],
-    picking: ['waiting-first-mile', '拣货完成，待配送员接单'],
-    'waiting-first-mile': ['first-mile', '配送员送往楼下'],
+    picking: ['waiting-first-mile', '已出库，待配送员接单'],
+    'waiting-first-mile': ['first-mile', '配送中，骑手送往楼下'],
     'first-mile': ['waiting-handover', '已到楼下，等待楼长交接'],
     'waiting-handover': ['last-mile', '楼长送往寝室'],
     'last-mile': ['delivered', '已送达寝室'],
@@ -727,6 +727,68 @@ export class BusinessService {
     void this.push?.orderStatusPush({
       id: updated.id,
       userId,
+      orderNo: updated.orderNo,
+      status: updated.status,
+      statusText: updated.statusText,
+      payableAmount: updated.payableAmount,
+    });
+    return this.orderView(updated);
+  }
+  /**
+   * 仓库出库（IKA0UQ）：paid/picking 一步转 waiting-first-mile（已出库，待配送），
+   * 跳过拣货中间态——v1 履约简化（IKA0UM 同批）后 picking 不在主链路上。
+   * 库存不在此扣减：支付时已扣（pay 事务），此处仅记出库流水供「出入库流水」
+   * 页对账，delta 记商品出库数量、reason 注明支付已扣，避免被当二次扣减。
+   */
+  async outbound(id: string, operator: string) {
+    const raw = await this.db.order.findUnique({ where: { id } });
+    if (!raw) throw new NotFoundException('订单不存在');
+    if (!['paid', 'picking'].includes(raw.status))
+      throw new BadRequestException(
+        raw.status === 'waiting-first-mile'
+          ? '该订单已出库，无需重复操作'
+          : '当前状态不可出库',
+      );
+    const lines = (raw.items as Array<{
+      product?: { id?: string };
+      quantity: number;
+    }>) ?? [];
+    const updated = await this.db.$transaction(async (tx) => {
+      // 条件更新：与后台改状态/另一管理员同时出库并发时仅一笔生效。
+      const won = await tx.order.updateMany({
+        where: { id, status: raw.status },
+        data: {
+          status: 'waiting-first-mile',
+          statusText: '已出库，待配送员接单',
+          timeline: markTimelineStep(raw.timeline, 'waiting-first-mile'),
+        },
+      });
+      if (!won.count) throw new BadRequestException('订单状态已变化');
+      // 出库流水（IKA0UQ 验收：库存正确扣减——支付时已扣，此处记账不重复扣）。
+      for (const line of lines) {
+        const productId = line.product?.id;
+        if (productId)
+          await tx.inventoryTxn.create({
+            data: {
+              productId,
+              type: 'out',
+              delta: -line.quantity,
+              reason: `订单出库 ${raw.orderNo}（库存已于支付时扣减）`,
+              operator,
+            },
+          });
+      }
+      return tx.order.findUniqueOrThrow({ where: { id } });
+    });
+    await this.notify(
+      updated.userId,
+      'delivery',
+      updated.statusText,
+      `${updated.orderNo} 已从仓库发出，等待配送员接单。`,
+    );
+    void this.push?.orderStatusPush({
+      id: updated.id,
+      userId: updated.userId,
       orderNo: updated.orderNo,
       status: updated.status,
       statusText: updated.statusText,
