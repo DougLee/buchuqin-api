@@ -418,6 +418,8 @@ export class AdminService {
         image: body.image || null,
         // IK9SNN：图文详情，空 = 不可点
         content: body.content || null,
+        // IKA57F：展示位置，缺省首页轮播
+        placement: body.placement ?? 'home',
         sort: body.sort ?? 0,
       },
     });
@@ -451,6 +453,8 @@ export class AdminService {
         image: body.image,
         // IK9SNN：undefined 跳过；空串语义清空（存 null）
         content: body.content === undefined ? undefined : body.content || null,
+        // IKA57F：undefined 跳过
+        placement: body.placement,
         sort: body.sort,
         status: body.status,
       },

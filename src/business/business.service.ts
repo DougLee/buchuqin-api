@@ -255,7 +255,8 @@ export class BusinessService {
     const [campus, banners, categories, products] = await Promise.all([
       this.campus(campusId),
       this.db.banner.findMany({
-        where: { campusId, status: 'active' },
+        // IKA57F：placement 区分首页轮播 / 支付成功页广告位
+        where: { campusId, status: 'active', placement: 'home' },
         orderBy: { sort: 'asc' },
       }),
       this.categories(),
@@ -271,6 +272,16 @@ export class BusinessService {
       categories,
       hotProducts: products.map((p) => this.productView(p)),
     };
+  }
+  /**
+   * 按展示位取一条 Banner（IKA57F）：支付成功页广告位。取 sort 最小的一条，
+   * 未配置返回 null（用户端该区域不渲染、不占位）。
+   */
+  async bannerByPlacement(campusId: string, placement: string) {
+    return this.db.banner.findFirst({
+      where: { campusId, status: 'active', placement },
+      orderBy: { sort: 'asc' },
+    });
   }
   async listProducts(campusId: string, categoryId?: string, keyword?: string) {
     const products = await this.db.product.findMany({

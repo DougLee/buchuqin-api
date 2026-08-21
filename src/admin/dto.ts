@@ -78,6 +78,8 @@ export class CreateBannerDto {
   image?: string;
   /** 图文详情（IK9SNN）：多行文本，https:// 开头的行渲染为图片；空 = 不可点。 */
   @IsOptional() @IsString() @MaxLength(5000) content?: string;
+  /** 展示位置（IKA57F）：缺省 home 首页轮播。 */
+  @IsOptional() @IsIn(['home', 'pay-success']) placement?: 'home' | 'pay-success';
   @IsOptional() @Type(() => Number) @IsInt() sort?: number;
 }
 export class UpdateBannerDto {
@@ -96,6 +98,8 @@ export class UpdateBannerDto {
   image?: string;
   /** 图文详情（IK9SNN）：空串语义清空（Banner 回到不可点）。 */
   @IsOptional() @IsString() @MaxLength(5000) content?: string;
+  /** 展示位置（IKA57F）：undefined 跳过更新。 */
+  @IsOptional() @IsIn(['home', 'pay-success']) placement?: 'home' | 'pay-success';
   @IsOptional() @Type(() => Number) @IsInt() sort?: number;
   @IsOptional() @IsIn(['active', 'hidden']) status?: 'active' | 'hidden';
 }

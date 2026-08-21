@@ -31,6 +31,8 @@ export class LeaveRequestDto {
   @IsString() @MaxLength(200) reason!: string;
   /** 请假期间订单调配方式（IK9U4B）：缺省平台自动派单 */
   @IsOptional() @IsIn(['self', 'platform']) dispatchMode?: string;
+  /** 自己调配指定的代班楼长（IKA57Y）：dispatchMode=self 时必传 */
+  @IsOptional() @IsString() substituteStaffId?: string;
 }
 
 export class RejectDto {

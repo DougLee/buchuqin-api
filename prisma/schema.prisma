@@ -132,6 +132,8 @@ model Banner {
   image    String?
   // 图文详情（IK9SNN）：用户端 Banner 点击进入的图文内容，空 = 不可点
   content  String?
+  // 展示位置（IKA57F）：home 首页轮播 / pay-success 支付成功页广告位
+  placement String @default("home")
   sort     Int     @default(0)
   status   String  @default("active")
 }
@@ -323,6 +325,9 @@ model LeaveRequest {
   reason     String
   /** 请假期间调配方式（IK9U4B）：self=自己联系代班楼长，platform=平台自动派单 */
   dispatchMode String  @default("platform")
+  /** 自己调配时指定的代班楼长（IKA57Y）：id + 姓名快照，供后台核对 */
+  substituteStaffId String?
+  substituteName    String?
   status     String
   statusText String
   createdAt  DateTime @default(now())

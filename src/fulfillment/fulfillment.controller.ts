@@ -169,6 +169,10 @@ export class FulfillmentController {
   @Get('leave-requests') async leaves(@Req() r: AuthRequest) {
     return ok(await this.service.leave(this.auth(r)));
   }
+  /** 代班楼长候选（IKA57Y）：请假「自己调配」时的选择列表。 */
+  @Get('managers') async managers(@Req() r: AuthRequest) {
+    return ok(await this.service.managers(this.auth(r)));
+  }
   @Post('leave-requests') async createLeave(
     @Req() r: AuthRequest,
     @Body() d: LeaveRequestDto,

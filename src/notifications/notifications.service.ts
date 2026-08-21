@@ -24,8 +24,8 @@ export interface OrderPushContext {
  * 绝不阻断订单业务流。调用方一律 fire-and-forget（void 调用，勿 await 进事务）。
  *
  * 凭证（ADR-0004 发版批次对齐）：WX_APPID_USER/WX_SECRET_USER（同微信登录/支付），
- * 模板精简为 2 条（WX_TMPL_PAID/WX_TMPL_DELIVERED）。待道哥在微信公众平台
- * 申请通过后填入 .env 即可发，代码无需再改。短信/企微仍为预留接入点。
+ * 模板精简为 2 条（WX_TMPL_PAID/WX_TMPL_DELIVERED，2026-08-21 已配置并完成
+ * 字段对齐 IKA57K）。短信/企微仍为预留接入点。
  */
 @Injectable()
 export class NotificationsService {
@@ -158,8 +158,66 @@ export class NotificationsService {
         this.logger.debug(`用户无 openid，跳过订阅消息 → ${order.orderNo}`);
         return;
       }
+      // IKA57K：字段对齐道哥实际申请的两条模板（2026-08-21 gettemplate 拉取）——
+      // 付款成功：thing11 商品名称 / date3 付款时间 / amount2 付款金额 / time13 订单时间
+      // 配送完成：character_string2 订单编号 / thing3 配送地址 / time6 送达时间 / thing7 商品名称
+      // （此前 thing1/phrase2 占位与模板不匹配，线上 47003 data.thing11.value is empty）
+      const row = order.id
+        ? await this.db.order.findUnique({
+            where: { id: order.id },
+            select: { items: true, address: true, createdAt: true, paidAt: true },
+          })
+        : null;
+      const items = Array.isArray(row?.items)
+        ? (row.items as Array<{ name?: string }>)
+        : [];
+      const addr = (row?.address ?? {}) as Record<string, unknown>;
+      const clip = (text: string) =>
+        text.length > 20 ? `${text.slice(0, 19)}…` : text;
+      const itemSummary = clip(
+        items
+          .map((item) => item.name ?? '')
+          .filter(Boolean)
+          .join('、') || '校园好物',
+      );
+      const addressText = clip(
+        [
+          addr.buildingName as string | undefined,
+          addr.floor != null ? `${addr.floor}楼` : '',
+          addr.room as string | undefined,
+        ]
+          .filter(Boolean)
+          .join(' ') || '校园内地址',
+      );
       const token = await this.wechatAccessToken();
-      // TODO(模板对齐): 字段名需按实际申请的模板调整（当前为通用 thing/phrase 占位）。
+      const data: Record<string, { value: string }> =
+        event === 'paid'
+          ? {
+              thing11: { value: itemSummary },
+              date3: {
+                value: NotificationsService.fmtCn(row?.paidAt ?? new Date()),
+              },
+              amount2: {
+                value: `${((order.payableAmount ?? 0) / 100).toFixed(2)}元`,
+              },
+              time13: {
+                value: NotificationsService.fmtCn(row?.createdAt ?? new Date()),
+              },
+            }
+          : event === 'delivered'
+            ? {
+                character_string2: { value: order.orderNo.slice(0, 32) },
+                thing3: { value: addressText },
+                time6: {
+                  value: NotificationsService.fmtCn(new Date(), true),
+                },
+                thing7: { value: itemSummary },
+              }
+            : {
+                // 其余事件暂无已申请模板（env 未配 → 上面已跳过），留通用兜底
+                thing1: { value: order.orderNo.slice(0, 20) },
+                phrase2: { value: order.statusText.slice(0, 5) },
+              };
       const res = await fetch(
         `https://api.weixin.qq.com/cgi-bin/message/subscribe/send?access_token=${token}`,
         {
@@ -169,17 +227,7 @@ export class NotificationsService {
             touser: user.openid,
             template_id: templateId,
             page: `pages/order/detail?id=${order.id}`,
-            data: {
-              thing1: { value: order.orderNo.slice(0, 20) },
-              phrase2: { value: order.statusText },
-              ...(order.payableAmount != null
-                ? {
-                    amount3: {
-                      value: `¥${(order.payableAmount / 100).toFixed(2)}`,
-                    },
-                  }
-                : {}),
-            },
+            data,
           }),
         },
       );
@@ -190,6 +238,16 @@ export class NotificationsService {
         `订阅消息推送失败（已忽略）: ${(error as Error).message}`,
       );
     }
+  }
+
+  /**
+   * 北京时间格式化（订阅消息 time/date 字段展示用）。容器跑 UTC，订单客群在
+   * 中国（湖工大），直接 +8 偏移避免引时区库；模板示例格式 "2020-09-24 11:20:56"。
+   */
+  private static fmtCn(date: Date, withSeconds = false): string {
+    const t = new Date(date.getTime() + 8 * 3600_000);
+    const iso = t.toISOString();
+    return withSeconds ? iso.slice(0, 19).replace('T', ' ') : iso.slice(0, 16).replace('T', ' ');
   }
 
   /** 微信 access_token：client_credential 模式，带缓存与提前刷新。 */

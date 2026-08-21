@@ -288,14 +288,10 @@ export class FulfillmentService {
           ? {
               receive: {
                 status: 'last-mile',
-                text: '楼长已接货',
+                text: '楼长已接货，待送到寝室',
                 from: ['waiting-handover', 'first-mile', 'last-mile'],
               },
-              'start-delivery': {
-                status: 'last-mile',
-                text: '楼长送往寝室',
-                from: ['last-mile'],
-              },
+              // IKA580：去「开始送往寝室」——接货后直接「已送到寝室」。
               delivered: {
                 status: 'delivered',
                 text: '已送达寝室',
@@ -353,14 +349,17 @@ export class FulfillmentService {
         // 交接凭证（IKA0UP）：拍照上传取代扫寝室二维码，至少 1 张。
         if (action === 'handover' && !payload.images?.length)
           throw new BadRequestException('请拍摄交接凭证照片');
+        // 送达凭证（IKA580）：弹窗确认，凭证照片或备注二选一即可
+        // （用户不在放某地等场景以备注留证，定位尽力而为不强求）。
         if (
           action === 'delivered' &&
-          (!payload.images?.length || !payload.location)
+          !payload.images?.length &&
+          !payload.reason
         )
-          throw new BadRequestException('请上传送达照片和定位');
+          throw new BadRequestException('请上传送达凭证或填写备注');
         // 进入目标状态时点亮对应 timeline 节点（楼下待交接节点由 arrive 写入）。
         const timeline = markTimelineStep(order.timeline, next.status);
-        // delivered 时把送达凭证（照片/定位/坐标）写入包裹信息，供绩效凭证完整率统计；
+        // delivered 时把送达凭证（照片/定位/坐标/备注）写入包裹信息，供绩效凭证完整率统计；
         // handover（IKA0UP）把交接照片凭证写入包裹信息（1 分钟复用由客户端实现）。
         const packageUpdate =
           action === 'delivered'
@@ -373,6 +372,7 @@ export class FulfillmentService {
                     location: payload.location ?? '',
                     latitude: payload.latitude ?? null,
                     longitude: payload.longitude ?? null,
+                    remark: payload.reason ?? '',
                     time: new Date().toISOString(),
                   },
                 } as Prisma.InputJsonValue,
@@ -478,9 +478,36 @@ export class FulfillmentService {
       orderBy: { createdAt: 'desc' },
     });
   }
+  /** 可选代班楼长列表（IKA57Y）：同校园楼长（排除自己），请假「自己调配」时选。 */
+  async managers(staffId: string) {
+    const me = await this.db.staff.findUnique({ where: { id: staffId } });
+    if (!me) throw new NotFoundException('员工不存在');
+    return this.db.staff.findMany({
+      where: { campusId: me.campusId, role: 'manager', id: { not: staffId } },
+      orderBy: [{ building: 'asc' }, { name: 'asc' }],
+      select: { id: true, name: true, building: true },
+    });
+  }
   async createLeave(staffId: string, dto: LeaveRequestDto) {
     if (new Date(dto.startAt).getTime() <= Date.now() + 7200000)
       throw new BadRequestException('请假需至少提前 2 小时提交');
+    // IKA57Y：自己调配必须指定代班楼长（同校园、在职楼长，且不能是自己）
+    let substitute: { id: string; name: string } | null = null;
+    if ((dto.dispatchMode ?? 'platform') === 'self') {
+      if (!dto.substituteStaffId)
+        throw new BadRequestException('自己调配需选择代班楼长');
+      const candidate = await this.db.staff.findUnique({
+        where: { id: dto.substituteStaffId },
+      });
+      const me = await this.db.staff.findUnique({ where: { id: staffId } });
+      if (!candidate || candidate.role !== 'manager')
+        throw new BadRequestException('代班对象不存在或不是楼长');
+      if (candidate.campusId !== me?.campusId)
+        throw new BadRequestException('代班楼长必须为同校园员工');
+      if (candidate.id === staffId)
+        throw new BadRequestException('不能选择自己作为代班楼长');
+      substitute = { id: candidate.id, name: candidate.name };
+    }
     return this.db.leaveRequest.create({
       data: {
         staffId,
@@ -489,6 +516,9 @@ export class FulfillmentService {
         reason: dto.reason,
         // IK9U4B：调配方式随请假单落库，后台审核按此核对派单策略
         dispatchMode: dto.dispatchMode ?? 'platform',
+        // IKA57Y：代班楼长 id + 姓名快照（人员改名后请假单仍可核对）
+        substituteStaffId: substitute?.id,
+        substituteName: substitute?.name,
         status: 'pending',
         statusText: '待审核',
       },
@@ -577,7 +607,7 @@ export class FulfillmentService {
     } else if (manager) {
       if (order.status === 'last-mile') {
         status = 'delivering';
-        statusText = '配送中';
+        statusText = '待送到寝室';
       } else if (order.status === 'waiting-handover') {
         status = 'waiting';
         statusText = '待下楼接货';
@@ -591,7 +621,9 @@ export class FulfillmentService {
       statusText = '待交接';
     } else if (order.status === 'waiting-handover') {
       status = 'waiting';
-      statusText = '待交接';
+      // IKA57T：交接完成后不再回显「待交接」——按交接凭证切换文案，
+      // 骑手动作清空（IKA0UP 交接只改文案不改状态，靠此标记推进视图）。
+      statusText = pkg?.handoverProof ? '已交接，待楼长接货' : '待交接';
     } else if (order.status === 'first-mile') {
       status = 'delivering';
       statusText = '配送中';
@@ -605,6 +637,8 @@ export class FulfillmentService {
     return {
       id: `task-${role}-${order.id}`,
       orderId: order.id,
+      // IKA57O：对外统一展示订单号，配送单号仅内部保留
+      orderNo: order.orderNo,
       packageNo: pkg?.id ?? `PKG-${order.orderNo.slice(-8)}`,
       status,
       statusText,
@@ -647,6 +681,7 @@ export class FulfillmentService {
         order.status,
         order.riderId as string | null,
         viewerId,
+        Boolean(pkg?.handoverProof),
       ),
     };
   }
@@ -655,11 +690,12 @@ export class FulfillmentService {
     status: string,
     riderId?: string | null,
     viewerId?: string,
+    handedOver = false,
   ) {
     if (role === 'building-manager') {
       if (status === 'waiting-handover') return ['receive'];
-      if (status === 'last-mile')
-        return ['start-delivery', 'delivered', 'absent'];
+      // IKA580：接货后直达「已送到寝室」（去 start-delivery），异常分支保留。
+      if (status === 'last-mile') return ['delivered', 'absent'];
       return [];
     }
     // 骑手动作仅认已出库的单（IKA0UM 简化：无扫码取货，depart 直接配送中）。
@@ -670,8 +706,11 @@ export class FulfillmentService {
       return ['depart', 'transfer'];
     }
     if (status === 'first-mile') return ['arrive', 'transfer'];
-    if (status === 'waiting-handover')
-      return viewerId && riderId === viewerId ? ['handover', 'transfer'] : [];
+    if (status === 'waiting-handover') {
+      if (!(viewerId && riderId === viewerId)) return [];
+      // IKA57T：已交接（凭证已传）就不再显示「拍照交接」，避免看起来卡死。
+      return handedOver ? [] : ['handover', 'transfer'];
+    }
     if (status === 'last-mile')
       return viewerId && riderId === viewerId ? ['handover'] : [];
     return [];

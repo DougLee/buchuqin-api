@@ -11,9 +11,9 @@ import type { Prisma } from '@prisma/client';
  *   waiting-first-mile --depart(骑手点「开始配送」，无扫码)--> first-mile（配送中）
  *   first-mile       --arrive(骑手到楼下+楼长提醒)-->        waiting-handover（楼下待交接）
  *   waiting-handover --handover(骑手拍照交接凭证，状态不变)--> waiting-handover（已交接）
- *   waiting-handover --receive(楼长接货)-->                 last-mile（二级配送中）
- *   last-mile        --start-delivery(楼长开始上楼)-->      last-mile
- *   last-mile        --delivered(楼长送达+凭证)-->          delivered（已送达）
+ *   waiting-handover --receive(楼长接货)-->                 last-mile（待送到寝室）
+ *   last-mile        --delivered(楼长「已送到寝室」弹窗：凭证/备注二选一)--> delivered（已送达）
+ *   （IKA580：start-delivery「开始送往寝室」环节已移除）
  *   delivered        --confirm-receipt(用户确认收货)-->     completed（已完成）
  *
  * v1 简化（2026-08-20 PM 决策）：
@@ -117,6 +117,8 @@ export function stepKeyForStatus(status: string): string | null {
     case 'waiting-handover':
       return 'waiting-handover';
     case 'last-mile':
+      // IKA580：楼长接货 = 进入"待送到寝室"节点（旧单 timeline 无该节点时跳过）
+      return 'ready-to-deliver';
     case 'delivered':
       return 'last-mile';
     default:
@@ -130,7 +132,7 @@ export interface TimelineStepShape {
   description: string;
   done: boolean;
 }
-/** 新订单的标准 timeline（5 节点，含"楼下待交接"）。 */
+/** 新订单的标准 timeline（6 节点；IKA580：楼下待交接后加"待送到寝室"）。 */
 export function buildOrderTimeline(buildingRoom: string): TimelineStepShape[] {
   return [
     {
@@ -156,6 +158,13 @@ export function buildOrderTimeline(buildingRoom: string): TimelineStepShape[] {
       key: 'waiting-handover',
       title: '楼下待交接',
       description: '配送员到达楼下，等待楼长交接',
+      done: false,
+    },
+    {
+      key: 'ready-to-deliver',
+      // IKA580：楼长接货后、送达寝室前的等待节点
+      title: '待送到寝室',
+      description: '楼长已接货，即将送达',
       done: false,
     },
     {

@@ -39,6 +39,19 @@ export class BusinessController {
   @Get('home') async home(@Req() req: AuthRequest) {
     return ok(await this.service.home(req.user.campusId));
   }
+  /** 支付成功页广告位（IKA57F）：?placement=pay-success，未配置返回 null。 */
+  @Get('banners/current')
+  async bannerByPlacement(
+    @Req() req: AuthRequest,
+    @Query('placement') placement?: string,
+  ) {
+    return ok(
+      await this.service.bannerByPlacement(
+        req.user.campusId,
+        placement === 'pay-success' ? 'pay-success' : 'home',
+      ),
+    );
+  }
   @Get('campus/current') async campus(@Req() req: AuthRequest) {
     return ok(await this.service.campus(req.user.campusId));
   }
