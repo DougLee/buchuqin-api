@@ -483,7 +483,12 @@ export class FulfillmentService {
     const me = await this.db.staff.findUnique({ where: { id: staffId } });
     if (!me) throw new NotFoundException('员工不存在');
     return this.db.staff.findMany({
-      where: { campusId: me.campusId, role: 'manager', id: { not: staffId } },
+      // 角色键为 building-manager（Staff.role 字典），冒烟曾误写 manager 致空列表
+      where: {
+        campusId: me.campusId,
+        role: 'building-manager',
+        id: { not: staffId },
+      },
       orderBy: [{ building: 'asc' }, { name: 'asc' }],
       select: { id: true, name: true, building: true },
     });
@@ -500,7 +505,7 @@ export class FulfillmentService {
         where: { id: dto.substituteStaffId },
       });
       const me = await this.db.staff.findUnique({ where: { id: staffId } });
-      if (!candidate || candidate.role !== 'manager')
+      if (!candidate || candidate.role !== 'building-manager')
         throw new BadRequestException('代班对象不存在或不是楼长');
       if (candidate.campusId !== me?.campusId)
         throw new BadRequestException('代班楼长必须为同校园员工');
