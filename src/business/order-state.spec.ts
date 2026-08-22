@@ -160,22 +160,17 @@ describe('order state machine full chain (IK93GQ)', () => {
     expect(handoverStep?.title).toBe('楼下待交接');
     expect(handoverStep?.done).toBe(true);
 
-    // 楼长接货：→ last-mile
+    // 楼长接货：→ last-mile（IKA580：点亮「待送到寝室」节点，非 last-mile）
     await fulfillment.updateTask(
       MANAGER,
       `task-building-manager-${order.id}`,
       'receive',
     );
     expect(await statusOf(order.id)).toBe('last-mile');
-    expect((await step(order.id, 'last-mile'))?.done).toBe(true);
+    expect((await step(order.id, 'ready-to-deliver'))?.done).toBe(true);
+    expect((await step(order.id, 'last-mile'))?.done).toBe(false);
 
-    // 楼长上楼送达：→ delivered（与 completed 分离），写入送达凭证
-    await fulfillment.updateTask(
-      MANAGER,
-      `task-building-manager-${order.id}`,
-      'start-delivery',
-    );
-    expect(await statusOf(order.id)).toBe('last-mile');
+    // 楼长送达：→ delivered（IKA580：接货后直达送达，start-delivery 已删）
     const delivered = await fulfillment.updateTask(
       MANAGER,
       `task-building-manager-${order.id}`,
@@ -184,6 +179,8 @@ describe('order state machine full chain (IK93GQ)', () => {
     );
     expect(await statusOf(order.id)).toBe('delivered');
     expect(delivered.statusText).toBe('已送达，待确认收货');
+    // delivered 点亮「送到寝室」节点（stepKeyForStatus 兜底口径）
+    expect((await step(order.id, 'last-mile'))?.done).toBe(true);
     const proof = (
       (await db.order.findUniqueOrThrow({ where: { id: order.id } }))
         .package as { proof?: { images: string[] } }

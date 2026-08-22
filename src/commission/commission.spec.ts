@@ -17,6 +17,8 @@ describe('commission & settlement (IK8W5L)', () => {
   const CAMPUS = 'campus-comm-test';
   const RIDER = 'staff-comm-rider';
   const MANAGER = 'staff-comm-manager';
+  // IKAFP4：楼 Y 配本楼楼长——楼栋口径收紧后，他楼楼长不能再代送 Y 楼订单
+  const MANAGER_Y = 'staff-comm-manager-y';
   const json = (value: unknown) =>
     JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
   let buildingX = '';
@@ -165,6 +167,18 @@ describe('commission & settlement (IK8W5L)', () => {
           onTimeRate: 100,
           income: 0,
         },
+        {
+          id: MANAGER_Y,
+          campusId: CAMPUS,
+          name: '提成楼 Y 楼长',
+          role: 'building-manager',
+          roleText: '提成楼 Y 楼长',
+          staffNo: 'BM-COMM-002',
+          buildingId: buildingY,
+          building: '提成楼 Y',
+          onTimeRate: 100,
+          income: 0,
+        },
       ],
     });
     // 规则（金额单位:分）：楼栋 350、楼栋+6 层 460（楼 Y 无规则 → 走兜底常量）。
@@ -214,10 +228,11 @@ describe('commission & settlement (IK8W5L)', () => {
       expect(record.fallback).toBe(false);
       expect(record.ruleVersion).toBe(2);
     }
-    // 楼 Y（无规则）：兜底 COMMISSION_PER_ORDER，且仅骑手一条（楼 Y 无绑定楼长）
+    // 楼 Y（无规则）：兜底 COMMISSION_PER_ORDER（骑手 + 本楼楼长各一条）。
+    // IKAFP4：楼栋口径收紧，X 楼长不能再代送 Y 楼订单，由 Y 楼本楼长送达。
     const orderB = await makeOrder(buildingY, '提成楼 Y', 2);
     await fulfillment.updateTask(
-      MANAGER,
+      MANAGER_Y,
       `task-building-manager-${orderB.id}`,
       'delivered',
       { images: ['https://cos.example/2.jpg'], location: '提成楼 Y 201' },
@@ -225,11 +240,15 @@ describe('commission & settlement (IK8W5L)', () => {
     const recordsB = await db.commission.findMany({
       where: { orderId: orderB.id },
     });
-    expect(recordsB).toHaveLength(1);
-    expect(recordsB[0].staffId).toBe(RIDER);
-    expect(recordsB[0].amount).toBe(COMMISSION_PER_ORDER);
-    expect(recordsB[0].fallback).toBe(true);
-    expect(recordsB[0].ruleId).toBeNull();
+    expect(recordsB).toHaveLength(2);
+    for (const record of recordsB) {
+      expect(record.amount).toBe(COMMISSION_PER_ORDER);
+      expect(record.fallback).toBe(true);
+      expect(record.ruleId).toBeNull();
+    }
+    expect(new Set(recordsB.map((x) => x.staffId))).toEqual(
+      new Set([RIDER, MANAGER_Y]),
+    );
     // 重复 delivered 重试（构造异常场景前的幂等基线）：同单同人唯一，不重复生成
     await db.order.update({
       where: { id: orderA.id },
@@ -249,18 +268,22 @@ describe('commission & settlement (IK8W5L)', () => {
   it('settlements materialize BmBill and walk pending-review → confirmed → paid', async () => {
     const month = new Date().toISOString().slice(0, 7);
     const bills = await admin.settlements(CAMPUS, month);
-    // 骑手 + 楼长两张账单
-    expect(bills).toHaveLength(2);
+    // 骑手 + 两位楼长三张账单（IKAFP4：Y 楼长本楼送达也生成提成）
+    expect(bills).toHaveLength(3);
     const rider = bills.find((x) => x.staffId === RIDER)!;
     const manager = bills.find((x) => x.staffId === MANAGER)!;
+    const managerY = bills.find((x) => x.staffId === MANAGER_Y)!;
     billIds.push(rider.id, manager.id);
-    // 骑手：460 + 300 = 760 分，无底薪；楼长：460 + 50000 分底薪
+    // 骑手：460 + 300 = 760 分，无底薪；X 楼长：460 + 50000 分底薪；Y 楼长：300 + 50000
     expect(rider.baseSalary).toBe(0);
     expect(rider.commissionTotal).toBe(760);
     expect(rider.payable).toBe(760);
     expect(manager.baseSalary).toBe(50000);
     expect(manager.commissionTotal).toBe(460);
     expect(manager.payable).toBe(50460);
+    expect(managerY.baseSalary).toBe(50000);
+    expect(managerY.commissionTotal).toBe(300);
+    expect(managerY.payable).toBe(50300);
     expect(bills.every((x) => x.status === 'pending-review')).toBe(true);
     // 未确认不可支付
     await expect(

@@ -122,7 +122,8 @@ describe('grab pool & dispatch invitations (IK8W5U/IK8W5Y)', () => {
       `task-parttime-rider-${target}`,
       'grab',
     );
-    expect(task.statusText).toBe('已接单，待取货');
+    // IKA0UM：文案随「去扫码取货」简化改为待出发
+    expect(task.statusText).toBe('已接单，待出发');
     // 抢走后不再出现在他人抢单池
     const pool = await fulfillment.availableTasks(RIDER_1);
     expect(pool.map((x) => x.orderId)).not.toContain(target);

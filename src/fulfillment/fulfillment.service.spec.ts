@@ -9,4 +9,24 @@ describe('FulfillmentService PostgreSQL integration', () => {
     expect(profile.role).toBe('fulltime-rider');
     expect((await service.tasks(profile.id)).length).toBeGreaterThan(0);
   });
+  // IKAFP4：楼长楼栋口径——列表读路径只含本楼
+  it('楼长任务列表只含本楼订单，骑手仍全校园', async () => {
+    const mine = await service.tasks('staff-bm-001');
+    expect(mine.length).toBeGreaterThan(0);
+    expect(mine.every((t) => t.building === '西区 5 栋')).toBe(true);
+    const rider = await service.tasks('staff-rider-001');
+    expect(rider.length).toBeGreaterThan(mine.length);
+    // 跨楼单（西区 6 栋：picking/firstmile/completed）骑手可见、楼长不可见
+    expect(rider.some((t) => t.building === '西区 6 栋')).toBe(true);
+  });
+  // IKAFP4：楼长写路径——他楼订单直调动作被 403 拒绝
+  it('楼长对他楼订单动作被拒', async () => {
+    await expect(
+      service.updateTask(
+        'staff-bm-001',
+        'task-building-manager-order-mock-picking',
+        'receive',
+      ),
+    ).rejects.toThrow('非本楼订单');
+  });
 });

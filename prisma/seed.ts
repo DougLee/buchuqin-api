@@ -141,7 +141,15 @@ async function main() {
         orderNo: `BCQ20260812${String(index + 1).padStart(4, '0')}`,
         createdAt: new Date(order.createdAt),
         paidAt: order.paidAt ? new Date(order.paidAt) : null,
-        address: json(order.address),
+        // IKAFP4：快照 buildingId 对齐本 seed 生成的 Building（cuid），
+        // 与生产 checkout 快照（Address 真实 buildingId）同构，
+        // 楼长楼栋过滤（fulfillment attributedOrders）才有正确归属可匹配
+        address: json({
+          ...order.address,
+          buildingId:
+            buildingIdByName.get(order.address.buildingName) ??
+            order.address.buildingId,
+        }),
         items: json(order.items),
         timeline: json(order.timeline),
         package: order.package ? json(order.package) : undefined,

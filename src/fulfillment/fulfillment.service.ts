@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
   Optional,
@@ -176,29 +177,44 @@ export class FulfillmentService {
       ),
     };
   }
-  /** 订单归属：楼长按楼栋，配送员按校园全量。 */
+  /** 订单归属：楼长按楼栋（IKAFP4 读写一致），配送员按校园全量。 */
   private attributedOrders<T extends { address: unknown }>(
-    staff: { role: string; building: string },
+    staff: { role: string; buildingId: string | null; building: string },
     orders: T[],
   ): T[] {
     return staff.role === 'building-manager'
-      ? orders.filter(
-          (x) => String((x.address as JsonMap).buildingName) === staff.building,
+      ? orders.filter((x) =>
+          this.isOwnBuilding(staff, x.address as JsonMap),
         )
       : orders;
+  }
+  /** 同楼判定（IKAFP4）：buildingId 为准（快照含真实 id，改名不影响归属）；
+   *  无 buildingId 的历史快照回退楼栋名比对，保证旧单仍可见。 */
+  private isOwnBuilding(
+    staff: { buildingId: string | null; building: string },
+    address: JsonMap,
+  ): boolean {
+    if (address.buildingId != null)
+      return String(address.buildingId) === String(staff.buildingId);
+    return String(address.buildingName) === staff.building;
   }
   async tasks(staffId: string, status?: string) {
     const staff = await this.profile(staffId);
     const manager = staff.role === 'building-manager';
-    const orders = await this.db.order.findMany({
-      where: {
-        campusId: staff.campusId,
-        status: { notIn: ['pending-payment', 'cancelled', 'refunded'] },
-        // 骑手视图：已被其他配送员接走的单不再出现在任务池。
-        ...(!manager ? { OR: [{ riderId: null }, { riderId: staffId }] } : {}),
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+    const orders = this.attributedOrders(
+      staff,
+      await this.db.order.findMany({
+        where: {
+          campusId: staff.campusId,
+          status: { notIn: ['pending-payment', 'cancelled', 'refunded'] },
+          // 骑手视图：已被其他配送员接走的单不再出现在任务池。
+          ...(!manager
+            ? { OR: [{ riderId: null }, { riderId: staffId }] }
+            : {}),
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+    );
     // 提成展示口径统一（IK8W5L）：已生成的 Commission 记录优先，未送达单按规则预览。
     const [rules, records] = await Promise.all([
       this.commissionService.loadRules(this.db, staff.campusId),
@@ -276,6 +292,10 @@ export class FulfillmentService {
         });
         if (!order) throw new NotFoundException('履约任务不存在');
         const manager = staff.role === 'building-manager';
+        // IKAFP4：楼长动作校验楼栋归属——列表过滤只是展示口径，
+        // 这里堵住直调接口对他楼订单 receive/delivered 的横向越权。
+        if (manager && !this.isOwnBuilding(staff, order.address as JsonMap))
+          throw new ForbiddenException('非本楼订单，无权操作');
         // 动作迁移表（12 态状态机，迁移表全文见 src/common/order-state.ts，IK93GQ）：
         // v1 履约简化（IKA0UM，2026-08-20）：去掉扫码取货/配送单——骑手 accept 抢单
         // 只写归属不改状态，depart 按钮直接进 first-mile（配送中），无 pickup 动作；

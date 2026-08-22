@@ -133,6 +133,9 @@ export class MockStore {
       doneCount: number,
       minutesAgo: number,
       riderId?: string,
+      // IKAFP4：订单地址快照支持跨楼栋（默认 addresses[0] 西区5栋），
+      // 让楼长楼栋过滤有正反例可测
+      addressIndex = 0,
     ): MockOrder => {
       const orderProducts = productIds.map((id) =>
         structuredClone(this.products.find((item) => item.id === id)!),
@@ -176,7 +179,7 @@ export class MockStore {
         statusText,
         createdAt,
         ...(riderId ? { riderId } : {}),
-        address: structuredClone(this.addresses[0]),
+        address: structuredClone(this.addresses[addressIndex]),
         deliveryMode: 'instant',
         remark: '',
         items,
@@ -236,6 +239,8 @@ export class MockStore {
         ['p014', 'p007'],
         2,
         18,
+        undefined,
+        1,
       ),
       makeOrder(
         'order-mock-waitingfm',
@@ -253,6 +258,7 @@ export class MockStore {
         3,
         32,
         'staff-rider-001',
+        1,
       ),
       makeOrder(
         'order-mock-waitingho',
@@ -289,6 +295,7 @@ export class MockStore {
         5,
         180,
         'staff-rider-001',
+        1,
       ),
       makeOrder(
         'order-mock-exception',
