@@ -630,14 +630,17 @@ export class FulfillmentService {
       status = 'exception';
       statusText = '异常处理中';
     } else if (manager) {
+      // IKAFP5：楼长专属任务视图，与履约端楼长五 tab 一一对应——
+      // 待接货(waiting-handover)/待送到寝室(last-mile)/待到楼(其余在途)；
+      // completed/exception 由上方公共分支先判，不再混进 waiting。
       if (order.status === 'last-mile') {
         status = 'delivering';
         statusText = '待送到寝室';
       } else if (order.status === 'waiting-handover') {
         status = 'waiting';
-        statusText = '待下楼接货';
+        statusText = '待接货';
       } else {
-        status = 'waiting';
+        status = 'incoming';
         statusText = '待到楼';
       }
     } else if (order.status === 'last-mile') {

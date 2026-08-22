@@ -29,4 +29,15 @@ describe('FulfillmentService PostgreSQL integration', () => {
       ),
     ).rejects.toThrow('非本楼订单');
   });
+  // IKAFP5：楼长派生状态与楼长五 tab 一一对应
+  it('楼长派生状态映射（waiting/delivering/incoming/exception/completed）', async () => {
+    const byOrder: Record<string, string> = {};
+    for (const t of await service.tasks('staff-bm-001'))
+      byOrder[t.orderId] = t.status;
+    expect(byOrder['order-mock-waitingho']).toBe('waiting'); // 待接货
+    expect(byOrder['order-mock-lastmile']).toBe('delivering'); // 待送到寝室
+    expect(byOrder['order-mock-paid']).toBe('incoming'); // 待到楼
+    expect(byOrder['order-mock-exception']).toBe('exception');
+    expect(byOrder['order-mock-delivered']).toBe('completed');
+  });
 });
