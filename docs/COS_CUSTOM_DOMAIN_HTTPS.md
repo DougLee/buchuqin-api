@@ -219,4 +219,4 @@ if __name__ == "__main__":
 - **看续期是否正常**：`/root/.acme.sh/acme.sh --info -d static.buchuqin.com`（下次续期时间）；acme 日志 `/root/.acme.sh/acme.sh.log`
 - **看推送是否正常**：手动跑 `python3 /opt/buchuqin/certs/push-static-cert.py` 应输出 push done；证书库（SSL 控制台）应只有一张 `auto-static.*` 别名证书
 - **到期自检**：`curl -vI https://static.buchuqin.com` 看证书有效期是否始终在 90 天窗口内
-- **存量 URL 未替换**：DB 中商品/分类图 URL 仍指向 `buchuqin-1462767498.cos.ap-guangzhou.myqcloud.com`；如需统一切到 static 域名，一次 UPDATE 即可（见 ADR-0003 的 URL 结构）
+- **URL 统一走 static 域名（2026-08-22 已完成）**：`/opt/buchuqin/.env` 配置 `COS_PUBLIC_BASE_URL=https://static.buchuqin.com`（files.controller 生成 URL 时优先读它），新上传的文件 URL 默认走 static 域名；DB 存量（Product.image 5391、Category.image 24、Banner/User/Order.items/AuditLog 合计 5426 行）已用 REPLACE 批量切换，回滚备份 `/opt/buchuqin/backups/db-before-cos-domain-swap-20260822.sql.gz`
