@@ -613,6 +613,16 @@ export class AdminService {
       where: { id, campusId },
     });
     if (!before) throw new NotFoundException('商品不存在');
+    // 资料可编辑（IKAHAT）：空白名拒绝；换分类校验目标存在（Category 为全局字典）
+    if (body.name !== undefined && !body.name.trim())
+      throw new BadRequestException('商品名称不能为空');
+    if (body.name !== undefined) body.name = body.name.trim();
+    if (body.categoryId !== undefined && body.categoryId !== before.categoryId) {
+      const category = await this.db.category.findUnique({
+        where: { id: body.categoryId },
+      });
+      if (!category) throw new BadRequestException('分类不存在');
+    }
     const after = await this.db.product.update({ where: { id }, data: body });
     await this.audit(
       operator,

@@ -42,10 +42,18 @@ export class CreateProductDto extends BarcodeDto {
   /** 库位编号（IKA0VG）：区域内具体位置，规则人工控制，可不填。 */
   @IsOptional() @IsString() @MaxLength(20) locationCode?: string;
 }
-/** 商品改价/改库存/换头图（IK9RWX）：image 走 COS 上传后的公网 URL。 */
+/** 商品改价/改库存/换头图（IK9RWX）：image 走 COS 上传后的公网 URL。
+ *  资料可编辑（IKAHAT）：名称/副标题/分类/原价/标签/重量并入 PATCH。 */
 export class UpdateProductDto {
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) price?: number;
   @IsOptional() @Type(() => Number) @IsInt() @Min(0) stock?: number;
+  /** 资料字段（IKAHAT）：全部可选（PATCH 语义），空白 name 由 service 拒绝。 */
+  @IsOptional() @IsString() @MaxLength(80) name?: string;
+  @IsOptional() @IsString() @MaxLength(120) subtitle?: string;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) originalPrice?: number;
+  @IsOptional() @IsString() tag?: string;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) weight?: number;
+  @IsOptional() @IsString() categoryId?: string;
   @IsOptional()
   @Matches(/^https?:\/\//, { message: '图片地址必须是 http(s) URL' })
   @MaxLength(500)

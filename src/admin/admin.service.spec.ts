@@ -31,4 +31,52 @@ describe('AdminService PostgreSQL integration', () => {
     expect(orders.pageSize).toBe(20);
     expect(Array.isArray(orders.items)).toBe(true);
   });
+
+  // 资料可编辑（IKAHAT）：名称/副标题/分类可改，空白名与跨校园分类被拒
+  it('updateProduct edits profile fields and rejects invalid ones', async () => {
+    const target = await db.product.findFirstOrThrow({
+      where: { campusId: 'campus-hbut', name: { not: '' } },
+    });
+    const category = await db.category.findFirstOrThrow();
+    const updated = await service.updateProduct(
+      target.id,
+      {
+        name: `${target.name}（测试改名）`,
+        subtitle: 'IKAHAT 副标题测试',
+        categoryId: category.id,
+        originalPrice: target.originalPrice,
+        tag: 'IKAHAT',
+      },
+      'admin-001',
+      'campus-hbut',
+    );
+    expect(updated.name).toBe(`${target.name}（测试改名）`);
+    expect(updated.subtitle).toBe('IKAHAT 副标题测试');
+    expect(updated.categoryId).toBe(category.id);
+    // 还原，避免污染种子数据
+    await service.updateProduct(
+      target.id,
+      { name: target.name, subtitle: target.subtitle, tag: target.tag },
+      'admin-001',
+      'campus-hbut',
+    );
+    // 空白名拒绝
+    await expect(
+      service.updateProduct(
+        target.id,
+        { name: '   ' },
+        'admin-001',
+        'campus-hbut',
+      ),
+    ).rejects.toThrow('商品名称不能为空');
+    // 跨校园/不存在分类拒绝
+    await expect(
+      service.updateProduct(
+        target.id,
+        { categoryId: 'category-not-exist' },
+        'admin-001',
+        'campus-hbut',
+      ),
+    ).rejects.toThrow('分类不存在');
+  });
 });
