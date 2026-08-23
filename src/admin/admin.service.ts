@@ -21,6 +21,8 @@ import type {
   CreateDispatchInvitationDto,
   CreateLocationDto,
   CreateProductDto,
+  CreatePromotionDto,
+  UpdatePromotionDto,
   UpdateProductDto,
   CreateRoomDto,
   CreateStaffDto,
@@ -483,6 +485,132 @@ export class AdminService {
       null,
       campusId,
     );
+  }
+  /** 促销活动管理（ADR-0006 / IKAHFF）：无 campusId，校园维度经 product 过滤；
+   *  无删除（留审计），已结束不可改。 */
+  async promotions(campusId: string) {
+    return this.db.promotion.findMany({
+      where: { product: { campusId } },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        product: {
+          select: { id: true, name: true, image: true, price: true, status: true },
+        },
+      },
+    });
+  }
+  /** 同商品同期唯一（ADR-0006）：active 且窗口相交即拒（运行时兜底取 endsAt 最近）。 */
+  private async assertPromotionWindowFree(
+    productId: string,
+    startsAt: Date,
+    endsAt: Date,
+    selfId?: string,
+  ) {
+    const clash = await this.db.promotion.findFirst({
+      where: {
+        productId,
+        status: 'active',
+        ...(selfId ? { id: { not: selfId } } : {}),
+        startsAt: { lt: endsAt },
+        endsAt: { gt: startsAt },
+      },
+    });
+    if (clash)
+      throw new BadRequestException(
+        '该商品已有时间窗重叠的生效活动，同商品同期仅允许一个',
+      );
+  }
+  async createPromotion(
+    body: CreatePromotionDto,
+    operator: string,
+    campusId: string,
+  ) {
+    const product = await this.db.product.findFirst({
+      where: { id: body.productId, campusId },
+    });
+    if (!product || product.status !== 'on-sale')
+      throw new BadRequestException('商品不存在或未上架');
+    const startsAt = new Date(body.startsAt);
+    const endsAt = new Date(body.endsAt);
+    if (!(endsAt > startsAt))
+      throw new BadRequestException('结束时间必须晚于开始时间');
+    if (endsAt.getTime() <= Date.now())
+      throw new BadRequestException('结束时间必须晚于当前时间');
+    if (body.price >= product.price)
+      throw new BadRequestException('促销价必须低于商品现价');
+    await this.assertPromotionWindowFree(body.productId, startsAt, endsAt);
+    const promo = await this.db.promotion.create({
+      data: {
+        productId: body.productId,
+        type: body.type,
+        price: body.price,
+        startsAt,
+        endsAt,
+      },
+    });
+    await this.audit(
+      operator,
+      'promotion.create',
+      'promotion',
+      promo.id,
+      null,
+      { product: product.name, type: promo.type, price: promo.price },
+      campusId,
+    );
+    return promo;
+  }
+  async updatePromotion(
+    id: string,
+    body: UpdatePromotionDto,
+    operator: string,
+    campusId: string,
+  ) {
+    const found = await this.db.promotion.findFirst({
+      where: { id, product: { campusId } },
+      include: { product: true },
+    });
+    if (!found) throw new NotFoundException('活动不存在');
+    if (found.endsAt.getTime() <= Date.now())
+      throw new BadRequestException('已结束的活动不可修改');
+    const startsAt = body.startsAt ? new Date(body.startsAt) : found.startsAt;
+    const endsAt = body.endsAt ? new Date(body.endsAt) : found.endsAt;
+    if (body.startsAt || body.endsAt) {
+      if (!(endsAt > startsAt))
+        throw new BadRequestException('结束时间必须晚于开始时间');
+      // 改窗后必须仍未结束
+      if (endsAt.getTime() <= Date.now())
+        throw new BadRequestException('结束时间必须晚于当前时间');
+    }
+    const price = body.price ?? found.price;
+    if (body.price !== undefined && price >= found.product.price)
+      throw new BadRequestException('促销价必须低于商品现价');
+    // 重新启用或改窗都需保证窗口独占
+    if (body.status === 'active' || body.startsAt || body.endsAt)
+      await this.assertPromotionWindowFree(
+        found.productId,
+        startsAt,
+        endsAt,
+        id,
+      );
+    const promo = await this.db.promotion.update({
+      where: { id },
+      data: {
+        price: body.price,
+        startsAt: body.startsAt ? startsAt : undefined,
+        endsAt: body.endsAt ? endsAt : undefined,
+        status: body.status,
+      },
+    });
+    await this.audit(
+      operator,
+      'promotion.update',
+      'promotion',
+      id,
+      { price: found.price, status: found.status },
+      { price: promo.price, status: promo.status },
+      campusId,
+    );
+    return promo;
   }
   async lookupBarcode(barcode: string, campusId: string) {
     const product = await this.db.product.findUnique({ where: { barcode } });

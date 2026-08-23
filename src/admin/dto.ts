@@ -3,6 +3,7 @@ import {
   ArrayMaxSize,
   IsArray,
   IsBoolean,
+  IsDateString,
   IsIn,
   IsInt,
   IsNumber,
@@ -114,6 +115,22 @@ export class UpdateBannerDto {
   @IsOptional() @IsIn(['home', 'pay-success']) placement?: 'home' | 'pay-success';
   @IsOptional() @Type(() => Number) @IsInt() sort?: number;
   @IsOptional() @IsIn(['active', 'hidden']) status?: 'active' | 'hidden';
+}
+/** 促销活动（ADR-0006 / IKAHFF）：type 区分秒杀/临期，price 为促销价（分），
+ *  必须低于商品现价；同商品时间窗重叠由 service 拒绝（同期唯一生效）。 */
+export class CreatePromotionDto {
+  @IsString() productId!: string;
+  @IsIn(['seckill', 'clearance']) type!: 'seckill' | 'clearance';
+  @Type(() => Number) @IsInt() @Min(1) price!: number;
+  @IsDateString() startsAt!: string;
+  @IsDateString() endsAt!: string;
+}
+export class UpdatePromotionDto {
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) price?: number;
+  @IsOptional() @IsDateString() startsAt?: string;
+  @IsOptional() @IsDateString() endsAt?: string;
+  /** active/disabled：进行中停用立即生效（C 端读时回落）。 */
+  @IsOptional() @IsIn(['active', 'disabled']) status?: 'active' | 'disabled';
 }
 /** 配送费/起送门槛配置（IK9SO6）：金额单位分。 */
 export class UpdateDeliveryConfigDto {

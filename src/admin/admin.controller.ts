@@ -24,6 +24,7 @@ import {
   CreateAccountDto,
   CreateBannerDto,
   CreateBuildingDto,
+  CreatePromotionDto,
   CreateCategoryDto,
   CreateCommissionRuleDto,
   CreateCouponDto,
@@ -37,6 +38,7 @@ import {
   UpdateAccountDto,
   UpdateBannerDto,
   UpdateBuildingDto,
+  UpdatePromotionDto,
   UpdateCategoryDto,
   UpdateCommissionRuleDto,
   UpdateCouponDto,
@@ -174,6 +176,39 @@ export class AdminController {
     return ok(
       await this.service.deleteBanner(id, req.user.id, req.user.campusId),
       'Banner 已删除',
+    );
+  }
+  /** 促销活动管理（ADR-0006 / IKAHFF）：营销活动板块权限，全量审计；无删除。 */
+  @Get('promotions')
+  @ApiOperation({ summary: '促销活动列表（校园维度经商品，?page&pageSize）' })
+  async promotions(
+    @Req() req: AuthRequest,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+  ) {
+    this.authorize(req, 'marketing');
+    return ok(
+      paginate(await this.service.promotions(req.user.campusId), page, pageSize),
+    );
+  }
+  @Post('promotions') async createPromotion(
+    @Req() req: AuthRequest,
+    @Body() body: CreatePromotionDto,
+  ) {
+    this.authorize(req, 'marketing', 'write');
+    return ok(
+      await this.service.createPromotion(body, req.user.id, req.user.campusId),
+      '促销活动已创建',
+    );
+  }
+  @Patch('promotions/:id') async updatePromotion(
+    @Req() req: AuthRequest,
+    @Param('id') id: string,
+    @Body() body: UpdatePromotionDto,
+  ) {
+    this.authorize(req, 'marketing', 'write');
+    return ok(
+      await this.service.updatePromotion(id, body, req.user.id, req.user.campusId),
     );
   }
   @Post('products/barcode/lookup') async lookupBarcode(
