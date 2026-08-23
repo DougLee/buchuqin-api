@@ -111,6 +111,25 @@ model Product {
   status        String     @default("on-sale")
   cartItems     CartItem[]
   inventoryTxns InventoryTxn[]
+  promotions    Promotion[]
+}
+
+model Promotion {
+  id        String   @id @default(cuid())
+  productId String
+  product   Product  @relation(fields: [productId], references: [id])
+  /** 促销类型（ADR-0006）：seckill 秒杀 | clearance 临期特惠 */
+  type      String
+  /** 促销价，单位:分（IK8W5K）；活动期生效价，过期读时回落 product.price */
+  price     Int
+  startsAt  DateTime
+  endsAt    DateTime
+  /** active 生效 | disabled 运营停用；价格解析读时判窗，无 cron 回落 */
+  status    String   @default("active")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([productId, status, startsAt, endsAt])
 }
 
 model InventoryTxn {

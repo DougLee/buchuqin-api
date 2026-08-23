@@ -71,15 +71,52 @@ export class BusinessService {
     instant: 400,
     scheduled: 200,
   } as const;
-  private productView(product: any, withDescription = false) {
+  /**
+   * 限时特价解析（ADR-0006）：窗口内 active 活动按 productId 取生效促销。
+   * 同商品多活动兜底取 endsAt 最近者（确定性，清仓优先）；建/改时的重叠
+   * 拒绝在 admin 侧把关。读时判窗，无 cron 回落。
+   */
+  private async promotionMap(productIds: string[], now = new Date()) {
+    if (!productIds.length) return new Map<string, any>();
+    const rows = await this.db.promotion.findMany({
+      where: {
+        productId: { in: productIds },
+        status: 'active',
+        startsAt: { lte: now },
+        endsAt: { gt: now },
+      },
+      orderBy: [{ endsAt: 'asc' }, { createdAt: 'asc' }],
+    });
+    const map = new Map<string, any>();
+    for (const r of rows) if (!map.has(r.productId)) map.set(r.productId, r);
+    return map;
+  }
+  /**
+   * 商品视图（ADR-0006）：活动期 price=促销价（生效价单一事实，所有金额出口
+   * 读 .price 即正确），划线位 originalPrice 让给 product.price；promotion 块
+   * 供 C 端角标/倒计时与订单快照审计（含 promotionId，下单锁价）。
+   */
+  private productView(product: any, withDescription = false, promotion?: any) {
     const { description, ...rest } = product;
-    // 列表不回介绍（IKAHAU）：≤2000 字 × 全量商品会把首页/列表 payload 撑爆；
-    // 详情页 withDescription 才带。
     return {
       ...rest,
+      // 列表不回介绍（IKAHAU）：≤2000 字 × 全量商品会把首页/列表 payload 撑爆；
+      // 详情页 withDescription 才带。
       ...(withDescription ? { description: description ?? '' } : {}),
-      price: number(product.price),
-      originalPrice: number(product.originalPrice),
+      price: number(promotion ? promotion.price : product.price),
+      originalPrice: number(
+        promotion ? product.price : product.originalPrice,
+      ),
+      ...(promotion
+        ? {
+            promotion: {
+              id: promotion.id,
+              type: promotion.type,
+              price: number(promotion.price),
+              endsAt: promotion.endsAt.toISOString(),
+            },
+          }
+        : {}),
       weight: number(product.weight),
     };
   }
@@ -270,11 +307,37 @@ export class BusinessService {
         take: 18,
       }),
     ]);
+    const now = new Date();
+    const promoRows = await this.db.promotion.findMany({
+      // 首页促销模块（ADR-0006）：进行中活动带商品视图，type 分组由前端渲染
+      where: {
+        status: 'active',
+        startsAt: { lte: now },
+        endsAt: { gt: now },
+        product: { campusId, status: 'on-sale' },
+      },
+      orderBy: { endsAt: 'asc' },
+      take: 20,
+      include: { product: true },
+    });
+    const promoMap = await this.promotionMap(
+      products.map((p) => p.id),
+      now,
+    );
     return {
       campus,
       banners,
       categories,
-      hotProducts: products.map((p) => this.productView(p)),
+      hotProducts: products.map((p) =>
+        this.productView(p, false, promoMap.get(p.id)),
+      ),
+      promotions: promoRows.map((x) => ({
+        id: x.id,
+        type: x.type,
+        price: number(x.price),
+        endsAt: x.endsAt.toISOString(),
+        product: this.productView(x.product, false, x),
+      })),
     };
   }
   /**
@@ -299,14 +362,16 @@ export class BusinessService {
       },
       orderBy: { sales: 'desc' },
     });
-    return products.map((p) => this.productView(p));
+    const promoMap = await this.promotionMap(products.map((p) => p.id));
+    return products.map((p) => this.productView(p, false, promoMap.get(p.id)));
   }
   async product(id: string, campusId: string) {
     const item = await this.db.product.findFirst({
       where: { id, campusId, status: 'on-sale' },
     });
     if (!item) throw new NotFoundException('商品不存在');
-    return this.productView(item, true);
+    const promo = (await this.promotionMap([item.id])).get(item.id);
+    return this.productView(item, true, promo);
   }
   async cart(userId: string) {
     const [rows, user] = await Promise.all([
@@ -326,8 +391,11 @@ export class BusinessService {
           select: { deliveryThreshold: true },
         })
       : null;
+    // 生效价（ADR-0006）：活动期视图 price 即促销价，productAmount/券门槛/
+    // 下单快照全部随 cart 单一来源走，下游零特判
+    const promoMap = await this.promotionMap(rows.map((r) => r.productId));
     const items = rows.map((row) => ({
-      product: this.productView(row.product),
+      product: this.productView(row.product, false, promoMap.get(row.productId)),
       quantity: row.quantity,
     }));
     // 金额单位:分——全整数运算，无浮点误差（IK8W5K）。
