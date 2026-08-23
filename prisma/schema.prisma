@@ -101,6 +101,8 @@ model Product {
   image         String
   /** 详情多图（IK9SNS）：string[] JSON，首图兼容 image 字段；空数组用 image */
   images        Json?
+  /** 商品介绍（IKAHAU）：纯文本多行 ≤2000 字，空 = C 端详情页不渲染区块 */
+  description   String?
   /** 库位（IK9U40 反馈#7 / IKA0VG）：库位管理字典里的区域名（下拉选择） */
   location      String     @default("")
   /** 库位编号（IKA0VG）：区域内具体位置，规则人工控制，可不填 */

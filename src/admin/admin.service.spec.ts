@@ -5,7 +5,8 @@ import { AdminService } from './admin.service';
 
 describe('AdminService PostgreSQL integration', () => {
   const db = new PrismaService();
-  const service = new AdminService(db, new BusinessService(db));
+  const business = new BusinessService(db);
+  const service = new AdminService(db, business);
   const controller = new AdminController(service);
   const adminUser = {
     user: { id: 'admin-001', campusId: 'campus-hbut', role: 'admin' as const },
@@ -78,5 +79,33 @@ describe('AdminService PostgreSQL integration', () => {
         'campus-hbut',
       ),
     ).rejects.toThrow('分类不存在');
+  });
+
+  // 商品介绍（IKAHAU）：可写可清，详情带、列表不带
+  it('product description round-trips, detail-only in user views', async () => {
+    const target = await db.product.findFirstOrThrow({
+      where: { campusId: 'campus-hbut', status: 'on-sale' },
+    });
+    const updated = await service.updateProduct(
+      target.id,
+      { description: '第一行介绍\n第二行保留换行' },
+      'admin-001',
+      'campus-hbut',
+    );
+    expect(updated.description).toBe('第一行介绍\n第二行保留换行');
+    // 用户端详情带介绍
+    const detail = await business.product(target.id, 'campus-hbut');
+    expect(detail.description).toBe('第一行介绍\n第二行保留换行');
+    // 用户端列表不带（payload 不膨胀）
+    const list = await business.listProducts('campus-hbut');
+    expect(list.every((p) => p.description === undefined)).toBe(true);
+    // 空串清空
+    const cleared = await service.updateProduct(
+      target.id,
+      { description: '' },
+      'admin-001',
+      'campus-hbut',
+    );
+    expect(cleared.description).toBe('');
   });
 });

@@ -71,9 +71,13 @@ export class BusinessService {
     instant: 400,
     scheduled: 200,
   } as const;
-  private productView(product: any) {
+  private productView(product: any, withDescription = false) {
+    const { description, ...rest } = product;
+    // 列表不回介绍（IKAHAU）：≤2000 字 × 全量商品会把首页/列表 payload 撑爆；
+    // 详情页 withDescription 才带。
     return {
-      ...product,
+      ...rest,
+      ...(withDescription ? { description: description ?? '' } : {}),
       price: number(product.price),
       originalPrice: number(product.originalPrice),
       weight: number(product.weight),
@@ -302,7 +306,7 @@ export class BusinessService {
       where: { id, campusId, status: 'on-sale' },
     });
     if (!item) throw new NotFoundException('商品不存在');
-    return this.productView(item);
+    return this.productView(item, true);
   }
   async cart(userId: string) {
     const [rows, user] = await Promise.all([

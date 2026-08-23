@@ -41,6 +41,8 @@ export class CreateProductDto extends BarcodeDto {
   @IsOptional() @IsString() @MaxLength(20) location?: string;
   /** 库位编号（IKA0VG）：区域内具体位置，规则人工控制，可不填。 */
   @IsOptional() @IsString() @MaxLength(20) locationCode?: string;
+  /** 商品介绍（IKAHAU）：纯文本多行 ≤2000 字，空 = C 端不渲染区块。 */
+  @IsOptional() @IsString() @MaxLength(2000) description?: string;
 }
 /** 商品改价/改库存/换头图（IK9RWX）：image 走 COS 上传后的公网 URL。
  *  资料可编辑（IKAHAT）：名称/副标题/分类/原价/标签/重量并入 PATCH。 */
@@ -68,6 +70,8 @@ export class UpdateProductDto {
   /** 库位（IKA0VG）：字典区域名 + 编号手填。 */
   @IsOptional() @IsString() @MaxLength(20) location?: string;
   @IsOptional() @IsString() @MaxLength(20) locationCode?: string;
+  /** 商品介绍（IKAHAU）：整段覆盖，空串清空。 */
+  @IsOptional() @IsString() @MaxLength(2000) description?: string;
 }
 /** 首页 Banner（IK9RX2）：后台可管；color 为预置主题键（green/orange/dark）或自定义 hex。 */
 export class CreateBannerDto {
