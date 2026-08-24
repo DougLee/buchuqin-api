@@ -48,6 +48,7 @@ import {
   markTimelineStep,
   type OrderStatus,
 } from '../common/order-state';
+import { OFFICIAL_CAMPUS_ID } from '../common/campus';
 
 @Injectable()
 export class AdminService {
@@ -439,15 +440,33 @@ export class AdminService {
       where: { campusId },
       orderBy: { sales: 'desc' },
     });
+    // IKAJSO「上游已更新」角标：官方库 updatedAt 晚于本校区同步时间即标记
+    const sourceIds = xs
+      .map((x) => x.sourceProductId)
+      .filter((id): id is string => !!id);
+    const upstream = sourceIds.length
+      ? await this.db.product.findMany({
+          where: { id: { in: sourceIds }, campusId: OFFICIAL_CAMPUS_ID },
+          select: { id: true, updatedAt: true },
+        })
+      : [];
+    const upstreamAt = new Map(upstream.map((u) => [u.id, u.updatedAt.getTime()]));
+    const isOfficial = campusId === OFFICIAL_CAMPUS_ID;
     return xs.map((x) => ({
       ...x,
       price: this.num(x.price),
       originalPrice: this.num(x.originalPrice),
       weight: this.num(x.weight),
       skuNo: `SKU-${x.id.toUpperCase()}`,
+      // 官方库不记库存（IKAJSM）：库存归校区，不参与售罄映射
       actualStock: x.stock + x.lockedStock,
       availableStock: x.stock,
-      status: x.stock ? x.status : 'sold-out',
+      status: isOfficial || x.stock ? x.status : 'sold-out',
+      upstreamChanged: !!(
+        x.sourceProductId &&
+        x.sourceSyncedAt &&
+        (upstreamAt.get(x.sourceProductId) ?? 0) > x.sourceSyncedAt.getTime()
+      ),
     }));
   }
   /**
@@ -780,9 +799,11 @@ export class AdminService {
     return promo;
   }
   async lookupBarcode(barcode: string, campusId: string) {
-    const product = await this.db.product.findUnique({ where: { barcode } });
-    // 跨校园：条码命中他校商品时视作库内未录入，走公共条码库/人工录入。
-    if (product && product.campusId === campusId)
+    // 条码唯一改校区维度（IKAJSM）：本校区库内命中优先
+    const product = await this.db.product.findFirst({
+      where: { barcode, campusId },
+    });
+    if (product)
       return {
         found: true,
         source: 'product-database',
@@ -793,6 +814,23 @@ export class AdminService {
           weight: this.num(product.weight),
         },
       };
+    // IKAJSO：本校区未录入时先查官方库——命中即可一键导入，不再走人工建档
+    if (campusId !== OFFICIAL_CAMPUS_ID) {
+      const official = await this.db.product.findFirst({
+        where: { barcode, campusId: OFFICIAL_CAMPUS_ID },
+      });
+      if (official)
+        return {
+          found: true,
+          source: 'official-library',
+          product: {
+            ...official,
+            price: this.num(official.price),
+            originalPrice: this.num(official.originalPrice),
+            weight: this.num(official.weight),
+          },
+        };
+    }
     try {
       const response = await fetch(
         `https://world.openfoodfacts.org/api/v2/product/${barcode}.json?fields=product_name_zh,product_name,brands,quantity,image_front_url,categories_tags`,
@@ -859,8 +897,9 @@ export class AdminService {
     operator: string,
     campusId: string,
   ) {
-    const duplicate = await this.db.product.findUnique({
-      where: { barcode: body.barcode },
+    // 条码唯一改校区维度（IKAJSM）：同校区内去重，官方库/他校区可同码
+    const duplicate = await this.db.product.findFirst({
+      where: { barcode: body.barcode, campusId },
     });
     if (duplicate) throw new BadRequestException('该条码已录入商品库');
     const category = await this.db.category.findUnique({
@@ -926,6 +965,137 @@ export class AdminService {
       id,
       before,
       after,
+      campusId,
+    );
+    return after;
+  }
+  /**
+   * 校区从官方库导入商品（IKAJSO 道哥决策版）：复制官方资料落本校区，
+   * 本地售价（price）/上下架（status）/库存（stock）自管——导入初始下架 +
+   * 零库存，校区定价备货后自行上架。幂等：同 sourceProductId 已导入跳过；
+   * 条码撞本校区自建商品跳过（@@unique[campusId,barcode]）。
+   */
+  async importProducts(
+    productIds: string[],
+    operator: string,
+    campusId: string,
+  ) {
+    const officials = await this.db.product.findMany({
+      where: { id: { in: productIds }, campusId: OFFICIAL_CAMPUS_ID },
+    });
+    const officialById = new Map(officials.map((o) => [o.id, o]));
+    const existing = await this.db.product.findMany({
+      where: { campusId },
+      select: { sourceProductId: true, barcode: true },
+    });
+    const importedSources = new Set(
+      existing.map((x) => x.sourceProductId).filter(Boolean),
+    );
+    const campusBarcodes = new Set(existing.map((x) => x.barcode).filter(Boolean));
+    const imported: string[] = [];
+    const skipped: { id: string; name: string; reason: string }[] = [];
+    for (const id of productIds) {
+      const official = officialById.get(id);
+      if (!official) {
+        skipped.push({ id, name: id, reason: '官方库中不存在该商品' });
+        continue;
+      }
+      if (importedSources.has(official.id)) {
+        skipped.push({ id, name: official.name, reason: '已导入过，无需重复导入' });
+        continue;
+      }
+      if (official.barcode && campusBarcodes.has(official.barcode)) {
+        skipped.push({
+          id,
+          name: official.name,
+          reason: `条码 ${official.barcode} 与本校区现有商品冲突`,
+        });
+        continue;
+      }
+      const created = await this.db.product.create({
+        data: {
+          campusId,
+          barcode: official.barcode,
+          name: official.name,
+          subtitle: official.subtitle,
+          categoryId: official.categoryId,
+          // 售价/划线价取官方价起步，校区可改；库存归校区，导入为 0
+          price: official.price,
+          originalPrice: official.originalPrice,
+          stock: 0,
+          tag: official.tag,
+          image: official.image,
+          images: (official.images as Prisma.InputJsonValue) ?? undefined,
+          description: official.description,
+          weight: official.weight,
+          sales: 0,
+          status: 'off-sale',
+          sourceProductId: official.id,
+          sourceSyncedAt: official.updatedAt,
+        },
+      });
+      importedSources.add(official.id);
+      if (official.barcode) campusBarcodes.add(official.barcode);
+      imported.push(created.id);
+      await this.audit(
+        operator,
+        'product.import',
+        'product',
+        created.id,
+        null,
+        {
+          name: created.name,
+          sourceProductId: official.id,
+          officialName: official.name,
+        },
+        campusId,
+      );
+    }
+    return {
+      importedCount: imported.length,
+      importedProductIds: imported,
+      skipped,
+    };
+  }
+  /**
+   * 一键拉取官方库最新资料（IKAJSO）：只同步资料字段（名称/副题/划线价/
+   * 标签/重量/图片/介绍/分类），不动本校区售价、上下架状态与库存；
+   * 拉完记 sourceSyncedAt，「上游已更新」角标清零。
+   */
+  async pullUpstream(id: string, operator: string, campusId: string) {
+    const local = await this.db.product.findFirst({
+      where: { id, campusId },
+    });
+    if (!local) throw new NotFoundException('商品不存在');
+    if (!local.sourceProductId)
+      throw new BadRequestException('自建商品无官方库来源，无需拉取');
+    const official = await this.db.product.findFirst({
+      where: { id: local.sourceProductId, campusId: OFFICIAL_CAMPUS_ID },
+    });
+    if (!official)
+      throw new BadRequestException('官方库中该商品已被删除，无法拉取');
+    const after = await this.db.product.update({
+      where: { id },
+      data: {
+        name: official.name,
+        subtitle: official.subtitle,
+        originalPrice: official.originalPrice,
+        tag: official.tag,
+        image: official.image,
+        images: (official.images as Prisma.InputJsonValue) ?? undefined,
+        description: official.description,
+        categoryId: official.categoryId,
+        weight: official.weight,
+        sourceSyncedAt: official.updatedAt,
+      },
+    });
+    await this.audit(
+      operator,
+      'product.pull-upstream',
+      'product',
+      id,
+      { name: local.name, sourceSyncedAt: local.sourceSyncedAt },
+      { name: after.name, sourceSyncedAt: after.sourceSyncedAt },
       campusId,
     );
     return after;

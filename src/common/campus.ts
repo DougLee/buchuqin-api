@@ -4,3 +4,10 @@
  * 其余写路径一律从 req.user.campusId（JWT claims）取，不得在业务代码里散落硬编码。
  */
 export const ADMIN_CAMPUS_ID = 'campus-hbut';
+
+/**
+ * 官方商品库伪校区（IKAJSM 道哥决策版）： Campus 表里 status='official' 的一行，
+ * hq 的商品读写都落这个"校区"；campuses() 列表与用户端选校区流程均排除。
+ * 好处：Product.campusId 保持非空 + 外键不变，全部按校区隔离的查询零改动。
+ */
+export const OFFICIAL_CAMPUS_ID = 'campus-official';

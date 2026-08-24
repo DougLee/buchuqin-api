@@ -21,6 +21,14 @@ export class BarcodeDto {
   barcode!: string;
 }
 
+/** 校区从官方商品库导入（IKAJSO）：官方库商品 id 数组，批量多选。 */
+export class ImportProductsDto {
+  @IsArray()
+  @IsString({ each: true })
+  @ArrayMaxSize(50)
+  productIds!: string[];
+}
+
 export class CreateProductDto extends BarcodeDto {
   @IsString() @MaxLength(80) name!: string;
   @IsOptional() @IsString() @MaxLength(120) subtitle?: string;

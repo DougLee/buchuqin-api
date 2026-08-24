@@ -99,7 +99,8 @@ model Category {
 
 model Product {
   id            String     @id @default(cuid())
-  barcode       String?    @unique
+  /** 条码唯一改校区维度（IKAJSM）：官方库与各校区可同码，同校区内去重 */
+  barcode       String?
   campusId      String
   campus        Campus     @relation(fields: [campusId], references: [id])
   categoryId    String
@@ -123,9 +124,17 @@ model Product {
   locationCode  String     @default("")
   weight        Decimal    @db.Decimal(10, 3)
   status        String     @default("on-sale")
+  /** 官方库来源（IKAJSO）：本校区行来自官方库哪个商品；自建/历史商品为空 */
+  sourceProductId String?
+  /** 上游信息同步时间（IKAJSO）：官方库 updatedAt 晚于此值 = 「上游已更新」 */
+  sourceSyncedAt  DateTime?
+  /** 资料更新时间（IKAJSO）：官方库改动判断上游是否落后的依据 */
+  updatedAt       DateTime   @updatedAt
   cartItems     CartItem[]
   inventoryTxns InventoryTxn[]
   promotions    Promotion[]
+
+  @@unique([campusId, barcode])
 }
 
 model Promotion {

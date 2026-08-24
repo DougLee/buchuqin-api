@@ -15,6 +15,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import type { AuthRequest } from '../auth/jwt-auth.guard';
 import { ok } from '../common/api-response';
+import { OFFICIAL_CAMPUS_ID } from '../common/campus';
 import { filterByKeyword, paginate } from '../common/pagination';
 import { AdminService } from './admin.service';
 import { canAdmin, type AdminAccess, type AdminSection } from './permissions';
@@ -32,6 +33,7 @@ import {
   CreateCouponDto,
   CreateDispatchInvitationDto,
   CreateProductDto,
+  ImportProductsDto,
   UpdateProductDto,
   CreateRoomDto,
   CreateStaffDto,
@@ -78,6 +80,13 @@ export class AdminController {
   private campusScope(req: AuthRequest, campus?: string): string {
     return req.user.role === 'hq' ? campus?.trim() ?? '' : req.user.campusId;
   }
+  /**
+   * 商品板块数据范围（IKAJSM）：hq 的商品读写固定落官方商品库伪校区；
+   * 校区角色固定本校区（官方库对其只读，经 import 拉取落地）。
+   */
+  private productCampus(req: AuthRequest): string {
+    return req.user.role === 'hq' ? OFFICIAL_CAMPUS_ID : req.user.campusId;
+  }
   @Get('dashboard')
   @ApiOperation({
     summary: '运营看板（PRD §8.4 口径）',
@@ -104,7 +113,12 @@ export class AdminController {
   ) {
     this.authorize(req, 'products');
     return ok(
-      paginate(await this.service.products(req.user.campusId), page, pageSize, keyword),
+      paginate(
+        await this.service.products(this.productCampus(req)),
+        page,
+        pageSize,
+        keyword,
+      ),
     );
   }
   @Get('categories')
@@ -249,16 +263,23 @@ export class AdminController {
   ) {
     this.authorize(req, 'products');
     return ok(
-      await this.service.lookupBarcode(body.barcode, req.user.campusId),
+      await this.service.lookupBarcode(body.barcode, this.productCampus(req)),
     );
   }
+  /** IKAJSM：商品源头唯一——总部在官方库建档，校区经 /products/import 落地。 */
   @Post('products') async createProduct(
     @Req() req: AuthRequest,
     @Body() body: CreateProductDto,
   ) {
     this.authorize(req, 'products', 'write');
+    if (req.user.role !== 'hq')
+      throw new ForbiddenException('校区不支持自建商品，请从官方商品库导入');
     return ok(
-      await this.service.createProduct(body, req.user.id, req.user.campusId),
+      await this.service.createProduct(
+        body,
+        req.user.id,
+        OFFICIAL_CAMPUS_ID,
+      ),
       '商品已创建',
     );
   }
@@ -273,8 +294,37 @@ export class AdminController {
         id,
         body,
         req.user.id,
+        this.productCampus(req),
+      ),
+    );
+  }
+  /** 校区从官方库导入商品（IKAJSO）：本地售价/上下架/库存自管。 */
+  @Post('products/import') async importProducts(
+    @Req() req: AuthRequest,
+    @Body() body: ImportProductsDto,
+  ) {
+    this.authorize(req, 'products', 'write');
+    if (req.user.role === 'hq')
+      throw new ForbiddenException('总部账号请在官方商品库直接维护商品');
+    return ok(
+      await this.service.importProducts(
+        body.productIds,
+        req.user.id,
         req.user.campusId,
       ),
+    );
+  }
+  /** 一键拉取上游资料（IKAJSO）：仅同步非售价/上下架/库存字段。 */
+  @Post('products/:id/pull-upstream') async pullUpstream(
+    @Req() req: AuthRequest,
+    @Param('id') id: string,
+  ) {
+    this.authorize(req, 'products', 'write');
+    if (req.user.role === 'hq')
+      throw new ForbiddenException('官方商品库即商品源头，无需拉取上游');
+    return ok(
+      await this.service.pullUpstream(id, req.user.id, req.user.campusId),
+      '已同步官方库最新资料',
     );
   }
   @Get('inventory')
