@@ -38,6 +38,25 @@ async function main() {
   console.log(
     `[seed-admin] 超管账号就绪: ${account.username}（${account.id}，角色 ${account.role}）`,
   );
+  // IKAJSL 总部长账号：设 HQ_INITIAL_PASSWORD 时创建/重置（username 固定 hq，
+  // campusId 空 = 跨校区视角）。不设置则跳过，不影响单校区部署。
+  const hqPassword = process.env.HQ_INITIAL_PASSWORD;
+  if (hqPassword && hqPassword.length >= 8) {
+    const hqAccount = await prisma.adminAccount.upsert({
+      where: { username: 'hq' },
+      update: { passwordHash: await hash(hqPassword, 10) },
+      create: {
+        username: 'hq',
+        passwordHash: await hash(hqPassword, 10),
+        nickname: '总部运营',
+        role: 'hq',
+        campusId: '',
+      },
+    });
+    console.log(
+      `[seed-admin] 总部账号就绪: ${hqAccount.username}（${hqAccount.id}，角色 ${hqAccount.role}，跨校区）`,
+    );
+  }
 }
 
 main()

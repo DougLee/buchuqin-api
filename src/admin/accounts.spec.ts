@@ -35,6 +35,7 @@ describe('admin account management (IK9KWO)', () => {
       },
       'spec-bootstrap',
       CAMPUS,
+      'admin',
     );
     superAdminId = superAdmin.id;
     ids.push(superAdminId);
@@ -58,6 +59,7 @@ describe('admin account management (IK9KWO)', () => {
       },
       superAdminId,
       CAMPUS,
+      'admin',
     );
     ids.push(account.id);
     const result = (await auth.adminLogin({
@@ -74,13 +76,14 @@ describe('admin account management (IK9KWO)', () => {
         { username: `${tag}-ops`, password: 'whatever-123', role: 'finance' },
         superAdminId,
         CAMPUS,
+        'admin',
       ),
     ).rejects.toThrow(BadRequestException);
   });
 
   it('不能删除当前登录账号', async () => {
     await expect(
-      service.deleteAccount(superAdminId, superAdminId, CAMPUS),
+      service.deleteAccount(superAdminId, superAdminId, CAMPUS, 'admin'),
     ).rejects.toThrow('不能删除当前登录账号');
   });
 
@@ -102,11 +105,12 @@ describe('admin account management (IK9KWO)', () => {
           { role: 'finance' },
           superAdminId,
           CAMPUS,
+          'admin',
         ),
       ).rejects.toThrow('至少需要保留一个超管账号');
       await expect(
         // 用另一个操作者身份绕过"不能删自己"，验证最后 admin 保护独立生效
-        service.deleteAccount(superAdminId, 'someone-else', CAMPUS),
+        service.deleteAccount(superAdminId, 'someone-else', CAMPUS, 'admin'),
       ).rejects.toThrow('至少需要保留一个超管账号');
     } finally {
       await db.adminAccount.updateMany({
@@ -121,6 +125,7 @@ describe('admin account management (IK9KWO)', () => {
       { username: `${tag}-fin`, password: 'fin-old-123', role: 'finance' },
       superAdminId,
       CAMPUS,
+      'admin',
     );
     ids.push(account.id);
     const req = {

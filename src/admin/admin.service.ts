@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
   Optional,
@@ -15,6 +16,7 @@ import type {
   CreateAccountDto,
   CreateBannerDto,
   CreateBuildingDto,
+  CreateCampusDto,
   CreateCategoryDto,
   CreateCommissionRuleDto,
   CreateCouponDto,
@@ -22,6 +24,7 @@ import type {
   CreateLocationDto,
   CreateProductDto,
   CreatePromotionDto,
+  UpdateCampusDto,
   UpdatePromotionDto,
   UpdateProductDto,
   CreateRoomDto,
@@ -60,7 +63,82 @@ export class AdminService {
   }
   /** 履约超时阈值：支付后 90 分钟仍未送达视为超时（MVP 口径，正式 SLA 见规则快照 IK8W5L）。 */
   private static readonly FULFILLMENT_TIMEOUT_MS = 90 * 60 * 1000;
+  /**
+   * 跨校区汇总看板（IKAJSL 总部工作台）：每校区今日营业概览 + 总部合计。
+   * 口径：营业额/订单 = 今日支付的有效单；新用户 = 今日注册；异常 = 状态
+   * exception 的未结单（不限当日，代表当前待处理）。轻量 groupBy，不复用
+   * 单校区 dashboard 的重查询。
+   */
+  private async hqDashboard() {
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    const [campuses, paidAgg, userAgg, exceptionAgg, buildingAgg] =
+      await Promise.all([
+        // status=official 是官方商品库伪校区（IKAJSM），不进运营汇总
+        this.db.campus.findMany({
+          where: { status: { not: 'official' } },
+          orderBy: { createdAt: 'asc' },
+        }),
+        this.db.order.groupBy({
+          by: ['campusId'],
+          where: { createdAt: { gte: startOfToday }, paidAt: { not: null } },
+          _count: { _all: true },
+          _sum: { payableAmount: true },
+        }),
+        this.db.user.groupBy({
+          by: ['campusId'],
+          where: { createdAt: { gte: startOfToday } },
+          _count: { _all: true },
+        }),
+        this.db.order.groupBy({
+          by: ['campusId'],
+          where: { status: 'exception' },
+          _count: { _all: true },
+        }),
+        this.db.building.groupBy({ by: ['campusId'], _count: { _all: true } }),
+      ]);
+    const paidByCampus = new Map(paidAgg.map((r) => [r.campusId, r]));
+    const usersByCampus = new Map(userAgg.map((r) => [r.campusId, r._count._all]));
+    const exceptionByCampus = new Map(
+      exceptionAgg.map((r) => [r.campusId, r._count._all]),
+    );
+    const buildingsByCampus = new Map(
+      buildingAgg.map((r) => [r.campusId, r._count._all]),
+    );
+    const campusRows = campuses.map((c) => {
+      const paid = paidByCampus.get(c.id);
+      return {
+        campusId: c.id,
+        name: c.name,
+        shortName: c.shortName,
+        status: c.status,
+        buildings: buildingsByCampus.get(c.id) ?? 0,
+        revenue: this.num(paid?._sum.payableAmount ?? 0),
+        orders: paid?._count._all ?? 0,
+        newUsers: usersByCampus.get(c.id) ?? 0,
+        exceptions: exceptionByCampus.get(c.id) ?? 0,
+      };
+    });
+    return {
+      campusRows,
+      kpis: {
+        revenue: campusRows.reduce((sum, r) => sum + r.revenue, 0),
+        orders: campusRows.reduce((sum, r) => sum + r.orders, 0),
+        newUsers: campusRows.reduce((sum, r) => sum + r.newUsers, 0),
+        exceptions: campusRows.reduce((sum, r) => sum + r.exceptions, 0),
+        campuses: campusRows.length,
+      },
+      caliber: {
+        revenue: '全部校区今日支付的有效单实付金额合计（分）',
+        orders: '全部校区今日支付的有效单合计',
+        newUsers: '全部校区今日新增用户',
+        exceptions: '状态为异常的未结订单（不限当日）',
+      },
+    };
+  }
   async dashboard(campusId: string) {
+    // IKAJSL：总部账号 campusId 空 → 跨校区汇总；带 ?campus= 可看单校区明细
+    if (!campusId) return this.hqDashboard();
     const [campus, orders, buildings, trend, activities, staffRows, stageRows] =
       await Promise.all([
         this.db.campus.findFirstOrThrow({ where: { id: campusId } }),
@@ -462,20 +540,41 @@ export class AdminService {
     );
   }
   /** 首页 Banner 管理（IK9RX2）：校园维度，sort 升序；删除为物理删。 */
+  /** Banner 列表（IKAJSL）：campusId 空 = 总部视角查全部并附 campusName。 */
   async banners(campusId: string) {
-    return this.db.banner.findMany({
-      where: { campusId },
+    const xs = await this.db.banner.findMany({
+      where: campusId ? { campusId } : {},
       orderBy: [{ sort: 'asc' }, { id: 'asc' }],
     });
+    if (campusId) return xs;
+    const campuses = await this.db.campus.findMany({
+      where: { status: { not: 'official' } },
+      select: { id: true, name: true, shortName: true },
+    });
+    const nameById = new Map(
+      campuses.map((c) => [c.id, c.shortName || c.name]),
+    );
+    return xs.map((x) => ({
+      ...x,
+      campusName: x.campusId ? nameById.get(x.campusId) ?? '' : '全部校区',
+    }));
   }
   async createBanner(
     body: CreateBannerDto,
     operator: string,
     campusId: string,
   ) {
+    // IKAJSL Banner 归总部：hq 可指定投放校区（body.campusId，空 = 全部校区），
+    // 用户端按 campusId IN (本校区, '') 匹配；校区侧已无 Banner 权限（矩阵）。
+    const target = campusId ? campusId : body.campusId ?? '';
+    if (target) {
+      const campus = await this.db.campus.findUnique({ where: { id: target } });
+      if (!campus || campus.status === 'official')
+        throw new BadRequestException('投放校区不存在');
+    }
     const banner = await this.db.banner.create({
       data: {
-        campusId,
+        campusId: target,
         title: body.title,
         subtitle: body.subtitle ?? '',
         badge: body.badge ?? '',
@@ -494,8 +593,8 @@ export class AdminService {
       'banner',
       banner.id,
       null,
-      { title: banner.title, sort: banner.sort },
-      campusId,
+      { title: banner.title, sort: banner.sort, campusId: target },
+      target,
     );
     return banner;
   }
@@ -505,7 +604,10 @@ export class AdminService {
     operator: string,
     campusId: string,
   ) {
-    const found = await this.db.banner.findFirst({ where: { id, campusId } });
+    // hq（campusId 空）不受校区范围限制；校区视角仍限定本校区
+    const found = campusId
+      ? await this.db.banner.findFirst({ where: { id, campusId } })
+      : await this.db.banner.findUnique({ where: { id } });
     if (!found) throw new NotFoundException('Banner 不存在');
     const banner = await this.db.banner.update({
       where: { id },
@@ -536,7 +638,9 @@ export class AdminService {
     return banner;
   }
   async deleteBanner(id: string, operator: string, campusId: string) {
-    const found = await this.db.banner.findFirst({ where: { id, campusId } });
+    const found = campusId
+      ? await this.db.banner.findFirst({ where: { id, campusId } })
+      : await this.db.banner.findUnique({ where: { id } });
     if (!found) throw new NotFoundException('Banner 不存在');
     await this.db.banner.delete({ where: { id } });
     await this.audit(
@@ -928,6 +1032,7 @@ export class AdminService {
   /**
    * 订单列表（IKAJSP）：status 支持逗号分隔多状态——运营 Tab 是原始状态的
    * 分组（如「配送中」= waiting-first-mile,first-mile,last-mile），单值兼容旧下拉。
+   * IKAJSL：campusId 空 = 总部跨校区视角（附 campusName 列）。
    */
   async orders(status: string | undefined, campusId: string) {
     const statuses =
@@ -936,11 +1041,12 @@ export class AdminService {
         : [];
     const xs = await this.db.order.findMany({
       where: {
-        campusId,
+        ...(campusId ? { campusId } : {}),
         ...(statuses.length ? { status: { in: statuses } } : {}),
       },
       include: {
         user: { select: { id: true, nickname: true, phone: true } },
+        campus: { select: { name: true, shortName: true } },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -950,6 +1056,8 @@ export class AdminService {
       deliveryFee: this.num(x.deliveryFee),
       discount: this.num(x.discount),
       payableAmount: this.num(x.payableAmount),
+      // IKAJSL：跨校区列表需要校区列（单校区视角冗余无害）
+      campusName: x.campus?.shortName || x.campus?.name || '',
       // 用户信息脱敏：只回 id/昵称/打码手机号。
       user: {
         id: x.user.id,
@@ -960,18 +1068,19 @@ export class AdminService {
       packageNo: (x.package as any)?.id ?? '--',
     }));
   }
-  /** 订单状态计数（IKAJSP）：一次 groupBy 拉全量状态分布，Tab 角标用；先不做缓存，量级到了再说。 */
+  /** 订单状态计数（IKAJSP）：一次 groupBy 拉全量状态分布，Tab 角标用；先不做缓存，量级到了再说。
+   *  IKAJSL：campusId 空 = 全校区合计。 */
   async orderStatusCounts(campusId: string) {
     const groups = await this.db.order.groupBy({
       by: ['status'],
-      where: { campusId },
+      where: campusId ? { campusId } : {},
       _count: { _all: true },
     });
     return Object.fromEntries(groups.map((g) => [g.status, g._count._all]));
   }
   async order(id: string, campusId: string) {
     const x = await this.db.order.findFirst({
-      where: { id, campusId },
+      where: { id, ...(campusId ? { campusId } : {}) },
     });
     if (!x) throw new NotFoundException('订单不存在');
     return x;
@@ -1722,7 +1831,11 @@ export class AdminService {
     return paid;
   }
   async campuses() {
-    const xs = await this.db.campus.findMany();
+    // status=official 是官方商品库伪校区（IKAJSM），不出现在校区列表
+    const xs = await this.db.campus.findMany({
+      where: { status: { not: 'official' } },
+      orderBy: { createdAt: 'asc' },
+    });
     return Promise.all(
       xs.map(async (x) => ({
         ...x,
@@ -1735,6 +1848,78 @@ export class AdminService {
         users: await this.db.user.count({ where: { campusId: x.id } }),
       })),
     );
+  }
+  /** 校区本体新增（IKAJSL）：新校区接入入口，仅总部长（controller 守卫）。 */
+  async createCampus(body: CreateCampusDto, operator: string) {
+    const campus = await this.db.campus.create({
+      data: {
+        name: body.name,
+        shortName: body.shortName,
+        warehouseName: body.warehouseName,
+        address: body.address ?? '',
+        ...(body.deliveryFeeInstant != null
+          ? { deliveryFeeInstant: body.deliveryFeeInstant }
+          : {}),
+        ...(body.deliveryFeeScheduled != null
+          ? { deliveryFeeScheduled: body.deliveryFeeScheduled }
+          : {}),
+        ...(body.deliveryThreshold != null
+          ? { deliveryThreshold: body.deliveryThreshold }
+          : {}),
+      },
+    });
+    await this.audit(
+      operator,
+      'campus.create',
+      'campus',
+      campus.id,
+      null,
+      { name: campus.name, shortName: campus.shortName },
+      campus.id,
+    );
+    return campus;
+  }
+  /** 校区信息修改（IKAJSL）：仅总部长；官方库伪校区不可改。 */
+  async updateCampus(
+    id: string,
+    body: UpdateCampusDto,
+    operator: string,
+  ) {
+    const before = await this.db.campus.findUnique({ where: { id } });
+    if (!before) throw new NotFoundException('校区不存在');
+    if (before.status === 'official')
+      throw new BadRequestException('官方商品库校区不可修改');
+    const after = await this.db.campus.update({
+      where: { id },
+      data: {
+        ...(body.name != null ? { name: body.name } : {}),
+        ...(body.shortName != null ? { shortName: body.shortName } : {}),
+        ...(body.warehouseName != null
+          ? { warehouseName: body.warehouseName }
+          : {}),
+        ...(body.address != null ? { address: body.address } : {}),
+        ...(body.status ? { status: body.status } : {}),
+        ...(body.deliveryFeeInstant != null
+          ? { deliveryFeeInstant: body.deliveryFeeInstant }
+          : {}),
+        ...(body.deliveryFeeScheduled != null
+          ? { deliveryFeeScheduled: body.deliveryFeeScheduled }
+          : {}),
+        ...(body.deliveryThreshold != null
+          ? { deliveryThreshold: body.deliveryThreshold }
+          : {}),
+      },
+    });
+    await this.audit(
+      operator,
+      'campus.update',
+      'campus',
+      id,
+      { name: before.name, status: before.status },
+      { name: after.name, status: after.status },
+      id,
+    );
+    return after;
   }
   /** 请假列表（IK8W5Y）：含请假人角色与所属楼栋（楼长调配决策依据）。 */
   async leaveRequests(campusId: string) {
@@ -1997,17 +2182,19 @@ export class AdminService {
     );
     return { issued: result.count, targets, couponId: id };
   }
+  /** 审计日志：IKAJSL campusId 空 = 总部跨校区视角。 */
   auditLogs(campusId: string) {
     return this.db.auditLog.findMany({
-      where: { campusId },
+      where: campusId ? { campusId } : {},
       orderBy: { createdAt: 'desc' },
     });
   }
 
-  /* ---------- 后台账号管理（IK9KWO）：仅 admin 可达（矩阵守卫在 controller） ---------- */
-  /** 列表不回 passwordHash。 */
-  async accounts() {
+  /* ---------- 后台账号管理（IK9KWO）：admin 管本校区职能账号，hq 管全部（IKAJSL） ---------- */
+  /** 列表不回 passwordHash；campusId 传空 = hq 查全部并附 campusName。 */
+  async accounts(campusId?: string) {
     const xs = await this.db.adminAccount.findMany({
+      where: campusId ? { campusId } : {},
       orderBy: { createdAt: 'asc' },
       select: {
         id: true,
@@ -2018,17 +2205,42 @@ export class AdminService {
         createdAt: true,
       },
     });
-    return xs;
+    if (campusId) return xs;
+    const campuses = await this.db.campus.findMany({
+      select: { id: true, name: true, shortName: true },
+    });
+    const nameById = new Map(
+      campuses.map((c) => [c.id, c.shortName || c.name]),
+    );
+    return xs.map((x) => ({
+      ...x,
+      campusName: x.campusId ? nameById.get(x.campusId) ?? '' : '总部',
+    }));
   }
   async createAccount(
     body: CreateAccountDto,
     operator: string,
-    campusId: string,
+    operatorCampusId: string,
+    operatorRole: string,
   ) {
     const duplicate = await this.db.adminAccount.findUnique({
       where: { username: body.username },
     });
     if (duplicate) throw new BadRequestException('用户名已存在');
+    const isHq = operatorRole === 'hq';
+    // IKAJSL：校区侧不可创建 hq 角色；hq 角色不绑校区；hq 建校区账号必须选校区
+    if (!isHq && body.role === 'hq')
+      throw new ForbiddenException('仅总部账号可创建总部角色账号');
+    const campusId = isHq ? body.campusId ?? '' : operatorCampusId;
+    if (body.role === 'hq' && campusId)
+      throw new BadRequestException('总部角色账号不绑定校区');
+    if (isHq && body.role !== 'hq' && !campusId)
+      throw new BadRequestException('请为校区账号选择所属校区');
+    if (campusId) {
+      const campus = await this.db.campus.findUnique({ where: { id: campusId } });
+      if (!campus || campus.status === 'official')
+        throw new BadRequestException('所属校区不存在');
+    }
     const account = await this.db.adminAccount.create({
       data: {
         username: body.username,
@@ -2053,13 +2265,23 @@ export class AdminService {
     id: string,
     body: UpdateAccountDto,
     operator: string,
-    campusId: string,
+    operatorCampusId: string,
+    operatorRole: string,
   ) {
     const before = await this.db.adminAccount.findUnique({ where: { id } });
     if (!before) throw new NotFoundException('账号不存在');
-    // 保护：最后一个 admin 不可降级（否则后台再无超管，权限体系锁死）。
+    // IKAJSL：校区 admin 只能改本校区职能账号（碰不到总部/他校区账号）
+    if (operatorRole !== 'hq') {
+      if (before.role === 'hq' || before.campusId !== operatorCampusId)
+        throw new ForbiddenException('只能管理本校区的后台账号');
+      if (body.role === 'hq')
+        throw new ForbiddenException('仅总部账号可授予总部角色');
+    }
+    // 保护：最后一个 admin/hq 不可降级/删除（否则权限体系锁死）。
     if (before.role === 'admin' && body.role && body.role !== 'admin')
       await this.assertNotLastAdmin(id);
+    if (before.role === 'hq' && body.role && body.role !== 'hq')
+      await this.assertNotLastRole(id, 'hq');
     const after = await this.db.adminAccount.update({
       where: { id },
       data: {
@@ -2078,19 +2300,23 @@ export class AdminService {
       id,
       { username: before.username, role: before.role },
       after,
-      campusId,
+      operatorCampusId,
     );
     return after;
   }
   async deleteAccount(
     id: string,
     operator: string,
-    campusId: string,
+    operatorCampusId: string,
+    operatorRole: string,
   ) {
     const before = await this.db.adminAccount.findUnique({ where: { id } });
     if (!before) throw new NotFoundException('账号不存在');
     if (id === operator) throw new BadRequestException('不能删除当前登录账号');
+    if (operatorRole !== 'hq' && (before.role === 'hq' || before.campusId !== operatorCampusId))
+      throw new ForbiddenException('只能管理本校区的后台账号');
     if (before.role === 'admin') await this.assertNotLastAdmin(id);
+    if (before.role === 'hq') await this.assertNotLastRole(id, 'hq');
     await this.db.adminAccount.delete({ where: { id } });
     await this.audit(
       operator,
@@ -2099,7 +2325,7 @@ export class AdminService {
       id,
       { username: before.username, role: before.role },
       null,
-      campusId,
+      operatorCampusId,
     );
     return { id, deleted: true };
   }
@@ -2187,7 +2413,8 @@ export class AdminService {
     },
   ) {
     const where: Prisma.UserWhereInput = {
-      campusId,
+      // IKAJSL：campusId 空 = 总部跨校区视角
+      ...(campusId ? { campusId } : {}),
       ...(opts.keyword
         ? {
             OR: [
@@ -2228,7 +2455,7 @@ export class AdminService {
             where: {
               userId: { in: ids },
               paidAt: { not: null },
-              campusId,
+              ...(campusId ? { campusId } : {}),
             },
             _count: { _all: true },
             _sum: { payableAmount: true },
@@ -2275,25 +2502,28 @@ export class AdminService {
       }),
     };
   }
-  /** 用户统计（IKAJSW）：总量/今日新增/本月活跃/人均订单；企微绑定率字段预留。 */
+  /** 用户统计（IKAJSW）：总量/今日新增/本月活跃/人均订单；企微绑定率字段预留。
+   *  IKAJSL：campusId 空 = 全校区合计。 */
   async userStats(campusId: string) {
     const startOfToday = new Date();
     startOfToday.setHours(0, 0, 0, 0);
     const startOfMonth = new Date();
     startOfMonth.setDate(1);
     startOfMonth.setHours(0, 0, 0, 0);
+    // scope 复用四处：campusId 空 = 总部不限定
+    const scope = campusId ? { campusId } : {};
     const [total, todayNew, monthActiveUsers, paidAgg] = await Promise.all([
-      this.db.user.count({ where: { campusId } }),
+      this.db.user.count({ where: scope }),
       this.db.user.count({
-        where: { campusId, createdAt: { gte: startOfToday } },
+        where: { ...scope, createdAt: { gte: startOfToday } },
       }),
       this.db.order.findMany({
-        where: { campusId, createdAt: { gte: startOfMonth }, paidAt: { not: null } },
+        where: { ...scope, createdAt: { gte: startOfMonth }, paidAt: { not: null } },
         select: { userId: true },
         distinct: ['userId'],
       }),
       this.db.order.aggregate({
-        where: { campusId, paidAt: { not: null } },
+        where: { ...scope, paidAt: { not: null } },
         _count: { _all: true },
       }),
     ]);
@@ -2309,10 +2539,11 @@ export class AdminService {
       wechatWorkBindRate: null,
     };
   }
-  /** 单个用户的订单流水（IKAJSW 详情抽屉）：复用订单列表口径（金额分、手机脱敏）。 */
+  /** 单个用户的订单流水（IKAJSW 详情抽屉）：复用订单列表口径（金额分、手机脱敏）。
+   *  IKAJSL：campusId 空 = 总部跨校区视角。 */
   async userOrders(userId: string, campusId: string) {
     const xs = await this.db.order.findMany({
-      where: { userId, campusId },
+      where: { userId, ...(campusId ? { campusId } : {}) },
       include: { user: { select: { id: true, nickname: true, phone: true } } },
       orderBy: { createdAt: 'desc' },
       take: 50,
@@ -2327,10 +2558,17 @@ export class AdminService {
     }));
   }
   private async assertNotLastAdmin(id: string) {
-    const admins = await this.db.adminAccount.count({
-      where: { role: 'admin', id: { not: id } },
+    await this.assertNotLastRole(id, 'admin');
+  }
+  /** 最后一个指定角色账号保护（IKAJSL 扩展到 hq，避免总部权限锁死）。 */
+  private async assertNotLastRole(id: string, role: 'admin' | 'hq') {
+    const others = await this.db.adminAccount.count({
+      where: { role, id: { not: id } },
     });
-    if (!admins) throw new BadRequestException('至少需要保留一个超管账号');
+    if (!others)
+      throw new BadRequestException(
+        role === 'admin' ? '至少需要保留一个超管账号' : '至少需要保留一个总部账号',
+      );
   }
   private audit(
     operator: string,

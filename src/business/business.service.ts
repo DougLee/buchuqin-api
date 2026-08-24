@@ -296,8 +296,13 @@ export class BusinessService {
     const [campus, banners, categories, products] = await Promise.all([
       this.campus(campusId),
       this.db.banner.findMany({
-        // IKA57F：placement 区分首页轮播 / 支付成功页广告位
-        where: { campusId, status: 'active', placement: 'home' },
+        // IKA57F：placement 区分首页轮播 / 支付成功页广告位；
+        // IKAJSL：campusId 空串 = 总部全校区投放，与本校区 Banner 一起命中
+        where: {
+          campusId: { in: [campusId, ''] },
+          status: 'active',
+          placement: 'home',
+        },
         orderBy: { sort: 'asc' },
       }),
       this.categories(),
@@ -346,7 +351,8 @@ export class BusinessService {
    */
   async bannerByPlacement(campusId: string, placement: string) {
     return this.db.banner.findFirst({
-      where: { campusId, status: 'active', placement },
+      // IKAJSL：campusId 空串 = 总部全校区投放
+      where: { campusId: { in: [campusId, ''] }, status: 'active', placement },
       orderBy: { sort: 'asc' },
     });
   }

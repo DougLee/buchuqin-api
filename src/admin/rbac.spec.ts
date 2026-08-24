@@ -33,10 +33,12 @@ describe('admin RBAC matrix (IK9JHR)', () => {
 
   afterAll(() => db.$disconnect());
 
-  it('admin 全板块读写放行', () => {
+  it('admin 校区全板块读写放行（banners 归总部 IKAJSL 除外）', () => {
     for (const section of Object.keys(
       ADMIN_MATRIX,
     ) as (keyof typeof ADMIN_MATRIX)[]) {
+      // IKAJSL：Banner 投放收归总部（banners 板块仅 hq），校区 admin 不再全覆盖
+      if (section === 'banners') continue;
       expect(() => authorize('admin', section, 'read')).not.toThrow();
       if (ADMIN_MATRIX[section].write.length)
         expect(() => authorize('admin', section, 'write')).not.toThrow();

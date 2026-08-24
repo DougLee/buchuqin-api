@@ -207,9 +207,11 @@ export class AuthController {
         defaultAddressId: user.addresses.find((a) => a.isDefault)?.id ?? null,
       });
     }
-    // 后台账号（admin/operations/warehouse/finance）来自 AdminAccount 表。
+    // 后台账号（hq/admin/operations/warehouse/finance）来自 AdminAccount 表。
     if (
-      ['admin', 'operations', 'warehouse', 'finance'].includes(req.user.role)
+      ['hq', 'admin', 'operations', 'warehouse', 'finance'].includes(
+        req.user.role,
+      )
     ) {
       const account = await this.db.adminAccount.findUnique({
         where: { id: req.user.id },

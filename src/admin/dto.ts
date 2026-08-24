@@ -94,6 +94,8 @@ export class CreateBannerDto {
   /** 展示位置（IKA57F）：缺省 home 首页轮播。 */
   @IsOptional() @IsIn(['home', 'pay-success']) placement?: 'home' | 'pay-success';
   @IsOptional() @Type(() => Number) @IsInt() sort?: number;
+  /** 投放校区（IKAJSL Banner 归总部）：空串 = 全部校区；仅 hq 操作者生效。 */
+  @IsOptional() @IsString() campusId?: string;
 }
 export class UpdateBannerDto {
   @IsOptional() @IsString() @MinLength(1) @MaxLength(30) title?: string;
@@ -217,8 +219,10 @@ export class CreateDispatchInvitationDto {
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) reward?: number;
 }
 
-/** 后台账号管理（IK9KWO）：仅 admin 可增删改；角色口径同 permissions.ts。 */
+/** 后台账号管理（IK9KWO）：仅 admin/hq 可增删改；角色口径同 permissions.ts。
+ *  hq 仅总部长可用（IKAJSL），校区侧创建/授予 hq 由服务层守卫拒绝。 */
 export const ADMIN_ACCOUNT_ROLES = [
+  'hq',
   'admin',
   'operations',
   'warehouse',
@@ -232,6 +236,9 @@ export class CreateAccountDto {
   @IsString() @MinLength(8, { message: '密码至少 8 位' }) password!: string;
   @IsOptional() @IsString() @MaxLength(30) nickname?: string;
   @IsIn(ADMIN_ACCOUNT_ROLES) role!: string;
+  /** 所属校区（IKAJSL）：仅 hq 操作者可用；空串 = 总部账号（role 须为 hq）。
+   *  校区操作者传了也被忽略，强制落操作者本人校区。 */
+  @IsOptional() @IsString() campusId?: string;
 }
 export class UpdateAccountDto {
   @IsOptional() @IsString() @MaxLength(30) nickname?: string;
@@ -280,4 +287,27 @@ export class UpsertWechatGroupDto {
   @IsOptional() @IsString() buildingId?: string;
   /** COS 上传后的公网 URL。 */
   @IsString() @MinLength(1) @MaxLength(500) image!: string;
+}
+/** 校区本体管理（IKAJSL）：仅总部长可建/改校区（新校区接入入口）。 */
+export class CreateCampusDto {
+  @IsString() @MinLength(2) @MaxLength(30) name!: string;
+  @IsString() @MinLength(2) @MaxLength(15) shortName!: string;
+  @IsString() @MinLength(2) @MaxLength(30) warehouseName!: string;
+  @IsOptional() @IsString() @MaxLength(100) address?: string;
+  /** 配送费/起送门槛（IK9SO6 分制）：可选，缺省用模型默认。 */
+  @IsOptional() @Type(() => Number) @IsInt() @Min(0) deliveryFeeInstant?: number;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(0)
+  deliveryFeeScheduled?: number;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(0) deliveryThreshold?: number;
+}
+export class UpdateCampusDto {
+  @IsOptional() @IsString() @MinLength(2) @MaxLength(30) name?: string;
+  @IsOptional() @IsString() @MinLength(2) @MaxLength(15) shortName?: string;
+  @IsOptional() @IsString() @MinLength(2) @MaxLength(30) warehouseName?: string;
+  @IsOptional() @IsString() @MaxLength(100) address?: string;
+  @IsOptional() @IsIn(['active', 'inactive']) status?: 'active' | 'inactive';
+  @IsOptional() @Type(() => Number) @IsInt() @Min(0) deliveryFeeInstant?: number;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(0)
+  deliveryFeeScheduled?: number;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(0) deliveryThreshold?: number;
 }

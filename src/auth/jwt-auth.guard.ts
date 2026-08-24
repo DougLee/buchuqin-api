@@ -15,6 +15,7 @@ export interface AuthUser {
     | 'building-manager'
     | 'fulltime-rider'
     | 'parttime-rider'
+    | 'hq'
     | 'admin'
     | 'operations'
     | 'warehouse'

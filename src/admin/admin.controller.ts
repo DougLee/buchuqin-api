@@ -25,6 +25,7 @@ import {
   UpsertWechatGroupDto,
   CreateBannerDto,
   CreateBuildingDto,
+  CreateCampusDto,
   CreatePromotionDto,
   CreateCategoryDto,
   CreateCommissionRuleDto,
@@ -39,6 +40,7 @@ import {
   UpdateAccountDto,
   UpdateBannerDto,
   UpdateBuildingDto,
+  UpdateCampusDto,
   UpdatePromotionDto,
   UpdateCategoryDto,
   UpdateCommissionRuleDto,
@@ -68,6 +70,14 @@ export class AdminController {
     if (!canAdmin(req.user.role, section, access))
       throw new ForbiddenException('当前角色无权访问该板块');
   }
+  /**
+   * 多校区数据范围（IKAJSL）：校区角色固定本校区（JWT campusId）；
+   * hq 账号 campusId 为空 = 跨校区视角，可用 ?campus= 选定单校区查看。
+   * 返回空串表示"不限定校区"（service 侧跳过 campusId 过滤）。
+   */
+  private campusScope(req: AuthRequest, campus?: string): string {
+    return req.user.role === 'hq' ? campus?.trim() ?? '' : req.user.campusId;
+  }
   @Get('dashboard')
   @ApiOperation({
     summary: '运营看板（PRD §8.4 口径）',
@@ -77,9 +87,12 @@ export class AdminController {
       '准时率=送达时间与支付时间同日（当日达口径，estimatedArrival 为展示文案不可机读）；' +
       '履约超时=支付后超 90 分钟未送达；waitingHandover/lastMile 按 timeline 最后节点是否完成区分。',
   })
-  async dashboard(@Req() req: AuthRequest) {
+  async dashboard(
+    @Req() req: AuthRequest,
+    @Query('campus') campus?: string,
+  ) {
     this.authorize(req, 'dashboard');
-    return ok(await this.service.dashboard(req.user.campusId));
+    return ok(await this.service.dashboard(this.campusScope(req, campus)));
   }
   @Get('products')
   @ApiOperation({ summary: '商品列表（?page&pageSize 统一分页包裹）' })
@@ -135,27 +148,40 @@ export class AdminController {
       '类别已删除',
     );
   }
-  /** 首页 Banner 管理（IK9RX2）：营销活动板块权限，全量审计。 */
+  /** 首页 Banner 管理（IK9RX2 → IKAJSL 归总部）：banners 板块仅 hq；
+   *  body.campusId 空 = 全部校区投放。 */
   @Get('banners')
-  @ApiOperation({ summary: 'Banner 列表（校园维度，?page&pageSize 统一分页包裹）' })
+  @ApiOperation({
+    summary: 'Banner 列表（总部投放，?campus 过滤，?page&pageSize 统一分页包裹）',
+  })
   async banners(
     @Req() req: AuthRequest,
+    @Query('campus') campus?: string,
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
     @Query('keyword') keyword?: string,
   ) {
-    this.authorize(req, 'marketing');
+    this.authorize(req, 'banners');
     return ok(
-      paginate(await this.service.banners(req.user.campusId), page, pageSize, keyword),
+      paginate(
+        await this.service.banners(this.campusScope(req, campus)),
+        page,
+        pageSize,
+        keyword,
+      ),
     );
   }
   @Post('banners') async createBanner(
     @Req() req: AuthRequest,
     @Body() body: CreateBannerDto,
   ) {
-    this.authorize(req, 'marketing', 'write');
+    this.authorize(req, 'banners', 'write');
     return ok(
-      await this.service.createBanner(body, req.user.id, req.user.campusId),
+      await this.service.createBanner(
+        body,
+        req.user.id,
+        this.campusScope(req),
+      ),
       'Banner 已创建',
     );
   }
@@ -164,18 +190,23 @@ export class AdminController {
     @Param('id') id: string,
     @Body() body: UpdateBannerDto,
   ) {
-    this.authorize(req, 'marketing', 'write');
+    this.authorize(req, 'banners', 'write');
     return ok(
-      await this.service.updateBanner(id, body, req.user.id, req.user.campusId),
+      await this.service.updateBanner(
+        id,
+        body,
+        req.user.id,
+        this.campusScope(req),
+      ),
     );
   }
   @Delete('banners/:id') async deleteBanner(
     @Req() req: AuthRequest,
     @Param('id') id: string,
   ) {
-    this.authorize(req, 'marketing', 'write');
+    this.authorize(req, 'banners', 'write');
     return ok(
-      await this.service.deleteBanner(id, req.user.id, req.user.campusId),
+      await this.service.deleteBanner(id, req.user.id, this.campusScope(req)),
       'Banner 已删除',
     );
   }
@@ -305,6 +336,7 @@ export class AdminController {
   async orders(
     @Req() req: AuthRequest,
     @Query('status') status?: string,
+    @Query('campus') campus?: string,
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
     @Query('keyword') keyword?: string,
@@ -312,7 +344,7 @@ export class AdminController {
     this.authorize(req, 'orders');
     return ok(
       paginate(
-        await this.service.orders(status, req.user.campusId),
+        await this.service.orders(status, this.campusScope(req, campus)),
         page,
         pageSize,
         keyword,
@@ -321,10 +353,13 @@ export class AdminController {
   }
   // 路由顺序：必须声明在 orders/:id 之前，否则 status-counts 会被当成订单 id
   @Get('orders/status-counts')
-  @ApiOperation({ summary: '订单状态计数（IKAJSP：列表 Tab 角标）' })
-  async orderStatusCounts(@Req() req: AuthRequest) {
+  @ApiOperation({ summary: '订单状态计数（IKAJSP：列表 Tab 角标；hq ?campus 可选）' })
+  async orderStatusCounts(
+    @Req() req: AuthRequest,
+    @Query('campus') campus?: string,
+  ) {
     this.authorize(req, 'orders');
-    return ok(await this.service.orderStatusCounts(req.user.campusId));
+    return ok(await this.service.orderStatusCounts(this.campusScope(req, campus)));
   }
   @Get('orders/:id') async order(
     @Req() req: AuthRequest,
@@ -370,10 +405,13 @@ export class AdminController {
   /* ---------- C 端用户管理（IKAJSW）：运营域只读 ---------- */
   // 路由顺序：静态段（stats）须在 users/:id/... 之前
   @Get('users/stats')
-  @ApiOperation({ summary: 'C 端用户统计（IKAJSW）' })
-  async userStats(@Req() req: AuthRequest) {
+  @ApiOperation({ summary: 'C 端用户统计（IKAJSW；hq ?campus 可选）' })
+  async userStats(
+    @Req() req: AuthRequest,
+    @Query('campus') campus?: string,
+  ) {
     this.authorize(req, 'users');
-    return ok(await this.service.userStats(req.user.campusId));
+    return ok(await this.service.userStats(this.campusScope(req, campus)));
   }
   @Get('users/:id/orders')
   @ApiOperation({ summary: '单个用户订单流水（IKAJSW 详情抽屉）' })
@@ -382,13 +420,16 @@ export class AdminController {
     @Param('id') id: string,
   ) {
     this.authorize(req, 'users');
-    return ok(await this.service.userOrders(id, req.user.campusId));
+    return ok(await this.service.userOrders(id, this.campusScope(req)));
   }
   @Get('users')
-  @ApiOperation({ summary: 'C 端用户列表（楼栋/注册时间/关键词筛选）' })
+  @ApiOperation({
+    summary: 'C 端用户列表（楼栋/注册时间/关键词筛选；hq ?campus 可选）',
+  })
   async users(
     @Req() req: AuthRequest,
     @Query('buildingId') buildingId?: string,
+    @Query('campus') campus?: string,
     @Query('dateFrom') dateFrom?: string,
     @Query('dateTo') dateTo?: string,
     @Query('keyword') keyword?: string,
@@ -397,7 +438,7 @@ export class AdminController {
   ) {
     this.authorize(req, 'users');
     return ok(
-      await this.service.users(req.user.campusId, {
+      await this.service.users(this.campusScope(req, campus), {
         buildingId: buildingId || undefined,
         dateFrom: dateFrom || undefined,
         dateTo: dateTo || undefined,
@@ -810,6 +851,30 @@ export class AdminController {
     this.authorize(req, 'dashboard');
     return ok(filterByKeyword(await this.service.campuses(), keyword));
   }
+  /* ---------- 校区本体管理（IKAJSL）：新校区接入，仅总部长 ---------- */
+  @Post('campuses')
+  @ApiOperation({ summary: '新建校区（仅总部账号）' })
+  async createCampus(@Req() req: AuthRequest, @Body() body: CreateCampusDto) {
+    // 校区增改是总部职责：campuses 板块 write 虽含校区长（管楼栋复用同板块），
+    // 本体增改必须 hq —— 这一条是跨校区架构动作，不适合放矩阵单列板块。
+    if (req.user.role !== 'hq')
+      throw new ForbiddenException('仅总部账号可新增校区');
+    return ok(await this.service.createCampus(body, req.user.id), '校区已创建');
+  }
+  @Patch('campuses/:id')
+  @ApiOperation({ summary: '修改校区信息/启停（仅总部账号）' })
+  async updateCampus(
+    @Req() req: AuthRequest,
+    @Param('id') id: string,
+    @Body() body: UpdateCampusDto,
+  ) {
+    if (req.user.role !== 'hq')
+      throw new ForbiddenException('仅总部账号可修改校区');
+    return ok(
+      await this.service.updateCampus(id, body, req.user.id),
+      '校区已更新',
+    );
+  }
   @Get('coupons')
   @ApiOperation({ summary: '优惠券列表（?page&pageSize 统一分页包裹）' })
   async coupons(
@@ -855,21 +920,31 @@ export class AdminController {
     );
   }
   @Get('audit-logs')
-  @ApiOperation({ summary: '审计日志（?page&pageSize 统一分页包裹）' })
+  @ApiOperation({
+    summary: '审计日志（?page&pageSize 统一分页包裹；hq ?campus 可选）',
+  })
   async audits(
     @Req() req: AuthRequest,
+    @Query('campus') campus?: string,
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
     @Query('keyword') keyword?: string,
   ) {
     this.authorize(req, 'audit');
     return ok(
-      paginate(await this.service.auditLogs(req.user.campusId), page, pageSize, keyword),
+      paginate(
+        await this.service.auditLogs(this.campusScope(req, campus)),
+        page,
+        pageSize,
+        keyword,
+      ),
     );
   }
   /* ---------- 后台账号管理（IK9KWO）：accounts 板块仅 admin ---------- */
   @Get('accounts')
-  @ApiOperation({ summary: '后台账号列表（不含密码散列，统一分页包裹）' })
+  @ApiOperation({
+    summary: '后台账号列表（hq 全量带 campusName；admin 仅本校区）',
+  })
   async accounts(
     @Req() req: AuthRequest,
     @Query('page') page?: string,
@@ -877,19 +952,38 @@ export class AdminController {
     @Query('keyword') keyword?: string,
   ) {
     this.authorize(req, 'accounts');
-    return ok(paginate(await this.service.accounts(), page, pageSize, keyword));
+    // IKAJSL：校区 admin 只见本校区账号；hq（campusId 空）查全部
+    return ok(
+      paginate(
+        await this.service.accounts(
+          req.user.role === 'hq' ? undefined : req.user.campusId,
+        ),
+        page,
+        pageSize,
+        keyword,
+      ),
+    );
   }
   @Post('accounts')
-  @ApiOperation({ summary: '新建后台账号（用户名唯一，密码 ≥8 位）' })
+  @ApiOperation({
+    summary: '新建后台账号（hq 可建总部/任意校区账号；admin 仅本校区职能账号）',
+  })
   async createAccount(@Req() req: AuthRequest, @Body() body: CreateAccountDto) {
     this.authorize(req, 'accounts', 'write');
     return ok(
-      await this.service.createAccount(body, req.user.id, req.user.campusId),
+      await this.service.createAccount(
+        body,
+        req.user.id,
+        req.user.campusId,
+        req.user.role,
+      ),
       '账号已创建',
     );
   }
   @Patch('accounts/:id')
-  @ApiOperation({ summary: '改昵称/角色或重置密码；最后一个 admin 不可降级' })
+  @ApiOperation({
+    summary: '改昵称/角色或重置密码；最后一个 admin/hq 不可降级删除',
+  })
   async updateAccount(
     @Req() req: AuthRequest,
     @Param('id') id: string,
@@ -897,15 +991,26 @@ export class AdminController {
   ) {
     this.authorize(req, 'accounts', 'write');
     return ok(
-      await this.service.updateAccount(id, body, req.user.id, req.user.campusId),
+      await this.service.updateAccount(
+        id,
+        body,
+        req.user.id,
+        req.user.campusId,
+        req.user.role,
+      ),
     );
   }
   @Delete('accounts/:id')
-  @ApiOperation({ summary: '删除后台账号；不可删自己/最后一个 admin' })
+  @ApiOperation({ summary: '删除后台账号；不可删自己/最后一个 admin 或 hq' })
   async deleteAccount(@Req() req: AuthRequest, @Param('id') id: string) {
     this.authorize(req, 'accounts', 'write');
     return ok(
-      await this.service.deleteAccount(id, req.user.id, req.user.campusId),
+      await this.service.deleteAccount(
+        id,
+        req.user.id,
+        req.user.campusId,
+        req.user.role,
+      ),
       '账号已删除',
     );
   }
