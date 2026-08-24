@@ -45,10 +45,17 @@ export class FulfillmentService {
   ) {}
 
   async profile(staffId: string) {
-    const s = await this.db.staff.findUnique({ where: { id: staffId } });
+    const s = await this.db.staff.findUnique({
+      where: { id: staffId },
+      // IKAJT4：顶部校区信息接口化——归属校区名/仓名随档案下发
+      include: { campus: { select: { name: true, warehouseName: true } } },
+    });
     if (!s) throw new NotFoundException('履约人员不存在');
+    const { campus, ...rest } = s;
     return {
-      ...s,
+      ...rest,
+      campusName: campus?.name ?? '',
+      campusWarehouseName: campus?.warehouseName ?? '',
       onTimeRate: Number(s.onTimeRate),
       proofRate: s.proofRate == null ? null : Number(s.proofRate),
       income: Number(s.income),
