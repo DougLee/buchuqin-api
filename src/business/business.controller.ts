@@ -55,6 +55,10 @@ export class BusinessController {
   @Get('campus/current') async campus(@Req() req: AuthRequest) {
     return ok(await this.service.campus(req.user.campusId));
   }
+  /** 校区选项（IKAJT2 选校区流程）：开放中校区列表，切换走 POST /auth/campuses/select。 */
+  @Get('campuses') async campuses(@Req() req: AuthRequest) {
+    return ok(await this.service.campusOptions());
+  }
   @Get('categories') async categories() {
     return ok(await this.service.categories());
   }

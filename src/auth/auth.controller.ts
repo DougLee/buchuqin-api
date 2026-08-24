@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  ForbiddenException,
   Get,
   HttpCode,
   HttpException,
@@ -31,6 +32,7 @@ import { PrismaService } from '../database/prisma.service';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { USER_ROLES_KEY, UserRoleGuard } from './user-role.guard';
 import type { AuthRequest, AuthUser } from './jwt-auth.guard';
+import { BusinessService } from '../business/business.service';
 
 class AdminLoginDto {
   @IsString()
@@ -98,12 +100,19 @@ class StaffBindDto {
   appid?: string;
 }
 
+/** 切换校区（IKAJT2）：目标校区 id；服务层校验开放状态并清跨校区数据。 */
+class SelectCampusDto {
+  @IsString()
+  campusId!: string;
+}
+
 @ApiTags('认证')
 @Controller('auth')
 export class AuthController {
   constructor(
     private readonly jwt: JwtService,
     private readonly db: PrismaService,
+    private readonly business: BusinessService,
   ) {}
 
 
@@ -355,6 +364,40 @@ export class AuthController {
         avatar: user.avatar,
       },
     });
+  }
+
+  /**
+   * 切换校区（IKAJT2 选校区/切换流程）：JWT 带 campusId claim，切换必须换发
+   * token——返回体与登录一致，前端按登录同款落新会话。旧校区购物车清除、
+   * 旧校区地址取消默认（行保留），商品/价格/门槛随新校区生效。
+   */
+  @Post('campuses/select')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: '切换我的校区（用户端，返回换发 token）' })
+  async selectCampus(@Req() req: AuthRequest, @Body() body: SelectCampusDto) {
+    if (req.user.role !== 'user')
+      throw new ForbiddenException('仅用户端账号可切换校区');
+    const user = await this.business.switchUserCampus(
+      req.user.id,
+      body.campusId.trim(),
+    );
+    const claims: AuthUser = {
+      id: user.id,
+      campusId: user.campusId,
+      role: 'user',
+    };
+    return ok(
+      {
+        token: this.jwt.sign(claims),
+        user: {
+          ...claims,
+          nickname: user.nickname,
+          phone: user.phone,
+          avatar: user.avatar,
+        },
+      },
+      '校区已切换',
+    );
   }
 
   /** 员工微信绑定（IK8W5Q）：履约端小程序首次登录，工号+姓名换绑 openid 后直接下发 token */

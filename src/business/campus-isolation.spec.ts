@@ -148,4 +148,111 @@ describe('cross-campus isolation (IK8W5J)', () => {
     const claimableB = await service.coupons(userB, CAMPUS_B);
     expect(claimableB.claimable.map((x) => x.id)).toContain(couponB);
   });
+
+  // ---------- IKAJT2：选校区/切换流程 ----------
+  it('campusOptions: 仅开放校区，官方库伪校区与停用校区不出现', async () => {
+    const options = (await service.campusOptions()) as Array<{
+      id: string;
+    }>;
+    expect(options.map((x) => x.id)).toContain(CAMPUS_A);
+    expect(options.map((x) => x.id)).not.toContain('campus-official');
+    await db.campus.create({
+      data: {
+        id: 'campus-inactive-t2',
+        name: '停用校区T2',
+        shortName: '停用T2',
+        warehouseName: '停用仓',
+        status: 'inactive',
+      },
+    });
+    const refreshed = (await service.campusOptions()) as Array<{ id: string }>;
+    expect(refreshed.map((x) => x.id)).not.toContain('campus-inactive-t2');
+    await db.campus.delete({ where: { id: 'campus-inactive-t2' } });
+  });
+
+  it('switchUserCampus: 换区清旧区购物车、旧区地址去默认，跨区地址不可结算', async () => {
+    const tag = `ikajt2-${Date.now()}`;
+    // A 校商品（购物车金额过 A 校门槛）
+    const productA = await db.product.create({
+      data: {
+        campusId: CAMPUS_A,
+        categoryId: 'snack',
+        name: `${tag}-切换测试A品`,
+        subtitle: '',
+        price: 2000,
+        originalPrice: 2000,
+        stock: 10,
+        tag: '',
+        image: '',
+        weight: 0,
+        status: 'on-sale',
+      },
+    });
+    // 用户落在 B 校：B 校购物车 + B 校默认地址
+    const user = await db.user.create({
+      data: {
+        campusId: CAMPUS_B,
+        nickname: `${tag}-用户`,
+        phone: '',
+        role: 'user',
+      },
+    });
+    await db.cartItem.create({
+      data: { userId: user.id, productId: productB, quantity: 2 },
+    });
+    const addressB = await db.address.create({
+      data: {
+        userId: user.id,
+        campusId: CAMPUS_B,
+        campusName: '隔离测试大学',
+        buildingId: '',
+        buildingName: '隔离测试 1 栋',
+        floor: 1,
+        room: '101',
+        contactName: '测试',
+        phone: '13800000000',
+        isDefault: true,
+      },
+    });
+    try {
+      // 切到 A 校：campusId 生效、B 校购物车被清、B 校地址保留但去默认
+      const switched = await service.switchUserCampus(user.id, CAMPUS_A);
+      expect(switched.campusId).toBe(CAMPUS_A);
+      const cart = await service.cart(user.id);
+      expect(cart.items).toHaveLength(0);
+      const kept = await db.address.findUniqueOrThrow({
+        where: { id: addressB.id },
+      });
+      expect(kept.isDefault).toBe(false);
+      // 同校区重复切换幂等
+      await expect(
+        service.switchUserCampus(user.id, CAMPUS_A),
+      ).resolves.toBeTruthy();
+      // 非开放校区被拒
+      await expect(
+        service.switchUserCampus(user.id, 'campus-not-exists'),
+      ).rejects.toThrow('校区不存在或暂未开放');
+      // A 校有车有货，但用 B 校地址结算 → 校区守卫拦截
+      await db.cartItem.create({
+        data: { userId: user.id, productId: productA.id, quantity: 1 },
+      });
+      await expect(
+        service.checkout(user.id, CAMPUS_A, {
+          addressId: addressB.id,
+          deliveryMode: 'instant',
+          couponId: undefined,
+        } as never),
+      ).rejects.toThrow('请选择当前校区的收货地址');
+      // 切回 B 校：商品/价格回到 B 校口径
+      const back = await service.switchUserCampus(user.id, CAMPUS_B);
+      expect(back.campusId).toBe(CAMPUS_B);
+      const cartB = await service.cart(user.id);
+      expect(cartB.items).toHaveLength(0); // A 校车同样被清
+    } finally {
+      await db.cartItem.deleteMany({ where: { userId: user.id } });
+      await db.address.deleteMany({ where: { userId: user.id } });
+      await db.product.deleteMany({ where: { id: productA.id } });
+      await db.user.deleteMany({ where: { id: user.id } });
+    }
+  });
 });

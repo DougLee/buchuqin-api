@@ -271,6 +271,39 @@ export class BusinessService {
       throw new BadRequestException('优惠券已过期');
     return record;
   }
+  /** 校区选项（IKAJT2 选校区流程）：仅开放中校区，官方库伪校区天然排除。 */
+  async campusOptions() {
+    return this.db.campus.findMany({
+      where: { status: 'active' },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true, name: true, shortName: true },
+    });
+  }
+  /**
+   * 切换用户校区（IKAJT2）：价格/库存/门槛按校区生效，切换即换数据口径——
+   * 旧校区购物车跨校区不可结算（清掉）；旧校区地址保留但取消默认，
+   * 切回原校区可重新设默认。幂等：切到当前校区直接返回。
+   */
+  async switchUserCampus(userId: string, campusId: string) {
+    const campus = await this.db.campus.findFirst({
+      where: { id: campusId, status: 'active' },
+    });
+    if (!campus) throw new BadRequestException('校区不存在或暂未开放');
+    const user = await this.db.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('用户不存在');
+    if (user.campusId === campusId) return user;
+    const [updated] = await this.db.$transaction([
+      this.db.user.update({ where: { id: userId }, data: { campusId } }),
+      this.db.cartItem.deleteMany({
+        where: { userId, product: { campusId: { not: campusId } } },
+      }),
+      this.db.address.updateMany({
+        where: { userId, campusId: { not: campusId }, isDefault: true },
+        data: { isDefault: false },
+      }),
+    ]);
+    return updated;
+  }
   async buildings(campusId: string) {
     const xs = await this.db.building.findMany({
       where: { campusId, status: 'active' },
@@ -461,7 +494,7 @@ export class BusinessService {
     await this.db.cartItem.deleteMany({ where: { userId } });
     return this.cart(userId);
   }
-  private async validateQuote(userId: string, dto: CreateOrderDto) {
+  private async validateQuote(userId: string, campusId: string, dto: CreateOrderDto) {
     const [cart, address] = await Promise.all([
       this.cart(userId),
       this.db.address.findFirst({ where: { id: dto.addressId, userId } }),
@@ -472,6 +505,9 @@ export class BusinessService {
         `商品金额满${yuan(cart.deliveryThreshold)}元起送`,
       );
     if (!address) throw new BadRequestException('地址不存在或无权使用');
+    // IKAJT2：地址必须属当前校区（切换校区后旧默认地址不再可结算）
+    if (address.campusId !== campusId)
+      throw new BadRequestException('请选择当前校区的收货地址');
     for (const line of cart.items) {
       const p = await this.db.product.findUnique({
         where: { id: line.product.id },
@@ -494,7 +530,7 @@ export class BusinessService {
     return { cart, address };
   }
   async checkout(userId: string, campusId: string, dto: CreateOrderDto) {
-    const { cart } = await this.validateQuote(userId, dto);
+    const { cart } = await this.validateQuote(userId, campusId, dto);
     // 运费（单位:分，IK9SO6）：读校园配置（后台可改），缺省回退常量。
     const campus = await this.db.campus.findUnique({
       where: { id: campusId },
@@ -523,7 +559,7 @@ export class BusinessService {
     };
   }
   async createOrder(userId: string, campusId: string, dto: CreateOrderDto) {
-    const { address } = await this.validateQuote(userId, dto);
+    const { address } = await this.validateQuote(userId, campusId, dto);
     const settlement = await this.checkout(userId, campusId, dto);
     const now = new Date();
     // 12 态状态机标准 timeline（IK93GQ）：含"楼下待交接"节点。
@@ -1012,7 +1048,7 @@ export class BusinessService {
     campusId: string,
     dto: CreateOrderDto,
   ) {
-    const { cart } = await this.validateQuote(userId, {
+    const { cart } = await this.validateQuote(userId, campusId, {
       ...dto,
       couponId: undefined,
     });
