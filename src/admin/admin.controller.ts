@@ -121,6 +121,25 @@ export class AdminController {
       ),
     );
   }
+  /** 官方库浏览（IKAJSO 导入弹窗）：校区角色只读官方库行，用于搜索+多选导入。 */
+  @Get('products/official-library')
+  @ApiOperation({ summary: '官方商品库列表（校区导入弹窗用，只读）' })
+  async officialLibrary(
+    @Req() req: AuthRequest,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+    @Query('keyword') keyword?: string,
+  ) {
+    this.authorize(req, 'products');
+    return ok(
+      paginate(
+        await this.service.products(OFFICIAL_CAMPUS_ID),
+        page,
+        pageSize,
+        keyword,
+      ),
+    );
+  }
   @Get('categories')
   @ApiOperation({ summary: '商品类别列表（全局字典，带每类商品数）' })
   async categories(@Req() req: AuthRequest) {
