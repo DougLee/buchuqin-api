@@ -318,6 +318,13 @@ export class AdminController {
       ),
     );
   }
+  // 路由顺序：必须声明在 orders/:id 之前，否则 status-counts 会被当成订单 id
+  @Get('orders/status-counts')
+  @ApiOperation({ summary: '订单状态计数（IKAJSP：列表 Tab 角标）' })
+  async orderStatusCounts(@Req() req: AuthRequest) {
+    this.authorize(req, 'orders');
+    return ok(await this.service.orderStatusCounts(req.user.campusId));
+  }
   @Get('orders/:id') async order(
     @Req() req: AuthRequest,
     @Param('id') id: string,

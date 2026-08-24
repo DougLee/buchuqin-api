@@ -862,11 +862,19 @@ export class AdminService {
       ? `${phone.slice(0, 3)}****${phone.slice(7)}`
       : phone;
   }
+  /**
+   * 订单列表（IKAJSP）：status 支持逗号分隔多状态——运营 Tab 是原始状态的
+   * 分组（如「配送中」= waiting-first-mile,first-mile,last-mile），单值兼容旧下拉。
+   */
   async orders(status: string | undefined, campusId: string) {
+    const statuses =
+      status && status !== 'all'
+        ? status.split(',').map((s) => s.trim()).filter(Boolean)
+        : [];
     const xs = await this.db.order.findMany({
       where: {
         campusId,
-        ...(status && status !== 'all' ? { status } : {}),
+        ...(statuses.length ? { status: { in: statuses } } : {}),
       },
       include: {
         user: { select: { id: true, nickname: true, phone: true } },
@@ -888,6 +896,15 @@ export class AdminService {
       userPhone: this.maskPhone(x.user.phone),
       packageNo: (x.package as any)?.id ?? '--',
     }));
+  }
+  /** 订单状态计数（IKAJSP）：一次 groupBy 拉全量状态分布，Tab 角标用；先不做缓存，量级到了再说。 */
+  async orderStatusCounts(campusId: string) {
+    const groups = await this.db.order.groupBy({
+      by: ['status'],
+      where: { campusId },
+      _count: { _all: true },
+    });
+    return Object.fromEntries(groups.map((g) => [g.status, g._count._all]));
   }
   async order(id: string, campusId: string) {
     const x = await this.db.order.findFirst({
