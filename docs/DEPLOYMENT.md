@@ -1,12 +1,14 @@
-# 部署拓扑（buchuqin.kaola101.com）
+# 部署拓扑（admin.buchuqin.com）
 
-> 2026-08-18 域名化改造。最终域名 buchuqin.kaola101.com（kaola101.com 备案可用）；
-> 原域名 buchuqin.nongmokeji.com 因备案接入商不匹配被腾讯拦截，弃用（除非完成腾讯云接入备案）。
+> 2026-08-24 起（道哥决策）：**小程序与后台统一走 `https://admin.buchuqin.com`**，
+> buchuqin.com 不再用于小程序合法域名。历史：2026-08-18 域名化改造曾用
+> buchuqin.kaola101.com（现已不可达，server_name 仍并列保留）；
+> 更早的 buchuqin.nongmokeji.com 因备案接入商不匹配被腾讯拦截弃用。
 
 ## 线上拓扑
 
 ```
-buchuqin.kaola101.com ──DNS A──▶ 139.199.3.190（腾讯云，1Panel）
+admin.buchuqin.com ──DNS──▶ 139.199.3.190（腾讯云，1Panel）
 
 OpenResty（1Panel 面板网站，持有 80/443，证书面板托管自动续期）
 ├── 80  → 301 https（面板自动生成）
@@ -16,6 +18,9 @@ OpenResty（1Panel 面板网站，持有 80/443，证书面板托管自动续期
 
 postgres 容器（compose 内网，仅 api 可达）
 ```
+
+- 小程序（用户端/配送端）API 基址同为 `https://admin.buchuqin.com/api/v1`
+  （两个 weapp 的 `.env.production`），微信 request 合法域名配本域名即可。
 
 - 站点主配置：`/opt/1panel/www/conf.d/buchuqin.nongmokeji.com.conf`（目录名是建站时的旧域名，无碍）
 - 反代规则：`/opt/1panel/www/sites/buchuqin.nongmokeji.com/proxy/buchuqin.conf`（/api/ 反代 + / 静态直出）
@@ -28,7 +33,7 @@ postgres 容器（compose 内网，仅 api 可达）
 
 | 决策 | 结论 |
 |---|---|
-| 域名 | `buchuqin.kaola101.com` 唯一入口，HTTPS 强制 |
+| 域名 | `admin.buchuqin.com` 唯一对外入口（后台 + API + 小程序），HTTPS 强制 |
 | API 端口 | 容器发布 `127.0.0.1:8080`（原 3000），仅本机，安全组不开 |
 | 前缀 | `/api/v1` 由后端 `src/main.ts` setGlobalPrefix 定义，nginx 不改写路径 |
 | 后台托管 | 2026-08-18 起拆分：nginx 直出静态 + `/api/` 专项反代（原整站反代进 API 容器） |
@@ -52,6 +57,6 @@ docker exec 1Panel-openresty-m45r nginx -t && docker exec 1Panel-openresty-m45r 
 
 ## 小程序发布前 checklist
 
-1. 微信后台（两个小程序各自）→ 开发管理 → 开发设置 → 服务器域名 → request 合法域名加 `https://buchuqin.kaola101.com`
-2. 生产构建自动带 `.env.production` 里的 `VITE_API_BASE_URL=https://buchuqin.kaola101.com/api/v1`
+1. 微信后台（两个小程序各自）→ 开发管理 → 开发设置 → 服务器域名 → request 合法域名加 `https://admin.buchuqin.com`
+2. 生产构建自动带 `.env.production` 里的 `VITE_API_BASE_URL=https://admin.buchuqin.com/api/v1`
 3. 上线前轮换两端 AppSecret + 开启微信 IP 白名单（139.199.3.190）
