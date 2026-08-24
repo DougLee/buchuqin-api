@@ -1170,4 +1170,42 @@ export class BusinessService {
       byType: Object.fromEntries(rows.map((r) => [r.type, r._count._all])),
     };
   }
+  /**
+   * 进群二维码（IKAJSZ）：三级回落——默认地址的楼栋群 → 校级大群 → null。
+   * Address 无 createdAt，默认地址按 isDefault 优先取。
+   */
+  async wechatGroup(userId: string) {
+    const user = await this.db.user.findUnique({
+      where: { id: userId },
+      select: { campusId: true },
+    });
+    if (!user) return null;
+    const address = await this.db.address.findFirst({
+      where: { userId },
+      orderBy: { isDefault: 'desc' },
+    });
+    const group = address
+      ? await this.db.wechatGroup.findUnique({
+          where: {
+            campusId_buildingId: {
+              campusId: user.campusId,
+              buildingId: address.buildingId,
+            },
+          },
+        })
+      : null;
+    const resolved =
+      group ??
+      (await this.db.wechatGroup.findUnique({
+        where: {
+          campusId_buildingId: { campusId: user.campusId, buildingId: '' },
+        },
+      }));
+    if (!resolved) return null;
+    return {
+      image: resolved.image,
+      // scope 供前端展示「楼栋群/校园群」标签
+      scope: resolved.buildingId ? 'building' : 'campus',
+    };
+  }
 }

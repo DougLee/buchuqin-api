@@ -13,7 +13,9 @@ export type AdminSection =
   | 'finance'
   | 'marketing'
   | 'audit'
-  | 'accounts';
+  | 'accounts'
+  | 'users'
+  | 'wechat-groups';
 export type AdminAccess = 'read' | 'write';
 
 const ALL: AdminRole[] = ['admin', 'operations', 'warehouse', 'finance'];
@@ -57,6 +59,10 @@ export const ADMIN_MATRIX: Record<
   audit: { read: [...OPS, 'finance'], write: [] },
   // 账号管理（IK9KWO）：仅超管，防越权提权。
   accounts: { read: ['admin'], write: ['admin'] },
+  // C 端用户管理（IKAJSW）：运营域只读（列表/统计/导出/查订单）。
+  users: { read: OPS, write: [] },
+  // 微信群二维码（IKAJSY）：组织营销域。
+  'wechat-groups': { read: OPS, write: OPS },
 };
 
 /** 判断后台角色对板块的读/写权限。非后台角色一律 false。 */

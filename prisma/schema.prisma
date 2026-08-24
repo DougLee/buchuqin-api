@@ -28,6 +28,20 @@ model Campus {
   orders        Order[]
   staff         Staff[]
   storageLocations StorageLocation[]
+  wechatGroups  WechatGroup[]
+}
+
+/** 微信群二维码（IKAJSY）：buildingId 空串=校级大群；每楼栋至多一群 + 每校至多一大群。 */
+model WechatGroup {
+  id         String   @id @default(cuid())
+  campusId   String
+  campus     Campus   @relation(fields: [campusId], references: [id])
+  buildingId String   @default("")
+  image      String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([campusId, buildingId])
 }
 
 /** 库位字典（IKA0VG）：人工维护的库位区域列表，商品表单下拉选择。 */

@@ -304,4 +304,8 @@ export class BusinessController {
   @Get('notifications/unread-count') async unread(@Req() req: AuthRequest) {
     return ok(await this.service.unreadNotificationCount(req.user.id));
   }
+  /** 进群二维码（IKAJSZ）：默认地址楼栋群 → 校级大群 → null（前端隐藏入口）。 */
+  @Get('wechat-group') async wechatGroup(@Req() req: AuthRequest) {
+    return ok(await this.service.wechatGroup(req.user.id));
+  }
 }

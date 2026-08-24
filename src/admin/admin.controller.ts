@@ -22,6 +22,7 @@ import {
   AdjustStockDto,
   BarcodeDto,
   CreateAccountDto,
+  UpsertWechatGroupDto,
   CreateBannerDto,
   CreateBuildingDto,
   CreatePromotionDto,
@@ -364,6 +365,81 @@ export class AdminController {
         req.user.campusId,
       ),
       '订单状态已更新',
+    );
+  }
+  /* ---------- C 端用户管理（IKAJSW）：运营域只读 ---------- */
+  // 路由顺序：静态段（stats）须在 users/:id/... 之前
+  @Get('users/stats')
+  @ApiOperation({ summary: 'C 端用户统计（IKAJSW）' })
+  async userStats(@Req() req: AuthRequest) {
+    this.authorize(req, 'users');
+    return ok(await this.service.userStats(req.user.campusId));
+  }
+  @Get('users/:id/orders')
+  @ApiOperation({ summary: '单个用户订单流水（IKAJSW 详情抽屉）' })
+  async userOrders(
+    @Req() req: AuthRequest,
+    @Param('id') id: string,
+  ) {
+    this.authorize(req, 'users');
+    return ok(await this.service.userOrders(id, req.user.campusId));
+  }
+  @Get('users')
+  @ApiOperation({ summary: 'C 端用户列表（楼栋/注册时间/关键词筛选）' })
+  async users(
+    @Req() req: AuthRequest,
+    @Query('buildingId') buildingId?: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
+    @Query('keyword') keyword?: string,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+  ) {
+    this.authorize(req, 'users');
+    return ok(
+      await this.service.users(req.user.campusId, {
+        buildingId: buildingId || undefined,
+        dateFrom: dateFrom || undefined,
+        dateTo: dateTo || undefined,
+        keyword: keyword?.trim() || undefined,
+        page: Math.max(1, Number(page) || 1),
+        pageSize: Math.min(100, Math.max(1, Number(pageSize) || 20)),
+      }),
+    );
+  }
+  /* ---------- 微信群二维码（IKAJSY）：组织营销域 ---------- */
+  @Get('wechat-groups')
+  @ApiOperation({ summary: '群码列表（IKAJSY）' })
+  async wechatGroups(@Req() req: AuthRequest) {
+    this.authorize(req, 'wechat-groups');
+    return ok(await this.service.wechatGroups(req.user.campusId));
+  }
+  @Post('wechat-groups')
+  @ApiOperation({ summary: '新增/替换楼栋群或校级大群二维码' })
+  async upsertWechatGroup(
+    @Req() req: AuthRequest,
+    @Body() body: UpsertWechatGroupDto,
+  ) {
+    this.authorize(req, 'wechat-groups', 'write');
+    return ok(
+      await this.service.upsertWechatGroup(
+        body,
+        req.user.id,
+        req.user.campusId,
+      ),
+      '群码已保存',
+    );
+  }
+  @Delete('wechat-groups/:id')
+  @ApiOperation({ summary: '删除群码' })
+  async deleteWechatGroup(
+    @Req() req: AuthRequest,
+    @Param('id') id: string,
+  ) {
+    this.authorize(req, 'wechat-groups', 'write');
+    return ok(
+      await this.service.deleteWechatGroup(id, req.user.id, req.user.campusId),
+      '群码已删除',
     );
   }
   /* ---------- 库位管理（IKA0VG）：随库存板块权限走 ---------- */
@@ -745,19 +821,6 @@ export class AdminController {
     this.authorize(req, 'marketing');
     return ok(
       paginate(await this.service.coupons(req.user.campusId), page, pageSize, keyword),
-    );
-  }
-  @Get('users')
-  @ApiOperation({ summary: '用户列表（?page&pageSize 统一分页包裹）' })
-  async users(
-    @Req() req: AuthRequest,
-    @Query('page') page?: string,
-    @Query('pageSize') pageSize?: string,
-    @Query('keyword') keyword?: string,
-  ) {
-    this.authorize(req, 'marketing');
-    return ok(
-      paginate(await this.service.users(req.user.campusId), page, pageSize, keyword),
     );
   }
   @Post('coupons') async createCoupon(

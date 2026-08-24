@@ -61,13 +61,28 @@ export class AdminService {
   /** 履约超时阈值：支付后 90 分钟仍未送达视为超时（MVP 口径，正式 SLA 见规则快照 IK8W5L）。 */
   private static readonly FULFILLMENT_TIMEOUT_MS = 90 * 60 * 1000;
   async dashboard(campusId: string) {
-    const [campus, orders, buildings, trend, activities] = await Promise.all([
-      this.db.campus.findFirstOrThrow({ where: { id: campusId } }),
-      this.db.order.findMany({ where: { campusId } }),
-      this.db.building.findMany({ where: { campusId } }),
-      this.trend(campusId),
-      this.activities(campusId),
-    ]);
+    const [campus, orders, buildings, trend, activities, staffRows, stageRows] =
+      await Promise.all([
+        this.db.campus.findFirstOrThrow({ where: { id: campusId } }),
+        this.db.order.findMany({ where: { campusId } }),
+        this.db.building.findMany({ where: { campusId } }),
+        this.trend(campusId),
+        this.activities(campusId),
+        // IKAJSS 水位下钻：在职履约人员按角色计数
+        this.db.staff.groupBy({
+          by: ['role'],
+          where: { campusId },
+          _count: { _all: true },
+        }),
+        // IKAJSS 水位下钻：各节点平均停留（自支付起算的分钟数；paid+picking 并入待拣货）
+        this.db.$queryRaw<Array<{ node: string; minutes: number | null }>>`
+          SELECT CASE WHEN status IN ('paid','picking') THEN 'waitingPick' ELSE status END AS node,
+                 (AVG(EXTRACT(EPOCH FROM (now() - "paidAt")) / 60))::int AS minutes
+          FROM "Order"
+          WHERE "campusId" = ${campusId} AND "paidAt" IS NOT NULL
+            AND status IN ('paid','picking','waiting-first-mile','first-mile','waiting-handover','last-mile')
+          GROUP BY 1`,
+      ]);
     // 有效单：排除待支付/已取消，后续所有口径基于有效单计算。
     const effective = orders.filter(
       (x) => !['pending-payment', 'cancelled'].includes(x.status),
@@ -110,11 +125,24 @@ export class AdminService {
     const rate = (n: number, d: number) =>
       d ? Number(((n / d) * 100).toFixed(1)) : 0;
     // 履约超时：真实统计支付后超过阈值仍未送达（未送达单按当前时刻算进行中超时）。
-    const timeout = effective.filter((x) => {
+    // IKAJSS：超时从计数扩为 Top5 列表（单号+超时时长），工作台可直达处理。
+    const overtimes = effective.filter((x) => {
       if (!x.paidAt) return false;
       const end = deliveredAt(x)?.getTime() ?? Date.now();
       return end - x.paidAt.getTime() > AdminService.FULFILLMENT_TIMEOUT_MS;
-    }).length;
+    });
+    const timeout = overtimes.length;
+    const timeoutOrders = overtimes
+      .map((x) => ({
+        id: x.id,
+        orderNo: x.orderNo,
+        overtimeMinutes: Math.round(
+          ((deliveredAt(x)?.getTime() ?? Date.now()) - x.paidAt!.getTime()) /
+            60000,
+        ),
+      }))
+      .sort((a, b) => b.overtimeMinutes - a.overtimeMinutes)
+      .slice(0, 5);
     // 楼栋排行：优先用 Building 表关联（address.buildingId）取规范楼栋名，
     // 关联缺失（历史快照/手填楼栋）时回退字符串聚合，保证不丢数据。
     const buildingNameById = new Map(buildings.map((b) => [b.id, b.name]));
@@ -148,6 +176,23 @@ export class AdminService {
       }
       buildingMap.set(name, item);
     }
+    // IKAJSS 水位下钻数据：作业人数按节点角色（骑手接 waiting-first-mile/first-mile，
+    // 楼长接 waiting-handover/last-mile；仓库出库是后台账号不在 Staff 表，记 0）。
+    const staffByRole = new Map(staffRows.map((r) => [r.role, r._count._all]));
+    const riders =
+      (staffByRole.get('fulltime-rider') ?? 0) +
+      (staffByRole.get('parttime-rider') ?? 0);
+    const managers = staffByRole.get('building-manager') ?? 0;
+    const minutesByNode = new Map(
+      stageRows.map((r) => [r.node, Number(r.minutes) || 0]),
+    );
+    const detail = (
+      staff: number,
+      node?: string,
+    ): { staff: number; avgMinutes: number | null } => ({
+      staff,
+      avgMinutes: node ? minutesByNode.get(node) ?? null : null,
+    });
     return {
       campus,
       updatedAt: new Date().toISOString(),
@@ -186,7 +231,10 @@ export class AdminService {
       trend,
       activities,
       fulfillment: {
-        waitingPick: effective.filter((x) => x.status === 'picking').length,
+        // IKAJSS：待拣货口径对齐订单 Tab「待出库」= paid+picking（v1 出库一步制）
+        waitingPick: effective.filter((x) =>
+          ['paid', 'picking'].includes(x.status),
+        ).length,
         waitingFirstMile: effective.filter(
           (x) => x.status === 'waiting-first-mile',
         ).length,
@@ -198,6 +246,17 @@ export class AdminService {
         delivered: effective.filter((x) => x.status === 'delivered').length,
         timeout,
       },
+      // IKAJSS 水位下钻：作业人数 + 平均停留分钟（自支付起算，见 dashboard 头部说明）
+      fulfillmentDetail: {
+        waitingPick: detail(0, 'waitingPick'),
+        waitingFirstMile: detail(riders, 'waiting-first-mile'),
+        firstMile: detail(riders, 'first-mile'),
+        waitingHandover: detail(managers, 'waiting-handover'),
+        lastMile: detail(managers, 'last-mile'),
+        delivered: detail(managers),
+        timeout: detail(riders + managers),
+      },
+      timeoutOrders,
       hotBuildings: [...buildingMap.values()]
         .sort((a, b) => b.orders - a.orders)
         .slice(0, 5)
@@ -283,11 +342,15 @@ export class AdminService {
         time: x.createdAt.toISOString(),
         text: `订单 ${x.orderNo} · ${x.statusText}`,
         type: 'order',
+        // IKAJSS：动态流直达路由用（前端按 entityType 跳对应处理页）
+        entityType: 'order',
+        orderNo: x.orderNo,
       })),
       ...audits.map((x) => ({
         time: x.createdAt.toISOString(),
         text: `${x.operator} 执行 ${x.action}（${x.entityType}）`,
         type: 'audit',
+        entityType: x.entityType,
       })),
     ]
       .sort((a, b) => b.time.localeCompare(a.time))
@@ -1798,13 +1861,6 @@ export class AdminService {
     );
     return after;
   }
-  users(campusId: string) {
-    return this.db.user.findMany({
-      where: { campusId },
-      select: { id: true, nickname: true, phone: true },
-      orderBy: { createdAt: 'asc' },
-    });
-  }
   async coupons(campusId: string) {
     const xs = await this.db.coupon.findMany({ where: { campusId } });
     return xs.map((x) => ({
@@ -2046,6 +2102,229 @@ export class AdminService {
       campusId,
     );
     return { id, deleted: true };
+  }
+  /* ---------- 微信群二维码（IKAJSY）：楼栋群 + 校级大群，轻量 upsert ---------- */
+  /** 群码列表：校级大群排最前，其余按楼栋名；buildingName 供前端直接展示。 */
+  async wechatGroups(campusId: string) {
+    const [groups, buildings] = await Promise.all([
+      this.db.wechatGroup.findMany({
+        where: { campusId },
+        orderBy: { buildingId: 'asc' },
+      }),
+      this.db.building.findMany({
+        where: { campusId },
+        select: { id: true, name: true },
+      }),
+    ]);
+    const nameById = new Map(buildings.map((b) => [b.id, b.name]));
+    return groups.map((g) => ({
+      ...g,
+      // buildingId 空串 = 校级大群
+      buildingName: g.buildingId ? nameById.get(g.buildingId) ?? '未知楼栋' : '校级大群',
+    }));
+  }
+  /** 新增/替换群码：每楼栋至多一群 + 每校至多一大群（唯一约束兜底）。 */
+  async upsertWechatGroup(
+    body: { buildingId?: string; image: string },
+    operator: string,
+    campusId: string,
+  ) {
+    if (!body.image) throw new BadRequestException('请上传群二维码图片');
+    const buildingId = body.buildingId ?? '';
+    if (buildingId) {
+      const building = await this.db.building.findFirst({
+        where: { id: buildingId, campusId },
+      });
+      if (!building) throw new BadRequestException('楼栋不存在');
+    }
+    const group = await this.db.wechatGroup.upsert({
+      where: { campusId_buildingId: { campusId, buildingId } },
+      create: { campusId, buildingId, image: body.image },
+      update: { image: body.image },
+    });
+    await this.audit(
+      operator,
+      'wechat-group.upsert',
+      'wechat-group',
+      group.id,
+      null,
+      { buildingId, image: body.image },
+      campusId,
+    );
+    return group;
+  }
+  async deleteWechatGroup(id: string, operator: string, campusId: string) {
+    const before = await this.db.wechatGroup.findFirst({
+      where: { id, campusId },
+    });
+    if (!before) throw new NotFoundException('群码不存在');
+    await this.db.wechatGroup.delete({ where: { id } });
+    await this.audit(
+      operator,
+      'wechat-group.delete',
+      'wechat-group',
+      id,
+      { buildingId: before.buildingId },
+      null,
+      campusId,
+    );
+    return { id, deleted: true };
+  }
+  /* ---------- C 端用户管理（IKAJSW）：列表 + 订单/消费聚合 + 统计 ---------- */
+  /**
+   * 用户列表（分页 + 楼栋/注册时间/关键词筛选）。订单数与累计消费按
+   * 有效支付单（paidAt 非空）聚合；默认地址取 isDefault，无默认取最新一条。
+   */
+  async users(
+    campusId: string,
+    opts: {
+      buildingId?: string;
+      dateFrom?: string;
+      dateTo?: string;
+      keyword?: string;
+      page: number;
+      pageSize: number;
+    },
+  ) {
+    const where: Prisma.UserWhereInput = {
+      campusId,
+      ...(opts.keyword
+        ? {
+            OR: [
+              { nickname: { contains: opts.keyword } },
+              { phone: { contains: opts.keyword } },
+              { openid: { contains: opts.keyword } },
+            ],
+          }
+        : {}),
+      ...(opts.dateFrom || opts.dateTo
+        ? {
+            createdAt: {
+              ...(opts.dateFrom ? { gte: new Date(opts.dateFrom) } : {}),
+              ...(opts.dateTo ? { lte: new Date(`${opts.dateTo}T23:59:59`) } : {}),
+            },
+          }
+        : {}),
+      // 楼栋筛选：该楼栋存在地址（含非默认）即命中——搬家用户也能被筛出
+      ...(opts.buildingId
+        ? { addresses: { some: { buildingId: opts.buildingId } } }
+        : {}),
+    };
+    const [total, pageUsers] = await Promise.all([
+      this.db.user.count({ where }),
+      this.db.user.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (opts.page - 1) * opts.pageSize,
+        take: opts.pageSize,
+      }),
+    ]);
+    const ids = pageUsers.map((u) => u.id);
+    // 订单聚合（本页用户）：有效支付单的笔数与实付金额
+    const [orderAgg, addresses] = await Promise.all([
+      ids.length
+        ? this.db.order.groupBy({
+            by: ['userId'],
+            where: {
+              userId: { in: ids },
+              paidAt: { not: null },
+              campusId,
+            },
+            _count: { _all: true },
+            _sum: { payableAmount: true },
+          })
+        : Promise.resolve([]),
+      ids.length
+        ? this.db.address.findMany({
+            where: { userId: { in: ids } },
+            // Address 无 createdAt：默认地址优先，其余取首条（无时间戳可排序）
+            orderBy: { isDefault: 'desc' },
+          })
+        : Promise.resolve([]),
+    ]);
+    const aggById = new Map(
+      orderAgg.map((row) => [
+        row.userId,
+        {
+          orderCount: row._count._all,
+          totalSpend: this.num(row._sum.payableAmount ?? 0),
+        },
+      ]),
+    );
+    const defaultAddressByUser = new Map<string, (typeof addresses)[number]>();
+    for (const addr of addresses)
+      if (!defaultAddressByUser.has(addr.userId))
+        defaultAddressByUser.set(addr.userId, addr);
+    const mask = (value: string) =>
+      value && value.length > 6 ? `${value.slice(0, 3)}****${value.slice(-3)}` : value;
+    return {
+      total,
+      items: pageUsers.map((u) => {
+        const addr = defaultAddressByUser.get(u.id);
+        return {
+          id: u.id,
+          nickname: u.nickname,
+          // 脱敏口径与订单列表一致（管理员看不到完整手机号/openid）
+          openidMasked: mask(u.openid ?? ''),
+          phoneMasked: this.maskPhone(u.phone),
+          buildingName: addr?.buildingName ?? '',
+          room: addr?.room ?? '',
+          createdAt: u.createdAt.toISOString(),
+          ...aggById.get(u.id) ?? { orderCount: 0, totalSpend: 0 },
+        };
+      }),
+    };
+  }
+  /** 用户统计（IKAJSW）：总量/今日新增/本月活跃/人均订单；企微绑定率字段预留。 */
+  async userStats(campusId: string) {
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    const startOfMonth = new Date();
+    startOfMonth.setDate(1);
+    startOfMonth.setHours(0, 0, 0, 0);
+    const [total, todayNew, monthActiveUsers, paidAgg] = await Promise.all([
+      this.db.user.count({ where: { campusId } }),
+      this.db.user.count({
+        where: { campusId, createdAt: { gte: startOfToday } },
+      }),
+      this.db.order.findMany({
+        where: { campusId, createdAt: { gte: startOfMonth }, paidAt: { not: null } },
+        select: { userId: true },
+        distinct: ['userId'],
+      }),
+      this.db.order.aggregate({
+        where: { campusId, paidAt: { not: null } },
+        _count: { _all: true },
+      }),
+    ]);
+    return {
+      total,
+      todayNew,
+      monthActive: monthActiveUsers.length,
+      // 人均订单：有效支付单总量 / 有过消费的用户数（分母为 0 时记 0）
+      avgOrders: total
+        ? Number((paidAgg._count._all / total).toFixed(1))
+        : 0,
+      // 企微绑定率（IKAJSW 预留）：接入企微 API 后供数
+      wechatWorkBindRate: null,
+    };
+  }
+  /** 单个用户的订单流水（IKAJSW 详情抽屉）：复用订单列表口径（金额分、手机脱敏）。 */
+  async userOrders(userId: string, campusId: string) {
+    const xs = await this.db.order.findMany({
+      where: { userId, campusId },
+      include: { user: { select: { id: true, nickname: true, phone: true } } },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    });
+    return xs.map((x) => ({
+      id: x.id,
+      orderNo: x.orderNo,
+      status: x.status,
+      statusText: x.statusText,
+      payableAmount: this.num(x.payableAmount),
+      createdAt: x.createdAt.toISOString(),
+    }));
   }
   private async assertNotLastAdmin(id: string) {
     const admins = await this.db.adminAccount.count({

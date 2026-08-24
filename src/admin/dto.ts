@@ -275,3 +275,9 @@ export class UpdateOrderStatusDto {
   @IsString() status!: string;
   @IsOptional() @IsString() @MaxLength(200) reason?: string;
 }
+/** 微信群二维码新增/替换（IKAJSY）：buildingId 空/缺省 = 校级大群。 */
+export class UpsertWechatGroupDto {
+  @IsOptional() @IsString() buildingId?: string;
+  /** COS 上传后的公网 URL。 */
+  @IsString() @MinLength(1) @MaxLength(500) image!: string;
+}
