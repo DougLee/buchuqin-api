@@ -395,6 +395,86 @@ export class AdminService {
       };
     });
   }
+  /** IKB5P8：审计动作中文名（动态流与审计列表共用）；未收录的动作回落「后台操作」，
+   *  原始代码（promotion.create 等）不再透出到界面。 */
+  private static readonly AUDIT_ACTION_TEXTS: Record<string, string> = {
+    'account.create': '创建账号',
+    'account.update': '更新账号',
+    'account.delete': '删除账号',
+    'banner.create': '创建 Banner',
+    'banner.update': '更新 Banner',
+    'banner.delete': '删除 Banner',
+    'building.create': '创建楼栋',
+    'building.update': '更新楼栋',
+    'building.delete': '删除楼栋',
+    'campus.create': '创建校区',
+    'campus.update': '更新校区',
+    'campus.updateDeliveryConfig': '更新配送配置',
+    'category.create': '创建类别',
+    'category.update': '更新类别',
+    'category.delete': '删除类别',
+    'commission-rule.create': '创建提成规则',
+    'commission-rule.update': '更新提成规则',
+    'coupon.create': '创建优惠券',
+    'coupon.update': '更新优惠券',
+    'coupon.issue': '发放优惠券',
+    'dispatch-invitation.create': '创建调配邀请',
+    'dispatch-invitation.cancel': '取消调配邀请',
+    'inventory.adjust': '调整库存',
+    'inventory.stock-in': '采购入库',
+    'location.create': '创建库位',
+    'location.update': '更新库位',
+    'location.delete': '删除库位',
+    'order.cancel': '取消订单',
+    'order.advance': '推进订单',
+    'order.outbound': '订单出库',
+    'order.mark-exception': '标记订单异常',
+    'order.manual-status': '手动改单状态',
+    'product.create': '创建商品',
+    'product.update': '更新商品',
+    'product.import': '导入商品',
+    'product.pull-upstream': '同步官方商品',
+    'promotion.create': '创建促销',
+    'promotion.update': '更新促销',
+    'room.create': '创建房间',
+    'room.delete': '删除房间',
+    'settlement.confirm': '确认结算单',
+    'settlement.pay': '支付结算单',
+    'staff.create': '创建人员',
+    'staff.update': '更新人员',
+    'staff.delete': '删除人员',
+    'wechat-group.upsert': '更新微信群码',
+    'wechat-group.delete': '删除微信群码',
+  };
+  /** IKB5P8：审计对象中文名（account/banner/... → 人话），未知对象回落「后台数据」。 */
+  private static readonly AUDIT_ENTITY_TEXTS: Record<string, string> = {
+    'admin-account': '后台账号',
+    banner: 'Banner',
+    building: '楼栋',
+    campus: '校区',
+    category: '商品类别',
+    coupon: '优惠券',
+    product: '商品',
+    location: '库位',
+    promotion: '促销活动',
+    room: '房间',
+    'bm-bill': '结算单',
+    'commission-rule': '提成规则',
+    'dispatch-invitation': '调配邀请',
+    'wechat-group': '微信群码',
+    staff: '履约人员',
+    order: '订单',
+  };
+  /** IKB5P8：operator 存的是账号 id，回查昵称/用户名；查不到（含历史测试号）回落「系统」。 */
+  private async operatorNames(ids: string[]) {
+    const uniq = [...new Set(ids.filter(Boolean))];
+    if (!uniq.length) return new Map<string, string>();
+    const rows = await this.db.adminAccount.findMany({
+      where: { id: { in: uniq } },
+      select: { id: true, nickname: true, username: true },
+    });
+    return new Map(rows.map((r) => [r.id, r.nickname || r.username]));
+  }
   /** 最近订单事件 + 审计日志合并的活动流（取前 8 条，按校园过滤）。 */
   private async activities(campusId: string) {
     const [orders, audits] = await Promise.all([
@@ -416,6 +496,8 @@ export class AdminService {
         },
       }),
     ]);
+    // IKB5P8：审计事件人话化（操作人昵称 + 中文动作，未知代码不外露）
+    const names = await this.operatorNames(audits.map((x) => x.operator));
     return [
       ...orders.map((x) => ({
         time: x.createdAt.toISOString(),
@@ -427,7 +509,9 @@ export class AdminService {
       })),
       ...audits.map((x) => ({
         time: x.createdAt.toISOString(),
-        text: `${x.operator} 执行 ${x.action}（${x.entityType}）`,
+        text: `${names.get(x.operator) ?? '系统'} · ${
+          AdminService.AUDIT_ACTION_TEXTS[x.action] ?? '后台操作'
+        }`,
         type: 'audit',
         entityType: x.entityType,
       })),
@@ -571,10 +655,15 @@ export class AdminService {
     );
   }
   /** 首页 Banner 管理（IK9RX2）：校园维度，sort 升序；删除为物理删。 */
-  /** Banner 列表（IKAJSL）：campusId 空 = 总部视角查全部并附 campusName。 */
-  async banners(campusId: string) {
+  /** Banner 列表（IKAJSL）：campusId 空 = 总部视角查全部并附 campusName。
+   *  IKB5PB：placement 可选过滤（支付广告位独立菜单只看 pay-success）。 */
+  async banners(campusId: string, placement?: string, status?: string) {
     const xs = await this.db.banner.findMany({
-      where: campusId ? { campusId } : {},
+      where: {
+        ...(campusId ? { campusId } : {}),
+        ...(placement ? { placement } : {}),
+        ...(status ? { status } : {}),
+      },
       orderBy: [{ sort: 'asc' }, { id: 'asc' }],
     });
     if (campusId) return xs;
@@ -686,8 +775,10 @@ export class AdminService {
   }
   /** 促销活动管理（ADR-0006 / IKAHFF）：无 campusId，校园维度经 product 过滤；
    *  无删除（留审计），已结束不可改。 */
-  async promotions(campusId: string) {
-    return this.db.promotion.findMany({
+  /** IKB5PA：state 过滤（live/upcoming/ended/disabled，按时间窗读时判定），
+   *  不传 = 全部。口径与前台 promoState 一致。 */
+  async promotions(campusId: string, state?: string) {
+    const xs = await this.db.promotion.findMany({
       where: { product: { campusId } },
       orderBy: { createdAt: 'desc' },
       include: {
@@ -695,6 +786,14 @@ export class AdminService {
           select: { id: true, name: true, image: true, price: true, status: true },
         },
       },
+    });
+    if (!state) return xs;
+    const now = Date.now();
+    return xs.filter((x) => {
+      if (x.status === 'disabled') return state === 'disabled';
+      if (new Date(x.startsAt).getTime() > now) return state === 'upcoming';
+      if (new Date(x.endsAt).getTime() <= now) return state === 'ended';
+      return state === 'live';
     });
   }
   /** 同商品同期唯一（ADR-0006）：active 且窗口相交即拒（运行时兜底取 endsAt 最近）。 */
@@ -1232,8 +1331,42 @@ export class AdminService {
       },
       orderBy: { createdAt: 'desc' },
     });
+    // IKB5P5：items 快照不含库位，按 productId 回查实时库位（拣货看当前库位，
+    // 商品调位后历史单也指向新位置）；查不到（官方库下架）回落空。
+    const productIds = [
+      ...new Set(
+        xs.flatMap((x) =>
+          ((x.items as any as Array<{ product?: { id?: string } }>) ?? [])
+            .map((line) => line?.product?.id)
+            .filter((id): id is string => !!id),
+        ),
+      ),
+    ];
+    const locationRows = productIds.length
+      ? await this.db.product.findMany({
+          where: { id: { in: productIds } },
+          select: { id: true, location: true, locationCode: true },
+        })
+      : [];
+    const locationById = new Map(locationRows.map((p) => [p.id, p]));
     return xs.map((x) => ({
       ...x,
+      items: (((x.items as any as Array<{ product?: object }>) ?? []).map(
+        (line) => {
+          const live = line?.product
+            ? locationById.get((line.product as { id?: string }).id ?? '')
+            : undefined;
+          return {
+            ...line,
+            product: {
+              ...line.product,
+              ...(live
+                ? { location: live.location, locationCode: live.locationCode }
+                : {}),
+            },
+          };
+        },
+      ) as unknown as Prisma.InputJsonValue),
       productAmount: this.num(x.productAmount),
       deliveryFee: this.num(x.deliveryFee),
       discount: this.num(x.discount),
@@ -1392,9 +1525,13 @@ export class AdminService {
     await this.db.storageLocation.delete({ where: { id } });
     await this.audit(operator, 'location.delete', 'location', id, before, null, campusId);
   }
-  async staff(campusId: string) {
+  /** IKB5PA：status 过滤（online/paused/offline），不传 = 全部在职口径（除 deleted）。 */
+  async staff(campusId: string, status?: string) {
     const xs = await this.db.staff.findMany({
-      where: { campusId, status: { not: 'deleted' } },
+      where: {
+        campusId,
+        ...(status ? { status } : { status: { not: 'deleted' } }),
+      },
       include: { buildingRef: true },
       orderBy: { staffNo: 'asc' },
     });
@@ -1795,9 +1932,10 @@ export class AdminService {
     );
     return { id: roomId, deleted: true };
   }
-  async afterSales(campusId: string) {
+  /** IKB5PA：status 过滤（pending/cancelled），不传 = 全部。 */
+  async afterSales(campusId: string, status?: string) {
     return this.db.afterSale.findMany({
-      where: { order: { campusId } },
+      where: { order: { campusId }, ...(status ? { status } : {}) },
       include: { order: true },
       orderBy: { createdAt: 'desc' },
     });
@@ -1898,7 +2036,8 @@ export class AdminService {
    * 月度结算账单（IK8W5L）：按月聚合 Commission + 底薪，物化为 BmBill 返回。
    * 已确认/已支付的账单金额锁定（历史凭证不可变），仅待复核账单跟随记录重算。
    */
-  async settlements(campusId: string, month?: string) {
+  /** IKB5PA：status 过滤（pending-review/confirmed/paid），不传 = 全部。 */
+  async settlements(campusId: string, month?: string, status?: string) {
     const period = month ?? new Date().toISOString().slice(0, 7);
     if (!/^\d{4}-\d{2}$/.test(period))
       throw new BadRequestException('月份格式必须为 YYYY-MM');
@@ -1937,7 +2076,7 @@ export class AdminService {
       }
     }
     const bills = await this.db.bmBill.findMany({
-      where: { campusId, period },
+      where: { campusId, period, ...(status ? { status } : {}) },
       include: {
         staff: { select: { name: true, roleText: true, staffNo: true } },
       },
@@ -2103,10 +2242,11 @@ export class AdminService {
     );
     return after;
   }
-  /** 请假列表（IK8W5Y）：含请假人角色与所属楼栋（楼长调配决策依据）。 */
-  async leaveRequests(campusId: string) {
+  /** 请假列表（IK8W5Y）：含请假人角色与所属楼栋（楼长调配决策依据）。
+   *  IKB5PA：status 过滤（pending/approved/rejected/cancelled），不传 = 全部。 */
+  async leaveRequests(campusId: string, status?: string) {
     const xs = await this.db.leaveRequest.findMany({
-      where: { staff: { campusId } },
+      where: { staff: { campusId }, ...(status ? { status } : {}) },
       include: {
         staff: {
           select: {
@@ -2129,10 +2269,11 @@ export class AdminService {
       createdAt: x.createdAt.toISOString(),
     }));
   }
-  /** 调配邀请列表（IK8W5Y）：含目标楼长信息。 */
-  async dispatchInvitations(campusId: string) {
+  /** 调配邀请列表（IK8W5Y）：含目标楼长信息。
+   *  IKB5PA：status 过滤（invited/accepted/rejected/cancelled），不传 = 全部。 */
+  async dispatchInvitations(campusId: string, status?: string) {
     const xs = await this.db.dispatchInvitation.findMany({
-      where: { staff: { campusId } },
+      where: { staff: { campusId }, ...(status ? { status } : {}) },
       include: {
         staff: {
           select: { id: true, name: true, roleText: true, staffNo: true },
@@ -2228,8 +2369,11 @@ export class AdminService {
     );
     return after;
   }
-  async coupons(campusId: string) {
-    const xs = await this.db.coupon.findMany({ where: { campusId } });
+  /** IKB5PA：status 过滤（active/paused），不传 = 全部。 */
+  async coupons(campusId: string, status?: string) {
+    const xs = await this.db.coupon.findMany({
+      where: { campusId, ...(status ? { status } : {}) },
+    });
     return xs.map((x) => ({
       ...x,
       amount: this.num(x.amount),
@@ -2365,11 +2509,19 @@ export class AdminService {
     return { issued: result.count, targets, couponId: id };
   }
   /** 审计日志：IKAJSL campusId 空 = 总部跨校区视角。 */
-  auditLogs(campusId: string) {
-    return this.db.auditLog.findMany({
+  /** IKB5P8：审计列表同样人话化——附操作人昵称/中文动作/中文对象，原始代码只留 entityId 备查。 */
+  async auditLogs(campusId: string) {
+    const rows = await this.db.auditLog.findMany({
       where: campusId ? { campusId } : {},
       orderBy: { createdAt: 'desc' },
     });
+    const names = await this.operatorNames(rows.map((x) => x.operator));
+    return rows.map((x) => ({
+      ...x,
+      operatorName: names.get(x.operator) ?? '系统',
+      actionText: AdminService.AUDIT_ACTION_TEXTS[x.action] ?? '后台操作',
+      entityText: AdminService.AUDIT_ENTITY_TEXTS[x.entityType] ?? '后台数据',
+    }));
   }
 
   /* ---------- 后台账号管理（IK9KWO）：admin 管本校区职能账号，hq 管全部（IKAJSL） ---------- */
@@ -2410,9 +2562,13 @@ export class AdminService {
     const nameById = new Map(
       campuses.map((c) => [c.id, c.shortName || c.name]),
     );
+    // IKB5PC：hq 视角附全量可运营校区名（多校区账号逐个列出），campusName 保留当前校区口径
     return withScope.map((x) => ({
       ...x,
       campusName: x.campusId ? nameById.get(x.campusId) ?? '' : '总部',
+      campusNames: x.campusIds
+        .map((id) => nameById.get(id) ?? '')
+        .filter(Boolean),
     }));
   }
   async createAccount(

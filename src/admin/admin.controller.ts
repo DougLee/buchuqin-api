@@ -211,11 +211,14 @@ export class AdminController {
    *  body.campusId 空 = 全部校区投放；hq/admin 均为跨校区视角。 */
   @Get('banners')
   @ApiOperation({
-    summary: 'Banner 列表（总部投放，?campus 过滤，?page&pageSize 统一分页包裹）',
+    summary:
+      'Banner 列表（总部投放，?campus/?placement 过滤，?page&pageSize 统一分页包裹）',
   })
   async banners(
     @Req() req: AuthRequest,
     @Query('campus') campus?: string,
+    @Query('placement') placement?: string,
+    @Query('status') status?: string,
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
     @Query('keyword') keyword?: string,
@@ -223,7 +226,13 @@ export class AdminController {
     this.authorize(req, 'banners');
     return ok(
       paginate(
-        await this.service.banners(this.bannerScope(req, campus)),
+        // IKB5PB：placement=pay-success 供「支付广告位」独立菜单；
+        // IKB5PA：status 过滤（启用/隐藏 Tab）
+        await this.service.banners(
+          this.bannerScope(req, campus),
+          placement,
+          status,
+        ),
         page,
         pageSize,
         keyword,
@@ -271,15 +280,23 @@ export class AdminController {
   }
   /** 促销活动管理（ADR-0006 / IKAHFF）：营销活动板块权限，全量审计；无删除。 */
   @Get('promotions')
-  @ApiOperation({ summary: '促销活动列表（校园维度经商品，?page&pageSize）' })
+  @ApiOperation({
+    summary:
+      '促销活动列表（校园维度经商品，?state=live/upcoming/ended/disabled 过滤 IKB5PA，?page&pageSize）',
+  })
   async promotions(
     @Req() req: AuthRequest,
+    @Query('state') state?: string,
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
   ) {
     this.authorize(req, 'marketing');
     return ok(
-      paginate(await this.service.promotions(req.user.campusId), page, pageSize),
+      paginate(
+        await this.service.promotions(req.user.campusId, state),
+        page,
+        pageSize,
+      ),
     );
   }
   @Post('promotions') async createPromotion(
@@ -622,11 +639,18 @@ export class AdminController {
     @Req() req: AuthRequest,
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
+    @Query('status') status?: string,
     @Query('keyword') keyword?: string,
   ) {
     this.authorize(req, 'staff');
     return ok(
-      paginate(await this.service.staff(req.user.campusId), page, pageSize, keyword),
+      // IKB5PA：status 过滤（在线/暂停/离线 Tab）
+      paginate(
+        await this.service.staff(req.user.campusId, status),
+        page,
+        pageSize,
+        keyword,
+      ),
     );
   }
   @Get('leave-requests')
@@ -635,12 +659,14 @@ export class AdminController {
     @Req() req: AuthRequest,
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
+    @Query('status') status?: string,
     @Query('keyword') keyword?: string,
   ) {
     this.authorize(req, 'staff');
     return ok(
       paginate(
-        await this.service.leaveRequests(req.user.campusId),
+        // IKB5PA：status 过滤（请假审核状态 Tab）
+        await this.service.leaveRequests(req.user.campusId, status),
         page,
         pageSize,
         keyword,
@@ -653,12 +679,14 @@ export class AdminController {
     @Req() req: AuthRequest,
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
+    @Query('status') status?: string,
     @Query('keyword') keyword?: string,
   ) {
     this.authorize(req, 'staff');
     return ok(
       paginate(
-        await this.service.dispatchInvitations(req.user.campusId),
+        // IKB5PA：status 过滤（邀请响应状态 Tab）
+        await this.service.dispatchInvitations(req.user.campusId, status),
         page,
         pageSize,
         keyword,
@@ -837,12 +865,14 @@ export class AdminController {
     @Req() req: AuthRequest,
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
+    @Query('status') status?: string,
     @Query('keyword') keyword?: string,
   ) {
     this.authorize(req, 'after-sales');
     return ok(
       paginate(
-        await this.service.afterSales(req.user.campusId),
+        // IKB5PA：status 过滤（售后状态 Tab）
+        await this.service.afterSales(req.user.campusId, status),
         page,
         pageSize,
         keyword,
@@ -975,11 +1005,18 @@ export class AdminController {
     @Req() req: AuthRequest,
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
+    @Query('status') status?: string,
     @Query('keyword') keyword?: string,
   ) {
     this.authorize(req, 'marketing');
     return ok(
-      paginate(await this.service.coupons(req.user.campusId), page, pageSize, keyword),
+      // IKB5PA：status 过滤（发放中/已暂停 Tab）
+      paginate(
+        await this.service.coupons(req.user.campusId, status),
+        page,
+        pageSize,
+        keyword,
+      ),
     );
   }
   @Post('coupons') async createCoupon(
