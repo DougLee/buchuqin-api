@@ -435,7 +435,7 @@ export class AdminService {
       .sort((a, b) => b.time.localeCompare(a.time))
       .slice(0, 8);
   }
-  async products(campusId: string) {
+  async products(campusId: string, statuses?: string[]) {
     const xs = await this.db.product.findMany({
       where: { campusId },
       orderBy: { sales: 'desc' },
@@ -452,7 +452,7 @@ export class AdminService {
       : [];
     const upstreamAt = new Map(upstream.map((u) => [u.id, u.updatedAt.getTime()]));
     const isOfficial = campusId === OFFICIAL_CAMPUS_ID;
-    return xs.map((x) => ({
+    const rows = xs.map((x) => ({
       ...x,
       price: this.num(x.price),
       originalPrice: this.num(x.originalPrice),
@@ -468,6 +468,18 @@ export class AdminService {
         (upstreamAt.get(x.sourceProductId) ?? 0) > x.sourceSyncedAt.getTime()
       ),
     }));
+    // IKB3K9：状态 Tab 服务端过滤（口径含售罄映射，直接滤映射后状态）
+    return statuses?.length
+      ? rows.filter((x) => statuses.includes(x.status))
+      : rows;
+  }
+  /** 商品状态计数（IKB3K9 Tab 角标）：口径同列表（售罄=在售但库存 0）。 */
+  async productStatusCounts(campusId: string) {
+    const rows = await this.products(campusId);
+    return rows.reduce<Record<string, number>>((acc, x) => {
+      acc[x.status] = (acc[x.status] ?? 0) + 1;
+      return acc;
+    }, {});
   }
   /**
    * 商品类别管理（2026-08-19 grilling）：全局字典（无 campusId 维度），

@@ -104,21 +104,38 @@ export class AdminController {
     return ok(await this.service.dashboard(this.campusScope(req, campus)));
   }
   @Get('products')
-  @ApiOperation({ summary: '商品列表（?page&pageSize 统一分页包裹）' })
+  @ApiOperation({
+    summary: '商品列表（?page&pageSize 统一分页包裹；?status 逗号状态过滤 IKB3K9）',
+  })
   async products(
     @Req() req: AuthRequest,
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
     @Query('keyword') keyword?: string,
+    @Query('status') status?: string,
   ) {
     this.authorize(req, 'products');
     return ok(
       paginate(
-        await this.service.products(this.productCampus(req)),
+        await this.service.products(
+          this.productCampus(req),
+          status && status !== 'all'
+            ? status.split(',').map((s) => s.trim()).filter(Boolean)
+            : undefined,
+        ),
         page,
         pageSize,
         keyword,
       ),
+    );
+  }
+  /** 商品状态计数（IKB3K9 Tab 角标）：口径同列表（含售罄映射），hq=官方库。 */
+  @Get('products/status-counts')
+  @ApiOperation({ summary: '商品状态计数（列表状态 Tab 角标用）' })
+  async productStatusCounts(@Req() req: AuthRequest) {
+    this.authorize(req, 'products');
+    return ok(
+      await this.service.productStatusCounts(this.productCampus(req)),
     );
   }
   /** 官方库浏览（IKAJSO 导入弹窗）：校区角色只读官方库行，用于搜索+多选导入。 */
@@ -285,19 +302,18 @@ export class AdminController {
       await this.service.lookupBarcode(body.barcode, this.productCampus(req)),
     );
   }
-  /** IKAJSM：商品源头唯一——总部在官方库建档，校区经 /products/import 落地。 */
+  /** IKB3K9：手动自建与官方库导入并存（修订 IKAJSM 单一口径）——
+   *  hq 建档落官方库；校区可手动自建落本校区（sourceProductId 空）。 */
   @Post('products') async createProduct(
     @Req() req: AuthRequest,
     @Body() body: CreateProductDto,
   ) {
     this.authorize(req, 'products', 'write');
-    if (req.user.role !== 'hq')
-      throw new ForbiddenException('校区不支持自建商品，请从官方商品库导入');
     return ok(
       await this.service.createProduct(
         body,
         req.user.id,
-        OFFICIAL_CAMPUS_ID,
+        this.productCampus(req),
       ),
       '商品已创建',
     );
