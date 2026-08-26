@@ -74,8 +74,12 @@ describe('Promotion engine (ADR-0006)', () => {
   afterAll(async () => {
     await db.promotion.deleteMany({ where: { id: { in: [PROMO_ACTIVE, PROMO_OVERLAP] } } });
     await db.order.deleteMany({ where: { userId: USER } });
-    await db.userCoupon.deleteMany({ where: { id: USER_COUPON } });
-    await db.coupon.deleteMany({ where: { id: COUPON } });
+    await db.userCoupon.deleteMany({
+      where: { id: { in: [USER_COUPON, 'uc-promo-huge', 'uc-promo-exact'] } },
+    });
+    await db.coupon.deleteMany({
+      where: { id: { in: [COUPON, 'coupon-promo-huge', 'coupon-promo-exact'] } },
+    });
     await db.cartItem.deleteMany({ where: { userId: USER } });
     await db.address.deleteMany({ where: { id: ADDRESS } });
     await db.product.deleteMany({ where: { id: PRODUCT } });
@@ -213,5 +217,58 @@ describe('Promotion engine (ADR-0006)', () => {
     expect(cartAfter.productAmount).toBe(1500);
     const orderRe = await db.order.findUnique({ where: { id: order.id } });
     expect(orderRe!.payableAmount).toBe(order.payableAmount);
+  });
+
+  // IKB3K1：无门槛大额券负数单——拦截 + 下限 0 + 券列表标注
+  it('blocks coupons that would drive the order negative and floors payable at 0', async () => {
+    // 上一用例已停用促销：购物车 3 × 500 = 1500，即时时运费 400，订单金额 1900
+    const mk = async (couponId: string, ucId: string, amount: number) => {
+      await db.coupon.create({
+        data: {
+          id: couponId,
+          campusId: CAMPUS,
+          name: `无门槛券${amount}`,
+          amount,
+          threshold: 0,
+          total: 10,
+          status: 'active',
+          expiresAt: new Date(Date.now() + 86400_000),
+        } as any,
+      });
+      await db.userCoupon.create({
+        data: {
+          id: ucId,
+          userId: USER,
+          couponId,
+          status: 'claimed',
+          claimedAt: new Date(),
+        },
+      });
+    };
+    await mk('coupon-promo-huge', 'uc-promo-huge', 2000); // 抵扣 > 1900
+    await mk('coupon-promo-exact', 'uc-promo-exact', 1900); // 恰好抵到 0
+    const dto = {
+      addressId: ADDRESS,
+      deliveryMode: 'instant',
+      deliverySlot: '',
+    } as any;
+
+    await expect(
+      service.checkout(USER, CAMPUS, { ...dto, couponId: 'uc-promo-huge' }),
+    ).rejects.toThrow('该单无法使用此优惠券');
+
+    const quote = await service.checkout(USER, CAMPUS, {
+      ...dto,
+      couponId: 'uc-promo-exact',
+    });
+    expect(quote.payableAmount).toBe(0);
+    expect(quote.discount).toBe(1900);
+
+    const list = await service.availableCoupons(USER, CAMPUS, dto);
+    const huge = list.find((x: any) => x.id === 'uc-promo-huge');
+    const exact = list.find((x: any) => x.id === 'uc-promo-exact');
+    expect(huge.available).toBe(false);
+    expect(huge.unavailableReason).toBe('该单无法使用此优惠券');
+    expect(exact.available).toBe(true);
   });
 });

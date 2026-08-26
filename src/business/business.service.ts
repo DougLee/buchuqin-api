@@ -529,29 +529,36 @@ export class BusinessService {
     }
     return { cart, address };
   }
-  async checkout(userId: string, campusId: string, dto: CreateOrderDto) {
-    const { cart } = await this.validateQuote(userId, campusId, dto);
-    // 运费（单位:分，IK9SO6）：读校园配置（后台可改），缺省回退常量。
+  /** 运费（单位:分，IK9SO6）：读校园配置（后台可改），缺省回退常量。
+   *  IKB3K1 抽出共用：checkout 与 availableCoupons 口径必须一致。 */
+  private async deliveryFeeFor(campusId: string, mode: string) {
     const campus = await this.db.campus.findUnique({
       where: { id: campusId },
       select: { deliveryFeeInstant: true, deliveryFeeScheduled: true },
     });
-    const deliveryFee =
-      dto.deliveryMode === 'instant'
-        ? campus?.deliveryFeeInstant ?? BusinessService.DELIVERY_FEE_CENTS.instant
-        : campus?.deliveryFeeScheduled ??
+    return mode === 'instant'
+      ? campus?.deliveryFeeInstant ?? BusinessService.DELIVERY_FEE_CENTS.instant
+      : campus?.deliveryFeeScheduled ??
           BusinessService.DELIVERY_FEE_CENTS.scheduled;
+  }
+  async checkout(userId: string, campusId: string, dto: CreateOrderDto) {
+    const { cart } = await this.validateQuote(userId, campusId, dto);
+    const deliveryFee = await this.deliveryFeeFor(campusId, dto.deliveryMode);
     const userCoupon = dto.couponId
       ? await this.validateUserCoupon(userId, dto.couponId, campusId)
       : null;
     const discount = userCoupon ? userCoupon.coupon.amount : 0;
     if (userCoupon && cart.productAmount < userCoupon.coupon.threshold)
       throw new BadRequestException('商品金额未达到优惠券使用门槛');
+    // IKB3K1：抵扣超过订单金额（商品+运费）的券直接拒绝——无门槛大额券会算出负数单
+    if (userCoupon && discount > cart.productAmount + deliveryFee)
+      throw new BadRequestException('该单无法使用此优惠券');
     return {
       ...cart,
       deliveryFee,
       discount,
-      payableAmount: cart.productAmount + deliveryFee - discount,
+      // IKB3K1：应付金额下限 0 元，双保险（上游已拦截超抵扣券）
+      payableAmount: Math.max(0, cart.productAmount + deliveryFee - discount),
       estimatedArrival:
         dto.deliveryMode === 'instant'
           ? '预计 30-60 分钟送达'
@@ -1052,6 +1059,8 @@ export class BusinessService {
       ...dto,
       couponId: undefined,
     });
+    // IKB3K1：券列表就标出「抵扣超过订单金额」的不可用券（口径同 checkout）
+    const fee = await this.deliveryFeeFor(campusId, dto.deliveryMode);
     const rows = await this.db.userCoupon.findMany({
       // 只看本校发放的券（跨校园券不可用）。
       where: {
@@ -1071,6 +1080,8 @@ export class BusinessService {
       else if (row.coupon.expiresAt <= now) reason = '优惠券已过期';
       else if (cart.productAmount < threshold)
         reason = `还差${yuan(threshold - cart.productAmount)}元可用`;
+      else if (amount > cart.productAmount + fee)
+        reason = '该单无法使用此优惠券';
       return {
         id: row.id,
         couponId: row.couponId,
