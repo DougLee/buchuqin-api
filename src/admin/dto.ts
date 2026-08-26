@@ -247,6 +247,9 @@ export class CreateAccountDto {
   /** 所属校区（IKAJSL）：仅 hq 操作者可用；空串 = 总部账号（role 须为 hq）。
    *  校区操作者传了也被忽略，强制落操作者本人校区。 */
   @IsOptional() @IsString() campusId?: string;
+  /** 可运营校区全集（IKB3KG 方案A）：仅 hq 操作者生效；缺省=[campusId]。
+   *  campusId=当前登录校区，本字段=顶栏可切换范围。 */
+  @IsOptional() @IsArray() @IsString({ each: true }) campusIds?: string[];
 }
 export class UpdateAccountDto {
   @IsOptional() @IsString() @MaxLength(30) nickname?: string;
@@ -254,6 +257,8 @@ export class UpdateAccountDto {
   /** 重置密码（超管操作，无需旧密码）。 */
   @IsOptional() @IsString() @MinLength(8, { message: '密码至少 8 位' })
   password?: string;
+  /** 重设可运营校区全集（IKB3KG 方案A）：仅 hq 操作者生效，整体替换授权行。 */
+  @IsOptional() @IsArray() @IsString({ each: true }) campusIds?: string[];
 }
 /** 商品类别（全局字典）：名称 + 排序 + 类别图，删除时有关联商品拒绝。 */
 export class CreateCategoryDto {

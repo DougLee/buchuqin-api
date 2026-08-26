@@ -2387,14 +2387,30 @@ export class AdminService {
         createdAt: true,
       },
     });
-    if (campusId) return xs;
+    // IKB3KG：附带可运营校区全集（账号管理多选回显）
+    const accesses = await this.db.adminCampusAccess.findMany({
+      where: { accountId: { in: xs.map((x) => x.id) } },
+      select: { accountId: true, campusId: true },
+    });
+    const scopeByAccount = new Map<string, string[]>();
+    for (const a of accesses) {
+      scopeByAccount.set(a.accountId, [
+        ...(scopeByAccount.get(a.accountId) ?? []),
+        a.campusId,
+      ]);
+    }
+    const withScope = xs.map((x) => ({
+      ...x,
+      campusIds: x.campusId ? scopeByAccount.get(x.id) ?? [x.campusId] : [],
+    }));
+    if (campusId) return withScope;
     const campuses = await this.db.campus.findMany({
       select: { id: true, name: true, shortName: true },
     });
     const nameById = new Map(
       campuses.map((c) => [c.id, c.shortName || c.name]),
     );
-    return xs.map((x) => ({
+    return withScope.map((x) => ({
       ...x,
       campusName: x.campusId ? nameById.get(x.campusId) ?? '' : '总部',
     }));
@@ -2432,6 +2448,15 @@ export class AdminService {
         campusId,
       },
     });
+    // IKB3KG：校区账号落可运营校区授权（缺省=所属校区；须包含所属校区）
+    if (account.role !== 'hq' && campusId) {
+      const campusIds = [
+        ...new Set(
+          isHq && body.campusIds?.length ? [...body.campusIds, campusId] : [campusId],
+        ),
+      ];
+      await this.replaceCampusAccess(account.id, campusIds, campusId);
+    }
     await this.audit(
       operator,
       'account.create',
@@ -2464,6 +2489,21 @@ export class AdminService {
       await this.assertNotLastAdmin(id);
     if (before.role === 'hq' && body.role && body.role !== 'hq')
       await this.assertNotLastRole(id, 'hq');
+    // IKB3KG 方案A：hq 重设可运营校区全集（整体替换授权行）；
+    // 若当前登录校区被移出授权，顺带把 campusId 挪到新集合首个校区。
+    let campusIdNext = before.campusId;
+    const rescope =
+      operatorRole === 'hq' &&
+      before.role !== 'hq' &&
+      before.campusId &&
+      body.campusIds;
+    if (rescope) {
+      campusIdNext = await this.replaceCampusAccess(
+        id,
+        body.campusIds!,
+        before.campusId,
+      );
+    }
     const after = await this.db.adminAccount.update({
       where: { id },
       data: {
@@ -2472,6 +2512,7 @@ export class AdminService {
         ...(body.password
           ? { passwordHash: await hash(body.password, 10) }
           : {}),
+        ...(rescope ? { campusId: campusIdNext } : {}),
       },
       select: { id: true, username: true, nickname: true, role: true },
     });
@@ -2485,6 +2526,35 @@ export class AdminService {
       operatorCampusId,
     );
     return after;
+  }
+  /** 整体替换账号的可运营校区授权（IKB3KG 方案A）：
+   *  校验校区真实存在（官方库伪校区排除）、至少一个；返回账号应驻留的
+   *  campusId（原校区仍在授权内则保持不变，否则挪到集合首个）。 */
+  private async replaceCampusAccess(
+    accountId: string,
+    campusIds: string[],
+    currentCampusId: string,
+  ): Promise<string> {
+    const ids = [...new Set(campusIds.map((x) => x.trim()).filter(Boolean))];
+    if (!ids.length)
+      throw new BadRequestException('请至少保留一个可运营校区');
+    const campuses = await this.db.campus.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, status: true },
+    });
+    const valid = new Set(
+      campuses.filter((c) => c.status !== 'official').map((c) => c.id),
+    );
+    const unknown = ids.filter((x) => !valid.has(x));
+    if (unknown.length)
+      throw new BadRequestException('可运营校区中包含无效校区');
+    await this.db.$transaction([
+      this.db.adminCampusAccess.deleteMany({ where: { accountId } }),
+      this.db.adminCampusAccess.createMany({
+        data: ids.map((campusId) => ({ accountId, campusId })),
+      }),
+    ]);
+    return ids.includes(currentCampusId) ? currentCampusId : ids[0];
   }
   async deleteAccount(
     id: string,

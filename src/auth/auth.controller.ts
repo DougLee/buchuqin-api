@@ -400,6 +400,84 @@ export class AuthController {
     );
   }
 
+  /* ---------- 后台账号多校区切换（IKB3KG 方案A）：授权表内自选，换发 token ---------- */
+  /** 我的可运营校区：授权表 ∪ 当前校区兜底；hq 跨校区视角返回空（前端不显示切换）。 */
+  @Get('admin/campuses')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '我的可运营校区列表（后台账号）' })
+  async adminCampuses(@Req() req: AuthRequest) {
+    if (req.user.role === 'hq' || req.user.role === 'user') return ok([]);
+    const rows = await this.db.adminCampusAccess.findMany({
+      where: { accountId: req.user.id },
+      select: { campusId: true },
+    });
+    const ids = [
+      ...new Set([...rows.map((r) => r.campusId), req.user.campusId]),
+    ];
+    const campuses = await this.db.campus.findMany({
+      where: { id: { in: ids }, status: 'active' },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true, name: true, shortName: true },
+    });
+    return ok(
+      campuses.map((c) => ({ ...c, current: c.id === req.user.campusId })),
+    );
+  }
+
+  /** 切换运营校区（镜像用户端 /auth/campuses/select）：校验授权表 →
+   *  持久化 AdminAccount.campusId → 换发 campusId 口径 token。 */
+  @Post('admin/campuses/select')
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '切换后台账号运营校区（校验授权，换发 token）' })
+  async selectAdminCampus(
+    @Req() req: AuthRequest,
+    @Body() body: SelectCampusDto,
+  ) {
+    if (
+      !['admin', 'operations', 'warehouse', 'finance'].includes(req.user.role)
+    )
+      throw new ForbiddenException('该账号不支持切换校区');
+    const campusId = body.campusId.trim();
+    const campus = await this.db.campus.findFirst({
+      where: { id: campusId, status: 'active' },
+    });
+    if (!campus) throw new BadRequestException('目标校区不存在或未开放');
+    if (campusId !== req.user.campusId) {
+      const granted = await this.db.adminCampusAccess.findUnique({
+        where: { accountId_campusId: { accountId: req.user.id, campusId } },
+      });
+      if (!granted)
+        throw new ForbiddenException('未授权运营该校区，请联系总部开通');
+      await this.db.adminAccount.update({
+        where: { id: req.user.id },
+        data: { campusId },
+      });
+    }
+    const account = await this.db.adminAccount.findUniqueOrThrow({
+      where: { id: req.user.id },
+    });
+    const claims: AuthUser = {
+      id: account.id,
+      campusId: account.campusId,
+      role: account.role as AuthUser['role'],
+    };
+    return ok(
+      {
+        token: this.jwt.sign(claims),
+        user: {
+          ...claims,
+          nickname: account.nickname || account.username,
+          phone: '',
+          avatar: '',
+        },
+      },
+      '校区已切换',
+    );
+  }
+
   /** 员工微信绑定（IK8W5Q）：履约端小程序首次登录，工号+姓名换绑 openid 后直接下发 token */
   @Post('staff-bind')
   @HttpCode(200)

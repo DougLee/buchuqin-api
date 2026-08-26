@@ -68,6 +68,19 @@ model AdminAccount {
   campusId     String
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+  accesses     AdminCampusAccess[]
+}
+
+/** 后台账号可运营校区授权（IKB3KG 方案A）：AdminAccount.campusId=当前登录校区，
+ *  本表=可切换校区全集；hq 角色不落本表（天然跨校区视角）。 */
+model AdminCampusAccess {
+  id        String        @id @default(cuid())
+  account   AdminAccount  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  accountId String
+  campusId  String
+  createdAt DateTime      @default(now())
+
+  @@unique([accountId, campusId])
 }
 
 model User {
