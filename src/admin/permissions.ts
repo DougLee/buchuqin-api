@@ -43,7 +43,7 @@ const OPS: AdminRole[] = ['admin', 'operations'];
  * | after-sales 售后 | —       | 读    | 读        | 读   | 读（只读留档）|
  * | finance 结算/规则| —       | 读写  | 读        | —    | 读写      |
  * | marketing 促销/券| —       | 读写  | 读写      | —    | —         |
- * | banners Banner   | 读写(投放)| —   | —         | —    | —         |
+ * | banners Banner   | 读写(投放)| 读写  | —         | —    | —         |
  * | audit 审计日志   | 读(全校区)| 读   | 读        | —    | 读        |
  * | accounts 账号    | 读写(全部)| 读写(本校区) | —   | —    | —        |
  * | users C端用户    | 读(全校区) | 读  | 读        | —    | —         |
@@ -73,8 +73,8 @@ export const ADMIN_MATRIX: Record<
   'after-sales': { read: ALL, write: [] },
   finance: { read: [...OPS, 'finance'], write: ['admin', 'finance'] },
   marketing: { read: OPS, write: OPS },
-  // Banner 总部投放（IKAJSL）：校区侧不再可见（原属 marketing）。
-  banners: { read: ['hq'], write: ['hq'] },
+  // Banner 总部投放（IKAJSL）：2026-08-26 道哥决策 admin 平台超管同步开放（全菜单可见）。
+  banners: { read: ['hq', 'admin'], write: ['hq', 'admin'] },
   audit: { read: [...OPS, 'finance', 'hq'], write: [] },
   // 账号管理（IK9KWO）：hq 管全部账号（含建 hq），admin 管本校区职能账号。
   accounts: { read: ['hq', 'admin'], write: ['hq', 'admin'] },

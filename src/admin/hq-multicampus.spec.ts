@@ -95,9 +95,11 @@ describe('hq role & cross-campus views (IKAJSL)', () => {
     await db.$disconnect();
   });
 
-  it('权限矩阵：banners 仅 hq；hq 不碰校区营销/订单写', () => {
+  it('权限矩阵：banners 归 hq+admin（2026-08-26 全菜单开放）；hq 不碰校区营销/订单写', () => {
     expect(canAdmin('hq', 'banners', 'write')).toBe(true);
-    expect(canAdmin('admin', 'banners', 'read')).toBe(false);
+    expect(canAdmin('admin', 'banners', 'read')).toBe(true);
+    expect(canAdmin('admin', 'banners', 'write')).toBe(true);
+    expect(canAdmin('operations', 'banners', 'read')).toBe(false);
     expect(canAdmin('hq', 'marketing', 'read')).toBe(false);
     expect(canAdmin('hq', 'orders', 'write')).toBe(false);
     expect(canAdmin('hq', 'orders', 'read')).toBe(true);

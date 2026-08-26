@@ -81,6 +81,15 @@ export class AdminController {
     return req.user.role === 'hq' ? campus?.trim() ?? '' : req.user.campusId;
   }
   /**
+   * Banner 投放数据范围：hq 与平台超管 admin 同为跨校区视角
+   * （列表全量、可投放全部校区；2026-08-26 道哥决策 admin 全菜单开放）。
+   */
+  private bannerScope(req: AuthRequest, campus?: string): string {
+    return req.user.role === 'hq' || req.user.role === 'admin'
+      ? campus?.trim() ?? ''
+      : req.user.campusId;
+  }
+  /**
    * 商品板块数据范围（IKAJSM）：hq 的商品读写固定落官方商品库伪校区；
    * 校区角色固定本校区（官方库对其只读，经 import 拉取落地）。
    */
@@ -198,8 +207,8 @@ export class AdminController {
       '类别已删除',
     );
   }
-  /** 首页 Banner 管理（IK9RX2 → IKAJSL 归总部）：banners 板块仅 hq；
-   *  body.campusId 空 = 全部校区投放。 */
+  /** Banner 管理（IK9RX2 → IKAJSL 归总部；2026-08-26 admin 同步开放）：
+   *  body.campusId 空 = 全部校区投放；hq/admin 均为跨校区视角。 */
   @Get('banners')
   @ApiOperation({
     summary: 'Banner 列表（总部投放，?campus 过滤，?page&pageSize 统一分页包裹）',
@@ -214,7 +223,7 @@ export class AdminController {
     this.authorize(req, 'banners');
     return ok(
       paginate(
-        await this.service.banners(this.campusScope(req, campus)),
+        await this.service.banners(this.bannerScope(req, campus)),
         page,
         pageSize,
         keyword,
@@ -230,7 +239,7 @@ export class AdminController {
       await this.service.createBanner(
         body,
         req.user.id,
-        this.campusScope(req),
+        this.bannerScope(req),
       ),
       'Banner 已创建',
     );
@@ -246,7 +255,7 @@ export class AdminController {
         id,
         body,
         req.user.id,
-        this.campusScope(req),
+        this.bannerScope(req),
       ),
     );
   }
@@ -256,7 +265,7 @@ export class AdminController {
   ) {
     this.authorize(req, 'banners', 'write');
     return ok(
-      await this.service.deleteBanner(id, req.user.id, this.campusScope(req)),
+      await this.service.deleteBanner(id, req.user.id, this.bannerScope(req)),
       'Banner 已删除',
     );
   }
