@@ -383,10 +383,12 @@ export class BusinessService {
    * 未配置返回 null（用户端该区域不渲染、不占位）。
    */
   async bannerByPlacement(campusId: string, placement: string) {
-    return this.db.banner.findFirst({
+    return this.db.banner.findMany({
       // IKAJSL：campusId 空串 = 总部全校区投放
       where: { campusId: { in: [campusId, ''] }, status: 'active', placement },
-      orderBy: { sort: 'asc' },
+      orderBy: [{ sort: 'asc' }, { id: 'asc' }],
+      // IKB87P：支付成功页广告大卡最多 2 条（sort 升序取前 2）
+      take: 2,
     });
   }
   async listProducts(campusId: string, categoryId?: string, keyword?: string) {

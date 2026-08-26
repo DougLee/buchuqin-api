@@ -39,7 +39,8 @@ export class BusinessController {
   @Get('home') async home(@Req() req: AuthRequest) {
     return ok(await this.service.home(req.user.campusId));
   }
-  /** 支付成功页广告位（IKA57F）：?placement=pay-success，未配置返回 null。 */
+  /** 支付成功页广告位（IKA57F→IKB87P）：?placement=pay-success，
+   *  返回数组（sort 升序最多 2 条）；未配置返回 []。 */
   @Get('banners/current')
   async bannerByPlacement(
     @Req() req: AuthRequest,
