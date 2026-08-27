@@ -45,7 +45,7 @@ const OPS: AdminRole[] = ['admin', 'operations'];
  * | marketing 促销/券| —       | 读写  | 读写      | —    | —         |
  * | banners Banner   | 读写(投放)| 读写  | —         | —    | —         |
  * | audit 审计日志   | 读(全校区)| 读   | 读        | —    | 读        |
- * | accounts 账号    | 读写(全部)| 读写(本校区) | —   | —    | —        |
+ * | accounts 账号    | 读写(全部)| 读写(全部，IKBFJ4) | —   | —    | —        |
  * | users C端用户    | 读(全校区) | 读  | 读        | —    | —         |
  * | wechat-groups 群码| —      | 读写  | 读写      | —    | —         |
  *

@@ -14,7 +14,8 @@ type IdLike = { id: string };
  * - hq 账号（campusId 空）dashboard 汇总全部校区；订单/用户跨校区可见
  * - 校区角色保持本校区隔离（基础过滤由 campus-isolation.spec 守护）
  * - Banner 归总部投放：空 campusId = 全部校区，任一校区用户端命中
- * - 账号守卫：校区 admin 不可建/授 hq；hq 角色不绑校区；校区间账号互不可管
+ * - 账号守卫（IKBFJ4 2026-08-27）：平台超管 admin 与 hq 同权——可建 hq/跨校区管；
+ *   hq 角色不绑校区；职能角色不可建 hq（无入口，服务层兜底）
  */
 describe('hq role & cross-campus views (IKAJSL)', () => {
   const db = new PrismaService();
@@ -182,7 +183,7 @@ describe('hq role & cross-campus views (IKAJSL)', () => {
     expect(rowAll?.campusName).toBe('全部校区');
   });
 
-  it('账号守卫：校区 admin 不可建 hq；hq 建号规则与登录闭环', async () => {
+  it('账号同权（IKBFJ4）：admin 可建 hq/跨校区管理；hq 建号规则与登录闭环', async () => {
     const campusAdmin = await service.createAccount(
       { username: `${tag}-a-admin`, password: 'campus-pass-1', role: 'admin' },
       'spec-hq',
@@ -190,13 +191,22 @@ describe('hq role & cross-campus views (IKAJSL)', () => {
       'admin',
     );
     accountIds.push(campusAdmin.id);
-    // 校区侧建 hq 被拒
+    // IKBFJ4：平台超管 admin（campusId 绑 A 校）创建 hq 合法（总部角色不绑校区）
+    const adminMintedHq = await service.createAccount(
+      { username: `${tag}-a-admin-hq`, password: 'hq-pass-12345', role: 'hq' },
+      campusAdmin.id,
+      CAMPUS_A,
+      'admin',
+    );
+    expect(adminMintedHq.role).toBe('hq');
+    accountIds.push(adminMintedHq.id);
+    // 职能角色不可创建 hq 角色（服务层兜底，正常无入口）
     await expect(
       service.createAccount(
         { username: `${tag}-bad-hq`, password: 'whatever-123', role: 'hq' },
-        campusAdmin.id,
+        'spec-hq',
         CAMPUS_A,
-        'admin',
+        'operations',
       ),
     ).rejects.toThrow(ForbiddenException);
     // hq 角色不允许绑校区
@@ -249,16 +259,15 @@ describe('hq role & cross-campus views (IKAJSL)', () => {
     })) as { data: { user: { campusId: string; role: string } } };
     expect(login.data.user.campusId).toBe(CAMPUS_B);
     expect(login.data.user.role).toBe('admin');
-    // A 校 admin 管不到 B 校账号
-    await expect(
-      service.updateAccount(
-        bAdmin.id,
-        { nickname: '越权' },
-        campusAdmin.id,
-        CAMPUS_A,
-        'admin',
-      ),
-    ).rejects.toThrow(ForbiddenException);
+    // IKBFJ4：A 校绑定的平台 admin 可跨校区改 B 校账号
+    const renamed = (await service.updateAccount(
+      bAdmin.id,
+      { nickname: '跨校区改名' },
+      campusAdmin.id,
+      CAMPUS_A,
+      'admin',
+    )) as { nickname?: string };
+    expect(renamed.nickname).toBe('跨校区改名');
     // A 校账号列表只见本校
     const listA = (await service.accounts(CAMPUS_A)) as Array<{
       campusId: string;

@@ -1071,10 +1071,12 @@ export class AdminController {
       ),
     );
   }
-  /* ---------- 后台账号管理（IK9KWO）：accounts 板块仅 admin ---------- */
+  /* ---------- 后台账号管理（IK9KWO）：accounts 板块仅 hq/admin ----------
+     IKBFJ4（2026-08-27）：平台超管 admin 与 hq 同权——列表全量、可建/改/删任意角色；
+     保护规则（最后一名 admin/hq、不可删自己）不变。 */
   @Get('accounts')
   @ApiOperation({
-    summary: '后台账号列表（hq 全量带 campusName；admin 仅本校区）',
+    summary: '后台账号列表（hq/admin 全量带 campusName/campusNames）',
   })
   async accounts(
     @Req() req: AuthRequest,
@@ -1083,12 +1085,11 @@ export class AdminController {
     @Query('keyword') keyword?: string,
   ) {
     this.authorize(req, 'accounts');
-    // IKAJSL：校区 admin 只见本校区账号；hq（campusId 空）查全部
+    // IKAJSL→IKBFJ4：平台角色跨校区查全部；其余视角（现无入口）按校区
+    const platform = req.user.role === 'hq' || req.user.role === 'admin';
     return ok(
       paginate(
-        await this.service.accounts(
-          req.user.role === 'hq' ? undefined : req.user.campusId,
-        ),
+        await this.service.accounts(platform ? undefined : req.user.campusId),
         page,
         pageSize,
         keyword,
@@ -1097,7 +1098,7 @@ export class AdminController {
   }
   @Post('accounts')
   @ApiOperation({
-    summary: '新建后台账号（hq 可建总部/任意校区账号；admin 仅本校区职能账号）',
+    summary: '新建后台账号（hq/admin 可建总部或任意校区账号）',
   })
   async createAccount(@Req() req: AuthRequest, @Body() body: CreateAccountDto) {
     this.authorize(req, 'accounts', 'write');

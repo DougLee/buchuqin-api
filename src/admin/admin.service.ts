@@ -2581,14 +2581,20 @@ export class AdminService {
       where: { username: body.username },
     });
     if (duplicate) throw new BadRequestException('用户名已存在');
-    const isHq = operatorRole === 'hq';
-    // IKAJSL：校区侧不可创建 hq 角色；hq 角色不绑校区；hq 建校区账号必须选校区
-    if (!isHq && body.role === 'hq')
+    // IKBFJ4（2026-08-27）：平台超管 admin 与 hq 同权管账号——建任意角色/跨校区。
+    // 校区归属：hq 无本校上下文必须显式选；admin 建 hq 不绑校区、建校区角色缺省落本校。
+    const isPlatform = operatorRole === 'hq' || operatorRole === 'admin';
+    if (!isPlatform && body.role === 'hq')
       throw new ForbiddenException('仅总部账号可创建总部角色账号');
-    const campusId = isHq ? body.campusId ?? '' : operatorCampusId;
+    const campusId =
+      operatorRole === 'hq'
+        ? body.campusId ?? ''
+        : body.role === 'hq'
+          ? ''
+          : body.campusId ?? operatorCampusId;
     if (body.role === 'hq' && campusId)
       throw new BadRequestException('总部角色账号不绑定校区');
-    if (isHq && body.role !== 'hq' && !campusId)
+    if (isPlatform && body.role !== 'hq' && !campusId)
       throw new BadRequestException('请为校区账号选择所属校区');
     if (campusId) {
       const campus = await this.db.campus.findUnique({ where: { id: campusId } });
@@ -2608,7 +2614,9 @@ export class AdminService {
     if (account.role !== 'hq' && campusId) {
       const campusIds = [
         ...new Set(
-          isHq && body.campusIds?.length ? [...body.campusIds, campusId] : [campusId],
+          isPlatform && body.campusIds?.length
+            ? [...body.campusIds, campusId]
+            : [campusId],
         ),
       ];
       await this.replaceCampusAccess(account.id, campusIds, campusId);
@@ -2633,8 +2641,8 @@ export class AdminService {
   ) {
     const before = await this.db.adminAccount.findUnique({ where: { id } });
     if (!before) throw new NotFoundException('账号不存在');
-    // IKAJSL：校区 admin 只能改本校区职能账号（碰不到总部/他校区账号）
-    if (operatorRole !== 'hq') {
+    // IKAJSL→IKBFJ4：平台角色（hq/admin）管全部账号；其余视角只能改本校区职能账号
+    if (operatorRole !== 'hq' && operatorRole !== 'admin') {
       if (before.role === 'hq' || before.campusId !== operatorCampusId)
         throw new ForbiddenException('只能管理本校区的后台账号');
       if (body.role === 'hq')
@@ -2721,7 +2729,12 @@ export class AdminService {
     const before = await this.db.adminAccount.findUnique({ where: { id } });
     if (!before) throw new NotFoundException('账号不存在');
     if (id === operator) throw new BadRequestException('不能删除当前登录账号');
-    if (operatorRole !== 'hq' && (before.role === 'hq' || before.campusId !== operatorCampusId))
+    // IKBFJ4：平台角色（hq/admin）可删任意账号；其余视角限本校区职能账号
+    if (
+      operatorRole !== 'hq' &&
+      operatorRole !== 'admin' &&
+      (before.role === 'hq' || before.campusId !== operatorCampusId)
+    )
       throw new ForbiddenException('只能管理本校区的后台账号');
     if (before.role === 'admin') await this.assertNotLastAdmin(id);
     if (before.role === 'hq') await this.assertNotLastRole(id, 'hq');
