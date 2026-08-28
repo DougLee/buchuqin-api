@@ -58,7 +58,7 @@ describe('PrinterService (IKBT6N)', () => {
 
     it('商品行含数量与单价（快照价转元）', () => {
       expect(content).toContain('农夫山泉 550ml x2');
-      expect(content).toContain('¥2.00');
+      expect(content).toContain('￥2.00');
       // 超长品名被截断且不破坏行结构（换行仍在）
       const longLine = content
         .split('\n')
@@ -68,9 +68,9 @@ describe('PrinterService (IKBT6N)', () => {
 
     it('金额段含商品金额/配送费/优惠/实付', () => {
       expect(content).toContain('商品金额');
-      expect(content).toContain('¥4.00');
-      expect(content).toContain('-¥1.00');
-      expect(content).toContain('¥19.50');
+      expect(content).toContain('￥4.00');
+      expect(content).toContain('-￥1.00');
+      expect(content).toContain('￥19.50');
     });
 
     it('票尾订单号二维码 + 切刀', () => {

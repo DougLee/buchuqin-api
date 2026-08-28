@@ -193,7 +193,8 @@ function itemLine(left: string, right: string): string {
   const pad = Math.max(1, LINE_WIDTH - textWidth(fixedLeft) - textWidth(right));
   return fixedLeft + ' '.repeat(pad) + right;
 }
-const yuan = (fen: number) => `¥${(Number(fen) / 100).toFixed(2)}`;
+/** 金额格式化：全角 ￥——半角 ¥(U+00A5) 不在 GBK 字符集，打印时会被云端静默丢弃。 */
+const yuan = (fen: number) => `￥${(Number(fen) / 100).toFixed(2)}`;
 function fmtTime(t: Date | string): string {
   const d = t instanceof Date ? t : new Date(t);
   const pad = (n: number) => String(n).padStart(2, '0');
