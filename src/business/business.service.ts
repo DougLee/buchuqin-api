@@ -821,6 +821,9 @@ export class BusinessService {
         statusText: '支付成功',
         payableAmount: updated.payableAmount,
       });
+      // 小票打印（IKBT6N，2026-08-28 道哥定版）：支付成功即出票，当仓库备货单。
+      // 幂等早退（已支付直接 return）保证重复回调不会重复打；出库不再重复打。
+      void this.printReceiptFor(updated);
       return this.orderView(updated);
     });
   }
@@ -931,13 +934,10 @@ export class BusinessService {
       statusText: updated.statusText,
       payableAmount: updated.payableAmount,
     });
-    // 小票打印（IKBT6N）：出库顺手打。fire-and-forget——失败仅记日志，
-    // 订单状态已落库不受影响；仓库名取校区配置，票头展示。
-    void this.printReceiptFor(updated);
     return this.orderView(updated);
   }
 
-  /** 出库自动出票（IKBT6N）：组装打印上下文并推送芯烨云，失败仅 warn。 */
+  /** 支付成功自动出票（IKBT6N）：组装打印上下文并推送芯烨云，失败仅 warn。 */
   private async printReceiptFor(order: {
     id: string;
     orderNo: string;
@@ -980,7 +980,7 @@ export class BusinessService {
       await this.printer.printOrderReceipt(context);
     } catch (error) {
       BusinessService.logger.warn(
-        `订单 ${order.orderNo} 出库小票打印失败（不影响出库）: ${
+        `订单 ${order.orderNo} 支付小票打印失败（不影响支付流程）: ${
           error instanceof Error ? error.message : error
         }`,
       );
