@@ -9,6 +9,7 @@ import type { Prisma } from '@prisma/client';
 import { hash } from 'bcryptjs';
 import { PrismaService } from '../database/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { PrinterService } from '../printer/printer.service';
 import { BusinessService } from '../business/business.service';
 import { CommissionService } from '../commission/commission.service';
 import type {
@@ -58,6 +59,8 @@ export class AdminService {
     private readonly commissions: CommissionService = new CommissionService(db),
     // 渠道推送（IK8W5M）：可选注入——测试不传时跳过推送。
     @Optional() private readonly push?: NotificationsService,
+    // 小票打印（IKBT6N）：可选注入——补打端点用；测试不传时报「未配置」。
+    @Optional() private readonly printer?: PrinterService,
   ) {}
   private num(x: unknown) {
     return Number(x);
@@ -429,6 +432,7 @@ export class AdminService {
     'order.advance': '推进订单',
     'order.outbound': '订单出库',
     'order.mark-exception': '标记订单异常',
+    'order.print-receipt': '补打小票',
     'order.manual-status': '手动改单状态',
     'product.create': '创建商品',
     'product.update': '更新商品',
@@ -1327,7 +1331,8 @@ export class AdminService {
       },
       include: {
         user: { select: { id: true, nickname: true, phone: true } },
-        campus: { select: { name: true, shortName: true } },
+        // warehouseName：小票票头（IKBT6N）
+        campus: { select: { name: true, shortName: true, warehouseName: true } },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -1431,6 +1436,48 @@ export class AdminService {
       campusId,
     );
     return result;
+  }
+  /**
+   * 补打小票（IKBT6N）：芯烨云重推订单小票（出库时已自动打，本端点兜底
+   * 缺纸/卡纸重打场景）。校区隔离复用 this.order；写审计日志留痕。
+   */
+  async reprintReceipt(id: string, operator: string, campusId: string) {
+    if (!this.printer?.configured)
+      throw new BadRequestException(
+        '打印机未配置，请联系平台管理员配置芯烨云凭证',
+      );
+    const order = (await this.order(id, campusId)) as Record<string, any>;
+    const campus = await this.db.campus.findUnique({
+      where: { id: order.campusId },
+      select: { warehouseName: true },
+    });
+    await this.printer.printOrderReceipt({
+      id: order.id,
+      orderNo: order.orderNo,
+      campusId: order.campusId,
+      warehouseName: campus?.warehouseName ?? '',
+      deliveryMode: order.deliveryMode,
+      deliverySlot: order.deliverySlot,
+      estimatedArrival: order.estimatedArrival,
+      remark: order.remark,
+      createdAt: order.createdAt,
+      address: order.address,
+      items: order.items,
+      productAmount: Number(order.productAmount),
+      deliveryFee: Number(order.deliveryFee),
+      discount: Number(order.discount),
+      payableAmount: Number(order.payableAmount),
+    });
+    await this.audit(
+      operator,
+      'order.print-receipt',
+      'order',
+      id,
+      null,
+      { orderNo: order.orderNo },
+      campusId,
+    );
+    return { printed: true, orderNo: order.orderNo };
   }
   /**
    * 手动改订单状态（IKA0UT）：测试与上线初期兜底。仅接受 12 态白名单，

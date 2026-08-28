@@ -9,6 +9,7 @@ import { Prisma } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../database/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { PrinterService, ReceiptOrderContext } from '../printer/printer.service';
 import {
   buildOrderTimeline,
   DELIVERING_STATUSES,
@@ -63,6 +64,8 @@ export class BusinessService {
     private readonly db: PrismaService,
     // 渠道推送（IK8W5M）：可选注入——测试直接 new BusinessService(db) 时不传，跳过推送。
     @Optional() private readonly push?: NotificationsService,
+    // 小票打印（IKBT6N）：可选注入——出库自动出票，未注入/未配置时静默跳过。
+    @Optional() private readonly printer?: PrinterService,
   ) {}
   /** 金额单位:分（IK8W5K）。IK9SO6：生效值存 Campus 表（后台可配置），
    *  以下常量仅在 Campus 行缺失/字段为空时的兜底默认。 */
@@ -928,7 +931,60 @@ export class BusinessService {
       statusText: updated.statusText,
       payableAmount: updated.payableAmount,
     });
+    // 小票打印（IKBT6N）：出库顺手打。fire-and-forget——失败仅记日志，
+    // 订单状态已落库不受影响；仓库名取校区配置，票头展示。
+    void this.printReceiptFor(updated);
     return this.orderView(updated);
+  }
+
+  /** 出库自动出票（IKBT6N）：组装打印上下文并推送芯烨云，失败仅 warn。 */
+  private async printReceiptFor(order: {
+    id: string;
+    orderNo: string;
+    campusId: string;
+    deliveryMode: string;
+    deliverySlot?: string | null;
+    estimatedArrival?: string | null;
+    remark?: string | null;
+    createdAt: Date;
+    address?: unknown;
+    items?: unknown;
+    productAmount: unknown;
+    deliveryFee: unknown;
+    discount: unknown;
+    payableAmount: unknown;
+  }): Promise<void> {
+    if (!this.printer) return;
+    try {
+      const campus = await this.db.campus.findUnique({
+        where: { id: order.campusId },
+        select: { warehouseName: true },
+      });
+      const context: ReceiptOrderContext = {
+        id: order.id,
+        orderNo: order.orderNo,
+        campusId: order.campusId,
+        warehouseName: campus?.warehouseName ?? '',
+        deliveryMode: order.deliveryMode,
+        deliverySlot: order.deliverySlot,
+        estimatedArrival: order.estimatedArrival,
+        remark: order.remark,
+        createdAt: order.createdAt,
+        address: order.address as ReceiptOrderContext['address'],
+        items: order.items as ReceiptOrderContext['items'],
+        productAmount: Number(order.productAmount),
+        deliveryFee: Number(order.deliveryFee),
+        discount: Number(order.discount),
+        payableAmount: Number(order.payableAmount),
+      };
+      await this.printer.printOrderReceipt(context);
+    } catch (error) {
+      BusinessService.logger.warn(
+        `订单 ${order.orderNo} 出库小票打印失败（不影响出库）: ${
+          error instanceof Error ? error.message : error
+        }`,
+      );
+    }
   }
   async confirmReceipt(userId: string, id: string) {
     const raw = await this.db.order.findFirst({ where: { id, userId } });

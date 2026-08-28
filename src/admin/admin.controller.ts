@@ -513,6 +513,18 @@ export class AdminController {
       '订单状态已更新',
     );
   }
+  /** 补打小票（IKBT6N）：芯烨云重推订单小票，写审计日志。 */
+  @Post('orders/:id/print-receipt')
+  async printReceipt(
+    @Req() req: AuthRequest,
+    @Param('id') id: string,
+  ) {
+    this.authorize(req, 'orders', 'write');
+    return ok(
+      await this.service.reprintReceipt(id, req.user.id, req.user.campusId),
+      '小票已发送打印',
+    );
+  }
   /* ---------- C 端用户管理（IKAJSW）：运营域只读 ---------- */
   // 路由顺序：静态段（stats）须在 users/:id/... 之前
   @Get('users/stats')
