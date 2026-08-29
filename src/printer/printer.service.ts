@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 
 /**
@@ -6,10 +6,12 @@ import { createHash } from 'node:crypto';
  *
  * 出库顺手打：BusinessService.outbound 事务成功后 fire-and-forget 出票；
  * 订单抽屉补打走 AdminService.reprintReceipt（写审计日志）。
+ * 校区自主绑定（IKBW0Q）：校区在后台绑定终端（Printer 表，一校区一台），
+ * 打印按订单校区取绑定 SN；未绑定的校区回落 env 单机（试点兼容）。
  *
- * 全 env 门控 + 静默降级（同 NotificationsService 模式）：
- * - XPYUN_USER / XPYUN_USERKEY：开发者账号（admin.xpyun.net 控制台）
- * - XPYUN_PRINTER_SN：打印机 SN（单校区试点一台；多校区再扩 per-campus SN）
+ * 账号 env 门控 + 静默降级（同 NotificationsService 模式）：
+ * - XPYUN_USER / XPYUN_USERKEY：开发者账号（admin.xpyun.net 控制台），账号级
+ * - XPYUN_PRINTER_SN：试点期 env 单机 SN，仅作未绑定校区的回落
  * 凭证未配置记 debug 跳过；发送失败仅 warn，绝不阻断出库事务。
  * 调用方一律 fire-and-forget（void 调用，勿 await 进事务）。
  *
@@ -66,14 +68,12 @@ export class PrinterService {
   private readonly logger = new Logger(PrinterService.name);
   private static readonly PRINT_URL =
     'https://open.xpyun.net/api/openapi/xprinter/print';
+  private static readonly ADD_URL =
+    'https://open.xpyun.net/api/openapi/xprinter/addPrinter';
 
-  /** 凭证是否已配置（未配置时打印静默跳过；补打端点据此提示）。 */
-  get configured(): boolean {
-    return Boolean(
-      process.env.XPYUN_USER &&
-        process.env.XPYUN_USERKEY &&
-        process.env.XPYUN_PRINTER_SN,
-    );
+  /** 账号级凭证是否已配置（终端 SN 可来自校区绑定记录，不在此列）。 */
+  get accountConfigured(): boolean {
+    return Boolean(process.env.XPYUN_USER && process.env.XPYUN_USERKEY);
   }
 
   /** sign = SHA1(user + UserKEY + timestamp)，40 位小写（开放平台约定）。 */
@@ -83,11 +83,12 @@ export class PrinterService {
       .digest('hex');
   }
 
-  /** 推送已排版文本到云打印机（凭证未配置静默跳过；失败抛错由调用方兜底）。 */
-  async printRaw(content: string): Promise<void> {
+  /** 推送已排版文本到云打印机（凭证未配置静默跳过；失败抛错由调用方兜底）。
+   *  snOverride：校区绑定打印机的终端号（IKBW0Q）；缺省回落 env 单机。 */
+  async printRaw(content: string, snOverride?: string): Promise<void> {
     const user = process.env.XPYUN_USER;
     const userKey = process.env.XPYUN_USERKEY;
-    const sn = process.env.XPYUN_PRINTER_SN;
+    const sn = snOverride ?? process.env.XPYUN_PRINTER_SN;
     if (!user || !userKey || !sn) {
       this.logger.debug('芯烨云凭证未配置（XPYUN_USER/USERKEY/PRINTER_SN），跳过打印');
       return;
@@ -113,9 +114,65 @@ export class PrinterService {
       );
   }
 
-  /** 订单小票：构建 58mm 票面并推送。 */
-  async printOrderReceipt(order: ReceiptOrderContext): Promise<void> {
-    await this.printRaw(this.buildReceipt(order));
+  /** 订单小票：构建 58mm 票面并推送（snOverride 见 printRaw，IKBW0Q）。 */
+  async printOrderReceipt(
+    order: ReceiptOrderContext,
+    snOverride?: string,
+  ): Promise<void> {
+    await this.printRaw(this.buildReceipt(order), snOverride);
+  }
+
+  /** 绑定终端到开发者账号（IKBW0Q）：POST addPrinter，items=[{sn,key}]。
+   *  重复绑定（终端已在账号下）云端进 fail 数组，视为成功——幂等重试友好。
+   *  其余失败原样透传云端提示（SN/KEY 不对时提示运营核对机身铭牌）。 */
+  async addPrinter(sn: string, key: string): Promise<void> {
+    const user = process.env.XPYUN_USER;
+    const userKey = process.env.XPYUN_USERKEY;
+    if (!user || !userKey)
+      throw new BadRequestException(
+        '芯烨云账号未配置（XPYUN_USER/XPYUN_USERKEY），请联系平台管理员',
+      );
+    const timestamp = Math.floor(Date.now() / 1000);
+    const res = await fetch(PrinterService.ADD_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json;charset=UTF-8' },
+      body: JSON.stringify({
+        user,
+        timestamp,
+        sign: PrinterService.sign(user, userKey, timestamp),
+        items: [{ sn, key }],
+      }),
+    });
+    const data = (await res.json().catch(() => null)) as
+      | {
+          code?: number;
+          msg?: string;
+          data?: { fail?: Array<{ sn?: string; msg?: string }> };
+        }
+      | null;
+    if (!res.ok || !data || data.code !== 0)
+      throw new BadRequestException(
+        `芯烨云绑定失败(${data?.code ?? res.status}): ${data?.msg ?? '无返回'}`,
+      );
+    const fail = data.data?.fail?.[0]?.msg;
+    // 「已添加/已存在/已被绑定」类提示 = 终端早就在账号下，视为绑定成功
+    if (fail && !/已|exist/i.test(fail))
+      throw new BadRequestException(`芯烨云绑定失败: ${fail}`);
+  }
+
+  /** 测试小票（IKBW0Q）：绑定后连通性验证，58mm 简票。 */
+  async printTest(sn: string): Promise<void> {
+    const lines = [
+      TAG.center(TAG.big('不出寝食社')),
+      TAG.center('打印机测试小票'),
+      '-'.repeat(LINE_WIDTH),
+      `时间：${fmtTime(new Date())}`,
+      `终端：${sn}`,
+      '-'.repeat(LINE_WIDTH),
+      TAG.center('连通正常，可打印订单小票'),
+      '<CUT>',
+    ];
+    await this.printRaw(lines.join('\n'), sn);
   }
 
   /** 票面构建：表头/收件信息/商品清单/金额/订单号二维码/切刀。 */

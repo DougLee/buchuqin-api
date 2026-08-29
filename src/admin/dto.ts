@@ -324,3 +324,11 @@ export class UpdateCampusDto {
   deliveryFeeScheduled?: number;
   @IsOptional() @Type(() => Number) @IsInt() @Min(0) deliveryThreshold?: number;
 }
+
+/** 校区打印机绑定（IKBW0Q）：SN/KEY 来自机身铭牌/自检页；key 仅绑定芯烨云账号用。 */
+export class BindPrinterDto {
+  @IsString() @MaxLength(40) name!: string;
+  @IsString() @Matches(/^[A-Za-z0-9-]{5,40}$/, { message: 'SN 格式不正确' })
+  sn!: string;
+  @IsString() @MaxLength(64) key!: string;
+}

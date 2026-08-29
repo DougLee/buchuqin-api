@@ -22,6 +22,7 @@ import { canAdmin, type AdminAccess, type AdminSection } from './permissions';
 import {
   AdjustStockDto,
   BarcodeDto,
+  BindPrinterDto,
   CreateAccountDto,
   UpsertWechatGroupDto,
   CreateBannerDto,
@@ -81,13 +82,12 @@ export class AdminController {
     return req.user.role === 'hq' ? campus?.trim() ?? '' : req.user.campusId;
   }
   /**
-   * Banner 投放数据范围：hq 与平台超管 admin 同为跨校区视角
-   * （列表全量、可投放全部校区；2026-08-26 道哥决策 admin 全菜单开放）。
+   * Banner 数据范围（IKBW0A）：校区自管——一律限定操作者本校区（多校区账号
+   * 经切换校区换 token）。原 hq/admin 跨校区投放（IKAJSL、2026-08-26 决策）
+   * 随「总部去掉投放功能」废止；hq 已移出 banners 权限矩阵。
    */
-  private bannerScope(req: AuthRequest, campus?: string): string {
-    return req.user.role === 'hq' || req.user.role === 'admin'
-      ? campus?.trim() ?? ''
-      : req.user.campusId;
+  private bannerScope(req: AuthRequest): string {
+    return req.user.campusId;
   }
   /**
    * 商品板块数据范围（IKAJSM）：hq 的商品读写固定落官方商品库伪校区；
@@ -212,11 +212,10 @@ export class AdminController {
   @Get('banners')
   @ApiOperation({
     summary:
-      'Banner 列表（总部投放，?campus/?placement 过滤，?page&pageSize 统一分页包裹）',
+      'Banner 列表（校区自管 IKBW0A，本校区范围；?placement 过滤，?page&pageSize 统一分页包裹）',
   })
   async banners(
     @Req() req: AuthRequest,
-    @Query('campus') campus?: string,
     @Query('placement') placement?: string,
     @Query('status') status?: string,
     @Query('page') page?: string,
@@ -228,11 +227,7 @@ export class AdminController {
       paginate(
         // IKB5PB：placement=pay-success 供「支付广告位」独立菜单；
         // IKB5PA：status 过滤（启用/隐藏 Tab）
-        await this.service.banners(
-          this.bannerScope(req, campus),
-          placement,
-          status,
-        ),
+        await this.service.banners(this.bannerScope(req), placement, status),
         page,
         pageSize,
         keyword,
@@ -523,6 +518,43 @@ export class AdminController {
     return ok(
       await this.service.reprintReceipt(id, req.user.id, req.user.campusId),
       '小票已发送打印',
+    );
+  }
+  /* ---------- 校区打印机绑定（IKBW0Q）：校区自主绑定/管理小票机 ---------- */
+  @Get('printers')
+  @ApiOperation({ summary: '本校区打印机列表（一校区一台，IKBW0Q）' })
+  async printers(@Req() req: AuthRequest) {
+    this.authorize(req, 'printers');
+    return ok(await this.service.printers(req.user.campusId));
+  }
+  @Post('printers')
+  @ApiOperation({ summary: '绑定/换绑打印机（SN+KEY，先绑芯烨云账号再落库）' })
+  async bindPrinter(
+    @Req() req: AuthRequest,
+    @Body() body: BindPrinterDto,
+  ) {
+    this.authorize(req, 'printers', 'write');
+    return ok(
+      await this.service.bindPrinter(body, req.user.id, req.user.campusId),
+      '打印机已绑定',
+    );
+  }
+  @Delete('printers/:id')
+  @ApiOperation({ summary: '解绑打印机（删本校区绑定记录）' })
+  async unbindPrinter(@Req() req: AuthRequest, @Param('id') id: string) {
+    this.authorize(req, 'printers', 'write');
+    return ok(
+      await this.service.unbindPrinter(id, req.user.id, req.user.campusId),
+      '打印机已解绑',
+    );
+  }
+  @Post('printers/:id/test-print')
+  @ApiOperation({ summary: '测试打印（连通性验证，出一张测试小票）' })
+  async testPrintPrinter(@Req() req: AuthRequest, @Param('id') id: string) {
+    this.authorize(req, 'printers', 'write');
+    return ok(
+      await this.service.testPrintPrinter(id, req.user.id, req.user.campusId),
+      '测试小票已发送打印',
     );
   }
   /* ---------- C 端用户管理（IKAJSW）：运营域只读 ---------- */

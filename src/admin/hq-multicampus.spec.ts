@@ -29,8 +29,7 @@ describe('hq role & cross-campus views (IKAJSL)', () => {
   let CAMPUS_B = '';
   let userB = '';
   let orderB = '';
-  let bannerAll = '';
-  let bannerB = '';
+  let bannerA = '';
   const orderIds: string[] = [];
   const bannerIds: string[] = [];
   const accountIds: string[] = [];
@@ -96,8 +95,9 @@ describe('hq role & cross-campus views (IKAJSL)', () => {
     await db.$disconnect();
   });
 
-  it('权限矩阵：banners 归 hq+admin（2026-08-26 全菜单开放）；hq 不碰校区营销/订单写', () => {
-    expect(canAdmin('hq', 'banners', 'write')).toBe(true);
+  it('权限矩阵：banners 校区自管归 admin（IKBW0A，hq 投放废止）；hq 不碰校区营销/订单写', () => {
+    expect(canAdmin('hq', 'banners', 'write')).toBe(false);
+    expect(canAdmin('hq', 'banners', 'read')).toBe(false);
     expect(canAdmin('admin', 'banners', 'read')).toBe(true);
     expect(canAdmin('admin', 'banners', 'write')).toBe(true);
     expect(canAdmin('operations', 'banners', 'read')).toBe(false);
@@ -158,29 +158,26 @@ describe('hq role & cross-campus views (IKAJSL)', () => {
     expect(listA.items.every((x) => x.id !== userB)).toBe(true);
   });
 
-  it('Banner 归总部：全部校区投放任一校区命中，定向仅本校', async () => {
-    const all = await service.createBanner(
-      { title: `${tag}-全域`, color: 'green', campusId: '' },
-      'spec-hq',
-      '',
+  it('Banner 校区自管（IKBW0A）：校区建即落本校区且仅本校可见，hq 投放通道关闭', async () => {
+    // hq（campusId 空）创建 Banner 已被拒绝——总部不做投放
+    await expect(
+      service.createBanner(
+        { title: `${tag}-全域`, color: 'green' },
+        'spec-hq',
+        '',
+      ),
+    ).rejects.toThrow('仅校区账号可创建 Banner');
+    // 校区创建自动落本校区（body.campusId 不再被采纳）
+    const bannerA = await service.createBanner(
+      { title: `${tag}-A校`, color: 'green', sort: -1 },
+      'spec-admin',
+      CAMPUS_A,
     );
-    const targeted = await service.createBanner(
-      { title: `${tag}-定向`, color: 'green', campusId: CAMPUS_B, sort: -1 },
-      'spec-hq',
-      '',
-    );
-    bannerAll = all.id;
-    bannerB = targeted.id;
-    bannerIds.push(bannerAll, bannerB);
+    bannerIds.push(bannerA.id);
     const homeA = (await business.home(CAMPUS_A)) as { banners: IdLike[] };
-    expect(homeA.banners.map((x) => x.id)).toContain(bannerAll);
-    expect(homeA.banners.map((x) => x.id)).not.toContain(bannerB);
+    expect(homeA.banners.map((x) => x.id)).toContain(bannerA.id);
     const homeB = (await business.home(CAMPUS_B)) as { banners: IdLike[] };
-    expect(homeB.banners.map((x) => x.id)).toContain(bannerAll);
-    // hq 列表附 campusName（空 = 全部校区）
-    const list = (await service.banners('')) as Array<{ campusName: string }>;
-    const rowAll = list.find((x) => (x as IdLike).id === bannerAll);
-    expect(rowAll?.campusName).toBe('全部校区');
+    expect(homeB.banners.map((x) => x.id)).not.toContain(bannerA.id);
   });
 
   it('账号同权（IKBFJ4）：admin 可建 hq/跨校区管理；hq 建号规则与登录闭环', async () => {

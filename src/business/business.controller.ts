@@ -83,6 +83,12 @@ export class BusinessController {
       ),
     );
   }
+  /** 限时秒杀商品（IKBW0K）：进行中 seckill 活动带促销价，分类页特殊分类用。 */
+  @Get('promotions/seckill')
+  @ApiOperation({ summary: '限时秒杀商品列表（进行中活动，含促销价）' })
+  async seckill(@Req() req: AuthRequest) {
+    return ok(await this.service.listSeckill(req.user.campusId));
+  }
   @Get('products/:id') async product(
     @Req() req: AuthRequest,
     @Param('id') id: string,

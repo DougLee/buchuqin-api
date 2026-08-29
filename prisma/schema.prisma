@@ -29,6 +29,7 @@ model Campus {
   staff         Staff[]
   storageLocations StorageLocation[]
   wechatGroups  WechatGroup[]
+  printers      Printer[]
 }
 
 /** 微信群二维码（IKAJSY）：buildingId 空串=校级大群；每楼栋至多一群 + 每校至多一大群。 */
@@ -42,6 +43,23 @@ model WechatGroup {
   updatedAt  DateTime @updatedAt
 
   @@unique([campusId, buildingId])
+}
+
+/** 校区自管打印机（IKBW0Q）：芯烨云终端绑定，一校区一台小票机（多台再扩）。
+ *  账号级 user/userKey 仍在 env（XPYUN_USER/XPYUN_USERKEY）；此处存终端 SN/KEY。 */
+model Printer {
+  id        String   @id @default(cuid())
+  campusId  String   @unique
+  campus    Campus   @relation(fields: [campusId], references: [id])
+  /** 运营辨认名（如「仓内前台小票机」）。 */
+  name      String
+  /** 芯烨云终端号（机身铭牌/自检页）。 */
+  sn        String   @unique
+  /** 终端 key（与 SN 成对，机身二维码可得），绑定芯烨云账号时使用。 */
+  key       String
+  status    String   @default("active")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 /** 库位字典（IKA0VG）：人工维护的库位区域列表，商品表单下拉选择。 */

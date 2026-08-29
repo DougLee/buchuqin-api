@@ -93,7 +93,7 @@ describe('PrinterService (IKBT6N)', () => {
       const fetchSpy = jest.spyOn(global, 'fetch');
       await expect(service.printRaw('test')).resolves.toBeUndefined();
       expect(fetchSpy).not.toHaveBeenCalled();
-      expect(service.configured).toBe(false);
+      expect(service.accountConfigured).toBe(false);
     });
 
     it('云端返回 code!=0 时抛错（调用方兜底）', async () => {

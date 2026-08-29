@@ -409,6 +409,26 @@ export class BusinessService {
     const promoMap = await this.promotionMap(products.map((p) => p.id));
     return products.map((p) => this.productView(p, false, promoMap.get(p.id)));
   }
+  /**
+   * 限时秒杀商品列表（IKBW0K）：进行中的 seckill 活动带促销价，供分类页
+   * 「限时秒杀」特殊分类。结构同 listProducts（productView 出品，带 promotion
+   * 块），不受 home 版块 take 20/混入临期 的限制。
+   */
+  async listSeckill(campusId: string) {
+    const now = new Date();
+    const rows = await this.db.promotion.findMany({
+      where: {
+        type: 'seckill',
+        status: 'active',
+        startsAt: { lte: now },
+        endsAt: { gt: now },
+        product: { campusId, status: 'on-sale' },
+      },
+      orderBy: [{ endsAt: 'asc' }, { createdAt: 'asc' }],
+      include: { product: true },
+    });
+    return rows.map((x) => this.productView(x.product, false, x));
+  }
   async product(id: string, campusId: string) {
     const item = await this.db.product.findFirst({
       where: { id, campusId, status: 'on-sale' },
@@ -960,6 +980,12 @@ export class BusinessService {
         where: { id: order.campusId },
         select: { warehouseName: true },
       });
+      // IKBW0Q：校区绑定打印机优先，未绑定回落 env 试点单机
+      const bound = await this.db.printer.findUnique({
+        where: { campusId: order.campusId },
+      });
+      const snOverride =
+        bound && bound.status === 'active' ? bound.sn : undefined;
       const context: ReceiptOrderContext = {
         id: order.id,
         orderNo: order.orderNo,
@@ -977,7 +1003,7 @@ export class BusinessService {
         discount: Number(order.discount),
         payableAmount: Number(order.payableAmount),
       };
-      await this.printer.printOrderReceipt(context);
+      await this.printer.printOrderReceipt(context, snOverride);
     } catch (error) {
       BusinessService.logger.warn(
         `订单 ${order.orderNo} 支付小票打印失败（不影响支付流程）: ${

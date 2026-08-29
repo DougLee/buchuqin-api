@@ -21,6 +21,7 @@ import type {
   CreateCategoryDto,
   CreateCommissionRuleDto,
   CreateCouponDto,
+  BindPrinterDto,
   CreateDispatchInvitationDto,
   CreateLocationDto,
   CreateProductDto,
@@ -688,17 +689,16 @@ export class AdminService {
     operator: string,
     campusId: string,
   ) {
-    // IKAJSL Banner 归总部：hq 可指定投放校区（body.campusId，空 = 全部校区），
-    // 用户端按 campusId IN (本校区, '') 匹配；校区侧已无 Banner 权限（矩阵）。
-    const target = campusId ? campusId : body.campusId ?? '';
-    if (target) {
-      const campus = await this.db.campus.findUnique({ where: { id: target } });
-      if (!campus || campus.status === 'official')
-        throw new BadRequestException('投放校区不存在');
-    }
+    // IKAJSL→IKBW0A：Banner 校区自管——投放范围固定为操作者本校区（多校区
+    // 账号经切换校区换 token），不再接受 body.campusId 指定投放面；
+    // hq 投放通道已随权限矩阵移除。
+    if (!campusId) throw new BadRequestException('仅校区账号可创建 Banner');
+    const campus = await this.db.campus.findUnique({ where: { id: campusId } });
+    if (!campus || campus.status === 'official')
+      throw new BadRequestException('投放校区不存在');
     const banner = await this.db.banner.create({
       data: {
-        campusId: target,
+        campusId,
         title: body.title,
         subtitle: body.subtitle ?? '',
         badge: body.badge ?? '',
@@ -717,8 +717,8 @@ export class AdminService {
       'banner',
       banner.id,
       null,
-      { title: banner.title, sort: banner.sort, campusId: target },
-      target,
+      { title: banner.title, sort: banner.sort, campusId },
+      campusId,
     );
     return banner;
   }
@@ -1442,16 +1442,21 @@ export class AdminService {
    * 缺纸/卡纸重打场景）。校区隔离复用 this.order；写审计日志留痕。
    */
   async reprintReceipt(id: string, operator: string, campusId: string) {
-    if (!this.printer?.configured)
+    if (!this.printer?.accountConfigured)
       throw new BadRequestException(
         '打印机未配置，请联系平台管理员配置芯烨云凭证',
       );
     const order = (await this.order(id, campusId)) as Record<string, any>;
+    // IKBW0Q：校区绑定打印机优先，未绑定回落 env 试点单机
+    const sn = await this.resolvePrinterSn(order.campusId);
+    if (!sn)
+      throw new BadRequestException('本校区尚未绑定打印机，请先在「打印机」页绑定');
     const campus = await this.db.campus.findUnique({
       where: { id: order.campusId },
       select: { warehouseName: true },
     });
-    await this.printer.printOrderReceipt({
+    await this.printer.printOrderReceipt(
+      {
       id: order.id,
       orderNo: order.orderNo,
       campusId: order.campusId,
@@ -1467,7 +1472,9 @@ export class AdminService {
       deliveryFee: Number(order.deliveryFee),
       discount: Number(order.discount),
       payableAmount: Number(order.payableAmount),
-    });
+      },
+      sn,
+    );
     await this.audit(
       operator,
       'order.print-receipt',
@@ -1478,6 +1485,94 @@ export class AdminService {
       campusId,
     );
     return { printed: true, orderNo: order.orderNo };
+  }
+  /* ---------- 校区打印机绑定（IKBW0Q） ---------- */
+  /** 校区绑定打印机终端号：active 记录优先，未绑定返回 null（调用方回落 env）。 */
+  private async resolvePrinterSn(campusId: string): Promise<string | null> {
+    const bound = await this.db.printer.findUnique({ where: { campusId } });
+    return bound && bound.status === 'active' ? bound.sn : null;
+  }
+  async printers(campusId: string) {
+    return this.db.printer.findMany({
+      where: { campusId },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+  /** 绑定/换绑（IKBW0Q）：先在芯烨云侧把终端加进开发者账号（幂等），成功后
+   *  upsert 本校区记录（一校区一台，换绑覆盖原记录）。 */
+  async bindPrinter(
+    body: BindPrinterDto,
+    operator: string,
+    campusId: string,
+  ) {
+    if (!campusId)
+      throw new BadRequestException('仅校区账号可绑定打印机');
+    if (!this.printer)
+      throw new BadRequestException('打印服务未启用');
+    await this.printer.addPrinter(body.sn, body.key);
+    let row;
+    try {
+      row = await this.db.printer.upsert({
+        where: { campusId },
+        create: { campusId, name: body.name, sn: body.sn, key: body.key },
+        update: { name: body.name, sn: body.sn, key: body.key, status: 'active' },
+      });
+    } catch (error) {
+      // sn 全局唯一：被其他校区占用时给可读提示
+      if (String(error).includes('Unique'))
+        throw new BadRequestException('该打印机已被其他校区绑定');
+      throw error;
+    }
+    await this.audit(
+      operator,
+      'printer.bind',
+      'printer',
+      row.id,
+      null,
+      { name: row.name, sn: row.sn },
+      campusId,
+    );
+    return row;
+  }
+  async unbindPrinter(id: string, operator: string, campusId: string) {
+    const row = await this.db.printer.findFirst({ where: { id, campusId } });
+    if (!row) throw new NotFoundException('打印机不存在');
+    await this.db.printer.delete({ where: { id: row.id } });
+    // 仅删本地绑定记录；芯烨云账号侧的终端绑定保留（无害，重绑幂等）
+    await this.audit(
+      operator,
+      'printer.unbind',
+      'printer',
+      id,
+      { name: row.name, sn: row.sn },
+      null,
+      campusId,
+    );
+    return row;
+  }
+  /** 测试打印（IKBW0Q）：绑定后连通性验证；云端失败原样透传给后台提示。 */
+  async testPrintPrinter(id: string, operator: string, campusId: string) {
+    const row = await this.db.printer.findFirst({ where: { id, campusId } });
+    if (!row) throw new NotFoundException('打印机不存在');
+    if (!this.printer)
+      throw new BadRequestException('打印服务未启用');
+    try {
+      await this.printer.printTest(row.sn);
+    } catch (error) {
+      throw new BadRequestException(
+        error instanceof Error ? error.message : '测试打印失败',
+      );
+    }
+    await this.audit(
+      operator,
+      'printer.test-print',
+      'printer',
+      id,
+      null,
+      { sn: row.sn },
+      campusId,
+    );
+    return { printed: true, sn: row.sn };
   }
   /**
    * 手动改订单状态（IKA0UT）：测试与上线初期兜底。仅接受 12 态白名单，
@@ -1689,11 +1784,12 @@ export class AdminService {
           buildingName = '湖北工业大学';
         }
       } else {
-        if (!nextBuildingId)
-          throw new BadRequestException('楼长必须绑定楼栋');
+        // IKBW0E：楼长允许显式解绑（清空绑定进「待分配」态，见下方 buildingId null
+        // 分支）；绑有楼栋时才校验一楼一在职楼长，编辑改名等操作不受历史数据阻塞
         if (
-          nextBuildingId !== before.buildingId ||
-          nextRole !== before.role
+          nextBuildingId &&
+          (nextBuildingId !== before.buildingId ||
+            nextRole !== before.role)
         ) {
           const clash = await this.db.staff.findFirst({
             where: {
@@ -1710,7 +1806,10 @@ export class AdminService {
     if (body.buildingId !== undefined) {
       if (body.buildingId === null) {
         data.buildingRef = { disconnect: true };
-        buildingName = '湖北工业大学';
+        // IKBW0E：快照列与 roleText 必须同步置「待分配」——此前只 disconnect 外键，
+        // building 残留旧楼名，列表/履约端看起来像「没解除」
+        data.building = '待分配';
+        buildingName = '待分配';
       } else {
         const building = await this.db.building.findFirst({
           where: { id: body.buildingId, campusId },

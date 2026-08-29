@@ -18,6 +18,7 @@ export type AdminSection =
   | 'finance'
   | 'marketing'
   | 'banners'
+  | 'printers'
   | 'audit'
   | 'accounts'
   | 'users'
@@ -43,14 +44,16 @@ const OPS: AdminRole[] = ['admin', 'operations'];
  * | after-sales 售后 | —       | 读    | 读        | 读   | 读（只读留档）|
  * | finance 结算/规则| —       | 读写  | 读        | —    | 读写      |
  * | marketing 促销/券| —       | 读写  | 读写      | —    | —         |
- * | banners Banner   | 读写(投放)| 读写  | —         | —    | —         |
+ * | banners Banner   | —       | 读写(本校区)| —    | —    | —         |
+ * | printers 打印机  | —       | 读写(本校区)| —    | —    | —         |
  * | audit 审计日志   | 读(全校区)| 读   | 读        | —    | 读        |
  * | accounts 账号    | 读写(全部)| 读写(全部，IKBFJ4) | —   | —    | —        |
  * | users C端用户    | 读(全校区) | 读  | 读        | —    | —         |
  * | wechat-groups 群码| —      | 读写  | 读写      | —    | —         |
  *
- * Banner 归总部投放（IKAJSL 决策），从校区 marketing 拆出独立板块；
- * 促销/优惠券/群码仍归校区（marketing/wechat-groups 不含 hq）。
+ * Banner 校区自管（IKBW0A 2026-08-29：投放范围概念废止，校区各自管理各自的
+ * Banner/广告位，hq 移出；原「归总部投放」IKAJSL 决策作废），从校区 marketing
+ * 拆出独立板块；促销/优惠券/群码仍归校区（marketing/wechat-groups 不含 hq）。
  * 校区本体增改（POST/PATCH /campuses）在 controller 里限定 hq + admin（IKBWRT
  * 2026-08-29：admin 平台超管全菜单操作权限；operations 仍限楼栋域）。
  * 调度（dispatch-invitations）并入 staff 板块（员工/楼栋/调度同属运营域）。
@@ -74,8 +77,11 @@ export const ADMIN_MATRIX: Record<
   'after-sales': { read: ALL, write: [] },
   finance: { read: [...OPS, 'finance'], write: ['admin', 'finance'] },
   marketing: { read: OPS, write: OPS },
-  // Banner 总部投放（IKAJSL）：2026-08-26 道哥决策 admin 平台超管同步开放（全菜单可见）。
-  banners: { read: ['hq', 'admin'], write: ['hq', 'admin'] },
+  // Banner 校区自管（IKBW0A 2026-08-29）：各校区管理员管本校区 Banner/广告位，
+  // hq 不再做投放（原 IKAJSL「总部投放」及 2026-08-26 admin 跨校区开放作废）。
+  banners: { read: ['admin'], write: ['admin'] },
+  // 校区打印机绑定（IKBW0Q 2026-08-29）：校区自主绑定/管理小票机，与 banners 同口径。
+  printers: { read: ['admin'], write: ['admin'] },
   audit: { read: [...OPS, 'finance', 'hq'], write: [] },
   // 账号管理（IK9KWO）：hq 管全部账号（含建 hq），admin 管本校区职能账号。
   accounts: { read: ['hq', 'admin'], write: ['hq', 'admin'] },
