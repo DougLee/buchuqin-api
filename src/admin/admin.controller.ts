@@ -987,25 +987,26 @@ export class AdminController {
     this.authorize(req, 'dashboard');
     return ok(filterByKeyword(await this.service.campuses(), keyword));
   }
-  /* ---------- 校区本体管理（IKAJSL）：新校区接入，仅总部长 ---------- */
+  /* ---------- 校区本体管理（IKAJSL）：新校区接入 ---------- */
   @Post('campuses')
-  @ApiOperation({ summary: '新建校区（仅总部账号）' })
+  @ApiOperation({ summary: '新建校区（总部/平台超管）' })
   async createCampus(@Req() req: AuthRequest, @Body() body: CreateCampusDto) {
-    // 校区增改是总部职责：campuses 板块 write 虽含校区长（管楼栋复用同板块），
-    // 本体增改必须 hq —— 这一条是跨校区架构动作，不适合放矩阵单列板块。
-    if (req.user.role !== 'hq')
-      throw new ForbiddenException('仅总部账号可新增校区');
+    // 本体增改是平台级动作，不进矩阵单列板块。IKBWRT（2026-08-29 道哥定版）：
+    // admin 平台超管全菜单操作权限，与 hq 同权建改校区（对齐 IKBFJ4 账号同权）；
+    // operations 等职能角色仍只管楼栋域。
+    if (req.user.role !== 'hq' && req.user.role !== 'admin')
+      throw new ForbiddenException('仅总部/平台超管账号可新增校区');
     return ok(await this.service.createCampus(body, req.user.id), '校区已创建');
   }
   @Patch('campuses/:id')
-  @ApiOperation({ summary: '修改校区信息/启停（仅总部账号）' })
+  @ApiOperation({ summary: '修改校区信息/启停（总部/平台超管）' })
   async updateCampus(
     @Req() req: AuthRequest,
     @Param('id') id: string,
     @Body() body: UpdateCampusDto,
   ) {
-    if (req.user.role !== 'hq')
-      throw new ForbiddenException('仅总部账号可修改校区');
+    if (req.user.role !== 'hq' && req.user.role !== 'admin')
+      throw new ForbiddenException('仅总部/平台超管账号可修改校区');
     return ok(
       await this.service.updateCampus(id, body, req.user.id),
       '校区已更新',

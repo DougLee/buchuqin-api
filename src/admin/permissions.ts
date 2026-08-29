@@ -39,7 +39,7 @@ const OPS: AdminRole[] = ['admin', 'operations'];
  * | categories 类别  | 读写    | 读写  | 读写      | 读写 | —         |
  * | inventory 库存   | —       | 读写  | 读写      | 读写 | —         |
  * | staff 员工/请假  | —       | 读写  | 读写      | —    | —         |
- * | campuses 校区/楼栋| 读写(全部校区)| 读写(本校区) | 读写 | —   | —      |
+ * | campuses 校区/楼栋| 读写(全部校区)| 读写(本校区+本体，IKBWRT) | 读写 | —   | —      |
  * | after-sales 售后 | —       | 读    | 读        | 读   | 读（只读留档）|
  * | finance 结算/规则| —       | 读写  | 读        | —    | 读写      |
  * | marketing 促销/券| —       | 读写  | 读写      | —    | —         |
@@ -51,7 +51,8 @@ const OPS: AdminRole[] = ['admin', 'operations'];
  *
  * Banner 归总部投放（IKAJSL 决策），从校区 marketing 拆出独立板块；
  * 促销/优惠券/群码仍归校区（marketing/wechat-groups 不含 hq）。
- * 校区本体增改（POST/PATCH /campuses）在 controller 里限定 hq。
+ * 校区本体增改（POST/PATCH /campuses）在 controller 里限定 hq + admin（IKBWRT
+ * 2026-08-29：admin 平台超管全菜单操作权限；operations 仍限楼栋域）。
  * 调度（dispatch-invitations）并入 staff 板块（员工/楼栋/调度同属运营域）。
  * 修改口径：先改这张表，不要散到各端点里加 if。
  */
