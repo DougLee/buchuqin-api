@@ -50,9 +50,15 @@ const monthlyFolder = () => {
 };
 
 // IK9VBI/IK9VBM：目录白名单——app/ 系放小程序静态素材（Banner 背景 app/、
-// 商品图 app/product/、分类图 app/category/），缺省 uploads/（按月归档）放
-// 运营素材；其余值拒绝，防任意前缀落桶。
-const FOLDERS = new Set(['uploads', 'app', 'app/product', 'app/category']);
+// 商品图 app/product/、分类图 app/category/、群码 app/wechat-group/ IKC1AE），
+// 缺省 uploads/（按月归档）放运营素材；其余值拒绝，防任意前缀落桶。
+const FOLDERS = new Set([
+  'uploads',
+  'app',
+  'app/product',
+  'app/category',
+  'app/wechat-group',
+]);
 
 const putToCos = (key: string, buffer: Buffer, mimetype: string) =>
   new Promise<string>((resolve, reject) => {
@@ -113,8 +119,9 @@ export class FilesController {
 
     const ext = extname(file.originalname || '').toLowerCase();
     const safeExt = /^\.[a-z0-9]{1,5}$/.test(ext) ? ext : '.jpg';
-    // app/（小程序素材，IK9VBI）平铺一级；uploads/ 按月归档
-    const dir = target === 'app' ? 'app' : monthlyFolder();
+    // app/ 系（小程序素材，IK9VBI）直接落白名单对应 COS 子目录（IKC1AE 起
+    // 支持 app/wechat-group 等子目录）；uploads/ 按月归档
+    const dir = target === 'uploads' ? monthlyFolder() : target;
     const key = `${dir}/${randomUUID()}${safeExt}`;
 
     try {

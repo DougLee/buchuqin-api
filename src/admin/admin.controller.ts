@@ -149,7 +149,9 @@ export class AdminController {
   }
   /** 官方库浏览（IKAJSO 导入弹窗）：校区角色只读官方库行，用于搜索+多选导入。 */
   @Get('products/official-library')
-  @ApiOperation({ summary: '官方商品库列表（校区导入弹窗用，只读）' })
+  @ApiOperation({
+    summary: '官方商品库列表（校区导入弹窗用，只读；IKC1AB 仅含总部放行的可售商品）',
+  })
   async officialLibrary(
     @Req() req: AuthRequest,
     @Query('page') page?: string,
@@ -159,7 +161,8 @@ export class AdminController {
     this.authorize(req, 'products');
     return ok(
       paginate(
-        await this.service.products(OFFICIAL_CAMPUS_ID),
+        // IKC1AB：导入候选池只见总部放行（可售）的商品
+        await this.service.products(OFFICIAL_CAMPUS_ID, ['on-sale']),
         page,
         pageSize,
         keyword,

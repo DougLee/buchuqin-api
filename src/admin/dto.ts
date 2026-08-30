@@ -33,8 +33,13 @@ export class CreateProductDto extends BarcodeDto {
   @IsString() @MaxLength(80) name!: string;
   @IsOptional() @IsString() @MaxLength(120) subtitle?: string;
   @IsString() categoryId!: string;
+  /** IKC1AC：官方行=批发价格，校区行=实际售价。 */
   @Type(() => Number) @IsNumber() @Min(0) price!: number;
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) originalPrice?: number;
+  /** 进货价（IKC1AC）：仅官方库建档接受，校区出口一律剔除。 */
+  @IsOptional() @Type(() => Number) @IsInt() @Min(0) costPrice?: number;
+  /** 批发价格（IKC1AC）：仅官方库建档接受，缺省取 price。 */
+  @IsOptional() @Type(() => Number) @IsInt() @Min(0) wholesalePrice?: number;
   @Type(() => Number) @IsInt() @Min(0) stock!: number;
   @IsOptional() @IsString() tag?: string;
   @IsOptional() @IsString() image?: string;
@@ -58,6 +63,12 @@ export class CreateProductDto extends BarcodeDto {
 export class UpdateProductDto {
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) price?: number;
   @IsOptional() @Type(() => Number) @IsInt() @Min(0) stock?: number;
+  /** 上下架（IKC1AB）：hq 官方库放行/回收、校区自管本地上架。 */
+  @IsOptional() @IsIn(['on-sale', 'off-sale']) status?: 'on-sale' | 'off-sale';
+  /** 进货价（IKC1AC）：仅官方库行接受（service 校验 campus）。 */
+  @IsOptional() @Type(() => Number) @IsInt() @Min(0) costPrice?: number;
+  /** 批发价格（IKC1AC）：仅官方库行接受（service 校验 campus）。 */
+  @IsOptional() @Type(() => Number) @IsInt() @Min(0) wholesalePrice?: number;
   /** 资料字段（IKAHAT）：全部可选（PATCH 语义），空白 name 由 service 拒绝。 */
   @IsOptional() @IsString() @MaxLength(80) name?: string;
   @IsOptional() @IsString() @MaxLength(120) subtitle?: string;
@@ -99,6 +110,8 @@ export class CreateBannerDto {
   image?: string;
   /** 图文详情（IK9SNN）：多行文本，https:// 开头的行渲染为图片；空 = 不可点。 */
   @IsOptional() @IsString() @MaxLength(5000) content?: string;
+  /** 详情长图（IKC1AD）：点击 Banner 进详情页通铺展示的主口径；空 = 不可点。 */
+  @IsOptional() @IsString() @MaxLength(500) detailImage?: string;
   /** 展示位置（IKA57F）：缺省 home 首页轮播。 */
   @IsOptional() @IsIn(['home', 'pay-success']) placement?: 'home' | 'pay-success';
   @IsOptional() @Type(() => Number) @IsInt() sort?: number;
@@ -109,6 +122,8 @@ export class UpdateBannerDto {
   @IsOptional() @IsString() @MinLength(1) @MaxLength(30) title?: string;
   @IsOptional() @IsString() @MaxLength(50) subtitle?: string;
   @IsOptional() @IsString() @MaxLength(20) badge?: string;
+  /** 详情长图（IKC1AD）：空串语义清空（Banner 回到不可点）。 */
+  @IsOptional() @IsString() @MaxLength(500) detailImage?: string;
   @IsOptional()
   @IsString()
   @Matches(/^(green|orange|dark|#[0-9a-fA-F]{6})$/, {
@@ -273,8 +288,9 @@ export class CreateCategoryDto {
 export class UpdateCategoryDto {
   @IsOptional() @IsString() @MinLength(1) @MaxLength(20) name?: string;
   @IsOptional() @Type(() => Number) @IsInt() sort?: number;
+  // IKC1AA：允许空串 = 恢复默认图标（用户端回落本地哈希图标）；非空须为图片 URL
   @IsOptional()
-  @Matches(/^https?:\/\//, { message: '类别图必须是 http(s) URL' })
+  @Matches(/^$|^https?:\/\//, { message: '类别图必须是 http(s) URL' })
   @MaxLength(500)
   image?: string;
 }

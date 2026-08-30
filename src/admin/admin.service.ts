@@ -545,6 +545,9 @@ export class AdminService {
       ...x,
       price: this.num(x.price),
       originalPrice: this.num(x.originalPrice),
+      // IKC1AC：价格三层输出（校区端展示批发价快照；进货价由前端按角色显隐）
+      costPrice: this.num(x.costPrice),
+      wholesalePrice: this.num(x.wholesalePrice),
       weight: this.num(x.weight),
       skuNo: `SKU-${x.id.toUpperCase()}`,
       // 官方库不记库存（IKAJSM）：库存归校区，不参与售罄映射
@@ -704,8 +707,9 @@ export class AdminService {
         badge: body.badge ?? '',
         color: body.color,
         image: body.image || null,
-        // IK9SNN：图文详情，空 = 不可点
+        // IK9SNN：图文详情，空 = 不可点；IKC1AD：详情长图为主口径
         content: body.content || null,
+        detailImage: body.detailImage || null,
         // IKA57F：展示位置，缺省首页轮播
         placement: body.placement ?? 'home',
         sort: body.sort ?? 0,
@@ -742,8 +746,11 @@ export class AdminService {
         badge: body.badge,
         color: body.color,
         image: body.image,
-        // IK9SNN：undefined 跳过；空串语义清空（存 null）
+        // IK9SNN：undefined 跳过；空串语义清空（存 null）。
+        // IKC1AD：detailImage 与 image 同款——undefined 跳过，空串清空
         content: body.content === undefined ? undefined : body.content || null,
+        detailImage:
+          body.detailImage === undefined ? undefined : body.detailImage || null,
         // IKA57F：undefined 跳过
         placement: body.placement,
         sort: body.sort,
@@ -923,16 +930,23 @@ export class AdminService {
         found: true,
         source: 'product-database',
         product: {
+          // IKC1AC：进货价不下发校区端（扫码回填场景同样剔除）
           ...product,
+          costPrice: undefined,
           price: this.num(product.price),
           originalPrice: this.num(product.originalPrice),
           weight: this.num(product.weight),
         },
       };
-    // IKAJSO：本校区未录入时先查官方库——命中即可一键导入，不再走人工建档
+    // IKAJSO：本校区未录入时先查官方库——命中即可一键导入，不再走人工建档。
+    // IKC1AB：与导入候选池同口径，仅命中总部放行（on-sale）的商品
     if (campusId !== OFFICIAL_CAMPUS_ID) {
       const official = await this.db.product.findFirst({
-        where: { barcode, campusId: OFFICIAL_CAMPUS_ID },
+        where: {
+          barcode,
+          campusId: OFFICIAL_CAMPUS_ID,
+          status: 'on-sale',
+        },
       });
       if (official)
         return {
@@ -1038,7 +1052,16 @@ export class AdminService {
         location: body.location ?? '',
         weight: body.weight ?? 0,
         sales: 0,
-        status: 'on-sale',
+        // IKC1AB：官方库商品默认「不可售」，总部核对后手动放行（校区导入
+        // 候选池只见可售）；校区自建商品仍默认在售
+        status: campusId === OFFICIAL_CAMPUS_ID ? 'off-sale' : 'on-sale',
+        // IKC1AC：进货价/批发价格仅官方库行维护；批发价缺省取 price
+        ...(campusId === OFFICIAL_CAMPUS_ID
+          ? {
+              costPrice: body.costPrice ?? 0,
+              wholesalePrice: body.wholesalePrice ?? body.price,
+            }
+          : {}),
       },
     });
     await this.audit(
@@ -1072,7 +1095,11 @@ export class AdminService {
       });
       if (!category) throw new BadRequestException('分类不存在');
     }
-    const after = await this.db.product.update({ where: { id }, data: body });
+    // IKC1AC：进货价/批发价格仅官方库行可改（校区视角不可见也不可写）
+    const data: UpdateProductDto = campusId === OFFICIAL_CAMPUS_ID
+      ? body
+      : { ...body, costPrice: undefined, wholesalePrice: undefined };
+    const after = await this.db.product.update({ where: { id }, data });
     await this.audit(
       operator,
       'product.update',
@@ -1096,7 +1123,12 @@ export class AdminService {
     campusId: string,
   ) {
     const officials = await this.db.product.findMany({
-      where: { id: { in: productIds }, campusId: OFFICIAL_CAMPUS_ID },
+      // IKC1AB：仅总部放行（on-sale）的商品可导入——候选池与导入双保险
+      where: {
+        id: { in: productIds },
+        campusId: OFFICIAL_CAMPUS_ID,
+        status: 'on-sale',
+      },
     });
     const officialById = new Map(officials.map((o) => [o.id, o]));
     const existing = await this.db.product.findMany({
@@ -1137,6 +1169,10 @@ export class AdminService {
           // 售价/划线价取官方价起步，校区可改；库存归校区，导入为 0
           price: official.price,
           originalPrice: official.originalPrice,
+          // IKC1AC：批发价/进货价快照随导入落校区行（校区端展示批发价，
+          // 进货价仅数据留档、校区出口剔除）
+          costPrice: official.costPrice,
+          wholesalePrice: official.price,
           stock: 0,
           tag: official.tag,
           image: official.image,
@@ -1195,6 +1231,9 @@ export class AdminService {
         name: official.name,
         subtitle: official.subtitle,
         originalPrice: official.originalPrice,
+        // IKC1AC：总部改价（批发价/进货价）随拉取同步到校区行
+        wholesalePrice: official.price,
+        costPrice: official.costPrice,
         tag: official.tag,
         image: official.image,
         images: (official.images as Prisma.InputJsonValue) ?? undefined,
@@ -1492,11 +1531,19 @@ export class AdminService {
     const bound = await this.db.printer.findUnique({ where: { campusId } });
     return bound && bound.status === 'active' ? bound.sn : null;
   }
+  // IKC1AF 口径：打印机与校区为一对一（一校区一台，campusId 唯一约束），
+  // 后台按「编辑页」形态管理；一台多机需求出现时再扩 Printer.campusId 唯一约束。
   async printers(campusId: string) {
-    return this.db.printer.findMany({
+    const rows = await this.db.printer.findMany({
       where: { campusId },
       orderBy: { createdAt: 'desc' },
+      // IKC1AF：带出归属校区（列表/编辑页展示）
+      include: { campus: { select: { name: true, shortName: true } } },
     });
+    return rows.map((r) => ({
+      ...r,
+      campusName: r.campus?.shortName || r.campus?.name || '',
+    }));
   }
   /** 绑定/换绑（IKBW0Q）：先在芯烨云侧把终端加进开发者账号（幂等），成功后
    *  upsert 本校区记录（一校区一台，换绑覆盖原记录）。 */
@@ -3137,7 +3184,10 @@ export class AdminService {
         role === 'admin' ? '至少需要保留一个超管账号' : '至少需要保留一个总部账号',
       );
   }
-  private audit(
+  /** 审计留痕（全局 ~49 处调用）：写入失败只 warn 不抛——业务更新在审计前
+   *  已提交，审计故障不应把成功的操作变成 500（IKC1AA「更新报错但实际
+   *  已生效」的假报错即此形状）。 */
+  private async audit(
     operator: string,
     action: string,
     entityType: string,
@@ -3146,16 +3196,23 @@ export class AdminService {
     after: unknown,
     campusId: string,
   ) {
-    return this.db.auditLog.create({
-      data: {
-        campusId,
-        operator,
-        action,
-        entityType,
-        entityId,
-        before: before as Prisma.InputJsonValue,
-        after: after as Prisma.InputJsonValue,
-      },
-    });
+    try {
+      await this.db.auditLog.create({
+        data: {
+          campusId,
+          operator,
+          action,
+          entityType,
+          entityId,
+          before: before as Prisma.InputJsonValue,
+          after: after as Prisma.InputJsonValue,
+        },
+      });
+    } catch (error) {
+      console.warn(
+        `[audit] 审计写入失败（不影响业务操作）: ${action} ${entityType}/${entityId}`,
+        error instanceof Error ? error.message : error,
+      );
+    }
   }
 }

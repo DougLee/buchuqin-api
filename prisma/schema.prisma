@@ -138,8 +138,12 @@ model Product {
   category      Category   @relation(fields: [categoryId], references: [id])
   name          String
   subtitle      String
-  price         Int // 金额单位:分（IK8W5K）
-  originalPrice Int
+  price         Int // 金额单位:分（IK8W5K）；官方行=批发价格，校区行=实际售价（IKC1AC）
+  originalPrice Int // 建议零售价（总部建议，校区可看；C 端划线原价）
+  // IKC1AC 价格三层：进货价（总部专用，C 端/校区出口一律剔除）与批发价快照
+  // （校区行由导入/pullUpstream 自官方 price 复制）
+  costPrice     Int        @default(0)
+  wholesalePrice Int       @default(0)
   stock         Int
   lockedStock   Int        @default(0)
   sales         Int        @default(0)
@@ -200,12 +204,15 @@ model InventoryTxn {
 model Banner {
   id       String  @id @default(cuid())
   campusId String
+  // 标题/副标题/角标（IKC1AD）：内部字段供运营辨识，用户端不再渲染
   title    String
   subtitle String
   badge    String
   color    String
   image    String?
-  // 图文详情（IK9SNN）：用户端 Banner 点击进入的图文内容，空 = 不可点
+  // 详情长图（IKC1AD）：点击 Banner 进详情页通铺展示；空 = 不可点
+  detailImage String?
+  // 图文详情（IK9SNN）：旧版逐行文字内容，保留兼容；detailImage 优先
   content  String?
   // 展示位置（IKA57F）：home 首页轮播 / pay-success 支付成功页广告位
   placement String @default("home")

@@ -100,7 +100,8 @@ export class BusinessService {
    * 供 C 端角标/倒计时与订单快照审计（含 promotionId，下单锁价）。
    */
   private productView(product: any, withDescription = false, promotion?: any) {
-    const { description, ...rest } = product;
+    // IKC1AC：进货价/批发价是内部价格，绝不进 C 端响应
+    const { description, costPrice, wholesalePrice, ...rest } = product;
     return {
       ...rest,
       // 列表不回介绍（IKAHAU）：≤2000 字 × 全量商品会把首页/列表 payload 撑爆；

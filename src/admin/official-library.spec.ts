@@ -90,11 +90,26 @@ describe('official product library & campus import (IKAJSM/IKAJSO)', () => {
       upstreamChanged: boolean;
     }>;
     const row = officialList.find((x) => x.id === created.id);
-    expect(row?.status).toBe('on-sale');
+    // IKC1AB：官方库建档默认「不可售」，总部核对后手动放行
+    expect(row?.status).toBe('off-sale');
     expect(row?.upstreamChanged).toBe(false);
+    const released = await service.updateProduct(
+      created.id,
+      { status: 'on-sale' },
+      'spec-hq',
+      OFFICIAL_CAMPUS_ID,
+    );
+    expect(released.status).toBe('on-sale');
   });
 
   it('校区导入官方商品：资料落地、下架零库存、重复导入跳过', async () => {
+    // IKC1AB：仅总部放行（on-sale）的商品可导入
+    await service.updateProduct(
+      officialIds[0],
+      { status: 'on-sale' },
+      'spec-hq',
+      OFFICIAL_CAMPUS_ID,
+    );
     const result = await service.importProducts(
       officialIds,
       'spec-importer',
@@ -187,6 +202,13 @@ describe('official product library & campus import (IKAJSM/IKAJSO)', () => {
       OFFICIAL_CAMPUS_ID,
     );
     officialIds.push(created.id);
+    // IKC1AB：放行后才会进导入候选池（未放行时 skipped 原因是「未放行」）
+    await service.updateProduct(
+      created.id,
+      { status: 'on-sale' },
+      'spec-hq',
+      OFFICIAL_CAMPUS_ID,
+    );
     // 同校区已有同码自建商品
     const local = await db.product.create({
       data: {
