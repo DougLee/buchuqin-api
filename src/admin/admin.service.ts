@@ -598,7 +598,12 @@ export class AdminService {
     });
     if (duplicate) throw new BadRequestException('类别名称已存在');
     const category = await this.db.category.create({
-      data: { name: body.name, sort: body.sort ?? 0, image: body.image ?? '' },
+      data: {
+        name: body.name,
+        sort: body.sort ?? 0,
+        image: body.image ?? '',
+        hidden: body.hidden ?? false,
+      },
     });
     await this.audit(
       operator,
@@ -627,8 +632,13 @@ export class AdminService {
     }
     const category = await this.db.category.update({
       where: { id },
-      // Prisma 惯例：undefined 字段跳过更新
-      data: { name: body.name, sort: body.sort, image: body.image },
+      // Prisma 惯例：undefined 字段跳过更新（hidden 为类目可见性开关 IKC9M4）
+      data: {
+        name: body.name,
+        sort: body.sort,
+        image: body.image,
+        hidden: body.hidden,
+      },
     });
     await this.audit(
       operator,

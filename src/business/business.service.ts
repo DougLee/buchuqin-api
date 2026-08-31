@@ -161,7 +161,11 @@ export class BusinessService {
   }
   async categories() {
     // 分类为全局字典（无 campusId 维度），商品侧按校园过滤。
-    return this.db.category.findMany({ orderBy: { sort: 'asc' } });
+    // IKC9M4：hidden 分类不下发 C 端（后台类目开关，类目审核场景）。
+    return this.db.category.findMany({
+      where: { hidden: false },
+      orderBy: { sort: 'asc' },
+    });
   }
   private couponView(coupon: {
     id: string;
@@ -344,7 +348,7 @@ export class BusinessService {
       }),
       this.categories(),
       this.db.product.findMany({
-        where: { campusId, status: 'on-sale' },
+        where: { campusId, status: 'on-sale', category: { hidden: false } },
         orderBy: { sales: 'desc' },
         take: 18,
       }),
@@ -400,6 +404,8 @@ export class BusinessService {
       where: {
         campusId,
         status: 'on-sale',
+        // IKC9M4：hidden 分类的商品全链路不露出（全部/分类/搜索）
+        category: { hidden: false },
         ...(categoryId && categoryId !== 'all' ? { categoryId } : {}),
         ...(keyword
           ? { name: { contains: keyword, mode: 'insensitive' } }
@@ -423,7 +429,7 @@ export class BusinessService {
         status: 'active',
         startsAt: { lte: now },
         endsAt: { gt: now },
-        product: { campusId, status: 'on-sale' },
+        product: { campusId, status: 'on-sale', category: { hidden: false } },
       },
       orderBy: [{ endsAt: 'asc' }, { createdAt: 'asc' }],
       include: { product: true },

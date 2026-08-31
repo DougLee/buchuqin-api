@@ -275,7 +275,8 @@ export class UpdateAccountDto {
   /** 重设可运营校区全集（IKB3KG 方案A）：仅 hq 操作者生效，整体替换授权行。 */
   @IsOptional() @IsArray() @IsString({ each: true }) campusIds?: string[];
 }
-/** 商品类别（全局字典）：名称 + 排序 + 类别图，删除时有关联商品拒绝。 */
+/** 商品类别（全局字典）：名称 + 排序 + 类别图 + 可见性开关（IKC9M4），
+ *  删除时有关联商品拒绝。 */
 export class CreateCategoryDto {
   @IsString() @MinLength(1) @MaxLength(20) name!: string;
   @IsOptional() @Type(() => Number) @IsInt() sort?: number;
@@ -284,6 +285,8 @@ export class CreateCategoryDto {
   @Matches(/^https?:\/\//, { message: '类别图必须是 http(s) URL' })
   @MaxLength(500)
   image?: string;
+  /** 在小程序显示（IKC9M4）：false = C 端全链路隐藏该类目及其商品。 */
+  @IsOptional() @Type(() => Boolean) hidden?: boolean;
 }
 export class UpdateCategoryDto {
   @IsOptional() @IsString() @MinLength(1) @MaxLength(20) name?: string;
@@ -293,6 +296,8 @@ export class UpdateCategoryDto {
   @Matches(/^$|^https?:\/\//, { message: '类别图必须是 http(s) URL' })
   @MaxLength(500)
   image?: string;
+  /** 在小程序显示（IKC9M4）：false = C 端全链路隐藏该类目及其商品。 */
+  @IsOptional() @Type(() => Boolean) hidden?: boolean;
 }
 
 /** 库位字典（IKA0VG）：人工维护库位区域列表，商品表单下拉选择。 */

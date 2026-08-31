@@ -125,6 +125,9 @@ model Category {
   name     String
   sort     Int       @default(0)
   image    String    @default("")
+  // 类目可见性开关（IKC9M4）：隐藏后 C 端分类导航/全部列表/搜索/热销/秒杀
+  // 全链路不出现该类目及其商品（类目资质类目审核场景），商品数据不动
+  hidden   Boolean   @default(false)
   products Product[]
 }
 
