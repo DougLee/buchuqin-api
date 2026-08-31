@@ -519,6 +519,26 @@ export class AuthController {
     );
   }
 
+  /** 员工微信解绑（IKC4IN 追加）：「退出登录」的真语义——清 Staff.openid。
+   *  只清前端 token 是假退出：openid 仍绑定时静默 wx.login 会立刻自动
+   *  登回原账号。解绑后静默登录 404 → 走游客态/重新工号绑定。 */
+  @Post('wechat-unbind')
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard, ThrottlerGuard)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @ApiOperation({ summary: '员工解绑微信（退出登录：清 openid，再登录需重新绑定）' })
+  async wechatUnbind(@Req() req: AuthRequest) {
+    const staff = await this.db.staff.findFirst({
+      where: { id: req.user.id, status: { not: 'deleted' } },
+    });
+    if (!staff) throw new NotFoundException('员工不存在');
+    await this.db.staff.update({
+      where: { id: staff.id },
+      data: { openid: null },
+    });
+    return ok({ unbound: true }, '已退出登录');
+  }
+
   /** 用户端小程序 access_token 内存缓存（IK9SO4）：7200s 失效，提前 5 分钟刷新 */
   private userAccessToken?: { token: string; expiresAt: number };
 
