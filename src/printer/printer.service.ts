@@ -69,7 +69,7 @@ export class PrinterService {
   private static readonly PRINT_URL =
     'https://open.xpyun.net/api/openapi/xprinter/print';
   private static readonly ADD_URL =
-    'https://open.xpyun.net/api/openapi/xprinter/addPrinter';
+    'https://open.xpyun.net/api/openapi/xprinter/addPrinters';
 
   /** 账号级凭证是否已配置（终端 SN 可来自校区绑定记录，不在此列）。 */
   get accountConfigured(): boolean {
@@ -122,10 +122,12 @@ export class PrinterService {
     await this.printRaw(this.buildReceipt(order), snOverride);
   }
 
-  /** 绑定终端到开发者账号（IKBW0Q）：POST addPrinter，items=[{sn,key}]。
-   *  重复绑定（终端已在账号下）云端进 fail 数组，视为成功——幂等重试友好。
-   *  其余失败原样透传云端提示（SN/KEY 不对时提示运营核对机身铭牌）。 */
-  async addPrinter(sn: string, key: string): Promise<void> {
+  /** 绑定终端到开发者账号（IKBW0Q）：POST addPrinters，items=[{sn,name}]。
+   *  芯烨云没有按台密钥——归属校验在云端（SN 与账号绑定，错误码 1001），
+   *  此前误引入 key 参数（易联云/飞鹅的设计）已移除（IKC3FF 实证）。
+   *  幂等：终端已存在（failMsg 1011 PRINTER_EXIST）视为绑定成功；
+   *  其余失败原样透传云端提示。 */
+  async addPrinter(sn: string, name?: string): Promise<void> {
     const user = process.env.XPYUN_USER;
     const userKey = process.env.XPYUN_USERKEY;
     if (!user || !userKey)
@@ -140,24 +142,24 @@ export class PrinterService {
         user,
         timestamp,
         sign: PrinterService.sign(user, userKey, timestamp),
-        items: [{ sn, key }],
+        items: [{ sn, name: name || sn }],
       }),
     });
     const data = (await res.json().catch(() => null)) as
       | {
           code?: number;
           msg?: string;
-          data?: { fail?: Array<{ sn?: string; msg?: string }> };
+          data?: { success?: string[]; fail?: string[]; failMsg?: string[] };
         }
       | null;
     if (!res.ok || !data || data.code !== 0)
       throw new BadRequestException(
         `芯烨云绑定失败(${data?.code ?? res.status}): ${data?.msg ?? '无返回'}`,
       );
-    const fail = data.data?.fail?.[0]?.msg;
-    // 「已添加/已存在/已被绑定」类提示 = 终端早就在账号下，视为绑定成功
-    if (fail && !/已|exist/i.test(fail))
-      throw new BadRequestException(`芯烨云绑定失败: ${fail}`);
+    const failMsg = (data.data?.failMsg ?? []).join('; ');
+    // 1011 PRINTER_EXIST = 终端已在账号下，视为绑定成功
+    if (failMsg && !/1011|EXIST/i.test(failMsg))
+      throw new BadRequestException(`芯烨云绑定失败: ${failMsg}`);
   }
 
   /** 测试小票（IKBW0Q）：绑定后连通性验证，58mm 简票。 */

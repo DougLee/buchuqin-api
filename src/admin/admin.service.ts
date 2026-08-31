@@ -1556,13 +1556,14 @@ export class AdminService {
       throw new BadRequestException('仅校区账号可绑定打印机');
     if (!this.printer)
       throw new BadRequestException('打印服务未启用');
-    await this.printer.addPrinter(body.sn, body.key);
+    // IKC3FF：芯烨云无按台密钥，绑定只凭 SN（归属校验在云端）
+    await this.printer.addPrinter(body.sn, body.name);
     let row;
     try {
       row = await this.db.printer.upsert({
         where: { campusId },
-        create: { campusId, name: body.name, sn: body.sn, key: body.key },
-        update: { name: body.name, sn: body.sn, key: body.key, status: 'active' },
+        create: { campusId, name: body.name, sn: body.sn, key: '' },
+        update: { name: body.name, sn: body.sn, key: '', status: 'active' },
       });
     } catch (error) {
       // sn 全局唯一：被其他校区占用时给可读提示
