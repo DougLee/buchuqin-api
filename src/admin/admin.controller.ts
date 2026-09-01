@@ -18,7 +18,12 @@ import { ok } from '../common/api-response';
 import { OFFICIAL_CAMPUS_ID } from '../common/campus';
 import { filterByKeyword, paginate } from '../common/pagination';
 import { AdminService } from './admin.service';
-import { canAdmin, type AdminAccess, type AdminSection } from './permissions';
+import {
+  canAdmin,
+  isHqScope,
+  type AdminAccess,
+  type AdminSection,
+} from './permissions';
 import {
   AdjustStockDto,
   BarcodeDto,
@@ -74,12 +79,12 @@ export class AdminController {
       throw new ForbiddenException('当前角色无权访问该板块');
   }
   /**
-   * 多校区数据范围（IKAJSL）：校区角色固定本校区（JWT campusId）；
-   * hq 账号 campusId 为空 = 跨校区视角，可用 ?campus= 选定单校区查看。
+   * 多校区数据范围（IKAJSL → IKCHEW）：校区角色固定本校区（JWT campusId）；
+   * 平台视角角色（hq/admin）跨校区，可用 ?campus= 选定单校区查看。
    * 返回空串表示"不限定校区"（service 侧跳过 campusId 过滤）。
    */
   private campusScope(req: AuthRequest, campus?: string): string {
-    return req.user.role === 'hq' ? campus?.trim() ?? '' : req.user.campusId;
+    return isHqScope(req.user.role) ? campus?.trim() ?? '' : req.user.campusId;
   }
   /**
    * Banner 数据范围（IKBW0A）：校区自管——一律限定操作者本校区（多校区账号
@@ -90,11 +95,17 @@ export class AdminController {
     return req.user.campusId;
   }
   /**
-   * 商品板块数据范围（IKAJSM）：hq 的商品读写固定落官方商品库伪校区；
-   * 校区角色固定本校区（官方库对其只读，经 import 拉取落地）。
+   * 商品板块数据范围（IKAJSM → IKCHEW 双视角）：hq 固定官方商品库伪校区；
+   * admin 平台超管双视角——?view=official 官方库 / ?view=campus 本校区
+   * （默认 official 与 hq 同口径）；校区角色固定本校区（官方库只读，经 import
+   * 拉取落地）。非法 view 值按默认处理，不报错。
    */
-  private productCampus(req: AuthRequest): string {
-    return req.user.role === 'hq' ? OFFICIAL_CAMPUS_ID : req.user.campusId;
+  private productCampus(req: AuthRequest, view?: string): string {
+    if (req.user.role === 'hq') return OFFICIAL_CAMPUS_ID;
+    if (req.user.role === 'admin') {
+      return view === 'campus' ? req.user.campusId : OFFICIAL_CAMPUS_ID;
+    }
+    return req.user.campusId;
   }
   @Get('dashboard')
   @ApiOperation({
@@ -122,12 +133,13 @@ export class AdminController {
     @Query('pageSize') pageSize?: string,
     @Query('keyword') keyword?: string,
     @Query('status') status?: string,
+    @Query('view') view?: string,
   ) {
     this.authorize(req, 'products');
     return ok(
       paginate(
         await this.service.products(
-          this.productCampus(req),
+          this.productCampus(req, view),
           status && status !== 'all'
             ? status.split(',').map((s) => s.trim()).filter(Boolean)
             : undefined,
@@ -138,13 +150,16 @@ export class AdminController {
       ),
     );
   }
-  /** 商品状态计数（IKB3K9 Tab 角标）：口径同列表（含售罄映射），hq=官方库。 */
+  /** 商品状态计数（IKB3K9 Tab 角标）：口径同列表（含售罄映射），平台视角=官方库。 */
   @Get('products/status-counts')
   @ApiOperation({ summary: '商品状态计数（列表状态 Tab 角标用）' })
-  async productStatusCounts(@Req() req: AuthRequest) {
+  async productStatusCounts(
+    @Req() req: AuthRequest,
+    @Query('view') view?: string,
+  ) {
     this.authorize(req, 'products');
     return ok(
-      await this.service.productStatusCounts(this.productCampus(req)),
+      await this.service.productStatusCounts(this.productCampus(req, view)),
     );
   }
   /** 官方库浏览（IKAJSO 导入弹窗）：校区角色只读官方库行，用于搜索+多选导入。 */
@@ -320,24 +335,29 @@ export class AdminController {
   @Post('products/barcode/lookup') async lookupBarcode(
     @Req() req: AuthRequest,
     @Body() body: BarcodeDto,
+    @Query('view') view?: string,
   ) {
     this.authorize(req, 'products');
     return ok(
-      await this.service.lookupBarcode(body.barcode, this.productCampus(req)),
+      await this.service.lookupBarcode(
+        body.barcode,
+        this.productCampus(req, view),
+      ),
     );
   }
   /** IKB3K9：手动自建与官方库导入并存（修订 IKAJSM 单一口径）——
-   *  hq 建档落官方库；校区可手动自建落本校区（sourceProductId 空）。 */
+   *  平台视角建档落官方库；校区/admin 本校区视角可自建落本校区。 */
   @Post('products') async createProduct(
     @Req() req: AuthRequest,
     @Body() body: CreateProductDto,
+    @Query('view') view?: string,
   ) {
     this.authorize(req, 'products', 'write');
     return ok(
       await this.service.createProduct(
         body,
         req.user.id,
-        this.productCampus(req),
+        this.productCampus(req, view),
       ),
       '商品已创建',
     );
@@ -346,6 +366,7 @@ export class AdminController {
     @Req() req: AuthRequest,
     @Param('id') id: string,
     @Body() body: UpdateProductDto,
+    @Query('view') view?: string,
   ) {
     this.authorize(req, 'products', 'write');
     return ok(
@@ -353,7 +374,7 @@ export class AdminController {
         id,
         body,
         req.user.id,
-        this.productCampus(req),
+        this.productCampus(req, view),
       ),
     );
   }

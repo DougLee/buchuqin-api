@@ -99,3 +99,14 @@ export function canAdmin(
 ): boolean {
   return (ADMIN_MATRIX[section][access] as string[]).includes(role);
 }
+
+/**
+ * 平台视角角色（IKCHEW 2026-09-01 道哥定版）：hq 总部长 + admin 平台超管，
+ * 数据范围同跨校区口径（dashboard/orders/users/audit 全校区、官方库建档）。
+ * 只用于「数据范围」判定；板块读写仍以 ADMIN_MATRIX 为准。
+ * admin 仍保留 campusId 校区归属：校区域写（履约/库存/Banner/打印机）
+ * 与商品「本校区视角」以本校区为上下文（campusScope/productCampus 见 controller）。
+ */
+export function isHqScope(role: AuthUser['role']): boolean {
+  return role === 'hq' || role === 'admin';
+}
