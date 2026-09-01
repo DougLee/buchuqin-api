@@ -84,8 +84,14 @@ export class PrinterService {
   }
 
   /** 推送已排版文本到云打印机（凭证未配置静默跳过；失败抛错由调用方兜底）。
-   *  snOverride：校区绑定打印机的终端号（IKBW0Q）；缺省回落 env 单机。 */
-  async printRaw(content: string, snOverride?: string): Promise<void> {
+   *  snOverride：校区绑定打印机的终端号（IKBW0Q）；缺省回落 env 单机。
+   *  cacheIfOffline（IKCJ35）：mode=1 离线暂存——设备不在线时订单缓存云端队列，
+   *  恢复在线后自动打出（expiresIn 有效期内）。订单小票开、测试打印不开。 */
+  async printRaw(
+    content: string,
+    snOverride?: string,
+    opts?: { cacheIfOffline?: boolean },
+  ): Promise<void> {
     const user = process.env.XPYUN_USER;
     const userKey = process.env.XPYUN_USERKEY;
     const sn = snOverride ?? process.env.XPYUN_PRINTER_SN;
@@ -103,6 +109,9 @@ export class PrinterService {
         sign: PrinterService.sign(user, userKey, timestamp),
         sn,
         content,
+        // IKCJ35：订单小票离线暂存（默认 0 实时拒单，2026-09-01 离线 19 分钟丢两单）；
+        // 4 小时有效——备货单过夜无意义，不取 86400 上限。
+        ...(opts?.cacheIfOffline ? { mode: 1, expiresIn: 14400 } : {}),
       }),
     });
     const data = (await res.json().catch(() => null)) as
@@ -119,7 +128,9 @@ export class PrinterService {
     order: ReceiptOrderContext,
     snOverride?: string,
   ): Promise<void> {
-    await this.printRaw(this.buildReceipt(order), snOverride);
+    await this.printRaw(this.buildReceipt(order), snOverride, {
+      cacheIfOffline: true,
+    });
   }
 
   /** 绑定终端到开发者账号（IKBW0Q）：POST addPrinters，items=[{sn,name}]。
