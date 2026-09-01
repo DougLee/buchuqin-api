@@ -22,26 +22,43 @@ export class UpdateCartDto {
   items!: CartItemDto[];
 }
 export class CreateOrderDto {
-  @IsString() addressId!: string;
-  @IsIn(['instant', 'scheduled']) deliveryMode!: 'instant' | 'scheduled';
+  // IKCIAG：C 端可达校验全部中文文案（无地址进结算页时原样弹英文默认信息）
+  @IsString({ message: '请先选择寝室地址' }) addressId!: string;
+  @IsIn(['instant', 'scheduled'], {
+    message: '配送方式不正确，请重新选择',
+  })
+  deliveryMode!: 'instant' | 'scheduled';
   @IsOptional() @IsString() deliverySlot?: string;
-  @IsOptional() @IsString() couponId?: string;
-  @IsOptional() @IsString() @MaxLength(60) remark?: string;
+  @IsOptional() @IsString({ message: '优惠券不可用' }) couponId?: string;
+  @IsOptional()
+  @IsString()
+  @MaxLength(60, { message: '备注最多 60 字' })
+  remark?: string;
 }
 export class CreateAddressDto {
-  @IsString() buildingName!: string;
-  @IsInt() @Min(1) floor!: number;
-  @IsString() room!: string;
-  @IsString() contactName!: string;
-  @IsString() @Matches(/^1\d{10}$/) phone!: string;
+  @IsString({ message: '请填写楼栋名称' }) buildingName!: string;
+  @IsInt({ message: '楼层必须是数字' }) @Min(1, { message: '楼层至少为 1' })
+  floor!: number;
+  @IsString({ message: '请填写寝室号' }) room!: string;
+  @IsString({ message: '请填写联系人' }) contactName!: string;
+  @IsString()
+  @Matches(/^1\d{10}$/, { message: '手机号格式不正确' })
+  phone!: string;
   @IsOptional() isDefault?: boolean;
 }
 export class UpdateAddressDto {
-  @IsOptional() @IsString() buildingName?: string;
-  @IsOptional() @IsInt() @Min(1) floor?: number;
-  @IsOptional() @IsString() room?: string;
-  @IsOptional() @IsString() contactName?: string;
-  @IsOptional() @IsString() @Matches(/^1\d{10}$/) phone?: string;
+  @IsOptional() @IsString({ message: '楼栋名称格式不正确' })
+  buildingName?: string;
+  @IsOptional()
+  @IsInt({ message: '楼层必须是数字' })
+  @Min(1, { message: '楼层至少为 1' })
+  floor?: number;
+  @IsOptional() @IsString({ message: '寝室号格式不正确' }) room?: string;
+  @IsOptional() @IsString({ message: '联系人格式不正确' }) contactName?: string;
+  @IsOptional()
+  @IsString()
+  @Matches(/^1\d{10}$/, { message: '手机号格式不正确' })
+  phone?: string;
 }
 export class CartQuantityDto {
   @IsInt() @Min(0) quantity!: number;
