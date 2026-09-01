@@ -26,6 +26,7 @@ import {
 } from 'class-validator';
 import { SetMetadata } from '@nestjs/common';
 import { compare, hash } from 'bcryptjs';
+import { Prisma } from '@prisma/client';
 import { ok } from '../common/api-response';
 import { ADMIN_CAMPUS_ID } from '../common/campus';
 import { PrismaService } from '../database/prisma.service';
@@ -340,15 +341,23 @@ export class AuthController {
       const campus =
         (await this.db.campus.findFirst({ orderBy: { createdAt: 'asc' } })) ??
         null;
-      user = await this.db.user.create({
-        data: {
-          campusId: campus?.id ?? ADMIN_CAMPUS_ID,
-          nickname: '微信用户',
-          phone: '',
-          role: 'user',
-          openid: session.openid,
-        },
-      });
+      try {
+        user = await this.db.user.create({
+          data: {
+            campusId: campus?.id ?? ADMIN_CAMPUS_ID,
+            nickname: '微信用户',
+            phone: '',
+            role: 'user',
+            openid: session.openid,
+          },
+        });
+      } catch (e) {
+        // IKC7WB 并发首登竞态：另一请求已建同 openid 用户，读取返回（败者复用胜者）
+        if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+          user = await this.db.user.findUnique({ where: { openid: session.openid } });
+        }
+        if (!user) throw e;
+      }
     }
     const claims: AuthUser = {
       id: user.id,
