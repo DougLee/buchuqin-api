@@ -932,9 +932,25 @@ export class BusinessService {
       });
       if (!won.count) throw new BadRequestException('订单状态已变化');
       // 出库流水（IKA0UQ 验收：库存正确扣减——支付时已扣，此处记账不重复扣）。
+      // IKCLAC：items 是 JSON 快照，商品档案可能已被清理/删除——先过滤出
+      // 仍存在的商品再记账，不存在的跳过（外键 P2003 会把整个出库事务卡死）。
+      const productIds = [
+        ...new Set(
+          lines
+            .map((line) => line.product?.id)
+            .filter((pid): pid is string => Boolean(pid)),
+        ),
+      ];
+      const existing = productIds.length
+        ? await tx.product.findMany({
+            where: { id: { in: productIds } },
+            select: { id: true },
+          })
+        : [];
+      const existingIds = new Set(existing.map((p) => p.id));
       for (const line of lines) {
         const productId = line.product?.id;
-        if (productId)
+        if (productId && existingIds.has(productId))
           await tx.inventoryTxn.create({
             data: {
               productId,
