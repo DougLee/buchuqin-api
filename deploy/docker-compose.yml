@@ -4,28 +4,15 @@
 #   /opt/buchuqin/buchuqin-api/   ← git clone 的本仓库
 #   /opt/buchuqin/admin-dist/     ← 兜底通道：admin 构建产物副本（生产静态真身在 1Panel 站点目录，见下）
 #   /opt/buchuqin/.env            ← 环境变量（不入 git）
-# 80/443 由 1Panel 的 OpenResty（host 网络）持有，本编排把 api 发布到 127.0.0.1:8080（仅本机），
-# 由 OpenResty 反代（buchuqin.nongmokeji.com，见 docs/DEPLOYMENT.md）。
+# 80/443 由 OpenResty（host 网络）持有，本编排把 api 发布到 127.0.0.1:8080（仅本机），
+# 由 OpenResty 反代 admin.buchuqin.com（IKC9M2 迁移 106.52.167.181）。
+# 数据库：使用 1Panel 安装的 PostgreSQL（容器 1Panel-postgresql-fC0e，主机名经 .env 的
+# PSQL_HOST 注入），本编排不再自带 postgres 服务（2026-08-31 迁移新机后调整）。
 # admin 静态真身 = /opt/1panel/www/sites/buchuqin.nongmokeji.com/index/（OpenResty 直出，发布走 tar 管道）；
 # 本编排挂载的 admin-dist 只是 Nest 兜底通道，不再是发布目标（2026-08-24 部署踩坑后更正此注释）
 name: buchuqin
 
 services:
-  postgres:
-    image: postgres:16-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: buchuqin
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: buchuqinshishe
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U buchuqin -d buchuqinshishe']
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   api:
     build: ./buchuqin-api
     restart: unless-stopped
@@ -34,7 +21,7 @@ services:
       ADMIN_DIST_DIR: /app/admin-dist
       # DATABASE_URL 单源化：密码只存 POSTGRES_PASSWORD 一份，compose 在此拼接注入。
       # compose 的 environment 优先级高于 env_file，会覆盖 .env 里的同名键。
-      DATABASE_URL: postgresql://buchuqin:${POSTGRES_PASSWORD}@postgres:5432/buchuqinshishe?schema=public
+      DATABASE_URL: postgresql://buchuqin:${POSTGRES_PASSWORD}@${PSQL_HOST}:5432/buchuqinshishe?schema=public
     volumes:
       - ./admin-dist:/app/admin-dist:ro
     ports:
@@ -53,9 +40,10 @@ services:
       timeout: 5s
       retries: 3
       start_period: 20s
-    depends_on:
-      postgres:
-        condition: service_healthy
+    networks:
+      - default
+      - 1panel-network
 
-volumes:
-  pgdata:
+networks:
+  1panel-network:
+    external: true
