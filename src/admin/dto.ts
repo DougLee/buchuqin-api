@@ -173,6 +173,11 @@ export class CreateCouponDto {
 export class UpdateCouponDto {
   @IsIn(['active', 'paused']) status!: 'active' | 'paused';
 }
+/** 批量放行/回收（IKCKX4）：官方库放行回收、校区批量上下架共用 */
+export class BatchProductStatusDto {
+  @IsArray() @IsString({ each: true }) ids!: string[];
+  @IsIn(['on-sale', 'off-sale']) status!: 'on-sale' | 'off-sale';
+}
 export class IssueCouponDto {
   @IsArray() @IsString({ each: true }) userIds!: string[];
 }

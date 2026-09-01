@@ -27,6 +27,7 @@ import {
 import {
   AdjustStockDto,
   BarcodeDto,
+  BatchProductStatusDto,
   BindPrinterDto,
   CreateAccountDto,
   UpsertWechatGroupDto,
@@ -343,6 +344,24 @@ export class AdminController {
         body.barcode,
         this.productCampus(req, view),
       ),
+    );
+  }
+  /** 批量放行/回收（IKCKX4）：官方库视角批量放行回收，本校区视角批量上下架。
+   *  作用域随 productCampus(req, view)，越界 id 静默忽略、返回实际更新数。 */
+  @Post('products/batch-status') async batchProductStatus(
+    @Req() req: AuthRequest,
+    @Body() body: BatchProductStatusDto,
+    @Query('view') view?: string,
+  ) {
+    this.authorize(req, 'products', 'write');
+    return ok(
+      await this.service.batchUpdateProductStatus(
+        body.ids,
+        body.status,
+        req.user.id,
+        this.productCampus(req, view),
+      ),
+      '批量操作已完成',
     );
   }
   /** IKB3K9：手动自建与官方库导入并存（修订 IKAJSM 单一口径）——

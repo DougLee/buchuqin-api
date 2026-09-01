@@ -1121,6 +1121,30 @@ export class AdminService {
     );
     return after;
   }
+  /** 批量放行/回收（IKCKX4）：作用域=campusId（官方库视角只动官方行，
+   *  本校区视角只动本校区行）；越界 id 由 updateMany 天然忽略，返回实际更新数。 */
+  async batchUpdateProductStatus(
+    ids: string[],
+    status: 'on-sale' | 'off-sale',
+    operator: string,
+    campusId: string,
+  ) {
+    if (!ids.length) return { count: 0 };
+    const result = await this.db.product.updateMany({
+      where: { id: { in: ids }, campusId },
+      data: { status },
+    });
+    await this.audit(
+      operator,
+      'product.batch-status',
+      'product',
+      `batch:${ids.length}`,
+      { ids, campusId },
+      { status, count: result.count },
+      campusId,
+    );
+    return { count: result.count };
+  }
   /**
    * 校区从官方库导入商品（IKAJSO 道哥决策版）：复制官方资料落本校区，
    * 本地售价（price）/上下架（status）/库存（stock）自管——导入初始下架 +
