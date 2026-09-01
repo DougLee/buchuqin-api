@@ -254,10 +254,23 @@ function itemLine(left: string, right: string): string {
 }
 /** 金额格式化：全角 ￥——半角 ¥(U+00A5) 不在 GBK 字符集，打印时会被云端静默丢弃。 */
 const yuan = (fen: number) => `￥${(Number(fen) / 100).toFixed(2)}`;
+/** 小票时间固定按东八区渲染：API 容器时区是 UTC（无 TZ），getHours() 等本地
+ *  方法在容器里会少 8 小时；业务是中国校园场景，显式锁 Asia/Shanghai 不依赖部署环境。 */
+const SHANGHAI_TIME = new Intl.DateTimeFormat('zh-CN', {
+  timeZone: 'Asia/Shanghai',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  hourCycle: 'h23',
+});
 function fmtTime(t: Date | string): string {
   const d = t instanceof Date ? t : new Date(t);
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  const parts = Object.fromEntries(
+    SHANGHAI_TIME.formatToParts(d).map((p) => [p.type, p.value]),
+  );
+  return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}`;
 }
 function maskPhone(phone?: string): string {
   if (!phone) return '';
