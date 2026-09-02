@@ -14,6 +14,7 @@ export type AdminSection =
   | 'inventory'
   | 'staff'
   | 'campuses'
+  | 'buildings'
   | 'after-sales'
   | 'finance'
   | 'marketing'
@@ -40,7 +41,8 @@ const OPS: AdminRole[] = ['admin', 'operations'];
  * | categories 类别  | 读写    | 读写  | 读写      | 读写 | —         |
  * | inventory 库存   | —       | 读写  | 读写      | 读写 | —         |
  * | staff 员工/请假  | —       | 读写  | 读写      | —    | —         |
- * | campuses 校区/楼栋| 读写(全部校区)| 读写(本校区+本体，IKBWRT) | 读写 | —   | —      |
+ * | campuses 校区管理| 读写(全部校区)| 读写(本校区+本体，IKBWRT) | 只读(菜单隐藏) | —   | —      |
+ * | buildings 楼栋管理| —       | 读写(本校区，IKCRS8) | 读写(本校区) | —    | —      |
  * | after-sales 售后 | —       | 读    | 读        | 读   | 读（只读留档）|
  * | finance 结算/规则| —       | 读写  | 读        | —    | 读写      |
  * | marketing 促销/券| —       | 读写  | 读写      | —    | —         |
@@ -74,6 +76,10 @@ export const ADMIN_MATRIX: Record<
   inventory: { read: [...OPS, 'warehouse'], write: [...OPS, 'warehouse'] },
   staff: { read: OPS, write: OPS },
   campuses: { read: [...OPS, 'hq'], write: [...OPS, 'hq'] },
+  // 楼栋/寝室管理（IKCRS8 2026-09-02：从 campuses 拆独立键）——挂本校区
+  // （顶栏切换运营校区定上下文）；hq 无楼栋入口；warehouse/finance 收口移除
+  //（修漂移：此前 warehouse 前端菜单显示但 campuses 矩阵无权 403）。
+  buildings: { read: OPS, write: OPS },
   'after-sales': { read: ALL, write: [] },
   finance: { read: [...OPS, 'finance'], write: ['admin', 'finance'] },
   marketing: { read: OPS, write: OPS },

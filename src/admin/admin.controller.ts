@@ -870,7 +870,7 @@ export class AdminController {
     @Query('pageSize') pageSize?: string,
     @Query('keyword') keyword?: string,
   ) {
-    this.authorize(req, 'campuses');
+    this.authorize(req, 'buildings');
     return ok(
       paginate(await this.service.buildings(req.user.campusId), page, pageSize, keyword),
     );
@@ -879,7 +879,7 @@ export class AdminController {
     @Req() req: AuthRequest,
     @Body() body: CreateBuildingDto,
   ) {
-    this.authorize(req, 'campuses', 'write');
+    this.authorize(req, 'buildings', 'write');
     return ok(
       await this.service.createBuilding(body, req.user.id, req.user.campusId),
       '楼栋已创建',
@@ -890,7 +890,7 @@ export class AdminController {
     @Param('id') id: string,
     @Body() body: UpdateBuildingDto,
   ) {
-    this.authorize(req, 'campuses', 'write');
+    this.authorize(req, 'buildings', 'write');
     return ok(
       await this.service.updateBuilding(
         id,
@@ -904,7 +904,7 @@ export class AdminController {
     @Req() req: AuthRequest,
     @Param('id') id: string,
   ) {
-    this.authorize(req, 'campuses', 'write');
+    this.authorize(req, 'buildings', 'write');
     return ok(
       await this.service.deleteBuilding(id, req.user.id, req.user.campusId),
       '楼栋已删除',
@@ -919,7 +919,7 @@ export class AdminController {
     @Query('pageSize') pageSize?: string,
     @Query('keyword') keyword?: string,
   ) {
-    this.authorize(req, 'campuses');
+    this.authorize(req, 'buildings');
     return ok(
       paginate(await this.service.rooms(id, req.user.campusId), page, pageSize, keyword),
     );
@@ -929,7 +929,7 @@ export class AdminController {
     @Param('id') id: string,
     @Body() body: CreateRoomDto,
   ) {
-    this.authorize(req, 'campuses', 'write');
+    this.authorize(req, 'buildings', 'write');
     return ok(
       await this.service.createRoom(id, body, req.user.id, req.user.campusId),
       '寝室已创建',
@@ -940,7 +940,7 @@ export class AdminController {
     @Param('id') id: string,
     @Param('roomId') roomId: string,
   ) {
-    this.authorize(req, 'campuses', 'write');
+    this.authorize(req, 'buildings', 'write');
     return ok(
       await this.service.deleteRoom(id, roomId, req.user.id, req.user.campusId),
       '寝室已删除',
