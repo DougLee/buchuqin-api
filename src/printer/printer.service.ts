@@ -4,10 +4,13 @@ import { createHash } from 'node:crypto';
 /**
  * 芯烨云（XPYUN）云打印小票（IKBT6N）。
  *
- * 出库顺手打：BusinessService.outbound 事务成功后 fire-and-forget 出票；
- * 订单抽屉补打走 AdminService.reprintReceipt（写审计日志）。
+ * 支付成功即出票（2026-08-28 定版，当仓库备货单）：BusinessService 支付回调
+ * fire-and-forget 出票；订单抽屉补打走 AdminService.reprintReceipt（写审计日志）。
  * 校区自主绑定（IKBW0Q）：校区在后台绑定终端（Printer 表，一校区一台），
  * 打印按订单校区取绑定 SN；未绑定的校区回落 env 单机（试点兼容）。
+ * 多联打印（IKCZOX）：Printer.copies 1/2/3——1=单联无联名（旧票面），
+ * 2=商家联+骑手联，3=再加用户联；一次 POST 拼 N 张票（每联尾 <CUT>），
+ * 原子同成败，失败走补打兜底；出纸顺序商家→骑手→用户（卷纸后打在外）。
  *
  * 账号 env 门控 + 静默降级（同 NotificationsService 模式）：
  * - XPYUN_USER / XPYUN_USERKEY：开发者账号（admin.xpyun.net 控制台），账号级
@@ -62,6 +65,9 @@ const TAG = {
   bold: (s: string) => `<B>${s}</B>`,
   qr: (s: string) => `<QR>${s}</QR>`,
 } as const;
+
+/** 联次标签（IKCZOX）：下标即出纸顺序，copies=N 取前 N 个标联名。 */
+const COPY_LABELS = ['商家联', '骑手联', '用户联'] as const;
 
 @Injectable()
 export class PrinterService {
@@ -123,12 +129,21 @@ export class PrinterService {
       );
   }
 
-  /** 订单小票：构建 58mm 票面并推送（snOverride 见 printRaw，IKBW0Q）。 */
+  /** 订单小票：构建 58mm 票面并推送（snOverride 见 printRaw，IKBW0Q）。
+   *  copies（IKCZOX）：1=旧票面无联名；2/3 按联序标联名拼一张 content 一次推送。 */
   async printOrderReceipt(
     order: ReceiptOrderContext,
     snOverride?: string,
+    copies = 1,
   ): Promise<void> {
-    await this.printRaw(this.buildReceipt(order), snOverride, {
+    const n = Math.min(Math.max(1, Math.floor(copies)), COPY_LABELS.length);
+    const parts =
+      n <= 1
+        ? [this.buildReceipt(order)]
+        : COPY_LABELS.slice(0, n).map((label) =>
+            this.buildReceipt(order, label),
+          );
+    await this.printRaw(parts.join('\n'), snOverride, {
       cacheIfOffline: true,
     });
   }
@@ -188,13 +203,15 @@ export class PrinterService {
     await this.printRaw(lines.join('\n'), sn);
   }
 
-  /** 票面构建：表头/收件信息/商品清单/金额/订单号二维码/切刀。 */
-  buildReceipt(order: ReceiptOrderContext): string {
+  /** 票面构建：表头/收件信息/商品清单/金额/订单号二维码/切刀。
+   *  copyLabel（IKCZOX）：多联时票头联名行（仓库名/标语之后、分隔线之前）。 */
+  buildReceipt(order: ReceiptOrderContext, copyLabel?: string): string {
     const address = order.address ?? {};
     const lines: string[] = [];
-    // 票头：仓库名大字 + 平台名
+    // 票头：仓库名大字 + 平台名（+ 联名）
     lines.push(TAG.center(TAG.big(order.warehouseName || '不出寝食社')));
     lines.push(TAG.center('校园寝售 · 极速到寝'));
+    if (copyLabel) lines.push(TAG.center(TAG.bold(`— ${copyLabel} —`)));
     lines.push('-'.repeat(LINE_WIDTH));
     lines.push(`订单号：${order.orderNo}`);
     lines.push(`下单时间：${fmtTime(order.createdAt)}`);

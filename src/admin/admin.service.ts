@@ -1511,8 +1511,9 @@ export class AdminService {
     return result;
   }
   /**
-   * 补打小票（IKBT6N）：芯烨云重推订单小票（出库时已自动打，本端点兜底
+   * 补打小票（IKBT6N）：芯烨云重推订单小票（支付成功时已自动打，本端点兜底
    * 缺纸/卡纸重打场景）。校区隔离复用 this.order；写审计日志留痕。
+   * 补打跟随绑定打印机联数（IKCZOX）：补=重现整套票。
    */
   async reprintReceipt(id: string, operator: string, campusId: string) {
     if (!this.printer?.accountConfigured)
@@ -1520,9 +1521,13 @@ export class AdminService {
         '打印机未配置，请联系平台管理员配置芯烨云凭证',
       );
     const order = (await this.order(id, campusId)) as Record<string, any>;
-    // IKBW0Q：校区绑定打印机优先，未绑定回落 env 试点单机
-    const sn = await this.resolvePrinterSn(order.campusId);
-    if (!sn)
+    // IKBW0Q：校区绑定打印机优先，未绑定回落 env 试点单机；copies 随绑定带出
+    const bound = await this.db.printer.findUnique({
+      where: { campusId: order.campusId },
+      select: { sn: true, status: true, copies: true },
+    });
+    const active = bound && bound.status === 'active' ? bound : null;
+    if (!active?.sn)
       throw new BadRequestException('本校区尚未绑定打印机，请先在「打印机」页绑定');
     const campus = await this.db.campus.findUnique({
       where: { id: order.campusId },
@@ -1546,7 +1551,8 @@ export class AdminService {
       discount: Number(order.discount),
       payableAmount: Number(order.payableAmount),
       },
-      sn,
+      active.sn,
+      active.copies,
     );
     await this.audit(
       operator,
@@ -1560,11 +1566,6 @@ export class AdminService {
     return { printed: true, orderNo: order.orderNo };
   }
   /* ---------- 校区打印机绑定（IKBW0Q） ---------- */
-  /** 校区绑定打印机终端号：active 记录优先，未绑定返回 null（调用方回落 env）。 */
-  private async resolvePrinterSn(campusId: string): Promise<string | null> {
-    const bound = await this.db.printer.findUnique({ where: { campusId } });
-    return bound && bound.status === 'active' ? bound.sn : null;
-  }
   // IKC1AF 口径：打印机与校区为一对一（一校区一台，campusId 唯一约束），
   // 后台按「编辑页」形态管理；一台多机需求出现时再扩 Printer.campusId 唯一约束。
   async printers(campusId: string) {
@@ -1594,10 +1595,18 @@ export class AdminService {
     await this.printer.addPrinter(body.sn, body.name);
     let row;
     try {
+      // IKCZOX：copies 随绑定表单落库（缺省 1=旧票面）
+      const copies = body.copies ?? 1;
       row = await this.db.printer.upsert({
         where: { campusId },
-        create: { campusId, name: body.name, sn: body.sn, key: '' },
-        update: { name: body.name, sn: body.sn, key: '', status: 'active' },
+        create: { campusId, name: body.name, sn: body.sn, key: '', copies },
+        update: {
+          name: body.name,
+          sn: body.sn,
+          key: '',
+          copies,
+          status: 'active',
+        },
       });
     } catch (error) {
       // sn 全局唯一：被其他校区占用时给可读提示

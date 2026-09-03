@@ -1003,12 +1003,15 @@ export class BusinessService {
         where: { id: order.campusId },
         select: { warehouseName: true },
       });
-      // IKBW0Q：校区绑定打印机优先，未绑定回落 env 试点单机
+      // IKBW0Q：校区绑定打印机优先，未绑定回落 env 试点单机；
+      // IKCZOX：联数随绑定带出（默认 1=旧票面）
       const bound = await this.db.printer.findUnique({
         where: { campusId: order.campusId },
+        select: { sn: true, status: true, copies: true },
       });
-      const snOverride =
-        bound && bound.status === 'active' ? bound.sn : undefined;
+      const activeBound = bound && bound.status === 'active' ? bound : null;
+      const snOverride = activeBound?.sn;
+      const copies = activeBound?.copies ?? 1;
       const context: ReceiptOrderContext = {
         id: order.id,
         orderNo: order.orderNo,
@@ -1026,7 +1029,7 @@ export class BusinessService {
         discount: Number(order.discount),
         payableAmount: Number(order.payableAmount),
       };
-      await this.printer.printOrderReceipt(context, snOverride);
+      await this.printer.printOrderReceipt(context, snOverride, copies);
     } catch (error) {
       BusinessService.logger.warn(
         `订单 ${order.orderNo} 支付小票打印失败（不影响支付流程）: ${

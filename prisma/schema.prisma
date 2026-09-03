@@ -57,6 +57,8 @@ model Printer {
   sn        String   @unique
   /** 终端 key（与 SN 成对，机身二维码可得），绑定芯烨云账号时使用。 */
   key       String
+  /** 小票联数（IKCZOX）：1=现状单联无联名；2=商家联+骑手联；3=再加用户联。 */
+  copies    Int      @default(1)
   status    String   @default("active")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

@@ -352,9 +352,12 @@ export class UpdateCampusDto {
 }
 
 /** 校区打印机绑定（IKBW0Q）：SN 在机身底部标签/自检页。
- *  IKC3FF：芯烨云无按台密钥，绑定只凭 SN（归属校验在云端）。 */
+ *  IKC3FF：芯烨云无按台密钥，绑定只凭 SN（归属校验在云端）。
+ *  copies（IKCZOX）：小票联数 1=单联无联名；2=商家联+骑手联；3=再加用户联。 */
 export class BindPrinterDto {
   @IsString() @MaxLength(40) name!: string;
   @IsString() @Matches(/^[A-Za-z0-9-]{5,40}$/, { message: 'SN 格式不正确' })
   sn!: string;
+  @IsOptional() @Type(() => Number) @IsInt() @IsIn([1, 2, 3])
+  copies?: number;
 }
