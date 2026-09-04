@@ -332,6 +332,8 @@ export class AuthController {
     }
     // 用户端小程序 → 买家通道：首次登录创建用户（昵称"微信用户"、手机号空，
     // 后续 POST /auth/phone 绑定），campusId 取默认校园（第一个 campus）。
+    // IKDETO 迎新礼包：首建档标记（函数级，响应透出 isNewUser）
+    let created = false;
     let user = await this.db.user.findUnique({
       where: { openid: session.openid },
     });
@@ -339,7 +341,6 @@ export class AuthController {
       const campus =
         (await this.db.campus.findFirst({ orderBy: { createdAt: 'asc' } })) ??
         null;
-      let created = false;
       try {
         user = await this.db.user.create({
           data: {
@@ -382,6 +383,8 @@ export class AuthController {
     };
     return ok({
       token: this.jwt.sign(claims),
+      // IKDETO 迎新礼包：当次注册（首建档）标记，C 端据此弹一次新人礼包
+      isNewUser: created,
       user: {
         ...claims,
         nickname: user.nickname,
