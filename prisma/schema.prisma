@@ -356,7 +356,8 @@ model Coupon {
   remark      String       @default("")
   amount      Int // 金额单位:分
   threshold   Int
-  total       Int          @default(0)
+  // IKDEN2：null = 不限量（四通道统一不设上限）；存量 0 语义不变（死券）
+  total       Int?
   status      String
   expiresAt   DateTime? // null = 长期有效（IKDCVO）
   issued      Int          @default(0)

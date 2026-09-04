@@ -2977,7 +2977,8 @@ export class AdminService {
       ...x,
       amount: this.num(x.amount),
       threshold: this.num(x.threshold),
-      remain: Math.max(0, x.total - x.claimed),
+      // IKDEN2：不限量券 remain=null（后台显示「不限量」）
+      remain: x.total === null ? null : Math.max(0, x.total - x.claimed),
     }));
   }
   async createCoupon(
@@ -3011,7 +3012,8 @@ export class AdminService {
         remark: body.remark?.trim() ?? '',
         amount: kind === 'partner' ? 0 : body.amount,
         threshold: kind === 'partner' ? 0 : body.threshold,
-        total: body.total,
+        // IKDEN2：不传 total = 不限量（null）
+        total: body.total ?? null,
         status: 'active',
         expiresAt,
         issued: 0,
@@ -3101,8 +3103,14 @@ export class AdminService {
       throw new BadRequestException('所选用户均持有该券，无需重复发放');
     const result = await this.db.$transaction(async (tx) => {
       // 条件更新兜底并发：已领取数加上本次发放数不能超过总量。
+      // IKDEN2：不限量券（total=null）跳过额度条件。
       const won = await tx.coupon.updateMany({
-        where: { id, claimed: { lte: coupon.total - targets.length } },
+        where: {
+          id,
+          ...(coupon.total === null
+            ? {}
+            : { claimed: { lte: coupon.total - targets.length } }),
+        },
         data: {
           claimed: { increment: targets.length },
           issued: { increment: targets.length },
@@ -3594,7 +3602,8 @@ export class AdminService {
         return {
           ...p,
           couponName: c?.name ?? '',
-          couponLeft: c ? c.total - c.claimed : null,
+          // IKDEN2：不限量券余量显示 null（后台转盘抽屉显示「不限量」）
+          couponLeft: c ? (c.total === null ? null : c.total - c.claimed) : null,
           weightPct:
             weightTotal > 0
               ? Math.round(((p.weight || 0) / weightTotal) * 1000) / 10

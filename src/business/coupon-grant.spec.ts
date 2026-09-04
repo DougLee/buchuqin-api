@@ -86,7 +86,10 @@ describe('Coupon kind/trigger/expirable (IKDCVO)', () => {
   });
 
   afterAll(async () => {
-    await db.userCoupon.deleteMany({ where: { userId: USER } });
+    // IKDEN2：不限量用例引入第二用户，按校区维度清持券
+    await db.userCoupon.deleteMany({
+      where: { user: { campusId: CAMPUS } },
+    });
     await db.coupon.deleteMany({ where: { name: { startsWith: PREFIX } } });
     await db.cartItem.deleteMany({ where: { userId: USER } });
     await db.address.deleteMany({ where: { id: ADDRESS } });
@@ -188,5 +191,57 @@ describe('Coupon kind/trigger/expirable (IKDCVO)', () => {
     await expect(
       biz.checkout(USER, CAMPUS, { ...dto, couponId: issued!.id }),
     ).rejects.toThrow('异业券');
+  });
+
+  it('unlimited coupons (total=null): claimable & multi-user claim & signup grant, remain=null', async () => {
+    // 手动领：不限量券恒可领，remain=null
+    const manual = await mkCoupon({
+      name: `${PREFIX}不限量手动券`,
+      trigger: 'manual',
+      amount: 100,
+      total: null,
+    });
+    const { claimable } = await biz.coupons(USER, CAMPUS);
+    const found = claimable.find((c) => c.name === `${PREFIX}不限量手动券`);
+    expect(found).toBeTruthy();
+    expect(found!.remain).toBeNull();
+    await biz.claimCoupon(USER, manual.id, CAMPUS);
+
+    // 第二个用户也能领（限量券会被 total 卡，不限量不设限）
+    const USER_B = 'user-coupon-spec-b';
+    await db.user.create({
+      data: {
+        id: USER_B,
+        openid: 'openid-coupon-spec-b',
+        nickname: '不限量用户B',
+        phone: '13800000012',
+        campusId: CAMPUS,
+      } as any,
+    });
+    try {
+      await biz.claimCoupon(USER_B, manual.id, CAMPUS);
+      const after = await db.coupon.findUniqueOrThrow({
+        where: { id: manual.id },
+      });
+      expect(after.claimed).toBe(2);
+    } finally {
+      await db.userCoupon.deleteMany({ where: { userId: USER_B } });
+      await db.user.deleteMany({ where: { id: USER_B } });
+    }
+
+    // 注册发券通道同样不限量
+    await mkCoupon({
+      name: `${PREFIX}不限量新人券`,
+      trigger: 'signup',
+      amount: 200,
+      total: null,
+    });
+    const r = await biz.grantSignupCoupons(USER, CAMPUS);
+    expect(r.granted).toBeGreaterThanOrEqual(1);
+    const unlimited = await db.coupon.findFirstOrThrow({
+      where: { name: `${PREFIX}不限量新人券` },
+    });
+    expect(unlimited.total).toBeNull();
+    expect(unlimited.claimed).toBe(1);
   });
 });

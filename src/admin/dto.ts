@@ -180,7 +180,8 @@ export class CreateCouponDto {
   // 放行；platform 金额券的正数约束按 kind 在 service 校验。
   @Type(() => Number) @IsNumber() @Min(0) amount!: number;
   @Type(() => Number) @IsNumber() @Min(0) threshold!: number;
-  @Type(() => Number) @IsInt() @Min(1) total!: number;
+  /** IKDEN2：不传 = 不限量（null）；传则 ≥1 */
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) total?: number;
   // 不传 = 长期有效（IKDCVO）。
   @IsOptional() @IsString() expiresAt?: string;
   @IsOptional() @IsIn(['platform', 'partner']) kind?: string;

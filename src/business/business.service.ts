@@ -209,7 +209,8 @@ export class BusinessService {
     remark: string;
     amount: number;
     threshold: number;
-    total: number;
+    /** IKDEN2：null = 不限量 */
+    total: number | null;
     claimed: number;
     status: string;
     expiresAt: Date | null;
@@ -223,7 +224,8 @@ export class BusinessService {
       amount: coupon.amount,
       threshold: coupon.threshold,
       total: coupon.total,
-      remain: Math.max(0, coupon.total - coupon.claimed),
+      // IKDEN2：不限量券 remain=null（C 端/后台据此显示「不限量/充足」）
+      remain: coupon.total === null ? null : Math.max(0, coupon.total - coupon.claimed),
       status: coupon.status,
       expiresAt: coupon.expiresAt ? coupon.expiresAt.toISOString() : null,
     };
@@ -252,7 +254,8 @@ export class BusinessService {
             c.trigger === 'manual' &&
             c.status === 'active' &&
             (!c.expiresAt || c.expiresAt > now) &&
-            c.claimed < c.total &&
+            // IKDEN2：不限量券恒可领
+            (c.total === null || c.claimed < c.total) &&
             !holding.has(c.id),
         )
         .map((c) => this.couponView(c)),
@@ -289,8 +292,12 @@ export class BusinessService {
       if (coupon.expiresAt && coupon.expiresAt.getTime() <= Date.now())
         throw new BadRequestException('优惠券已过期');
       // 并发不超发：条件更新占用名额，抢不到名额即已领完。
+      // IKDEN2：不限量券（total=null）不设 claimed 上限条件。
       const won = await tx.coupon.updateMany({
-        where: { id: couponId, claimed: { lt: coupon.total } },
+        where: {
+          id: couponId,
+          ...(coupon.total === null ? {} : { claimed: { lt: coupon.total } }),
+        },
         data: { claimed: { increment: 1 }, issued: { increment: 1 } },
       });
       if (!won.count) throw new BadRequestException('优惠券已被领完');
@@ -887,7 +894,13 @@ export class BusinessService {
           (!bonus.expiresAt || bonus.expiresAt.getTime() > Date.now())
         ) {
           const wonBonus = await tx.coupon.updateMany({
-            where: { id: bonus.id, claimed: { lt: bonus.total } },
+            // IKDEN2：不限量券不设上限条件
+            where: {
+              id: bonus.id,
+              ...(bonus.total === null
+                ? {}
+                : { claimed: { lt: bonus.total } }),
+            },
             data: { claimed: { increment: 1 }, issued: { increment: 1 } },
           });
           if (wonBonus.count) {
@@ -1640,7 +1653,11 @@ export class BusinessService {
         };
     }
     const won = await tx.coupon.updateMany({
-      where: { id: couponId, claimed: { lt: coupon.total } },
+      // IKDEN2：不限量券（total=null）不设 claimed 上限条件
+      where: {
+        id: couponId,
+        ...(coupon.total === null ? {} : { claimed: { lt: coupon.total } }),
+      },
       data: { claimed: { increment: 1 }, issued: { increment: 1 } },
     });
     if (!won.count) return null;
