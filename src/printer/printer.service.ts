@@ -171,7 +171,9 @@ export class PrinterService {
   }
 
   /** 订单小票：构建 58mm 票面并推送（snOverride 见 printRaw，IKBW0Q）。
-   *  copies（IKCZOX）：1=旧票面无联名；2/3 按联序标联名拼一张 content 一次推送。 */
+   *  copies（IKCZOX）：1=旧票面无联名；2/3 按联序标联名拼一张 content 一次推送。
+   *  库位仅商家联显示（IKD6H4 道哥反馈）：库位是分拣信息，客户/骑手无需看到——
+   *  多联时仅第一联（商家联）带库位，其余联剥掉 location/locationCode。 */
   async printOrderReceipt(
     order: ReceiptOrderContext,
     snOverride?: string,
@@ -181,9 +183,23 @@ export class PrinterService {
     const parts =
       n <= 1
         ? [this.buildReceipt(order)]
-        : COPY_LABELS.slice(0, n).map((label) =>
-            this.buildReceipt(order, label),
-          );
+        : COPY_LABELS.slice(0, n).map((label, index) => {
+            if (index === 0) return this.buildReceipt(order, label);
+            return this.buildReceipt(
+              {
+                ...order,
+                items: order.items?.map((line) => ({
+                  ...line,
+                  product: {
+                    ...line.product,
+                    location: undefined,
+                    locationCode: undefined,
+                  },
+                })),
+              },
+              label,
+            );
+          });
     await this.printRaw(parts.join('\n'), snOverride, {
       cacheIfOffline: true,
     });
