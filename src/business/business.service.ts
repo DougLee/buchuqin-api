@@ -1029,6 +1029,8 @@ export class BusinessService {
         discount: Number(order.discount),
         payableAmount: Number(order.payableAmount),
       };
+      // IKD6H4：库位实时注入（分拣备货单要「现在放哪」）
+      context.items = await this.printer.attachLocations(context.items);
       await this.printer.printOrderReceipt(context, snOverride, copies);
     } catch (error) {
       BusinessService.logger.warn(

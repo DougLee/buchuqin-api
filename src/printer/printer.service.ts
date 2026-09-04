@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { createHash } from 'node:crypto';
+import { PrismaService } from '../database/prisma.service';
 
 /**
  * 芯烨云（XPYUN）云打印小票（IKBT6N）。
@@ -8,9 +9,10 @@ import { createHash } from 'node:crypto';
  * fire-and-forget 出票；订单抽屉补打走 AdminService.reprintReceipt（写审计日志）。
  * 校区自主绑定（IKBW0Q）：校区在后台绑定终端（Printer 表，一校区一台），
  * 打印按订单校区取绑定 SN；未绑定的校区回落 env 单机（试点兼容）。
- * 多联打印（IKCZOX）：Printer.copies 1/2/3——1=单联无联名（旧票面），
- * 2=商家联+骑手联，3=再加用户联；一次 POST 拼 N 张票（每联尾 <CUT>），
- * 原子同成败，失败走补打兜底；出纸顺序商家→骑手→用户（卷纸后打在外）。
+ * 多联打印（IKCZOX；IKD6H4 调整联序）：Printer.copies 1/2/3——1=单联无联名
+ * （旧票面），2=商家联+客户联，3=再加骑手联；一次 POST 拼 N 张票（每联尾
+ * <CUT>），原子同成败，失败走补打兜底；出纸顺序商家→客户→骑手（卷纸后打在外）。
+ * 库位（IKD6H4）：商品明细下缩进显示「▸ 区域-编号」，attachLocations 实时注入。
  *
  * 账号 env 门控 + 静默降级（同 NotificationsService 模式）：
  * - XPYUN_USER / XPYUN_USERKEY：开发者账号（admin.xpyun.net 控制台），账号级
@@ -47,7 +49,15 @@ export interface ReceiptOrderContext {
     phone?: string;
   } | null;
   items?: Array<{
-    product?: { name?: string; price?: number };
+    product?: {
+      /** 快照自带商品 id（attachLocations 按 it 查实时库位）。 */
+      id?: string;
+      name?: string;
+      price?: number;
+      /** 库位（IKD6H4）：打印时实时查商品表注入，快照不含。 */
+      location?: string;
+      locationCode?: string;
+    };
     quantity: number;
   }> | null;
   /** 以下金额单位均为分（IK8W5K）。 */
@@ -66,12 +76,14 @@ const TAG = {
   qr: (s: string) => `<QR>${s}</QR>`,
 } as const;
 
-/** 联次标签（IKCZOX）：下标即出纸顺序，copies=N 取前 N 个标联名。 */
-const COPY_LABELS = ['商家联', '骑手联', '用户联'] as const;
+/** 联次标签（IKD6H4 调整 IKCZOX 初版）：下标即出纸顺序，copies=N 取前 N 个。
+ *  1=商家单张；2=商家+客户；3=商家+客户+骑手（骑手联最外先揭，客户联贴袋）。 */
+const COPY_LABELS = ['商家联', '客户联', '骑手联'] as const;
 
 @Injectable()
 export class PrinterService {
   private readonly logger = new Logger(PrinterService.name);
+  constructor(private readonly db: PrismaService) {}
   private static readonly PRINT_URL =
     'https://open.xpyun.net/api/openapi/xprinter/print';
   private static readonly ADD_URL =
@@ -127,6 +139,35 @@ export class PrinterService {
       throw new Error(
         `芯烨云打印失败(${data?.code ?? res.status}): ${data?.msg ?? '无返回'}`,
       );
+  }
+
+  /** 库位实时注入（IKD6H4）：按 items 快照里的 product id 查当前库位——
+   *  分拣要的是「现在放哪」，补打老订单同样正确；已删商品该行跳过库位。
+   *  调用时机：组装 ReceiptOrderContext 之后、推送之前。 */
+  async attachLocations(
+    items?: ReceiptOrderContext['items'],
+  ): Promise<ReceiptOrderContext['items']> {
+    const lines = items ?? [];
+    const ids = lines
+      .map((line) => line.product?.id)
+      .filter((id): id is string => typeof id === 'string' && Boolean(id));
+    if (!ids.length) return lines;
+    const rows = await this.db.product.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, location: true, locationCode: true },
+    });
+    const locMap = new Map(rows.map((row) => [row.id, row]));
+    return lines.map((line) => {
+      const hit = line.product?.id ? locMap.get(line.product.id) : undefined;
+      return {
+        ...line,
+        product: {
+          ...line.product,
+          location: hit?.location || undefined,
+          locationCode: hit?.locationCode || undefined,
+        },
+      };
+    });
   }
 
   /** 订单小票：构建 58mm 票面并推送（snOverride 见 printRaw，IKBW0Q）。
@@ -228,13 +269,18 @@ export class PrinterService {
       );
     if (order.remark) lines.push(`备注：${order.remark}`);
     lines.push('-'.repeat(LINE_WIDTH));
-    // 商品清单：品名×数量居左，单价右对齐（快照价即成交价，含促销锁价）
+    // 商品清单：品名×数量居左，单价右对齐（快照价即成交价，含促销锁价）；
+    // 库位独立缩进行（IKD6H4 分拣备货单）：区域+编号都带，未配库位跳过
     for (const line of order.items ?? []) {
       const name = line.product?.name ?? '未知商品';
       const price = line.product?.price;
       lines.push(
         itemLine(`${name} x${line.quantity}`, price == null ? '' : yuan(price)),
       );
+      const loc = [line.product?.location, line.product?.locationCode]
+        .filter(Boolean)
+        .join('-');
+      if (loc) lines.push(`  ▸ ${loc}`);
     }
     lines.push('-'.repeat(LINE_WIDTH));
     lines.push(itemLine('商品金额', yuan(order.productAmount)));

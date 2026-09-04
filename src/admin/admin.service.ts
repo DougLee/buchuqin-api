@@ -1533,8 +1533,7 @@ export class AdminService {
       where: { id: order.campusId },
       select: { warehouseName: true },
     });
-    await this.printer.printOrderReceipt(
-      {
+    const receiptContext = {
       id: order.id,
       orderNo: order.orderNo,
       campusId: order.campusId,
@@ -1550,7 +1549,13 @@ export class AdminService {
       deliveryFee: Number(order.deliveryFee),
       discount: Number(order.discount),
       payableAmount: Number(order.payableAmount),
-      },
+    };
+    // IKD6H4：库位实时注入（分拣备货单要「现在放哪」）
+    receiptContext.items = await this.printer.attachLocations(
+      receiptContext.items,
+    );
+    await this.printer.printOrderReceipt(
+      receiptContext,
       active.sn,
       active.copies,
     );
