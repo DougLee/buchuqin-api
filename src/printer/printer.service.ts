@@ -270,7 +270,8 @@ export class PrinterService {
     if (order.remark) lines.push(`备注：${order.remark}`);
     lines.push('-'.repeat(LINE_WIDTH));
     // 商品清单：品名×数量居左，单价右对齐（快照价即成交价，含促销锁价）；
-    // 库位独立缩进行（IKD6H4 分拣备货单）：区域+编号都带，未配库位跳过
+    // 库位独立缩进行（IKD6H4 分拣备货单）：区域+编号都带，未配库位跳过。
+    // 标签用中文「库位:」——▸ 等几何符号不在 GBK，芯烨云渲染成问号（¥ 同坑）
     for (const line of order.items ?? []) {
       const name = line.product?.name ?? '未知商品';
       const price = line.product?.price;
@@ -280,7 +281,7 @@ export class PrinterService {
       const loc = [line.product?.location, line.product?.locationCode]
         .filter(Boolean)
         .join('-');
-      if (loc) lines.push(`  ▸ ${loc}`);
+      if (loc) lines.push(`  库位:${loc}`);
     }
     lines.push('-'.repeat(LINE_WIDTH));
     lines.push(itemLine('商品金额', yuan(order.productAmount)));
