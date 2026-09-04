@@ -3133,8 +3133,9 @@ export class AdminService {
       where: { campusId },
     });
     const prizes = row ? (JSON.parse(row.prizes) as any[]) : [];
+    // IKDCVO：partner 行配异业券后同样带券名/余量（编辑抽屉与奖池行展示）
     const couponIds = prizes
-      .filter((p) => p.type === 'coupon' && p.couponId)
+      .filter((p) => p.couponId)
       .map((p) => p.couponId as string);
     const coupons = couponIds.length
       ? await this.db.coupon.findMany({
