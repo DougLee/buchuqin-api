@@ -15,6 +15,7 @@ import {
   MaxLength,
   Min,
   MinLength,
+  ValidateIf,
   ValidateNested,
 } from 'class-validator';
 
@@ -188,8 +189,28 @@ export class CreateCouponDto {
   @IsOptional() @IsIn(['manual', 'lottery', 'signup']) trigger?: string;
   @IsOptional() @IsString() @MaxLength(60) remark?: string;
 }
+/**
+ * 优惠券编辑（IKDERC）：全字段可选，至少传一个。
+ * 已发放（claimed>0）时面额/门槛锁定（资金口径）；总量不得小于已发数，
+ * null=转不限量；expiresAt null=转长期。kind/trigger 不开放编辑。
+ */
 export class UpdateCouponDto {
-  @IsIn(['active', 'paused']) status!: 'active' | 'paused';
+  @IsOptional() @IsIn(['active', 'paused']) status?: 'active' | 'paused';
+  @IsOptional() @IsString() @MinLength(1) @MaxLength(40) name?: string;
+  @IsOptional() @IsString() @MaxLength(60) remark?: string;
+  @IsOptional() @ValidateIf((_, v) => v !== null) @Type(() => Number)
+  @IsInt() @Min(0)
+  amount?: number | null;
+  @IsOptional() @ValidateIf((_, v) => v !== null) @Type(() => Number)
+  @IsInt() @Min(0)
+  threshold?: number | null;
+  /** null = 转不限量（IKDEN2 口径） */
+  @IsOptional() @ValidateIf((_, v) => v !== null) @Type(() => Number)
+  @IsInt() @Min(1)
+  total?: number | null;
+  /** null = 转长期有效；传 ISO 日期串改固定日期 */
+  @IsOptional() @ValidateIf((_, v) => v !== null) @IsDateString()
+  expiresAt?: string | null;
 }
 /** 批量放行/回收（IKCKX4）：官方库放行回收、校区批量上下架共用 */
 export class BatchProductStatusDto {

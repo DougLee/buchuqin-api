@@ -3035,6 +3035,11 @@ export class AdminService {
     );
     return coupon;
   }
+  /**
+   * 优惠券编辑（IKDERC）：全字段可选 PATCH。
+   * 管控：已发放（claimed>0）锁面额/门槛（资金口径）；partner 券面额/门槛
+   * 恒 0 不可改；total 不得小于已发数（null=转不限量）；expiresAt null=转长期。
+   */
   async updateCoupon(
     id: string,
     body: UpdateCouponDto,
@@ -3045,9 +3050,44 @@ export class AdminService {
       where: { id, campusId },
     });
     if (!before) throw new NotFoundException('优惠券不存在');
+    // 编辑语义：amount/threshold 不存在「清空」，null 一律视为未传
+    const amount = body.amount ?? undefined;
+    const threshold = body.threshold ?? undefined;
+    const locked = before.claimed > 0;
+    if ((amount !== undefined || threshold !== undefined) && locked)
+      throw new BadRequestException(
+        `该券已发放 ${before.claimed} 张，面额与使用门槛锁定不可修改（可调名称/总量/有效期或暂停）`,
+      );
+    if (
+      before.kind === 'partner' &&
+      (amount !== undefined || threshold !== undefined)
+    )
+      throw new BadRequestException('异业券不参与下单，面额/门槛固定为 0');
+    if (
+      body.total !== undefined &&
+      body.total !== null &&
+      body.total < before.claimed
+    )
+      throw new BadRequestException(
+        `发放总量不能小于已发放数（已发 ${before.claimed} 张）`,
+      );
+    if (amount !== undefined && before.kind === 'platform' && amount <= 0)
+      throw new BadRequestException('金额券面额必须大于 0');
+    const data: Prisma.CouponUpdateInput = {};
+    if (body.status !== undefined) data.status = body.status;
+    if (body.name !== undefined) data.name = body.name;
+    if (body.remark !== undefined) data.remark = body.remark;
+    if (amount !== undefined) data.amount = amount;
+    if (threshold !== undefined) data.threshold = threshold;
+    // total/expiresAt：undefined 不动；null 显式转不限量/长期
+    if (body.total !== undefined) data.total = body.total;
+    if (body.expiresAt !== undefined)
+      data.expiresAt = body.expiresAt ? new Date(body.expiresAt) : null;
+    if (!Object.keys(data).length)
+      throw new BadRequestException('没有要修改的字段');
     const after = await this.db.coupon.update({
       where: { id },
-      data: { status: body.status },
+      data,
     });
     await this.audit(
       operator,

@@ -1,4 +1,5 @@
 import { PrismaService } from '../database/prisma.service';
+import { AdminService } from '../admin/admin.service';
 import { BusinessService } from './business.service';
 
 /**
@@ -243,5 +244,47 @@ describe('Coupon kind/trigger/expirable (IKDCVO)', () => {
     });
     expect(unlimited.total).toBeNull();
     expect(unlimited.claimed).toBe(1);
+  });
+
+  it('coupon edit (IKDERC): field-level guardrails by claimed count', async () => {
+    // 未发放：全字段可改（面额/门槛/总量/有效期）
+    const fresh = await mkCoupon({
+      name: `${PREFIX}编辑券`,
+      trigger: 'manual',
+      amount: 100,
+      threshold: 500,
+      total: 10,
+      expiresAt: new Date(Date.now() + 86_400_000).toISOString(),
+    });
+    // IKDERC：编辑管控在 admin.service，用真实实例断言（同 promotions.spec 模式）
+    const svc = new AdminService(db, biz);
+    const edited = await svc.updateCoupon(
+      fresh.id,
+      { amount: 200, threshold: 1000, total: 50, remark: '改过了' },
+      'spec-op',
+      CAMPUS,
+    );
+    expect(edited.amount).toBe(200);
+    expect(edited.threshold).toBe(1000);
+    expect(edited.total).toBe(50);
+
+    // 发放 1 张后：面额/门槛锁定、总量不能小于已发、名称可改
+    await biz.claimCoupon(USER, fresh.id, CAMPUS);
+    await expect(
+      svc.updateCoupon(fresh.id, { amount: 300 }, 'spec-op', CAMPUS),
+    ).rejects.toThrow('锁定不可修改');
+    await expect(
+      svc.updateCoupon(fresh.id, { total: 0 as unknown as number }, 'spec-op', CAMPUS),
+    ).rejects.toThrow('不能小于已发放数');
+    const renamed = await svc.updateCoupon(
+      fresh.id,
+      { name: `${PREFIX}编辑券改名`, total: null, expiresAt: null },
+      'spec-op',
+      CAMPUS,
+    );
+    expect(renamed.name).toBe(`${PREFIX}编辑券改名`);
+    // 转不限量 + 长期：null 落库
+    expect(renamed.total).toBeNull();
+    expect(renamed.expiresAt).toBeNull();
   });
 });
