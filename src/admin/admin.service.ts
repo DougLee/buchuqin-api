@@ -524,9 +524,10 @@ export class AdminService {
       .sort((a, b) => b.time.localeCompare(a.time))
       .slice(0, 8);
   }
-  async products(campusId: string, statuses?: string[]) {
+  async products(campusId: string, statuses?: string[], categoryId?: string) {
     const xs = await this.db.product.findMany({
-      where: { campusId },
+      // IKD6FG：categoryId 分类筛选（官方库/本校区/库存共用）
+      where: { campusId, ...(categoryId ? { categoryId } : {}) },
       orderBy: { sales: 'desc' },
     });
     // IKAJSO「上游已更新」角标：官方库 updatedAt 晚于本校区同步时间即标记
@@ -1288,10 +1289,10 @@ export class AdminService {
     );
     return after;
   }
-  async inventory(campusId: string) {
+  async inventory(campusId: string, categoryId?: string) {
     // IKA0VB 去批次：合成批次号/有效期已移除（零食饮料初期不做效期批次管理）。
     const [items, campus] = await Promise.all([
-      this.products(campusId),
+      this.products(campusId, undefined, categoryId),
       this.db.campus.findFirstOrThrow({ where: { id: campusId } }),
     ]);
     return items.map((x) => ({
@@ -1392,7 +1393,11 @@ export class AdminService {
    * 分组（如「配送中」= waiting-first-mile,first-mile,last-mile），单值兼容旧下拉。
    * IKAJSL：campusId 空 = 总部跨校区视角（附 campusName 列）。
    */
-  async orders(status: string | undefined, campusId: string) {
+  async orders(
+    status: string | undefined,
+    campusId: string,
+    deliveryMode?: string,
+  ) {
     const statuses =
       status && status !== 'all'
         ? status.split(',').map((s) => s.trim()).filter(Boolean)
@@ -1401,6 +1406,8 @@ export class AdminService {
       where: {
         ...(campusId ? { campusId } : {}),
         ...(statuses.length ? { status: { in: statuses } } : {}),
+        // IKD6FG：配送方式筛选（instant/scheduled）
+        ...(deliveryMode ? { deliveryMode } : {}),
       },
       include: {
         user: { select: { id: true, nickname: true, phone: true } },
@@ -1764,11 +1771,13 @@ export class AdminService {
     await this.audit(operator, 'location.delete', 'location', id, before, null, campusId);
   }
   /** IKB5PA：status 过滤（online/paused/offline），不传 = 全部在职口径（除 deleted）。 */
-  async staff(campusId: string, status?: string) {
+  async staff(campusId: string, status?: string, role?: string) {
     const xs = await this.db.staff.findMany({
       where: {
         campusId,
         ...(status ? { status } : { status: { not: 'deleted' } }),
+        // IKD6FG：角色筛选（楼长/全职/兼职）
+        ...(role ? { role } : {}),
       },
       include: { buildingRef: true },
       orderBy: { staffNo: 'asc' },

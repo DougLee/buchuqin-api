@@ -135,6 +135,7 @@ export class AdminController {
     @Query('keyword') keyword?: string,
     @Query('status') status?: string,
     @Query('view') view?: string,
+    @Query('categoryId') categoryId?: string,
   ) {
     this.authorize(req, 'products');
     return ok(
@@ -144,6 +145,8 @@ export class AdminController {
           status && status !== 'all'
             ? status.split(',').map((s) => s.trim()).filter(Boolean)
             : undefined,
+          // IKD6FG：分类筛选（官方库/本校区商品共用端点）
+          categoryId || undefined,
         ),
         page,
         pageSize,
@@ -433,10 +436,20 @@ export class AdminController {
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
     @Query('keyword') keyword?: string,
+    @Query('categoryId') categoryId?: string,
   ) {
     this.authorize(req, 'inventory');
     return ok(
-      paginate(await this.service.inventory(req.user.campusId), page, pageSize, keyword),
+      paginate(
+        await this.service.inventory(
+          req.user.campusId,
+          // IKD6FG：分类筛选（库存按类别盘点）
+          categoryId || undefined,
+        ),
+        page,
+        pageSize,
+        keyword,
+      ),
     );
   }
   @Post('inventory/stock-in') async stockIn(
@@ -489,11 +502,17 @@ export class AdminController {
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
     @Query('keyword') keyword?: string,
+    @Query('deliveryMode') deliveryMode?: string,
   ) {
     this.authorize(req, 'orders');
     return ok(
       paginate(
-        await this.service.orders(status, this.campusScope(req, campus)),
+        await this.service.orders(
+          status,
+          this.campusScope(req, campus),
+          // IKD6FG：配送方式筛选（instant/scheduled）
+          deliveryMode || undefined,
+        ),
         page,
         pageSize,
         keyword,
@@ -728,12 +747,13 @@ export class AdminController {
     @Query('pageSize') pageSize?: string,
     @Query('status') status?: string,
     @Query('keyword') keyword?: string,
+    @Query('role') role?: string,
   ) {
     this.authorize(req, 'staff');
     return ok(
-      // IKB5PA：status 过滤（在线/暂停/离线 Tab）
+      // IKB5PA：status 过滤（在线/暂停/离线 Tab）；IKD6FG：角色筛选
       paginate(
-        await this.service.staff(req.user.campusId, status),
+        await this.service.staff(req.user.campusId, status, role || undefined),
         page,
         pageSize,
         keyword,
