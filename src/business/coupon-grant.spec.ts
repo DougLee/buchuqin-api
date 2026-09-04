@@ -287,4 +287,28 @@ describe('Coupon kind/trigger/expirable (IKDCVO)', () => {
     expect(renamed.total).toBeNull();
     expect(renamed.expiresAt).toBeNull();
   });
+
+  it('coupon delete (IKDES1): only never-issued coupons are deletable', async () => {
+    const svc = new AdminService(db, biz);
+    // 从未发放：可删
+    const fresh = await mkCoupon({
+      name: `${PREFIX}待删券`,
+      trigger: 'manual',
+      amount: 100,
+    });
+    const r = await svc.deleteCoupon(fresh.id, 'spec-op', CAMPUS);
+    expect(r.deleted).toBe(true);
+    expect(await db.coupon.findUnique({ where: { id: fresh.id } })).toBeNull();
+
+    // 已发放（claimed=1）：拒绝，提示走暂停
+    const issued = await mkCoupon({
+      name: `${PREFIX}已发待删券`,
+      trigger: 'manual',
+      amount: 100,
+    });
+    await biz.claimCoupon(USER, issued.id, CAMPUS);
+    await expect(
+      svc.deleteCoupon(issued.id, 'spec-op', CAMPUS),
+    ).rejects.toThrow('请使用「暂停发放」');
+  });
 });

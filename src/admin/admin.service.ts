@@ -428,6 +428,7 @@ export class AdminService {
     'coupon.create': '创建优惠券',
     'coupon.update': '更新优惠券',
     'coupon.issue': '发放优惠券',
+    'coupon.delete': '删除优惠券',
     'dispatch-invitation.create': '创建调配邀请',
     'dispatch-invitation.cancel': '取消调配邀请',
     'inventory.adjust': '调整库存',
@@ -3034,6 +3035,30 @@ export class AdminService {
       campusId,
     );
     return coupon;
+  }
+  /**
+   * 优惠券删除（IKDES1）：仅限从未发放（issued=0 且 claimed=0）——无
+   * UserCoupon 引用，物理删除无资产影响；有发放记录拒绝（用户资产与
+   * 流水依赖，请用暂停发放）。转盘奖位 JSON 引用无外键，抽中自动降级。
+   */
+  async deleteCoupon(id: string, operator: string, campusId: string) {
+    const coupon = await this.db.coupon.findFirst({ where: { id, campusId } });
+    if (!coupon) throw new NotFoundException('优惠券不存在');
+    if (coupon.issued > 0 || coupon.claimed > 0)
+      throw new BadRequestException(
+        `该券已有发放记录（发放 ${coupon.issued} 张），删除会影响用户资产，请使用「暂停发放」下线`,
+      );
+    await this.db.coupon.delete({ where: { id } });
+    await this.audit(
+      operator,
+      'coupon.delete',
+      'coupon',
+      id,
+      coupon,
+      null,
+      campusId,
+    );
+    return { id, deleted: true };
   }
   /**
    * 优惠券编辑（IKDERC）：全字段可选 PATCH。

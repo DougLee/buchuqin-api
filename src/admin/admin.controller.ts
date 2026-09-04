@@ -1309,6 +1309,17 @@ export class AdminController {
       await this.service.updateCoupon(id, body, req.user.id, req.user.campusId),
     );
   }
+  /** 优惠券删除（IKDES1）：仅限从未发放；已发记录拒绝（走暂停） */
+  @Delete('coupons/:id') async deleteCoupon(
+    @Req() req: AuthRequest,
+    @Param('id') id: string,
+  ) {
+    this.authorize(req, 'marketing', 'write');
+    return ok(
+      await this.service.deleteCoupon(id, req.user.id, req.user.campusId),
+      '优惠券已删除',
+    );
+  }
   @Post('coupons/:id/issue') async issueCoupon(
     @Req() req: AuthRequest,
     @Param('id') id: string,
