@@ -9,7 +9,10 @@ import { Prisma } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../database/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
-import { PrinterService, ReceiptOrderContext } from '../printer/printer.service';
+import {
+  PrinterService,
+  ReceiptOrderContext,
+} from '../printer/printer.service';
 import {
   buildOrderTimeline,
   DELIVERING_STATUSES,
@@ -140,9 +143,7 @@ export class BusinessService {
       // 详情页 withDescription 才带。
       ...(withDescription ? { description: description ?? '' } : {}),
       price: number(promotion ? promotion.price : product.price),
-      originalPrice: number(
-        promotion ? product.price : product.originalPrice,
-      ),
+      originalPrice: number(promotion ? product.price : product.originalPrice),
       ...(promotion
         ? {
             promotion: {
@@ -202,22 +203,29 @@ export class BusinessService {
   private couponView(coupon: {
     id: string;
     name: string;
+    // IKDCVO：kind/trigger/remark 见 schema 注释；expiresAt 可空=长期有效。
+    kind: string;
+    trigger: string;
+    remark: string;
     amount: number;
     threshold: number;
     total: number;
     claimed: number;
     status: string;
-    expiresAt: Date;
+    expiresAt: Date | null;
   }) {
     return {
       id: coupon.id,
       name: coupon.name,
+      kind: coupon.kind,
+      trigger: coupon.trigger,
+      remark: coupon.remark,
       amount: coupon.amount,
       threshold: coupon.threshold,
       total: coupon.total,
       remain: Math.max(0, coupon.total - coupon.claimed),
       status: coupon.status,
-      expiresAt: coupon.expiresAt.toISOString(),
+      expiresAt: coupon.expiresAt ? coupon.expiresAt.toISOString() : null,
     };
   }
   async coupons(userId: string, campusId: string) {
@@ -237,11 +245,13 @@ export class BusinessService {
       mine.filter((x) => x.status !== 'used').map((x) => x.couponId),
     );
     return {
+      // IKDCVO：公开可领列表只出 manual 券（lottery/signup 券靠发放入账）。
       claimable: items
         .filter(
           (c) =>
+            c.trigger === 'manual' &&
             c.status === 'active' &&
-            c.expiresAt > now &&
+            (!c.expiresAt || c.expiresAt > now) &&
             c.claimed < c.total &&
             !holding.has(c.id),
         )
@@ -273,7 +283,10 @@ export class BusinessService {
         throw new BadRequestException('该优惠券不属于当前校园');
       if (coupon.status !== 'active')
         throw new BadRequestException('优惠券暂不可领取');
-      if (coupon.expiresAt.getTime() <= Date.now())
+      // IKDCVO：lottery/signup 券只走发放通道，不开放手动领取。
+      if (coupon.trigger !== 'manual')
+        throw new BadRequestException('该优惠券不支持手动领取');
+      if (coupon.expiresAt && coupon.expiresAt.getTime() <= Date.now())
         throw new BadRequestException('优惠券已过期');
       // 并发不超发：条件更新占用名额，抢不到名额即已领完。
       const won = await tx.coupon.updateMany({
@@ -307,7 +320,13 @@ export class BusinessService {
     // 领取接口拒收，但已发放到账的券正常可用（active=常规券）
     if (!['active', 'bonus'].includes(record.coupon.status))
       throw new BadRequestException('优惠券已下架');
-    if (record.coupon.expiresAt.getTime() <= Date.now())
+    // IKDCVO：异业券只做到店展示，不参与下单抵扣。
+    if (record.coupon.kind === 'partner')
+      throw new BadRequestException('异业券请在到店时出示，不参与下单抵扣');
+    if (
+      record.coupon.expiresAt &&
+      record.coupon.expiresAt.getTime() <= Date.now()
+    )
       throw new BadRequestException('优惠券已过期');
     return record;
   }
@@ -498,7 +517,11 @@ export class BusinessService {
     // 下单快照全部随 cart 单一来源走，下游零特判
     const promoMap = await this.promotionMap(rows.map((r) => r.productId));
     const items = rows.map((row) => ({
-      product: this.productView(row.product, false, promoMap.get(row.productId)),
+      product: this.productView(
+        row.product,
+        false,
+        promoMap.get(row.productId),
+      ),
       quantity: row.quantity,
     }));
     // 金额单位:分——全整数运算，无浮点误差（IK8W5K）。
@@ -558,7 +581,11 @@ export class BusinessService {
     await this.db.cartItem.deleteMany({ where: { userId } });
     return this.cart(userId);
   }
-  private async validateQuote(userId: string, campusId: string, dto: CreateOrderDto) {
+  private async validateQuote(
+    userId: string,
+    campusId: string,
+    dto: CreateOrderDto,
+  ) {
     const [cart, address] = await Promise.all([
       this.cart(userId),
       this.db.address.findFirst({ where: { id: dto.addressId, userId } }),
@@ -601,9 +628,10 @@ export class BusinessService {
       select: { deliveryFeeInstant: true, deliveryFeeScheduled: true },
     });
     return mode === 'instant'
-      ? campus?.deliveryFeeInstant ?? BusinessService.DELIVERY_FEE_CENTS.instant
-      : campus?.deliveryFeeScheduled ??
-          BusinessService.DELIVERY_FEE_CENTS.scheduled;
+      ? (campus?.deliveryFeeInstant ??
+          BusinessService.DELIVERY_FEE_CENTS.instant)
+      : (campus?.deliveryFeeScheduled ??
+          BusinessService.DELIVERY_FEE_CENTS.scheduled);
   }
   async checkout(userId: string, campusId: string, dto: CreateOrderDto) {
     const { cart } = await this.validateQuote(userId, campusId, dto);
@@ -835,7 +863,10 @@ export class BusinessService {
         const bonus = await tx.coupon.findUnique({
           where: { id: bonusCouponId },
         });
-        if (bonus && bonus.expiresAt.getTime() > Date.now()) {
+        if (
+          bonus &&
+          (!bonus.expiresAt || bonus.expiresAt.getTime() > Date.now())
+        ) {
           const wonBonus = await tx.coupon.updateMany({
             where: { id: bonus.id, claimed: { lt: bonus.total } },
             data: { claimed: { increment: 1 }, issued: { increment: 1 } },
@@ -948,10 +979,11 @@ export class BusinessService {
           ? '该订单已出库，无需重复操作'
           : '当前状态不可出库',
       );
-    const lines = (raw.items as Array<{
-      product?: { id?: string };
-      quantity: number;
-    }>) ?? [];
+    const lines =
+      (raw.items as Array<{
+        product?: { id?: string };
+        quantity: number;
+      }>) ?? [];
     const updated = await this.db.$transaction(async (tx) => {
       // 条件更新：与后台改状态/另一管理员同时出库并发时仅一笔生效。
       const won = await tx.order.updateMany({
@@ -1206,11 +1238,11 @@ export class BusinessService {
     // IKB3K1：券列表就标出「抵扣超过订单金额」的不可用券（口径同 checkout）
     const fee = await this.deliveryFeeFor(campusId, dto.deliveryMode);
     const rows = await this.db.userCoupon.findMany({
-      // 只看本校发放的券（跨校园券不可用）。
+      // 只看本校发放的金额券（跨校园券/异业券不参与下单，IKDCVO）。
       where: {
         userId,
         status: { in: ['claimed', 'released'] },
-        coupon: { campusId },
+        coupon: { campusId, kind: 'platform' },
       },
       include: { coupon: true },
       orderBy: { claimedAt: 'desc' },
@@ -1221,7 +1253,8 @@ export class BusinessService {
         threshold = row.coupon.threshold;
       let reason: string | undefined;
       if (row.coupon.status !== 'active') reason = '优惠券已下架';
-      else if (row.coupon.expiresAt <= now) reason = '优惠券已过期';
+      else if (row.coupon.expiresAt && row.coupon.expiresAt <= now)
+        reason = '优惠券已过期';
       else if (cart.productAmount < threshold)
         reason = `还差${yuan(threshold - cart.productAmount)}元可用`;
       else if (amount > cart.productAmount + fee)
@@ -1230,10 +1263,13 @@ export class BusinessService {
         id: row.id,
         couponId: row.couponId,
         name: row.coupon.name,
+        remark: row.coupon.remark,
         amount,
         threshold,
         status: row.status,
-        expiresAt: row.coupon.expiresAt.toISOString(),
+        expiresAt: row.coupon.expiresAt
+          ? row.coupon.expiresAt.toISOString()
+          : null,
         available: !reason,
         unavailableReason: reason,
       };
@@ -1465,6 +1501,8 @@ export class BusinessService {
         });
         let userCouponId: string | null = null;
         let prizeType = hit.prize.type;
+        let couponLabel = '';
+        let couponRemark = '';
         if (hit.prize.type === 'coupon') {
           const issued = await this.issueWheelCoupon(
             tx,
@@ -1473,7 +1511,8 @@ export class BusinessService {
             hit.prize.couponId,
           );
           if (issued) {
-            userCouponId = issued;
+            userCouponId = issued.id;
+            couponRemark = issued.remark;
           } else {
             // 券发完/过期/停用：降级谢谢参与并落库真实结果。
             prizeType = 'none';
@@ -1481,6 +1520,20 @@ export class BusinessService {
               where: { id: draw.id },
               data: { prizeType },
             });
+          }
+        } else if (hit.prize.type === 'partner' && hit.prize.couponId) {
+          // IKDCVO：partner 行配了异业券 → 抽中发券入账（我的优惠券可见，
+          // 暂不核销）；发不出去回落旧图文展示——异业券无资金成本不降谢谢参与。
+          const issued = await this.issueWheelCoupon(
+            tx,
+            userId,
+            campusId,
+            hit.prize.couponId,
+          );
+          if (issued) {
+            userCouponId = issued.id;
+            couponLabel = issued.name;
+            couponRemark = issued.remark;
           }
         }
         return {
@@ -1490,14 +1543,27 @@ export class BusinessService {
           prize: {
             type: prizeType,
             label: prizeType === 'none' ? '谢谢参与' : hit.prize.label,
-            bizTitle: prizeType === 'partner' ? hit.prize.bizTitle ?? '' : '',
-            bizImage: prizeType === 'partner' ? hit.prize.bizImage ?? '' : '',
-            bizNote: prizeType === 'partner' ? hit.prize.bizNote ?? '' : '',
+            // 发成异业券时优先展示券信息；存量无 couponId 保留旧图文。
+            bizTitle:
+              prizeType === 'partner'
+                ? couponLabel || (hit.prize.bizTitle ?? '')
+                : '',
+            bizImage:
+              prizeType === 'partner' && !userCouponId
+                ? (hit.prize.bizImage ?? '')
+                : '',
+            bizNote:
+              prizeType === 'partner'
+                ? couponRemark || (hit.prize.bizNote ?? '')
+                : '',
           },
         };
       });
     } catch (e) {
-      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002')
+      if (
+        e instanceof Prisma.PrismaClientKnownRequestError &&
+        e.code === 'P2002'
+      )
         throw new BadRequestException('今日已抽过，明天再来');
       throw e;
     }
@@ -1521,22 +1587,39 @@ export class BusinessService {
   }
 
   /**
-   * 抽奖发券：与 claimCoupon 同款「条件更新占名额」防超发，但不做
-   * 「同一张券同人幂等」拦截（每日可重复中同款）；券不存在/停用/过期/
-   * 已领完一律返回 null → 调用方降级谢谢参与。
+   * IKDCVO 统一发券内核（事务内调用）：占名额条件更新防超发 +
+   * 幂等查重（status≠used 持有中不重发不占名额；opts.repeat=true 跳过——
+   * 转盘每日可重复中同款）。券不存在/停用/过期/已领完返回 null 不抛错，
+   * 调用方自行降级。campusId 校验留给调用方（报错文案各不相同）。
    */
-  private async issueWheelCoupon(
+  private async grantCouponInner(
     tx: Prisma.TransactionClient,
     userId: string,
-    campusId: string,
-    couponId?: string,
-  ): Promise<string | null> {
-    if (!couponId) return null;
+    couponId: string,
+    opts?: { repeat?: boolean },
+  ): Promise<{
+    id: string;
+    name: string;
+    remark: string;
+    existing?: boolean;
+  } | null> {
     const coupon = await tx.coupon.findUnique({ where: { id: couponId } });
-    if (!coupon) return null;
-    if (coupon.campusId !== campusId) return null;
-    if (coupon.status !== 'active') return null;
-    if (coupon.expiresAt.getTime() <= Date.now()) return null;
+    if (!coupon || coupon.status !== 'active') return null;
+    if (coupon.expiresAt && coupon.expiresAt.getTime() <= Date.now())
+      return null;
+    if (!opts?.repeat) {
+      const holding = await tx.userCoupon.findFirst({
+        where: { userId, couponId, status: { not: 'used' } },
+      });
+      // 幂等命中：返回已有持有记录并带 existing 标记（不计新增发放）。
+      if (holding)
+        return {
+          id: holding.id,
+          name: coupon.name,
+          remark: coupon.remark,
+          existing: true,
+        };
+    }
     const won = await tx.coupon.updateMany({
       where: { id: couponId, claimed: { lt: coupon.total } },
       data: { claimed: { increment: 1 }, issued: { increment: 1 } },
@@ -1545,6 +1628,53 @@ export class BusinessService {
     const uc = await tx.userCoupon.create({
       data: { userId, couponId, status: 'claimed' },
     });
-    return uc.id;
+    return { id: uc.id, name: coupon.name, remark: coupon.remark };
+  }
+
+  /** 发券外壳版（注册 hook 等非事务场景用）。 */
+  private grantCoupon(userId: string, couponId: string) {
+    return this.db.$transaction((tx) =>
+      this.grantCouponInner(tx, userId, couponId),
+    );
+  }
+
+  /**
+   * IKDCVO 注册发券：发本校区 trigger=signup 且在架/未过期的券（通常一张
+   * 新人红包券）。幂等——已持有不重发；整批逐张尽力发，单张失败不影响其余。
+   */
+  async grantSignupCoupons(userId: string, campusId: string) {
+    const candidates = await this.db.coupon.findMany({
+      where: {
+        campusId,
+        trigger: 'signup',
+        status: 'active',
+        OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+      },
+    });
+    let granted = 0;
+    for (const c of candidates) {
+      const issued = await this.grantCoupon(userId, c.id);
+      if (issued && !issued.existing) granted += 1;
+    }
+    return { granted };
+  }
+
+  /**
+   * 抽奖发券：走 grantCouponInner 的 repeat 模式（每日可重复中同款），
+   * 外加跨校园校验；发不出一律返回 null → 调用方降级。
+   */
+  private async issueWheelCoupon(
+    tx: Prisma.TransactionClient,
+    userId: string,
+    campusId: string,
+    couponId?: string,
+  ): Promise<{ id: string; name: string; remark: string } | null> {
+    if (!couponId) return null;
+    const coupon = await tx.coupon.findUnique({
+      where: { id: couponId },
+      select: { campusId: true },
+    });
+    if (!coupon || coupon.campusId !== campusId) return null;
+    return this.grantCouponInner(tx, userId, couponId, { repeat: true });
   }
 }

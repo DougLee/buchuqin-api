@@ -50,7 +50,10 @@ export class CreateProductDto extends BarcodeDto {
   /** 详情多图（IK9SNS）：COS URL 数组，顺序即详情页轮播顺序。 */
   @IsOptional()
   @IsArray()
-  @Matches(/^https?:\/\//, { each: true, message: '图片地址必须是 http(s) URL' })
+  @Matches(/^https?:\/\//, {
+    each: true,
+    message: '图片地址必须是 http(s) URL',
+  })
   @MaxLength(500, { each: true })
   @ArrayMaxSize(9)
   images?: string[];
@@ -86,7 +89,10 @@ export class UpdateProductDto {
   /** 详情多图（IK9SNS）：整组提交覆盖，空数组清空回退单图。 */
   @IsOptional()
   @IsArray()
-  @Matches(/^https?:\/\//, { each: true, message: '图片地址必须是 http(s) URL' })
+  @Matches(/^https?:\/\//, {
+    each: true,
+    message: '图片地址必须是 http(s) URL',
+  })
   @MaxLength(500, { each: true })
   @ArrayMaxSize(9)
   images?: string[];
@@ -116,7 +122,8 @@ export class CreateBannerDto {
   /** 详情长图（IKC1AD）：点击 Banner 进详情页通铺展示的主口径；空 = 不可点。 */
   @IsOptional() @IsString() @MaxLength(500) detailImage?: string;
   /** 展示位置（IKA57F）：缺省 home 首页轮播。 */
-  @IsOptional() @IsIn(['home', 'pay-success']) placement?: 'home' | 'pay-success';
+  @IsOptional() @IsIn(['home', 'pay-success']) placement?:
+    'home' | 'pay-success';
   @IsOptional() @Type(() => Number) @IsInt() sort?: number;
   /** 投放校区（IKAJSL Banner 归总部）：空串 = 全部校区；仅 hq 操作者生效。 */
   @IsOptional() @IsString() campusId?: string;
@@ -140,7 +147,8 @@ export class UpdateBannerDto {
   /** 图文详情（IK9SNN）：空串语义清空（Banner 回到不可点）。 */
   @IsOptional() @IsString() @MaxLength(5000) content?: string;
   /** 展示位置（IKA57F）：undefined 跳过更新。 */
-  @IsOptional() @IsIn(['home', 'pay-success']) placement?: 'home' | 'pay-success';
+  @IsOptional() @IsIn(['home', 'pay-success']) placement?:
+    'home' | 'pay-success';
   @IsOptional() @Type(() => Number) @IsInt() sort?: number;
   @IsOptional() @IsIn(['active', 'hidden']) status?: 'active' | 'hidden';
 }
@@ -168,10 +176,16 @@ export class UpdateDeliveryConfigDto {
 }
 export class CreateCouponDto {
   @IsString() @MaxLength(40) name!: string;
-  @Type(() => Number) @IsNumber() @Min(0.01) amount!: number;
+  // IKDCVO：partner 异业券不参与下单，amount/threshold 须传 0 → Min(0)
+  // 放行；platform 金额券的正数约束按 kind 在 service 校验。
+  @Type(() => Number) @IsNumber() @Min(0) amount!: number;
   @Type(() => Number) @IsNumber() @Min(0) threshold!: number;
   @Type(() => Number) @IsInt() @Min(1) total!: number;
-  @IsString() expiresAt!: string;
+  // 不传 = 长期有效（IKDCVO）。
+  @IsOptional() @IsString() expiresAt?: string;
+  @IsOptional() @IsIn(['platform', 'partner']) kind?: string;
+  @IsOptional() @IsIn(['manual', 'lottery', 'signup']) trigger?: string;
+  @IsOptional() @IsString() @MaxLength(60) remark?: string;
 }
 export class UpdateCouponDto {
   @IsIn(['active', 'paused']) status!: 'active' | 'paused';
@@ -278,7 +292,9 @@ export class UpdateAccountDto {
   @IsOptional() @IsString() @MaxLength(30) nickname?: string;
   @IsOptional() @IsIn(ADMIN_ACCOUNT_ROLES) role?: string;
   /** 重置密码（超管操作，无需旧密码）。 */
-  @IsOptional() @IsString() @MinLength(8, { message: '密码至少 8 位' })
+  @IsOptional()
+  @IsString()
+  @MinLength(8, { message: '密码至少 8 位' })
   password?: string;
   /** 重设可运营校区全集（IKB3KG 方案A）：仅 hq 操作者生效，整体替换授权行。 */
   @IsOptional() @IsArray() @IsString({ each: true }) campusIds?: string[];
@@ -337,8 +353,15 @@ export class CreateCampusDto {
   @IsString() @MinLength(2) @MaxLength(30) warehouseName!: string;
   @IsOptional() @IsString() @MaxLength(100) address?: string;
   /** 配送费/起送门槛（IK9SO6 分制）：可选，缺省用模型默认。 */
-  @IsOptional() @Type(() => Number) @IsInt() @Min(0) deliveryFeeInstant?: number;
-  @IsOptional() @Type(() => Number) @IsInt() @Min(0)
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  deliveryFeeInstant?: number;
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
   deliveryFeeScheduled?: number;
   @IsOptional() @Type(() => Number) @IsInt() @Min(0) deliveryThreshold?: number;
 }
@@ -348,8 +371,15 @@ export class UpdateCampusDto {
   @IsOptional() @IsString() @MinLength(2) @MaxLength(30) warehouseName?: string;
   @IsOptional() @IsString() @MaxLength(100) address?: string;
   @IsOptional() @IsIn(['active', 'inactive']) status?: 'active' | 'inactive';
-  @IsOptional() @Type(() => Number) @IsInt() @Min(0) deliveryFeeInstant?: number;
-  @IsOptional() @Type(() => Number) @IsInt() @Min(0)
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  deliveryFeeInstant?: number;
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
   deliveryFeeScheduled?: number;
   @IsOptional() @Type(() => Number) @IsInt() @Min(0) deliveryThreshold?: number;
 }
@@ -359,9 +389,13 @@ export class UpdateCampusDto {
  *  copies（IKCZOX）：小票联数 1=单联无联名；2=商家联+骑手联；3=再加用户联。 */
 export class BindPrinterDto {
   @IsString() @MaxLength(40) name!: string;
-  @IsString() @Matches(/^[A-Za-z0-9-]{5,40}$/, { message: 'SN 格式不正确' })
+  @IsString()
+  @Matches(/^[A-Za-z0-9-]{5,40}$/, { message: 'SN 格式不正确' })
   sn!: string;
-  @IsOptional() @Type(() => Number) @IsInt() @IsIn([1, 2, 3])
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @IsIn([1, 2, 3])
   copies?: number;
 }
 
@@ -379,7 +413,9 @@ export class WheelPrizeDto {
 /** 转盘配置保存（IKD6FC）：upsert 单校区单配置。 */
 export class UpsertWheelDto {
   @IsBoolean() active!: boolean;
-  @IsArray() @ArrayMinSize(8) @ArrayMaxSize(8)
+  @IsArray()
+  @ArrayMinSize(8)
+  @ArrayMaxSize(8)
   @ValidateNested({ each: true })
   @Type(() => WheelPrizeDto)
   prizes!: WheelPrizeDto[];

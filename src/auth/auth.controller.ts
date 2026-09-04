@@ -7,6 +7,7 @@ import {
   HttpCode,
   HttpException,
   HttpStatus,
+  Logger,
   NotFoundException,
   Patch,
   Post,
@@ -110,12 +111,13 @@ class SelectCampusDto {
 @ApiTags('认证')
 @Controller('auth')
 export class AuthController {
+  private readonly logger = new Logger(AuthController.name);
+
   constructor(
     private readonly jwt: JwtService,
     private readonly db: PrismaService,
     private readonly business: BusinessService,
   ) {}
-
 
   /**
    * 后台账号密码登录（ADR-0004 / IK9JHP）：AdminAccount 表 + bcrypt 校验，
@@ -168,8 +170,7 @@ export class AuthController {
     const account = await this.db.adminAccount.findUnique({
       where: { id: req.user.id },
     });
-    if (!account)
-      throw new BadRequestException('该账号类型不支持修改密码');
+    if (!account) throw new BadRequestException('该账号类型不支持修改密码');
     if (!(await compare(body.oldPassword ?? '', account.passwordHash)))
       throw new UnauthorizedException('原密码不正确');
     await this.db.adminAccount.update({
@@ -184,10 +185,7 @@ export class AuthController {
   @UseGuards(JwtAuthGuard, UserRoleGuard)
   @SetMetadata(USER_ROLES_KEY, ['user'])
   @ApiBearerAuth()
-  async updateProfile(
-    @Req() req: AuthRequest,
-    @Body() body: UpdateProfileDto,
-  ) {
+  async updateProfile(@Req() req: AuthRequest, @Body() body: UpdateProfileDto) {
     const data: { nickname?: string; avatar?: string } = {};
     if (body.nickname?.trim()) data.nickname = body.nickname.trim();
     if (body.avatar) data.avatar = body.avatar;
@@ -341,6 +339,7 @@ export class AuthController {
       const campus =
         (await this.db.campus.findFirst({ orderBy: { createdAt: 'asc' } })) ??
         null;
+      let created = false;
       try {
         user = await this.db.user.create({
           data: {
@@ -351,12 +350,29 @@ export class AuthController {
             openid: session.openid,
           },
         });
+        created = true;
       } catch (e) {
         // IKC7WB 并发首登竞态：另一请求已建同 openid 用户，读取返回（败者复用胜者）
-        if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
-          user = await this.db.user.findUnique({ where: { openid: session.openid } });
+        if (
+          e instanceof Prisma.PrismaClientKnownRequestError &&
+          e.code === 'P2002'
+        ) {
+          user = await this.db.user.findUnique({
+            where: { openid: session.openid },
+          });
         }
         if (!user) throw e;
+      }
+      if (created) {
+        // IKDCVO 新人注册券：仅首建档发放（败者复用胜者不发）；
+        // 发券失败不阻塞登录，吞错留痕。
+        try {
+          await this.business.grantSignupCoupons(user.id, user.campusId);
+        } catch (err) {
+          this.logger.warn(
+            `signup coupon grant failed userId=${user.id}: ${String(err)}`,
+          );
+        }
       }
     }
     const claims: AuthUser = {
@@ -535,7 +551,9 @@ export class AuthController {
   @HttpCode(200)
   @UseGuards(JwtAuthGuard, ThrottlerGuard)
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
-  @ApiOperation({ summary: '员工解绑微信（退出登录：清 openid，再登录需重新绑定）' })
+  @ApiOperation({
+    summary: '员工解绑微信（退出登录：清 openid，再登录需重新绑定）',
+  })
   async wechatUnbind(@Req() req: AuthRequest) {
     const staff = await this.db.staff.findFirst({
       where: { id: req.user.id, status: { not: 'deleted' } },
@@ -555,7 +573,10 @@ export class AuthController {
     // 手机号解析只走用户端凭证（getPhoneNumber code 由用户端小程序下发）
     const credentials = this.wechatCredentials(process.env.WX_APPID_USER);
     if (!credentials || credentials.appid !== process.env.WX_APPID_USER)
-      throw new HttpException('微信手机号服务未配置', HttpStatus.NOT_IMPLEMENTED);
+      throw new HttpException(
+        '微信手机号服务未配置',
+        HttpStatus.NOT_IMPLEMENTED,
+      );
     if (this.userAccessToken && this.userAccessToken.expiresAt > Date.now())
       return this.userAccessToken.token;
     let data: {
@@ -610,7 +631,8 @@ export class AuthController {
     } catch {
       throw new HttpException('微信服务暂不可用', HttpStatus.BAD_GATEWAY);
     }
-    const phone = data.phone_info?.purePhoneNumber ?? data.phone_info?.phoneNumber;
+    const phone =
+      data.phone_info?.purePhoneNumber ?? data.phone_info?.phoneNumber;
     if (!phone || data.errcode)
       throw new BadRequestException(
         `手机号授权失败：${data.errmsg ?? '微信未返回手机号'}`,

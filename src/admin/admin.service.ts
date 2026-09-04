@@ -103,7 +103,9 @@ export class AdminService {
         this.db.building.groupBy({ by: ['campusId'], _count: { _all: true } }),
       ]);
     const paidByCampus = new Map(paidAgg.map((r) => [r.campusId, r]));
-    const usersByCampus = new Map(userAgg.map((r) => [r.campusId, r._count._all]));
+    const usersByCampus = new Map(
+      userAgg.map((r) => [r.campusId, r._count._all]),
+    );
     const exceptionByCampus = new Map(
       exceptionAgg.map((r) => [r.campusId, r._count._all]),
     );
@@ -274,7 +276,7 @@ export class AdminService {
       node?: string,
     ): { staff: number; avgMinutes: number | null } => ({
       staff,
-      avgMinutes: node ? minutesByNode.get(node) ?? null : null,
+      avgMinutes: node ? (minutesByNode.get(node) ?? null) : null,
     });
     return {
       campus,
@@ -540,7 +542,9 @@ export class AdminService {
           select: { id: true, updatedAt: true },
         })
       : [];
-    const upstreamAt = new Map(upstream.map((u) => [u.id, u.updatedAt.getTime()]));
+    const upstreamAt = new Map(
+      upstream.map((u) => [u.id, u.updatedAt.getTime()]),
+    );
     const isOfficial = campusId === OFFICIAL_CAMPUS_ID;
     const rows = xs.map((x) => ({
       ...x,
@@ -695,7 +699,7 @@ export class AdminService {
     );
     return xs.map((x) => ({
       ...x,
-      campusName: x.campusId ? nameById.get(x.campusId) ?? '' : '全部校区',
+      campusName: x.campusId ? (nameById.get(x.campusId) ?? '') : '全部校区',
     }));
   }
   async createBanner(
@@ -805,7 +809,13 @@ export class AdminService {
       orderBy: { createdAt: 'desc' },
       include: {
         product: {
-          select: { id: true, name: true, image: true, price: true, status: true },
+          select: {
+            id: true,
+            name: true,
+            image: true,
+            price: true,
+            status: true,
+          },
         },
       },
     });
@@ -1100,16 +1110,20 @@ export class AdminService {
     if (body.name !== undefined && !body.name.trim())
       throw new BadRequestException('商品名称不能为空');
     if (body.name !== undefined) body.name = body.name.trim();
-    if (body.categoryId !== undefined && body.categoryId !== before.categoryId) {
+    if (
+      body.categoryId !== undefined &&
+      body.categoryId !== before.categoryId
+    ) {
       const category = await this.db.category.findUnique({
         where: { id: body.categoryId },
       });
       if (!category) throw new BadRequestException('分类不存在');
     }
     // IKC1AC：进货价/批发价格仅官方库行可改（校区视角不可见也不可写）
-    const data: UpdateProductDto = campusId === OFFICIAL_CAMPUS_ID
-      ? body
-      : { ...body, costPrice: undefined, wholesalePrice: undefined };
+    const data: UpdateProductDto =
+      campusId === OFFICIAL_CAMPUS_ID
+        ? body
+        : { ...body, costPrice: undefined, wholesalePrice: undefined };
     const after = await this.db.product.update({ where: { id }, data });
     await this.audit(
       operator,
@@ -1173,7 +1187,9 @@ export class AdminService {
     const importedSources = new Set(
       existing.map((x) => x.sourceProductId).filter(Boolean),
     );
-    const campusBarcodes = new Set(existing.map((x) => x.barcode).filter(Boolean));
+    const campusBarcodes = new Set(
+      existing.map((x) => x.barcode).filter(Boolean),
+    );
     const imported: string[] = [];
     const skipped: { id: string; name: string; reason: string }[] = [];
     for (const id of productIds) {
@@ -1183,7 +1199,11 @@ export class AdminService {
         continue;
       }
       if (importedSources.has(official.id)) {
-        skipped.push({ id, name: official.name, reason: '已导入过，无需重复导入' });
+        skipped.push({
+          id,
+          name: official.name,
+          reason: '已导入过，无需重复导入',
+        });
         continue;
       }
       if (official.barcode && campusBarcodes.has(official.barcode)) {
@@ -1400,7 +1420,10 @@ export class AdminService {
   ) {
     const statuses =
       status && status !== 'all'
-        ? status.split(',').map((s) => s.trim()).filter(Boolean)
+        ? status
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean)
         : [];
     const xs = await this.db.order.findMany({
       where: {
@@ -1412,7 +1435,9 @@ export class AdminService {
       include: {
         user: { select: { id: true, nickname: true, phone: true } },
         // warehouseName：小票票头（IKBT6N）
-        campus: { select: { name: true, shortName: true, warehouseName: true } },
+        campus: {
+          select: { name: true, shortName: true, warehouseName: true },
+        },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -1436,7 +1461,7 @@ export class AdminService {
     const locationById = new Map(locationRows.map((p) => [p.id, p]));
     return xs.map((x) => ({
       ...x,
-      items: (((x.items as any as Array<{ product?: object }>) ?? []).map(
+      items: ((x.items as any as Array<{ product?: object }>) ?? []).map(
         (line) => {
           const live = line?.product
             ? locationById.get((line.product as { id?: string }).id ?? '')
@@ -1451,7 +1476,7 @@ export class AdminService {
             },
           };
         },
-      ) as unknown as Prisma.InputJsonValue),
+      ),
       productAmount: this.num(x.productAmount),
       deliveryFee: this.num(x.deliveryFee),
       discount: this.num(x.discount),
@@ -1535,7 +1560,9 @@ export class AdminService {
     });
     const active = bound && bound.status === 'active' ? bound : null;
     if (!active?.sn)
-      throw new BadRequestException('本校区尚未绑定打印机，请先在「打印机」页绑定');
+      throw new BadRequestException(
+        '本校区尚未绑定打印机，请先在「打印机」页绑定',
+      );
     const campus = await this.db.campus.findUnique({
       where: { id: order.campusId },
       select: { warehouseName: true },
@@ -1594,15 +1621,9 @@ export class AdminService {
   }
   /** 绑定/换绑（IKBW0Q）：先在芯烨云侧把终端加进开发者账号（幂等），成功后
    *  upsert 本校区记录（一校区一台，换绑覆盖原记录）。 */
-  async bindPrinter(
-    body: BindPrinterDto,
-    operator: string,
-    campusId: string,
-  ) {
-    if (!campusId)
-      throw new BadRequestException('仅校区账号可绑定打印机');
-    if (!this.printer)
-      throw new BadRequestException('打印服务未启用');
+  async bindPrinter(body: BindPrinterDto, operator: string, campusId: string) {
+    if (!campusId) throw new BadRequestException('仅校区账号可绑定打印机');
+    if (!this.printer) throw new BadRequestException('打印服务未启用');
     // IKC3FF：芯烨云无按台密钥，绑定只凭 SN（归属校验在云端）
     await this.printer.addPrinter(body.sn, body.name);
     let row;
@@ -1657,8 +1678,7 @@ export class AdminService {
   async testPrintPrinter(id: string, operator: string, campusId: string) {
     const row = await this.db.printer.findFirst({ where: { id, campusId } });
     if (!row) throw new NotFoundException('打印机不存在');
-    if (!this.printer)
-      throw new BadRequestException('打印服务未启用');
+    if (!this.printer) throw new BadRequestException('打印服务未启用');
     try {
       await this.printer.printTest(row.sn);
     } catch (error) {
@@ -1730,7 +1750,15 @@ export class AdminService {
         sort: body.sort ?? 0,
       },
     });
-    await this.audit(operator, 'location.create', 'location', after.id, null, after, campusId);
+    await this.audit(
+      operator,
+      'location.create',
+      'location',
+      after.id,
+      null,
+      after,
+      campusId,
+    );
     return after;
   }
   async updateLocation(
@@ -1751,7 +1779,15 @@ export class AdminService {
         ...(body.sort !== undefined ? { sort: body.sort } : {}),
       },
     });
-    await this.audit(operator, 'location.update', 'location', id, before, after, campusId);
+    await this.audit(
+      operator,
+      'location.update',
+      'location',
+      id,
+      before,
+      after,
+      campusId,
+    );
     return after;
   }
   async deleteLocation(id: string, operator: string, campusId: string) {
@@ -1768,7 +1804,15 @@ export class AdminService {
         `仍有 ${using} 个商品使用该库位，请先调整商品的库位`,
       );
     await this.db.storageLocation.delete({ where: { id } });
-    await this.audit(operator, 'location.delete', 'location', id, before, null, campusId);
+    await this.audit(
+      operator,
+      'location.delete',
+      'location',
+      id,
+      before,
+      null,
+      campusId,
+    );
   }
   /** IKB5PA：status 过滤（online/paused/offline），不传 = 全部在职口径（除 deleted）。 */
   async staff(campusId: string, status?: string, role?: string) {
@@ -1800,8 +1844,7 @@ export class AdminService {
     if (RIDER_ROLES.includes(body.role) && body.buildingId)
       throw new BadRequestException('配送员角色无需绑定楼栋');
     if (body.role === 'building-manager') {
-      if (!body.buildingId)
-        throw new BadRequestException('楼长必须绑定楼栋');
+      if (!body.buildingId) throw new BadRequestException('楼长必须绑定楼栋');
       const clash = await this.db.staff.findFirst({
         where: {
           buildingId: body.buildingId,
@@ -1893,8 +1936,7 @@ export class AdminService {
         // 分支）；绑有楼栋时才校验一楼一在职楼长，编辑改名等操作不受历史数据阻塞
         if (
           nextBuildingId &&
-          (nextBuildingId !== before.buildingId ||
-            nextRole !== before.role)
+          (nextBuildingId !== before.buildingId || nextRole !== before.role)
         ) {
           const clash = await this.db.staff.findFirst({
             where: {
@@ -2452,11 +2494,7 @@ export class AdminService {
     return campus;
   }
   /** 校区信息修改（IKAJSL）：仅总部长；官方库伪校区不可改。 */
-  async updateCampus(
-    id: string,
-    body: UpdateCampusDto,
-    operator: string,
-  ) {
+  async updateCampus(id: string, body: UpdateCampusDto, operator: string) {
     const before = await this.db.campus.findUnique({ where: { id } });
     if (!before) throw new NotFoundException('校区不存在');
     if (before.status === 'official')
@@ -2637,17 +2675,32 @@ export class AdminService {
     operator: string,
     campusId: string,
   ) {
-    const expiresAt = new Date(body.expiresAt);
-    if (Number.isNaN(expiresAt.getTime()))
-      throw new BadRequestException('过期时间格式不正确');
-    if (expiresAt.getTime() <= Date.now())
-      throw new BadRequestException('过期时间必须晚于当前时间');
+    // IKDCVO：长期券不传 expiresAt（null=长期有效）；传了则须合法且晚于当前。
+    let expiresAt: Date | null = null;
+    if (body.expiresAt) {
+      expiresAt = new Date(body.expiresAt);
+      if (Number.isNaN(expiresAt.getTime()))
+        throw new BadRequestException('过期时间格式不正确');
+      if (expiresAt.getTime() <= Date.now())
+        throw new BadRequestException('过期时间必须晚于当前时间');
+    }
+    const kind = body.kind === 'partner' ? 'partner' : 'platform';
+    const trigger = ['manual', 'lottery', 'signup'].includes(body.trigger ?? '')
+      ? body.trigger!
+      : 'manual';
+    if (kind === 'partner' && (body.amount !== 0 || body.threshold !== 0))
+      throw new BadRequestException('异业券不参与下单抵扣，金额/门槛请填 0');
+    if (kind === 'platform' && !(body.amount > 0))
+      throw new BadRequestException('金额券面额必须大于 0');
     const coupon = await this.db.coupon.create({
       data: {
         campusId,
         name: body.name,
-        amount: body.amount,
-        threshold: body.threshold,
+        kind,
+        trigger,
+        remark: body.remark?.trim() ?? '',
+        amount: kind === 'partner' ? 0 : body.amount,
+        threshold: kind === 'partner' ? 0 : body.threshold,
         total: body.total,
         status: 'active',
         expiresAt,
@@ -2707,7 +2760,7 @@ export class AdminService {
     if (!coupon) throw new NotFoundException('优惠券不存在');
     if (coupon.status !== 'active')
       throw new BadRequestException('已下架的优惠券不能发放');
-    if (coupon.expiresAt.getTime() <= Date.now())
+    if (coupon.expiresAt && coupon.expiresAt.getTime() <= Date.now())
       throw new BadRequestException('已过期的优惠券不能发放');
     const userIds = [...new Set(body.userIds)];
     if (!userIds.length) throw new BadRequestException('请选择发放对象');
@@ -2804,7 +2857,7 @@ export class AdminService {
     }
     const withScope = xs.map((x) => ({
       ...x,
-      campusIds: x.campusId ? scopeByAccount.get(x.id) ?? [x.campusId] : [],
+      campusIds: x.campusId ? (scopeByAccount.get(x.id) ?? [x.campusId]) : [],
     }));
     if (campusId) return withScope;
     const campuses = await this.db.campus.findMany({
@@ -2816,7 +2869,7 @@ export class AdminService {
     // IKB5PC：hq 视角附全量可运营校区名（多校区账号逐个列出），campusName 保留当前校区口径
     return withScope.map((x) => ({
       ...x,
-      campusName: x.campusId ? nameById.get(x.campusId) ?? '' : '总部',
+      campusName: x.campusId ? (nameById.get(x.campusId) ?? '') : '总部',
       campusNames: x.campusIds
         .map((id) => nameById.get(id) ?? '')
         .filter(Boolean),
@@ -2839,16 +2892,18 @@ export class AdminService {
       throw new ForbiddenException('仅总部账号可创建总部角色账号');
     const campusId =
       operatorRole === 'hq'
-        ? body.campusId ?? ''
+        ? (body.campusId ?? '')
         : body.role === 'hq'
           ? ''
-          : body.campusId ?? operatorCampusId;
+          : (body.campusId ?? operatorCampusId);
     if (body.role === 'hq' && campusId)
       throw new BadRequestException('总部角色账号不绑定校区');
     if (isPlatform && body.role !== 'hq' && !campusId)
       throw new BadRequestException('请为校区账号选择所属校区');
     if (campusId) {
-      const campus = await this.db.campus.findUnique({ where: { id: campusId } });
+      const campus = await this.db.campus.findUnique({
+        where: { id: campusId },
+      });
       if (!campus || campus.status === 'official')
         throw new BadRequestException('所属校区不存在');
     }
@@ -2951,8 +3006,7 @@ export class AdminService {
     currentCampusId: string,
   ): Promise<string> {
     const ids = [...new Set(campusIds.map((x) => x.trim()).filter(Boolean))];
-    if (!ids.length)
-      throw new BadRequestException('请至少保留一个可运营校区');
+    if (!ids.length) throw new BadRequestException('请至少保留一个可运营校区');
     const campuses = await this.db.campus.findMany({
       where: { id: { in: ids } },
       select: { id: true, status: true },
@@ -3018,7 +3072,9 @@ export class AdminService {
     return groups.map((g) => ({
       ...g,
       // buildingId 空串 = 校级大群
-      buildingName: g.buildingId ? nameById.get(g.buildingId) ?? '未知楼栋' : '校级大群',
+      buildingName: g.buildingId
+        ? (nameById.get(g.buildingId) ?? '未知楼栋')
+        : '校级大群',
     }));
   }
   /** 新增/替换群码：每楼栋至多一群 + 每校至多一大群（唯一约束兜底）。 */
@@ -3124,14 +3180,29 @@ export class AdminService {
         if (!p.couponId)
           throw new BadRequestException(`奖位 ${i + 1}：请选择优惠券`);
         const coupon = await this.db.coupon.findFirst({
-          where: { id: p.couponId, campusId },
+          where: { id: p.couponId, campusId, kind: 'platform' },
         });
         if (!coupon)
-          throw new BadRequestException(`奖位 ${i + 1}：优惠券不存在或不属于本校区`);
+          throw new BadRequestException(
+            `奖位 ${i + 1}：优惠券不存在或不属于本校区`,
+          );
       }
       if (p.type === 'partner') {
-        if (!p.bizImage)
-          throw new BadRequestException(`奖位 ${i + 1}：请上传异业图文图片`);
+        // IKDCVO：partner 行配异业券 → 抽中发券入账（发不出回落图文）；
+        // bizImage 随之可选——存量纯图文（无 couponId）仍要求图片。
+        if (p.couponId) {
+          const coupon = await this.db.coupon.findFirst({
+            where: { id: p.couponId, campusId, kind: 'partner' },
+          });
+          if (!coupon)
+            throw new BadRequestException(
+              `奖位 ${i + 1}：异业券不存在或不属于本校区（请选异业类型的券）`,
+            );
+        } else if (!p.bizImage) {
+          throw new BadRequestException(
+            `奖位 ${i + 1}：请上传异业图文图片或选择异业券`,
+          );
+        }
       }
     }
     const data = JSON.stringify(
@@ -3141,8 +3212,9 @@ export class AdminService {
         ...(p.type === 'coupon' ? { couponId: p.couponId } : {}),
         ...(p.type === 'partner'
           ? {
+              ...(p.couponId ? { couponId: p.couponId } : {}),
               bizTitle: p.bizTitle ?? '',
-              bizImage: p.bizImage,
+              bizImage: p.bizImage ?? '',
               bizNote: p.bizNote ?? '',
             }
           : {}),
@@ -3197,7 +3269,9 @@ export class AdminService {
         ? {
             createdAt: {
               ...(opts.dateFrom ? { gte: new Date(opts.dateFrom) } : {}),
-              ...(opts.dateTo ? { lte: new Date(`${opts.dateTo}T23:59:59`) } : {}),
+              ...(opts.dateTo
+                ? { lte: new Date(`${opts.dateTo}T23:59:59`) }
+                : {}),
             },
           }
         : {}),
@@ -3252,7 +3326,9 @@ export class AdminService {
       if (!defaultAddressByUser.has(addr.userId))
         defaultAddressByUser.set(addr.userId, addr);
     const mask = (value: string) =>
-      value && value.length > 6 ? `${value.slice(0, 3)}****${value.slice(-3)}` : value;
+      value && value.length > 6
+        ? `${value.slice(0, 3)}****${value.slice(-3)}`
+        : value;
     return {
       total,
       items: pageUsers.map((u) => {
@@ -3266,7 +3342,7 @@ export class AdminService {
           buildingName: addr?.buildingName ?? '',
           room: addr?.room ?? '',
           createdAt: u.createdAt.toISOString(),
-          ...aggById.get(u.id) ?? { orderCount: 0, totalSpend: 0 },
+          ...(aggById.get(u.id) ?? { orderCount: 0, totalSpend: 0 }),
         };
       }),
     };
@@ -3287,7 +3363,11 @@ export class AdminService {
         where: { ...scope, createdAt: { gte: startOfToday } },
       }),
       this.db.order.findMany({
-        where: { ...scope, createdAt: { gte: startOfMonth }, paidAt: { not: null } },
+        where: {
+          ...scope,
+          createdAt: { gte: startOfMonth },
+          paidAt: { not: null },
+        },
         select: { userId: true },
         distinct: ['userId'],
       }),
@@ -3301,9 +3381,7 @@ export class AdminService {
       todayNew,
       monthActive: monthActiveUsers.length,
       // 人均订单：有效支付单总量 / 有过消费的用户数（分母为 0 时记 0）
-      avgOrders: total
-        ? Number((paidAgg._count._all / total).toFixed(1))
-        : 0,
+      avgOrders: total ? Number((paidAgg._count._all / total).toFixed(1)) : 0,
       // 企微绑定率（IKAJSW 预留）：接入企微 API 后供数
       wechatWorkBindRate: null,
     };
@@ -3336,7 +3414,9 @@ export class AdminService {
     });
     if (!others)
       throw new BadRequestException(
-        role === 'admin' ? '至少需要保留一个超管账号' : '至少需要保留一个总部账号',
+        role === 'admin'
+          ? '至少需要保留一个超管账号'
+          : '至少需要保留一个总部账号',
       );
   }
   /** 审计留痕（全局 ~49 处调用）：写入失败只 warn 不抛——业务更新在审计前

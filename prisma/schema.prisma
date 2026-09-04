@@ -320,11 +320,17 @@ model Coupon {
   id          String       @id @default(cuid())
   campusId    String
   name        String
+  // IKDCVO：kind 券品种（platform 金额券下单抵扣 | partner 异业券到店展示暂不核销）；
+  // trigger 发放方式（manual 手动领取 | lottery 转盘 | signup 注册自动发）。
+  // 注册券/转盘券不进公开可领列表；partner 券 amount/threshold 记 0 不参与下单。
+  kind        String       @default("platform")
+  trigger     String       @default("manual")
+  remark      String       @default("")
   amount      Int // 金额单位:分
   threshold   Int
   total       Int          @default(0)
   status      String
-  expiresAt   DateTime
+  expiresAt   DateTime? // null = 长期有效（IKDCVO）
   issued      Int          @default(0)
   claimed     Int          @default(0)
   used        Int          @default(0)
