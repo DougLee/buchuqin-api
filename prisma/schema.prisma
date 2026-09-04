@@ -11,28 +11,31 @@ datasource db {
 }
 
 model Campus {
-  id            String    @id @default(cuid())
-  name          String
-  shortName     String
-  warehouseName String
-  address       String?
-  status        String    @default("active")
+  id                   String            @id @default(cuid())
+  name                 String
+  shortName            String
+  warehouseName        String
+  address              String?
+  status               String            @default("active")
   // 配送费/起送门槛后台可配置（IK9SO6）：单位分，0 表示该项免费/无门槛
-  deliveryFeeInstant  Int @default(400)
-  deliveryFeeScheduled Int @default(200)
-  deliveryThreshold    Int @default(1000)
-  createdAt     DateTime  @default(now())
-  users         User[]
-  products      Product[]
-  addresses     Address[]
-  orders        Order[]
-  staff         Staff[]
-  storageLocations StorageLocation[]
-  wechatGroups  WechatGroup[]
-  printers      Printer[]
+  deliveryFeeInstant   Int               @default(400)
+  deliveryFeeScheduled Int               @default(200)
+  deliveryThreshold    Int               @default(1000)
+  createdAt            DateTime          @default(now())
+  users                User[]
+  products             Product[]
+  addresses            Address[]
+  orders               Order[]
+  staff                Staff[]
+  storageLocations     StorageLocation[]
+  wechatGroups         WechatGroup[]
+  printers             Printer[]
+  lotteryWheel         LotteryWheel?
 }
 
-/** 微信群二维码（IKAJSY）：buildingId 空串=校级大群；每楼栋至多一群 + 每校至多一大群。 */
+/**
+ * 微信群二维码（IKAJSY）：buildingId 空串=校级大群；每楼栋至多一群 + 每校至多一大群。
+ */
 model WechatGroup {
   id         String   @id @default(cuid())
   campusId   String
@@ -45,26 +48,38 @@ model WechatGroup {
   @@unique([campusId, buildingId])
 }
 
-/** 校区自管打印机（IKBW0Q）：芯烨云终端绑定，一校区一台小票机（多台再扩）。
- *  账号级 user/userKey 仍在 env（XPYUN_USER/XPYUN_USERKEY）；此处存终端 SN/KEY。 */
+/**
+ * 校区自管打印机（IKBW0Q）：芯烨云终端绑定，一校区一台小票机（多台再扩）。
+ * 账号级 user/userKey 仍在 env（XPYUN_USER/XPYUN_USERKEY）；此处存终端 SN/KEY。
+ */
 model Printer {
   id        String   @id @default(cuid())
   campusId  String   @unique
   campus    Campus   @relation(fields: [campusId], references: [id])
-  /** 运营辨认名（如「仓内前台小票机」）。 */
+  /**
+   * 运营辨认名（如「仓内前台小票机」）。
+   */
   name      String
-  /** 芯烨云终端号（机身铭牌/自检页）。 */
+  /**
+   * 芯烨云终端号（机身铭牌/自检页）。
+   */
   sn        String   @unique
-  /** 终端 key（与 SN 成对，机身二维码可得），绑定芯烨云账号时使用。 */
+  /**
+   * 终端 key（与 SN 成对，机身二维码可得），绑定芯烨云账号时使用。
+   */
   key       String
-  /** 小票联数（IKCZOX）：1=现状单联无联名；2=商家联+骑手联；3=再加用户联。 */
+  /**
+   * 小票联数（IKCZOX）：1=现状单联无联名；2=商家联+骑手联；3=再加用户联。
+   */
   copies    Int      @default(1)
   status    String   @default("active")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
-/** 库位字典（IKA0VG）：人工维护的库位区域列表，商品表单下拉选择。 */
+/**
+ * 库位字典（IKA0VG）：人工维护的库位区域列表，商品表单下拉选择。
+ */
 model StorageLocation {
   id        String   @id @default(cuid())
   campusId  String
@@ -80,25 +95,27 @@ model StorageLocation {
 // 后台账号（ADR-0004 / IK9JHP）：账号密码认证，role ∈ admin/operations/warehouse/finance。
 // campusId 为普通字段（同 AuditLog），不建外键——账号生命周期独立于校园数据清理。
 model AdminAccount {
-  id           String   @id @default(cuid())
-  username     String   @unique
+  id           String              @id @default(cuid())
+  username     String              @unique
   passwordHash String
-  nickname     String   @default("")
+  nickname     String              @default("")
   role         String
   campusId     String
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
   accesses     AdminCampusAccess[]
 }
 
-/** 后台账号可运营校区授权（IKB3KG 方案A）：AdminAccount.campusId=当前登录校区，
- *  本表=可切换校区全集；hq 角色不落本表（天然跨校区视角）。 */
+/**
+ * 后台账号可运营校区授权（IKB3KG 方案A）：AdminAccount.campusId=当前登录校区，
+ * 本表=可切换校区全集；hq 角色不落本表（天然跨校区视角）。
+ */
 model AdminCampusAccess {
-  id        String        @id @default(cuid())
-  account   AdminAccount  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  id        String       @id @default(cuid())
+  account   AdminAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
   accountId String
   campusId  String
-  createdAt DateTime      @default(now())
+  createdAt DateTime     @default(now())
 
   @@unique([accountId, campusId])
 }
@@ -134,45 +151,61 @@ model Category {
 }
 
 model Product {
-  id            String     @id @default(cuid())
-  /** 条码唯一改校区维度（IKAJSM）：官方库与各校区可同码，同校区内去重 */
-  barcode       String?
-  campusId      String
-  campus        Campus     @relation(fields: [campusId], references: [id])
-  categoryId    String
-  category      Category   @relation(fields: [categoryId], references: [id])
-  name          String
-  subtitle      String
-  price         Int // 金额单位:分（IK8W5K）；官方行=批发价格，校区行=实际售价（IKC1AC）
-  originalPrice Int // 建议零售价（总部建议，校区可看；C 端划线原价）
+  id              String         @id @default(cuid())
+  /**
+   * 条码唯一改校区维度（IKAJSM）：官方库与各校区可同码，同校区内去重
+   */
+  barcode         String?
+  campusId        String
+  campus          Campus         @relation(fields: [campusId], references: [id])
+  categoryId      String
+  category        Category       @relation(fields: [categoryId], references: [id])
+  name            String
+  subtitle        String
+  price           Int // 金额单位:分（IK8W5K）；官方行=批发价格，校区行=实际售价（IKC1AC）
+  originalPrice   Int // 建议零售价（总部建议，校区可看；C 端划线原价）
   // IKC1AC 价格三层：进货价（总部专用，C 端/校区出口一律剔除）与批发价快照
   // （校区行由导入/pullUpstream 自官方 price 复制）
-  costPrice     Int        @default(0)
-  wholesalePrice Int       @default(0)
-  stock         Int
-  lockedStock   Int        @default(0)
-  sales         Int        @default(0)
-  tag           String
-  image         String
-  /** 详情多图（IK9SNS）：string[] JSON，首图兼容 image 字段；空数组用 image */
-  images        Json?
-  /** 商品介绍（IKAHAU）：纯文本多行 ≤2000 字，空 = C 端详情页不渲染区块 */
-  description   String?
-  /** 库位（IK9U40 反馈#7 / IKA0VG）：库位管理字典里的区域名（下拉选择） */
-  location      String     @default("")
-  /** 库位编号（IKA0VG）：区域内具体位置，规则人工控制，可不填 */
-  locationCode  String     @default("")
-  weight        Decimal    @db.Decimal(10, 3)
-  status        String     @default("on-sale")
-  /** 官方库来源（IKAJSO）：本校区行来自官方库哪个商品；自建/历史商品为空 */
+  costPrice       Int            @default(0)
+  wholesalePrice  Int            @default(0)
+  stock           Int
+  lockedStock     Int            @default(0)
+  sales           Int            @default(0)
+  tag             String
+  image           String
+  /**
+   * 详情多图（IK9SNS）：string[] JSON，首图兼容 image 字段；空数组用 image
+   */
+  images          Json?
+  /**
+   * 商品介绍（IKAHAU）：纯文本多行 ≤2000 字，空 = C 端详情页不渲染区块
+   */
+  description     String?
+  /**
+   * 库位（IK9U40 反馈#7 / IKA0VG）：库位管理字典里的区域名（下拉选择）
+   */
+  location        String         @default("")
+  /**
+   * 库位编号（IKA0VG）：区域内具体位置，规则人工控制，可不填
+   */
+  locationCode    String         @default("")
+  weight          Decimal        @db.Decimal(10, 3)
+  status          String         @default("on-sale")
+  /**
+   * 官方库来源（IKAJSO）：本校区行来自官方库哪个商品；自建/历史商品为空
+   */
   sourceProductId String?
-  /** 上游信息同步时间（IKAJSO）：官方库 updatedAt 晚于此值 = 「上游已更新」 */
+  /**
+   * 上游信息同步时间（IKAJSO）：官方库 updatedAt 晚于此值 = 「上游已更新」
+   */
   sourceSyncedAt  DateTime?
-  /** 资料更新时间（IKAJSO）：官方库改动判断上游是否落后的依据 */
-  updatedAt       DateTime   @updatedAt
-  cartItems     CartItem[]
-  inventoryTxns InventoryTxn[]
-  promotions    Promotion[]
+  /**
+   * 资料更新时间（IKAJSO）：官方库改动判断上游是否落后的依据
+   */
+  updatedAt       DateTime       @updatedAt
+  cartItems       CartItem[]
+  inventoryTxns   InventoryTxn[]
+  promotions      Promotion[]
 
   @@unique([campusId, barcode])
 }
@@ -181,13 +214,19 @@ model Promotion {
   id        String   @id @default(cuid())
   productId String
   product   Product  @relation(fields: [productId], references: [id])
-  /** 促销类型（ADR-0006）：seckill 秒杀 | clearance 临期特惠 */
+  /**
+   * 促销类型（ADR-0006）：seckill 秒杀 | clearance 临期特惠
+   */
   type      String
-  /** 促销价，单位:分（IK8W5K）；活动期生效价，过期读时回落 product.price */
+  /**
+   * 促销价，单位:分（IK8W5K）；活动期生效价，过期读时回落 product.price
+   */
   price     Int
   startsAt  DateTime
   endsAt    DateTime
-  /** active 生效 | disabled 运营停用；价格解析读时判窗，无 cron 回落 */
+  /**
+   * active 生效 | disabled 运营停用；价格解析读时判窗，无 cron 回落
+   */
   status    String   @default("active")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -207,22 +246,22 @@ model InventoryTxn {
 }
 
 model Banner {
-  id       String  @id @default(cuid())
-  campusId String
+  id          String  @id @default(cuid())
+  campusId    String
   // 标题/副标题/角标（IKC1AD）：内部字段供运营辨识，用户端不再渲染
-  title    String
-  subtitle String
-  badge    String
-  color    String
-  image    String?
+  title       String
+  subtitle    String
+  badge       String
+  color       String
+  image       String?
   // 详情长图（IKC1AD）：点击 Banner 进详情页通铺展示；空 = 不可点
   detailImage String?
   // 图文详情（IK9SNN）：旧版逐行文字内容，保留兼容；detailImage 优先
-  content  String?
+  content     String?
   // 展示位置（IKA57F）：home 首页轮播 / pay-success 支付成功页广告位
-  placement String @default("home")
-  sort     Int     @default(0)
-  status   String  @default("active")
+  placement   String  @default("home")
+  sort        Int     @default(0)
+  status      String  @default("active")
 }
 
 model Building {
@@ -278,18 +317,18 @@ model CartItem {
 }
 
 model Coupon {
-  id           String        @id @default(cuid())
-  campusId     String
-  name         String
-  amount       Int // 金额单位:分
-  threshold    Int
-  total        Int           @default(0)
-  status       String
-  expiresAt    DateTime
-  issued       Int           @default(0)
-  claimed      Int           @default(0)
-  used         Int           @default(0)
-  userCoupons  UserCoupon[]
+  id          String       @id @default(cuid())
+  campusId    String
+  name        String
+  amount      Int // 金额单位:分
+  threshold   Int
+  total       Int          @default(0)
+  status      String
+  expiresAt   DateTime
+  issued      Int          @default(0)
+  claimed     Int          @default(0)
+  used        Int          @default(0)
+  userCoupons UserCoupon[]
 }
 
 model UserCoupon {
@@ -311,22 +350,22 @@ model DeliverySlot {
 }
 
 model Order {
-  id                String      @id @default(cuid())
+  id                String       @id @default(cuid())
   riderId           String?
-  orderNo           String      @unique
+  orderNo           String       @unique
   userId            String
-  user              User        @relation(fields: [userId], references: [id])
+  user              User         @relation(fields: [userId], references: [id])
   campusId          String
-  campus            Campus      @relation(fields: [campusId], references: [id])
+  campus            Campus       @relation(fields: [campusId], references: [id])
   status            String
   statusText        String
-  createdAt         DateTime    @default(now())
+  createdAt         DateTime     @default(now())
   paidAt            DateTime?
   address           Json
   deliveryMode      String
   deliverySlot      String?
   couponId          String?
-  remark            String      @default("")
+  remark            String       @default("")
   items             Json
   productAmount     Int
   totalQuantity     Int
@@ -337,7 +376,7 @@ model Order {
   estimatedArrival  String
   timeline          Json
   package           Json?
-  stockRestored     Boolean     @default(false)
+  stockRestored     Boolean      @default(false)
   afterSales        AfterSale[]
   refunds           Refund[]
   commissions       Commission[]
@@ -387,7 +426,9 @@ model Staff {
   role                String
   roleText            String
   staffNo             String               @unique
-  /** 微信登录绑定（IK8W5Q）：员工首次登录用工号+姓名换绑，之后 openid 直登 */
+  /**
+   * 微信登录绑定（IK8W5Q）：员工首次登录用工号+姓名换绑，之后 openid 直登
+   */
   openid              String?              @unique
   buildingId          String?
   buildingRef         Building?            @relation(fields: [buildingId], references: [id])
@@ -404,20 +445,24 @@ model Staff {
 }
 
 model LeaveRequest {
-  id         String   @id @default(cuid())
-  staffId    String
-  staff      Staff    @relation(fields: [staffId], references: [id])
-  startAt    DateTime
-  endAt      DateTime
-  reason     String
-  /** 请假期间调配方式（IK9U4B）：self=自己联系代班楼长，platform=平台自动派单 */
-  dispatchMode String  @default("platform")
-  /** 自己调配时指定的代班楼长（IKA57Y）：id + 姓名快照，供后台核对 */
+  id                String   @id @default(cuid())
+  staffId           String
+  staff             Staff    @relation(fields: [staffId], references: [id])
+  startAt           DateTime
+  endAt             DateTime
+  reason            String
+  /**
+   * 请假期间调配方式（IK9U4B）：self=自己联系代班楼长，platform=平台自动派单
+   */
+  dispatchMode      String   @default("platform")
+  /**
+   * 自己调配时指定的代班楼长（IKA57Y）：id + 姓名快照，供后台核对
+   */
   substituteStaffId String?
   substituteName    String?
-  status     String
-  statusText String
-  createdAt  DateTime @default(now())
+  status            String
+  statusText        String
+  createdAt         DateTime @default(now())
 }
 
 model DispatchInvitation {
@@ -446,24 +491,28 @@ model AuditLog {
   createdAt  DateTime @default(now())
 }
 
-/** 提成规则（IK8W5L）：楼栋/楼层/重量档/配送模式四维组合 → 单价，版本号供快照引用。 */
+/**
+ * 提成规则（IK8W5L）：楼栋/楼层/重量档/配送模式四维组合 → 单价，版本号供快照引用。
+ */
 model CommissionRule {
-  id          String        @id @default(cuid())
+  id          String       @id @default(cuid())
   campusId    String
   buildingId  String? // 楼栋维度，null=不限
   floor       Int? // 楼层维度，null=不限
-  weightFrom  Decimal?      @db.Decimal(10, 3) // 重量档下界（kg），null=不限
-  weightTo    Decimal?      @db.Decimal(10, 3) // 重量档上界（kg），null=不限
+  weightFrom  Decimal?     @db.Decimal(10, 3) // 重量档下界（kg），null=不限
+  weightTo    Decimal?     @db.Decimal(10, 3) // 重量档上界（kg），null=不限
   mode        String? // instant|scheduled，null=不限
   price       Int
   version     Int // 校园内递增版本号（Commission 快照引用）
-  status      String        @default("active") // active|disabled
-  effectiveAt DateTime      @default(now())
-  createdAt   DateTime      @default(now())
+  status      String       @default("active") // active|disabled
+  effectiveAt DateTime     @default(now())
+  createdAt   DateTime     @default(now())
   commissions Commission[]
 }
 
-/** 提成记录（IK8W5L）：订单送达时按规则快照生成；退款跨期调整记负向 amount。 */
+/**
+ * 提成记录（IK8W5L）：订单送达时按规则快照生成；退款跨期调整记负向 amount。
+ */
 model Commission {
   id          String          @id @default(cuid())
   staffId     String
@@ -485,7 +534,9 @@ model Commission {
   @@unique([orderId, staffId, kind])
 }
 
-/** 楼长/骑手月度账单（IK8W5L）：底薪 + 提成合计 + 调整 → 应发。 */
+/**
+ * 楼长/骑手月度账单（IK8W5L）：底薪 + 提成合计 + 调整 → 应发。
+ */
 model BmBill {
   id              String    @id @default(cuid())
   staffId         String
@@ -502,4 +553,58 @@ model BmBill {
   paidAt          DateTime?
 
   @@unique([staffId, period])
+}
+
+/**
+ * 抽奖大转盘（IKD6FA/FB/FC）：一校区一个配置，8 奖位权重随机，每日限抽 1 次。
+ * prizes JSON 数组，固定 8 项：
+ * { type: 'coupon'|'partner'|'none', label, couponId?, bizTitle?, bizImage?, bizNote?, weight }
+ * type=none 即「谢谢参与」；weight 为正整数，不必凑 100（抽奖时按权重占比归一）。
+ */
+model LotteryWheel {
+  id        String   @id @default(cuid())
+  campusId  String   @unique
+  campus    Campus   @relation(fields: [campusId], references: [id])
+  /**
+   * 显式开关：false = 小程序首页入口隐藏。
+   */
+  active    Boolean  @default(false)
+  /**
+   * 8 奖位 JSON（见类注释）。
+   */
+  prizes    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  draws LotteryDraw[]
+}
+
+/**
+ * 抽奖记录（IKD6FB）：每日限抽 1 次的唯一约束依据；连续签到类运营为后期迭代。
+ */
+model LotteryDraw {
+  id           String       @id @default(cuid())
+  userId       String
+  wheelId      String
+  wheel        LotteryWheel @relation(fields: [wheelId], references: [id])
+  /**
+   * 北京时间自然日，格式 YYYY-MM-DD，限抽唯一键。
+   */
+  drawDate     String
+  /**
+   * 命中的奖位序号 0-7（发券失败降级时以落库为准）。
+   */
+  prizeIndex   Int
+  /**
+   * coupon | partner | none（券发完降级后 = none）。
+   */
+  prizeType    String
+  /**
+   * type=coupon 时对应的 UserCoupon id。
+   */
+  userCouponId String?
+  createdAt    DateTime     @default(now())
+
+  @@unique([userId, drawDate])
+  @@index([userId, createdAt])
 }

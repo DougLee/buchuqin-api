@@ -3068,6 +3068,103 @@ export class AdminService {
     );
     return { id, deleted: true };
   }
+
+  /* ---------- 抽奖大转盘（IKD6FC）：单校区单配置 ---------- */
+
+  /** 奖位读视图：coupon 附带券名/余量（前端下拉回显与发完预警）。 */
+  async wheel(campusId: string) {
+    const row = await this.db.lotteryWheel.findUnique({
+      where: { campusId },
+    });
+    const prizes = row ? (JSON.parse(row.prizes) as any[]) : [];
+    const couponIds = prizes
+      .filter((p) => p.type === 'coupon' && p.couponId)
+      .map((p) => p.couponId as string);
+    const coupons = couponIds.length
+      ? await this.db.coupon.findMany({
+          where: { id: { in: couponIds } },
+          select: { id: true, name: true, total: true, claimed: true },
+        })
+      : [];
+    const couponById = new Map(coupons.map((c) => [c.id, c]));
+    const weightTotal = prizes.reduce((s, p) => s + (p.weight || 0), 0);
+    return {
+      active: row?.active ?? false,
+      prizes: prizes.map((p) => {
+        const c = p.couponId ? couponById.get(p.couponId) : null;
+        return {
+          ...p,
+          couponName: c?.name ?? '',
+          couponLeft: c ? c.total - c.claimed : null,
+          weightPct:
+            weightTotal > 0
+              ? Math.round(((p.weight || 0) / weightTotal) * 1000) / 10
+              : 0,
+        };
+      }),
+    };
+  }
+
+  /** 保存配置：8 位逐项校验（券归属本校区/类型字段齐备），upsert 单行。 */
+  async upsertWheel(
+    body: { active: boolean; prizes: any[] },
+    operator: string,
+    campusId: string,
+  ) {
+    const prizes = body.prizes ?? [];
+    if (prizes.length !== 8) throw new BadRequestException('奖位必须为 8 个');
+    if (body.active && prizes.every((p) => !(p.weight > 0)))
+      throw new BadRequestException('至少一个奖位的权重大于 0');
+    for (const [i, p] of prizes.entries()) {
+      if (!['coupon', 'partner', 'none'].includes(p.type))
+        throw new BadRequestException(`奖位 ${i + 1}：类型不合法`);
+      if (!p.label || !String(p.label).trim())
+        throw new BadRequestException(`奖位 ${i + 1}：请填写扇区文案`);
+      if (p.type === 'coupon') {
+        if (!p.couponId)
+          throw new BadRequestException(`奖位 ${i + 1}：请选择优惠券`);
+        const coupon = await this.db.coupon.findFirst({
+          where: { id: p.couponId, campusId },
+        });
+        if (!coupon)
+          throw new BadRequestException(`奖位 ${i + 1}：优惠券不存在或不属于本校区`);
+      }
+      if (p.type === 'partner') {
+        if (!p.bizImage)
+          throw new BadRequestException(`奖位 ${i + 1}：请上传异业图文图片`);
+      }
+    }
+    const data = JSON.stringify(
+      prizes.map((p) => ({
+        type: p.type,
+        label: String(p.label).trim(),
+        ...(p.type === 'coupon' ? { couponId: p.couponId } : {}),
+        ...(p.type === 'partner'
+          ? {
+              bizTitle: p.bizTitle ?? '',
+              bizImage: p.bizImage,
+              bizNote: p.bizNote ?? '',
+            }
+          : {}),
+        weight: p.weight,
+      })),
+    );
+    const row = await this.db.lotteryWheel.upsert({
+      where: { campusId },
+      create: { campusId, active: body.active, prizes: data },
+      update: { active: body.active, prizes: data },
+    });
+    await this.audit(
+      operator,
+      'wheel.upsert',
+      'wheel',
+      row.id,
+      null,
+      { active: body.active },
+      campusId,
+    );
+    return row;
+  }
   /* ---------- C 端用户管理（IKAJSW）：列表 + 订单/消费聚合 + 统计 ---------- */
   /**
    * 用户列表（分页 + 楼栋/注册时间/关键词筛选）。订单数与累计消费按

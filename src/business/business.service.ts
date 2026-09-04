@@ -26,6 +26,38 @@ import {
   UpdateCartDto,
 } from './dto';
 
+/* ---------- 抽奖大转盘（IKD6FA/FB/FC） ---------- */
+
+/** 8 奖位单项（LotteryWheel.prizes JSON 数组元素）。 */
+export interface WheelPrize {
+  /** coupon=平台券（自动入账）；partner=异业券（弹图文）；none=谢谢参与。 */
+  type: 'coupon' | 'partner' | 'none';
+  /** 转盘扇区主文案（如「5元券」「谢谢参与」）。 */
+  label: string;
+  /** type=coupon：Coupon.id，抽中自动入账；发完/过期自动降级谢谢参与。 */
+  couponId?: string;
+  /** type=partner：图文配置（图片必填，可带商家二维码供长按识别）。 */
+  bizTitle?: string;
+  bizImage?: string;
+  bizNote?: string;
+  /** 权重正整数（0=该位永不命中），不必凑 100。 */
+  weight: number;
+}
+
+const WHEEL_SLOTS = 8;
+/** 北京时间自然日（IKD6FB）：每日限抽的唯一键口径。 */
+const beijingDate = (now = new Date()) =>
+  new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai' }).format(now);
+
+function parsePrizes(raw: string): WheelPrize[] {
+  try {
+    const xs = JSON.parse(raw) as WheelPrize[];
+    return Array.isArray(xs) ? xs : [];
+  } catch {
+    return [];
+  }
+}
+
 export interface ProductSnapshot {
   id: string;
   name: string;
@@ -1372,5 +1404,147 @@ export class BusinessService {
       // scope 供前端展示「楼栋群/校园群」标签
       scope: resolved.buildingId ? 'building' : 'campus',
     };
+  }
+
+  /**
+   * 转盘信息（IKD6FB）：首页入口与转盘页共用。
+   * 未配置/未开启 → active=false（前端隐藏入口）；奖位不下发权重，
+   * 概率只存在于服务端。drawnToday 供转盘页置灰中心钮。
+   */
+  async wheel(userId: string, campusId: string) {
+    const row = await this.db.lotteryWheel.findUnique({
+      where: { campusId },
+    });
+    const prizes = row?.active ? parsePrizes(row.prizes) : [];
+    const today = beijingDate();
+    const drawn = await this.db.lotteryDraw.findUnique({
+      where: { userId_drawDate: { userId, drawDate: today } },
+    });
+    return {
+      active: prizes.length === WHEEL_SLOTS,
+      prizes: prizes.map((p) => ({
+        type: p.type,
+        label: p.label,
+        bizTitle: p.bizTitle ?? '',
+        bizImage: p.bizImage ?? '',
+        bizNote: p.bizNote ?? '',
+      })),
+      drawnToday: Boolean(drawn),
+    };
+  }
+
+  /**
+   * 抽奖（IKD6FB）：权重随机（与历史无关），事务内「占限抽数 + 发券」。
+   * 平台券发完/过期/停用 → 该次自动降级谢谢参与（grilling 拍板：绝不超发）。
+   * 并发双击靠 LotteryDraw(userId, drawDate) 唯一键兜底。
+   */
+  async drawWheel(userId: string, campusId: string) {
+    const wheel = await this.db.lotteryWheel.findUnique({
+      where: { campusId },
+    });
+    if (!wheel || !wheel.active)
+      throw new BadRequestException('抽奖活动未开启');
+    const prizes = parsePrizes(wheel.prizes);
+    if (prizes.length !== WHEEL_SLOTS)
+      throw new BadRequestException('转盘配置不完整');
+
+    const today = beijingDate();
+    const hit = this.pickPrize(prizes);
+    if (!hit) throw new BadRequestException('转盘配置不完整');
+    try {
+      return await this.db.$transaction(async (tx) => {
+        // 先占限抽数：并发第二笔在此撞唯一键 → 视为今日已抽。
+        const draw = await tx.lotteryDraw.create({
+          data: {
+            userId,
+            wheelId: wheel.id,
+            drawDate: today,
+            prizeIndex: hit.index,
+            prizeType: hit.prize.type,
+          },
+        });
+        let userCouponId: string | null = null;
+        let prizeType = hit.prize.type;
+        if (hit.prize.type === 'coupon') {
+          const issued = await this.issueWheelCoupon(
+            tx,
+            userId,
+            campusId,
+            hit.prize.couponId,
+          );
+          if (issued) {
+            userCouponId = issued;
+          } else {
+            // 券发完/过期/停用：降级谢谢参与并落库真实结果。
+            prizeType = 'none';
+            await tx.lotteryDraw.update({
+              where: { id: draw.id },
+              data: { prizeType },
+            });
+          }
+        }
+        return {
+          index: hit.index,
+          type: prizeType,
+          userCouponId,
+          prize: {
+            type: prizeType,
+            label: prizeType === 'none' ? '谢谢参与' : hit.prize.label,
+            bizTitle: prizeType === 'partner' ? hit.prize.bizTitle ?? '' : '',
+            bizImage: prizeType === 'partner' ? hit.prize.bizImage ?? '' : '',
+            bizNote: prizeType === 'partner' ? hit.prize.bizNote ?? '' : '',
+          },
+        };
+      });
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002')
+        throw new BadRequestException('今日已抽过，明天再来');
+      throw e;
+    }
+  }
+
+  /** 权重随机：weight=0 的奖位不参与；全 0 兜底返回 null → 外层报配置错误。 */
+  private pickPrize(
+    prizes: WheelPrize[],
+  ): { index: number; prize: WheelPrize } | null {
+    const pool = prizes
+      .map((prize, index) => ({ prize, index }))
+      .filter((x) => x.prize.weight > 0);
+    const total = pool.reduce((s, x) => s + x.prize.weight, 0);
+    if (!total) return null;
+    let roll = Math.random() * total;
+    for (const x of pool) {
+      roll -= x.prize.weight;
+      if (roll < 0) return x;
+    }
+    return pool[pool.length - 1];
+  }
+
+  /**
+   * 抽奖发券：与 claimCoupon 同款「条件更新占名额」防超发，但不做
+   * 「同一张券同人幂等」拦截（每日可重复中同款）；券不存在/停用/过期/
+   * 已领完一律返回 null → 调用方降级谢谢参与。
+   */
+  private async issueWheelCoupon(
+    tx: Prisma.TransactionClient,
+    userId: string,
+    campusId: string,
+    couponId?: string,
+  ): Promise<string | null> {
+    if (!couponId) return null;
+    const coupon = await tx.coupon.findUnique({ where: { id: couponId } });
+    if (!coupon) return null;
+    if (coupon.campusId !== campusId) return null;
+    if (coupon.status !== 'active') return null;
+    if (coupon.expiresAt.getTime() <= Date.now()) return null;
+    const won = await tx.coupon.updateMany({
+      where: { id: couponId, claimed: { lt: coupon.total } },
+      data: { claimed: { increment: 1 }, issued: { increment: 1 } },
+    });
+    if (!won.count) return null;
+    const uc = await tx.userCoupon.create({
+      data: { userId, couponId, status: 'claimed' },
+    });
+    return uc.id;
   }
 }

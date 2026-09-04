@@ -7,6 +7,7 @@ import {
   Param,
   Patch,
   Post,
+  Put,
   Query,
   Req,
   UseGuards,
@@ -31,6 +32,7 @@ import {
   BindPrinterDto,
   CreateAccountDto,
   UpsertWechatGroupDto,
+  UpsertWheelDto,
   CreateBannerDto,
   CreateBuildingDto,
   CreateCampusDto,
@@ -686,6 +688,26 @@ export class AdminController {
         req.user.campusId,
       ),
       '群码已保存',
+    );
+  }
+
+  /* ---------- 抽奖大转盘（IKD6FC）：营销域 ---------- */
+  @Get('wheel')
+  @ApiOperation({ summary: '转盘配置（IKD6FC，含奖位与概率预览）' })
+  async wheel(@Req() req: AuthRequest) {
+    this.authorize(req, 'marketing');
+    return ok(await this.service.wheel(req.user.campusId));
+  }
+  @Put('wheel')
+  @ApiOperation({ summary: '保存转盘配置（8 奖位 + 活动开关）' })
+  async upsertWheel(
+    @Req() req: AuthRequest,
+    @Body() body: UpsertWheelDto,
+  ) {
+    this.authorize(req, 'marketing', 'write');
+    return ok(
+      await this.service.upsertWheel(body, req.user.id, req.user.campusId),
+      '转盘配置已保存',
     );
   }
   @Delete('wechat-groups/:id')

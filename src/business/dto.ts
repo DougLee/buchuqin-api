@@ -79,3 +79,6 @@ export class CreateAfterSalesDto {
   @IsString() @MaxLength(300) description!: string;
   @IsArray() @ArrayMinSize(1) @IsString({ each: true }) images!: string[];
 }
+
+/** 抽奖（IKD6FB）：无请求体——每日 1 次，服务端判定资格与结果。 */
+export class DrawWheelDto {}

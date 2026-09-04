@@ -25,6 +25,7 @@ import {
   CreateAddressDto,
   CreateAfterSalesDto,
   CreateOrderDto,
+  DrawWheelDto,
   UpdateAddressDto,
   UpdateCartDto,
 } from './dto';
@@ -318,5 +319,17 @@ export class BusinessController {
   /** 进群二维码（IKAJSZ）：默认地址楼栋群 → 校级大群 → null（前端隐藏入口）。 */
   @Get('wechat-group') async wechatGroup(@Req() req: AuthRequest) {
     return ok(await this.service.wechatGroup(req.user.id));
+  }
+
+  /** 转盘信息（IKD6FB）：首页入口显隐 + 转盘页奖位/今日已抽，两处共用。 */
+  @Get('wheel') async wheel(@Req() req: AuthRequest) {
+    return ok(await this.service.wheel(req.user.id, req.user.campusId));
+  }
+  /** 抽奖（IKD6FB）：每日 1 次，权重随机，平台券自动入账。 */
+  @Post('wheel/draw') async drawWheel(
+    @Req() req: AuthRequest,
+    @Body() _dto: DrawWheelDto,
+  ) {
+    return ok(await this.service.drawWheel(req.user.id, req.user.campusId));
   }
 }

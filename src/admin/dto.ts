@@ -1,6 +1,7 @@
 import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
+  ArrayMinSize,
   IsArray,
   IsBoolean,
   IsDateString,
@@ -10,9 +11,11 @@ import {
   IsOptional,
   IsString,
   Matches,
+  Max,
   MaxLength,
   Min,
   MinLength,
+  ValidateNested,
 } from 'class-validator';
 
 export class BarcodeDto {
@@ -360,4 +363,24 @@ export class BindPrinterDto {
   sn!: string;
   @IsOptional() @Type(() => Number) @IsInt() @IsIn([1, 2, 3])
   copies?: number;
+}
+
+/** 转盘奖位（IKD6FC）：8 项，类型与字段约束在 service 校验。 */
+export class WheelPrizeDto {
+  @IsIn(['coupon', 'partner', 'none']) type!: 'coupon' | 'partner' | 'none';
+  @IsString() @MaxLength(12) label!: string;
+  @IsOptional() @IsString() couponId?: string;
+  @IsOptional() @IsString() @MaxLength(40) bizTitle?: string;
+  @IsOptional() @IsString() @MaxLength(500) bizImage?: string;
+  @IsOptional() @IsString() @MaxLength(120) bizNote?: string;
+  @Type(() => Number) @IsInt() @Min(0) @Max(1000) weight!: number;
+}
+
+/** 转盘配置保存（IKD6FC）：upsert 单校区单配置。 */
+export class UpsertWheelDto {
+  @IsBoolean() active!: boolean;
+  @IsArray() @ArrayMinSize(8) @ArrayMaxSize(8)
+  @ValidateNested({ each: true })
+  @Type(() => WheelPrizeDto)
+  prizes!: WheelPrizeDto[];
 }
