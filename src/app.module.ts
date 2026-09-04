@@ -41,7 +41,9 @@ const adminDistDir = process.env.ADMIN_DIST_DIR ?? '';
       ? [
           ServeStaticModule.forRoot({
             rootPath: adminDistDir,
-            exclude: ['/api/(.*)'],
+            // path-to-regexp v8 不认 (.*) 捕获组语法（未匹配路径会编译抛
+            // PathError → 404 变 500）；通配 * 两版语法都合法
+            exclude: ['/api/v1/*'],
           }),
         ]
       : []),
