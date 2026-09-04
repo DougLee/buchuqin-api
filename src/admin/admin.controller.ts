@@ -1,18 +1,25 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
   ForbiddenException,
   Get,
+  Header,
   Param,
   Patch,
   Post,
   Put,
   Query,
   Req,
+  StreamableFile,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
+import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import type { AuthRequest } from '../auth/jwt-auth.guard';
 import { ok } from '../common/api-response';
@@ -48,6 +55,9 @@ import {
   CreateStaffDto,
   IssueCouponDto,
   StockInDto,
+  StocktakeDto,
+  CreatePurchaseRequestDto,
+  AuditPurchaseRequestDto,
   UpdateAccountDto,
   UpdateBannerDto,
   UpdateBuildingDto,
@@ -318,6 +328,28 @@ export class AdminController {
       ),
     );
   }
+  /** 营销地图（IKD6FI）：楼栋×楼层×寝室下单聚合（近 N 天已支付） */
+  @Get('marketing/map')
+  @ApiOperation({ summary: '营销地图：楼栋各楼层寝室下单情况' })
+  async marketingMap(
+    @Req() req: AuthRequest,
+    @Query('buildingId') buildingId?: string,
+    @Query('days') days?: string,
+    @Query('campus') campus?: string,
+  ) {
+    this.authorize(req, 'marketing');
+    if (!buildingId) throw new BadRequestException('请选择楼栋');
+    const scope = this.campusScope(req, campus);
+    if (!scope)
+      throw new BadRequestException('请先选择要查看的校区（?campus=）');
+    return ok(
+      await this.service.marketingMap(
+        buildingId,
+        scope,
+        Number(days) || 30,
+      ),
+    );
+  }
   @Post('promotions') async createPromotion(
     @Req() req: AuthRequest,
     @Body() body: CreatePromotionDto,
@@ -459,9 +491,73 @@ export class AdminController {
     @Body() body: StockInDto,
   ) {
     this.authorize(req, 'inventory', 'write');
+    // 采购申请-审核制（IKD6FJ）：校区走采购申请，直接入库仅限平台视角角色
+    if (!isHqScope(req.user.role))
+      throw new ForbiddenException(
+        '采购已改为申请-审核制，请提交采购申请，由总部审核后入库',
+      );
     return ok(
       await this.service.stockIn(body, req.user.id, req.user.campusId),
       '入库完成',
+    );
+  }
+  /** 盘点校准（IKD6FJ）：提交实际清点数量，系统自动算差额落账 */
+  @Post('inventory/stocktake') async stocktake(
+    @Req() req: AuthRequest,
+    @Body() body: StocktakeDto,
+  ) {
+    this.authorize(req, 'inventory', 'write');
+    return ok(
+      await this.service.stocktake(body, req.user.id, req.user.campusId),
+      '盘点已提交',
+    );
+  }
+  /** 采购申请列表（IKD6FJ）：校区看本校，hq 跨校区 */
+  @Get('inventory/purchase-requests') async purchaseRequests(
+    @Req() req: AuthRequest,
+    @Query('status') status?: string,
+    @Query('campus') campus?: string,
+  ) {
+    this.authorize(req, 'inventory');
+    return ok(
+      await this.service.purchaseRequests(
+        this.campusScope(req, campus),
+        status,
+      ),
+    );
+  }
+  /** 提交采购申请（IKD6FJ） */
+  @Post('inventory/purchase-requests') async createPurchaseRequest(
+    @Req() req: AuthRequest,
+    @Body() body: CreatePurchaseRequestDto,
+  ) {
+    this.authorize(req, 'inventory', 'write');
+    return ok(
+      await this.service.createPurchaseRequest(
+        body,
+        req.user.id,
+        req.user.campusId,
+      ),
+      '采购申请已提交，等待总部审核',
+    );
+  }
+  /** 采购审核（IKD6FJ）：仅平台视角角色（hq/admin） */
+  @Post('inventory/purchase-requests/:id/audit') async auditPurchaseRequest(
+    @Req() req: AuthRequest,
+    @Param('id') id: string,
+    @Body() body: AuditPurchaseRequestDto,
+  ) {
+    this.authorize(req, 'inventory', 'write');
+    if (!isHqScope(req.user.role))
+      throw new ForbiddenException('只有总部可以审核采购申请');
+    return ok(
+      await this.service.auditPurchaseRequest(
+        id,
+        body,
+        req.user.id,
+        req.user.campusId,
+      ),
+      body.action === 'approved' ? '已通过并入库' : '已拒绝',
     );
   }
   @Post('inventory/adjust') async adjustStock(
@@ -986,6 +1082,50 @@ export class AdminController {
     return ok(
       await this.service.deleteRoom(id, roomId, req.user.id, req.user.campusId),
       '寝室已删除',
+    );
+  }
+  /** 寝室导入模板（IKD6FH）：xlsx 两列（楼层/寝室号）+ 示例行 */
+  @Get('buildings/:id/rooms/template')
+  @ApiOperation({ summary: '寝室导入模板下载（xlsx）' })
+  @Header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+  async roomTemplate(
+    @Req() req: AuthRequest,
+    @Param('id') id: string,
+  ): Promise<StreamableFile> {
+    this.authorize(req, 'buildings', 'write');
+    const { filename, buffer } = await this.service.roomTemplate(
+      id,
+      req.user.campusId,
+    );
+    return new StreamableFile(buffer, {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      disposition: `attachment; filename="rooms-template.xlsx"; filename*=UTF-8''${encodeURIComponent(filename)}`,
+    });
+  }
+  /** 寝室批量导入（IKD6FH）：解析模板 xlsx，已存在寝室自动跳过 */
+  @Post('buildings/:id/rooms/import')
+  @ApiOperation({ summary: '寝室批量导入（xlsx 模板）' })
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      limits: { fileSize: 5 * 1024 * 1024 },
+    }),
+  )
+  async importRooms(
+    @Req() req: AuthRequest,
+    @Param('id') id: string,
+    @UploadedFile() file?: Express.Multer.File,
+  ) {
+    this.authorize(req, 'buildings', 'write');
+    if (!file) throw new BadRequestException('请选择要导入的 xlsx 文件');
+    return ok(
+      await this.service.importRooms(
+        id,
+        req.user.campusId,
+        file.buffer,
+        req.user.id,
+      ),
     );
   }
   @Get('after-sales')

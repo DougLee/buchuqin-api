@@ -378,6 +378,25 @@ export class BusinessService {
       available: true,
     }));
   }
+  /**
+   * 楼栋寝室列表（IKD6FH 地址四级选择）：某楼全部/某层寝室。
+   * 用户端选完楼栋+楼层后拉寝室号列表做 picker；楼栋须为本校区在营。
+   */
+  async buildingRooms(
+    campusId: string,
+    buildingId: string,
+    floor?: number,
+  ) {
+    const building = await this.db.building.findFirst({
+      where: { id: buildingId, campusId, status: 'active' },
+    });
+    if (!building) throw new NotFoundException('楼栋不存在');
+    return this.db.room.findMany({
+      where: { buildingId, ...(floor ? { floor } : {}) },
+      select: { id: true, floor: true, roomNo: true },
+      orderBy: [{ floor: 'asc' }, { roomNo: 'asc' }],
+    });
+  }
   async slots(campusId: string) {
     return this.db.deliverySlot.findMany({
       where: { campusId },

@@ -31,6 +31,7 @@ model Campus {
   wechatGroups         WechatGroup[]
   printers             Printer[]
   lotteryWheel         LotteryWheel?
+  purchaseRequests     PurchaseRequest[]
 }
 
 /**
@@ -206,8 +207,35 @@ model Product {
   cartItems       CartItem[]
   inventoryTxns   InventoryTxn[]
   promotions      Promotion[]
+  purchaseRequests PurchaseRequest[]
 
   @@unique([campusId, barcode])
+}
+
+/**
+ * 采购申请——申请-审核制（IKD6FJ）：校区提交申请 → hq 审核通过后正式入库
+ * （事务内落 InventoryTxn type=stock-in 并加 stock）；hq 自己仍可走 stockIn 直接入库。
+ */
+model PurchaseRequest {
+  id          String   @id @default(cuid())
+  campusId    String
+  campus      Campus   @relation(fields: [campusId], references: [id])
+  productId   String
+  product     Product  @relation(fields: [productId], references: [id])
+  quantity    Int
+  reason      String   @default("")
+  /// pending | approved | rejected
+  status      String   @default("pending")
+  applyBy     String
+  applyByName String   @default("")
+  auditBy     String?
+  auditByName String   @default("")
+  auditNote   String   @default("")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([campusId, status])
+  @@index([status, createdAt])
 }
 
 model Promotion {

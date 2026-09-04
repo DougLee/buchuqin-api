@@ -196,7 +196,32 @@ export class BatchProductStatusDto {
   @IsIn(['on-sale', 'off-sale']) status!: 'on-sale' | 'off-sale';
 }
 export class IssueCouponDto {
-  @IsArray() @IsString({ each: true }) userIds!: string[];
+  /** IKD6FI：userIds 与定向条件（phones/buildingId/floor/roomNos）至少给一种，并集去重 */
+  @IsOptional() @IsArray() @IsString({ each: true }) userIds?: string[];
+  /** 按绑定手机号指定用户（邮箱/昵称不可靠，需求指定手机号口径） */
+  @IsOptional() @IsArray() @IsString({ each: true })
+  @ArrayMaxSize(500)
+  phones?: string[];
+  /** 按寝室地址定向：楼栋必填，楼层/寝室号可选收窄 */
+  @IsOptional() @IsString() buildingId?: string;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) floor?: number;
+  @IsOptional() @IsArray() @IsString({ each: true }) roomNos?: string[];
+}
+/** 盘点校准（IKD6FJ）：提交实际清点数量，系统自动算差额落账。 */
+export class StocktakeDto {
+  @IsString() productId!: string;
+  @Type(() => Number) @IsInt() @Min(0) countedQty!: number;
+  @IsOptional() @IsString() @MaxLength(120) reason?: string;
+}
+/** 采购申请（IKD6FJ）：校区提交 → hq 审核 → 通过后入库。 */
+export class CreatePurchaseRequestDto {
+  @IsString() productId!: string;
+  @Type(() => Number) @IsInt() @Min(1) quantity!: number;
+  @IsOptional() @IsString() @MaxLength(120) reason?: string;
+}
+export class AuditPurchaseRequestDto {
+  @IsIn(['approved', 'rejected']) action!: 'approved' | 'rejected';
+  @IsOptional() @IsString() @MaxLength(120) note?: string;
 }
 export class CreateBuildingDto {
   @IsString() @MaxLength(30) name!: string;

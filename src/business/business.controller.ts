@@ -233,6 +233,21 @@ export class BusinessController {
   @Get('campuses/current/buildings') async buildings(@Req() req: AuthRequest) {
     return ok(await this.service.buildings(req.user.campusId));
   }
+  /** 楼栋寝室列表（IKD6FH）：?floor= 选填收窄到某层，供地址四级选择 */
+  @Get('campuses/current/buildings/:buildingId/rooms')
+  async buildingRooms(
+    @Req() req: AuthRequest,
+    @Param('buildingId') buildingId: string,
+    @Query('floor') floor?: string,
+  ) {
+    return ok(
+      await this.service.buildingRooms(
+        req.user.campusId,
+        buildingId,
+        floor ? Number(floor) : undefined,
+      ),
+    );
+  }
   @Get('coupons') async coupons(@Req() req: AuthRequest) {
     return ok(await this.service.coupons(req.user.id, req.user.campusId));
   }

@@ -6,6 +6,7 @@ import {
   Optional,
 } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
+import ExcelJS from 'exceljs';
 import { hash } from 'bcryptjs';
 import { PrismaService } from '../database/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -14,6 +15,7 @@ import { BusinessService } from '../business/business.service';
 import { CommissionService } from '../commission/commission.service';
 import type {
   AdjustStockDto,
+  AuditPurchaseRequestDto,
   CreateAccountDto,
   CreateBannerDto,
   CreateBuildingDto,
@@ -26,6 +28,7 @@ import type {
   CreateLocationDto,
   CreateProductDto,
   CreatePromotionDto,
+  CreatePurchaseRequestDto,
   UpdateCampusDto,
   UpdatePromotionDto,
   UpdateProductDto,
@@ -33,6 +36,7 @@ import type {
   CreateStaffDto,
   IssueCouponDto,
   StockInDto,
+  StocktakeDto,
   UpdateAccountDto,
   UpdateBannerDto,
   UpdateBuildingDto,
@@ -428,6 +432,10 @@ export class AdminService {
     'dispatch-invitation.cancel': '取消调配邀请',
     'inventory.adjust': '调整库存',
     'inventory.stock-in': '采购入库',
+    'inventory.stocktake': '盘点校准',
+    'inventory.purchase-apply': '提交采购申请',
+    'inventory.purchase-audit': '采购审核',
+    'room.import': '批量导入寝室',
     'location.create': '创建库位',
     'location.update': '更新库位',
     'location.delete': '删除库位',
@@ -1392,6 +1400,211 @@ export class AdminService {
     );
     return txn;
   }
+  /**
+   * 盘点校准（IKD6FJ）：盘点 = 提交仓库实际清点数量，与 adjustStock 的增量调整
+   * 语义不同——这里只报「账面 vs 实际」的差额，系统自动算 delta 落 adjust 流水；
+   * 账实相符（delta=0）时不落流水，仅返回核对结果。
+   */
+  async stocktake(body: StocktakeDto, operator: string, campusId: string) {
+    const product = await this.db.product.findFirst({
+      where: { id: body.productId, campusId },
+    });
+    if (!product) throw new NotFoundException('商品不存在');
+    const delta = body.countedQty - product.stock;
+    if (!delta)
+      return {
+        productId: product.id,
+        before: product.stock,
+        countedQty: body.countedQty,
+        delta: 0,
+        applied: false,
+      };
+    if (body.countedQty < 0)
+      throw new BadRequestException('清点数量不能为负数');
+    const txn = await this.db.$transaction(async (tx) => {
+      const record = await tx.inventoryTxn.create({
+        data: {
+          productId: product.id,
+          type: 'adjust',
+          delta,
+          reason: body.reason?.trim()
+            ? `盘点校准：${body.reason.trim()}`
+            : '盘点校准',
+          operator,
+        },
+      });
+      await tx.product.update({
+        where: { id: product.id },
+        data: { stock: body.countedQty },
+      });
+      return record;
+    });
+    await this.audit(
+      operator,
+      'inventory.stocktake',
+      'product',
+      product.id,
+      { stock: product.stock },
+      { stock: body.countedQty, delta, txnId: txn.id },
+      campusId,
+    );
+    return {
+      productId: product.id,
+      before: product.stock,
+      countedQty: body.countedQty,
+      delta,
+      applied: true,
+    };
+  }
+  /**
+   * 采购申请列表（IKD6FJ）：校区看本校区，hq 跨校区（附校区名）。
+   * status 空查全部；默认按提交时间倒序。
+   */
+  async purchaseRequests(campusId: string, status?: string) {
+    const rows = await this.db.purchaseRequest.findMany({
+      where: {
+        ...(campusId ? { campusId } : {}),
+        ...(status && status !== 'all' ? { status } : {}),
+      },
+      include: {
+        campus: { select: { id: true, name: true } },
+        product: { select: { id: true, name: true, stock: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 200,
+    });
+    return rows.map((x) => ({
+      id: x.id,
+      campusId: x.campusId,
+      campusName: x.campus.name,
+      productId: x.productId,
+      productName: x.product.name,
+      productStock: x.product.stock,
+      quantity: x.quantity,
+      reason: x.reason,
+      status: x.status,
+      applyByName: x.applyByName,
+      auditByName: x.auditByName,
+      auditNote: x.auditNote,
+      createdAt: x.createdAt.toISOString(),
+      auditedAt: x.updatedAt.toISOString(),
+    }));
+  }
+  /** 提交采购申请（IKD6FJ）：同商品存在待审申请时拒绝重复提交。 */
+  async createPurchaseRequest(
+    body: CreatePurchaseRequestDto,
+    operator: string,
+    campusId: string,
+  ) {
+    const product = await this.db.product.findFirst({
+      where: { id: body.productId, campusId },
+    });
+    if (!product) throw new NotFoundException('商品不存在');
+    const dup = await this.db.purchaseRequest.findFirst({
+      where: { productId: body.productId, campusId, status: 'pending' },
+      select: { id: true },
+    });
+    if (dup)
+      throw new BadRequestException('该商品已有待审核的采购申请，请耐心等待审核');
+    const account = await this.db.adminAccount.findUnique({
+      where: { id: operator },
+      select: { nickname: true },
+    });
+    const row = await this.db.purchaseRequest.create({
+      data: {
+        campusId,
+        productId: body.productId,
+        quantity: body.quantity,
+        reason: body.reason?.trim() ?? '',
+        applyBy: operator,
+        applyByName: account?.nickname ?? '',
+      },
+    });
+    await this.audit(
+      operator,
+      'inventory.purchase-apply',
+      'product',
+      body.productId,
+      null,
+      { requestId: row.id, quantity: body.quantity, reason: row.reason },
+      campusId,
+    );
+    return { id: row.id };
+  }
+  /**
+   * 采购审核（IKD6FJ）：仅 hq（controller 侧 role 门禁）。approve 走事务——
+   * 落 stock-in 流水并加库存，与 hq 直接 stockIn 同口径；reject 只记结论。
+   */
+  async auditPurchaseRequest(
+    id: string,
+    body: AuditPurchaseRequestDto,
+    operator: string,
+    campusId: string,
+  ) {
+    const row = await this.db.purchaseRequest.findUnique({ where: { id } });
+    if (!row) throw new NotFoundException('采购申请不存在');
+    if (row.status !== 'pending')
+      throw new BadRequestException('该申请已处理过，不能重复审核');
+    const account = await this.db.adminAccount.findUnique({
+      where: { id: operator },
+      select: { nickname: true },
+    });
+    if (body.action === 'rejected') {
+      const updated = await this.db.purchaseRequest.update({
+        where: { id },
+        data: {
+          status: 'rejected',
+          auditBy: operator,
+          auditByName: account?.nickname ?? '',
+          auditNote: body.note?.trim() ?? '',
+        },
+      });
+      await this.audit(
+        operator,
+        'inventory.purchase-audit',
+        'product',
+        row.productId,
+        { status: row.status },
+        { status: 'rejected', note: updated.auditNote },
+        campusId,
+      );
+      return { id, status: 'rejected' as const };
+    }
+    await this.db.$transaction(async (tx) => {
+      await tx.inventoryTxn.create({
+        data: {
+          productId: row.productId,
+          type: 'stock-in',
+          delta: row.quantity,
+          reason: `采购申请入库：${row.reason || '无备注'}`,
+          operator,
+        },
+      });
+      await tx.product.update({
+        where: { id: row.productId },
+        data: { stock: { increment: row.quantity } },
+      });
+      await tx.purchaseRequest.update({
+        where: { id },
+        data: {
+          status: 'approved',
+          auditBy: operator,
+          auditByName: account?.nickname ?? '',
+          auditNote: body.note?.trim() ?? '',
+        },
+      });
+    });
+    await this.audit(
+      operator,
+      'inventory.purchase-audit',
+      'product',
+      row.productId,
+      { status: row.status },
+      { status: 'approved', quantity: row.quantity },
+      campusId,
+    );
+    return { id, status: 'approved' as const };
+  }
   async inventoryTxns(productId: string | undefined, campusId: string) {
     return this.db.inventoryTxn.findMany({
       where: {
@@ -2225,6 +2438,103 @@ export class AdminService {
     );
     return { id: roomId, deleted: true };
   }
+  /**
+   * 寝室导入模板（IKD6FH）：xlsx 两列——楼层 / 寝室号，附 2 行示例。
+   * 楼栋名写进文件名，下载即知导入目标。
+   */
+  async roomTemplate(buildingId: string, campusId: string) {
+    const building = await this.db.building.findFirst({
+      where: { id: buildingId, campusId },
+    });
+    if (!building) throw new NotFoundException('楼栋不存在');
+    const wb = new ExcelJS.Workbook();
+    const sheet = wb.addWorksheet('寝室导入');
+    sheet.columns = [
+      { header: '楼层', key: 'floor', width: 12 },
+      { header: '寝室号', key: 'roomNo', width: 20 },
+    ];
+    sheet.addRow({ floor: 1, roomNo: '101' });
+    sheet.addRow({ floor: 1, roomNo: '102' });
+    const buffer = await wb.xlsx.writeBuffer();
+    return {
+      filename: `寝室导入模板-${building.name}.xlsx`,
+      buffer: Buffer.from(buffer),
+    };
+  }
+  /**
+   * 寝室批量导入（IKD6FH）：解析模板 xlsx（楼层/寝室号两列，首行表头），
+   * 楼栋内已存在的寝室自动跳过（唯一约束 buildingId+floor+roomNo），
+   * createMany skipDuplicates 兜底并发。行级错误（楼层非正整数/寝室号空）
+   * 收集返回，合法行照常导入。
+   */
+  async importRooms(
+    buildingId: string,
+    campusId: string,
+    file: Buffer,
+    operator: string,
+  ) {
+    const building = await this.db.building.findFirst({
+      where: { id: buildingId, campusId },
+    });
+    if (!building) throw new NotFoundException('楼栋不存在');
+    const wb = new ExcelJS.Workbook();
+    try {
+      // exceljs 4.4 自带类型钉在旧 @types/node 的 Buffer 上，与项目
+      // Buffer<ArrayBufferLike> 不兼容（运行时无差别），此处按参数类型断言
+      await wb.xlsx.load(file as unknown as Parameters<
+        typeof wb.xlsx.load
+      >[0]);
+    } catch {
+      throw new BadRequestException('文件解析失败，请使用下载的 xlsx 模板');
+    }
+    const sheet = wb.worksheets[0];
+    if (!sheet) throw new BadRequestException('表格为空');
+    const errors: string[] = [];
+    const rows: Array<{ floor: number; roomNo: string }> = [];
+    sheet.eachRow((row, rowNumber) => {
+      if (rowNumber === 1) return; // 表头
+      const floor = Number(row.getCell(1).value);
+      const roomNoCell = row.getCell(2).value;
+      const roomNo =
+        typeof roomNoCell === 'object' && roomNoCell && 'text' in roomNoCell
+          ? String((roomNoCell as { text: string }).text).trim()
+          : String(roomNoCell ?? '').trim();
+      if (!Number.isInteger(floor) || floor < 1 || floor > 100) {
+        errors.push(`第 ${rowNumber} 行：楼层必须是 1-100 的整数`);
+        return;
+      }
+      if (!roomNo || roomNo.length > 20) {
+        errors.push(`第 ${rowNumber} 行：寝室号必填且不超过 20 字`);
+        return;
+      }
+      rows.push({ floor, roomNo });
+    });
+    if (!rows.length)
+      throw new BadRequestException(
+        errors[0] ?? '没有可导入的数据行，请按模板填写',
+      );
+    const result = await this.db.room.createMany({
+      data: rows.map((r) => ({
+        buildingId,
+        floor: r.floor,
+        roomNo: r.roomNo,
+        qrToken: `qr-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+      })),
+      skipDuplicates: true,
+    });
+    const imported = result.count;
+    const skipped = rows.length - imported;
+    await this.audit(
+      operator,
+      'room.import',
+      'building',
+      buildingId,
+      null,
+      { total: rows.length, imported, skipped },
+      campusId,
+    );
+    return { total: rows.length, imported, skipped, errors };
+  }
   /** IKB5PA：status 过滤（pending/cancelled），不传 = 全部。 */
   async afterSales(campusId: string, status?: string) {
     return this.db.afterSale.findMany({
@@ -2762,15 +3072,25 @@ export class AdminService {
       throw new BadRequestException('已下架的优惠券不能发放');
     if (coupon.expiresAt && coupon.expiresAt.getTime() <= Date.now())
       throw new BadRequestException('已过期的优惠券不能发放');
-    const userIds = [...new Set(body.userIds)];
-    if (!userIds.length) throw new BadRequestException('请选择发放对象');
-    // 券跨校园：只能给本校用户发放。
-    const users = await this.db.user.findMany({
-      where: { id: { in: userIds }, campusId },
-      select: { id: true },
-    });
-    if (users.length !== userIds.length)
-      throw new BadRequestException('部分用户不存在或不在当前校园');
+    // IKD6FI 定向发券：显式 userIds 与定向条件（手机号/楼栋/楼层/寝室）并集去重
+    const targeted = await this.resolveCouponTargets(body, campusId);
+    const explicit = body.userIds ?? [];
+    if (explicit.length) {
+      // 券跨校园：显式指定的用户只能给本校用户发放（定向解析结果天然本校）。
+      const users = await this.db.user.findMany({
+        where: { id: { in: explicit }, campusId },
+        select: { id: true },
+      });
+      if (users.length !== explicit.length)
+        throw new BadRequestException('部分用户不存在或不在当前校园');
+    }
+    const userIds = [...new Set([...explicit, ...targeted])];
+    if (!userIds.length)
+      throw new BadRequestException(
+        body.phones?.length || body.buildingId
+          ? '定向条件未匹配到任何用户，请检查手机号/寝室范围'
+          : '请选择发放对象',
+      );
     const holdings = await this.db.userCoupon.findMany({
       where: { couponId: id, userId: { in: userIds }, status: { not: 'used' } },
       select: { userId: true },
@@ -2811,6 +3131,128 @@ export class AdminService {
       campusId,
     );
     return { issued: result.count, targets, couponId: id };
+  }
+  /**
+   * 定向发券目标解析（IKD6FI）：手机号（绑定手机号口径，非微信昵称）→
+   * 本校区 User；寝室条件 → 本校区 Address（楼栋必填，楼层/寝室号可选收窄）
+   * 反查用户。用户没填过地址则只能按手机号触达。
+   */
+  private async resolveCouponTargets(body: IssueCouponDto, campusId: string) {
+    const ids: string[] = [];
+    if (body.phones?.length) {
+      const users = await this.db.user.findMany({
+        where: { campusId, phone: { in: body.phones } },
+        select: { id: true },
+      });
+      ids.push(...users.map((u) => u.id));
+    }
+    if (body.buildingId) {
+      const users = await this.db.user.findMany({
+        where: {
+          campusId,
+          addresses: {
+            some: {
+              buildingId: body.buildingId,
+              ...(body.floor ? { floor: body.floor } : {}),
+              ...(body.roomNos?.length ? { room: { in: body.roomNos } } : {}),
+            },
+          },
+        },
+        select: { id: true },
+      });
+      ids.push(...users.map((u) => u.id));
+    }
+    return ids;
+  }
+  /**
+   * 营销地图（IKD6FI）：楼栋 × 楼层 × 寝室的下单聚合（近 N 天已支付订单，
+   * 地址取订单 Json 快照）。格子以 Room 表寝室为底（未下单寝室补零），
+   * 快照寝室（legacy 手填）额外并入。
+   */
+  async marketingMap(buildingId: string, campusId: string, days = 30) {
+    const building = await this.db.building.findFirst({
+      where: { id: buildingId, campusId },
+    });
+    if (!building) throw new NotFoundException('楼栋不存在');
+    const since = new Date(Date.now() - Math.max(1, days) * 86_400_000);
+    const [orders, rooms] = await Promise.all([
+      this.db.order.findMany({
+        where: { campusId, paidAt: { not: null }, createdAt: { gte: since } },
+        select: { address: true, payableAmount: true, userId: true },
+      }),
+      this.db.room.findMany({
+        where: { buildingId },
+        select: { floor: true, roomNo: true },
+        orderBy: [{ floor: 'asc' }, { roomNo: 'asc' }],
+      }),
+    ]);
+    type Cell = {
+      floor: number;
+      room: string;
+      orders: number;
+      amount: number;
+      users: Set<string>;
+    };
+    const cells = new Map<string, Cell>();
+    const ensure = (floor: number, room: string) => {
+      const key = `${floor}-${room}`;
+      let cell = cells.get(key);
+      if (!cell) {
+        cell = { floor, room, orders: 0, amount: 0, users: new Set() };
+        cells.set(key, cell);
+      }
+      return cell;
+    };
+    for (const r of rooms) ensure(r.floor, r.roomNo);
+    for (const o of orders) {
+      const a = o.address as {
+        buildingId?: string;
+        buildingName?: string;
+        floor?: number;
+        room?: string;
+      };
+      if (!a?.floor || !a.room) continue;
+      // 快照匹配：buildingId 优先，legacy 手填地址按楼栋名兜底
+      if (a.buildingId !== buildingId && a.buildingName !== building.name)
+        continue;
+      const cell = ensure(a.floor, a.room);
+      cell.orders += 1;
+      cell.amount += o.payableAmount;
+      cell.users.add(o.userId);
+    }
+    const floorMap = new Map<number, Cell[]>();
+    for (const cell of cells.values()) {
+      const list = floorMap.get(cell.floor) ?? [];
+      list.push(cell);
+      floorMap.set(cell.floor, list);
+    }
+    const floors = [...floorMap.entries()]
+      .sort((x, y) => x[0] - y[0])
+      .map(([floor, list]) => {
+        const sorted = list.sort((a, b) =>
+          a.room.localeCompare(b.room, 'zh-Hans-CN', { numeric: true }),
+        );
+        return {
+          floor,
+          orders: sorted.reduce((s, x) => s + x.orders, 0),
+          amount: sorted.reduce((s, x) => s + x.amount, 0),
+          rooms: sorted.map((x) => ({
+            room: x.room,
+            orders: x.orders,
+            amount: x.amount,
+            users: x.users.size,
+          })),
+        };
+      });
+    return {
+      building: { id: building.id, name: building.name },
+      days: Math.max(1, days),
+      totals: {
+        orders: floors.reduce((s, f) => s + f.orders, 0),
+        amount: floors.reduce((s, f) => s + f.amount, 0),
+      },
+      floors,
+    };
   }
   /** 审计日志：IKAJSL campusId 空 = 总部跨校区视角。 */
   /** IKB5P8：审计列表同样人话化——附操作人昵称/中文动作/中文对象，原始代码只留 entityId 备查。 */
