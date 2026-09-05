@@ -1607,7 +1607,7 @@ export class AdminService {
     return { id, status: 'approved' as const };
   }
   async inventoryTxns(productId: string | undefined, campusId: string) {
-    return this.db.inventoryTxn.findMany({
+    const rows = await this.db.inventoryTxn.findMany({
       where: {
         product: { campusId },
         ...(productId ? { productId } : {}),
@@ -1615,6 +1615,13 @@ export class AdminService {
       include: { product: { select: { id: true, name: true } } },
       orderBy: { createdAt: 'desc' },
     });
+    // IKDG9X：操作人人话化（同审计日志 IKB5P8）——operator 为 AdminAccount.id，
+    // 批量解析昵称/账号名；miss（历史/已删账号）回退原值可追查
+    const names = await this.operatorNames(rows.map((x) => x.operator));
+    return rows.map((x) => ({
+      ...x,
+      operatorName: names.get(x.operator) ?? x.operator,
+    }));
   }
   /** 手机号脱敏：保留前 3 后 4，中间四位打码（后台列表不落明文）。 */
   private maskPhone(phone: string) {
