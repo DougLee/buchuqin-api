@@ -20,7 +20,7 @@ describe('PrinterService (IKBT6N)', () => {
     },
     items: [
       {
-        product: { name: '农夫山泉 550ml', price: 200 },
+        product: { name: '农夫山泉 550ml', price: 200, location: 'A区', locationCode: '01' },
         quantity: 2,
       },
       { product: { name: '特别长的一个商品名称需要被截断处理才行哦', price: 1250 }, quantity: 1 },
@@ -56,9 +56,9 @@ describe('PrinterService (IKBT6N)', () => {
       expect(content).not.toContain('13800001234');
     });
 
-    it('商品行含数量与单价（快照价转元）', () => {
+    it('商品行含数量与单价（快照价转元、去尾零）', () => {
       expect(content).toContain('农夫山泉 550ml x2');
-      expect(content).toContain('￥2.00');
+      expect(content).toContain('￥2');
       // 超长品名被截断且不破坏行结构（换行仍在）
       const longLine = content
         .split('\n')
@@ -66,11 +66,27 @@ describe('PrinterService (IKBT6N)', () => {
       expect(longLine).toBeTruthy();
     });
 
-    it('金额段含商品金额/配送费/优惠/实付', () => {
+    it('库位行粗体（2026-09-05 道哥）', () => {
+      expect(content).toContain('<B>  库位:A区-01</B>');
+    });
+
+    it('右对齐行不超 31 半角位（2026-09-05 挤行孤零回归）', () => {
+      const w = (s: string) =>
+        [...s.replace(/<[^>]+>/g, '')].reduce(
+          (n, ch) => n + (/[⺀-鿿豈-﫿！-｠　-〿]/.test(ch) ? 2 : 1),
+          0,
+        );
+      const money = content.split('\n').filter((l) => l.includes('￥'));
+      expect(money.length).toBeGreaterThan(0);
+      for (const line of money) expect(w(line)).toBeLessThanOrEqual(31);
+    });
+
+    it('金额段含商品金额/配送费/优惠/实付（去尾零）', () => {
       expect(content).toContain('商品金额');
-      expect(content).toContain('￥4.00');
-      expect(content).toContain('-￥1.00');
-      expect(content).toContain('￥19.50');
+      expect(content).toContain('￥4');
+      expect(content).toContain('-￥1');
+      expect(content).toContain('￥19.5');
+      expect(content).not.toContain('.00');
     });
 
     it('票尾订单号二维码 + 切刀', () => {

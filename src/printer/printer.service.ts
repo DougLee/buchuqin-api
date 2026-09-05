@@ -12,7 +12,9 @@ import { PrismaService } from '../database/prisma.service';
  * 多联打印（IKCZOX；IKD6H4 调整联序）：Printer.copies 1/2/3——1=单联无联名
  * （旧票面），2=商家联+客户联，3=再加骑手联；一次 POST 拼 N 张票（每联尾
  * <CUT>），原子同成败，失败走补打兜底；出纸顺序商家→客户→骑手（卷纸后打在外）。
- * 库位（IKD6H4）：商品明细下缩进显示「▸ 区域-编号」，attachLocations 实时注入。
+ * 库位（IKD6H4）：商品明细下缩进粗体显示「库位:区域-编号」，attachLocations 实时注入。
+ * 金额去尾零+右对齐留 1 列边距（2026-09-05 道哥反馈：￥11.00 打满 32 列被挤行，
+ * 末尾 0 成孤行——去尾零从根上缩短，对齐按 31 列留余量）。
  *
  * 账号 env 门控 + 静默降级（同 NotificationsService 模式）：
  * - XPYUN_USER / XPYUN_USERKEY：开发者账号（admin.xpyun.net 控制台），账号级
@@ -297,7 +299,8 @@ export class PrinterService {
       const loc = [line.product?.location, line.product?.locationCode]
         .filter(Boolean)
         .join('-');
-      if (loc) lines.push(`  库位:${loc}`);
+      // 库位加粗（2026-09-05 道哥）：分拣扫视更醒目；<B> 标签 ASCII，GBK 安全
+      if (loc) lines.push(TAG.bold(`  库位:${loc}`));
     }
     lines.push('-'.repeat(LINE_WIDTH));
     lines.push(itemLine('商品金额', yuan(order.productAmount)));
@@ -336,15 +339,24 @@ function truncate(s: string, max: number): string {
   }
   return s;
 }
-/** 左右两栏拼行：左侧截断，右侧贴右边距（标签宽度按原文本近似计）。 */
+/** 左右两栏拼行：左侧截断，右侧贴右边距。
+ *  量宽前剥掉 <B> 等排版标签（渲染指令不占列，此前按原文近似导致实付行空格失真）；
+ *  右对齐整体按 LINE_WIDTH-1 留 1 列安全边距——58mm 机型混排行打满 32 列实测会把
+ *  末字符挤到下一行（2026-09-05 道哥票面实拍）。 */
 function itemLine(left: string, right: string): string {
-  const leftMax = LINE_WIDTH - Math.max(textWidth(right), 4);
-  const fixedLeft = truncate(left, leftMax);
-  const pad = Math.max(1, LINE_WIDTH - textWidth(fixedLeft) - textWidth(right));
+  const bare = (s: string) => s.replace(/<[^>]+>/g, '');
+  const rightW = Math.max(textWidth(bare(right)), 4);
+  const fixedLeft = truncate(left, LINE_WIDTH - 1 - rightW);
+  const pad = Math.max(
+    1,
+    LINE_WIDTH - 1 - textWidth(bare(fixedLeft)) - rightW,
+  );
   return fixedLeft + ' '.repeat(pad) + right;
 }
-/** 金额格式化：全角 ￥——半角 ¥(U+00A5) 不在 GBK 字符集，打印时会被云端静默丢弃。 */
-const yuan = (fen: number) => `￥${(Number(fen) / 100).toFixed(2)}`;
+/** 金额格式化：全角 ￥——半角 ¥(U+00A5) 不在 GBK 字符集，打印时会被云端静默丢弃。
+ *  去掉多余尾零（2026-09-05 道哥决策）：￥11.00 → ￥11、￥3.50 → ￥3.5，
+ *  数值语义不变，字符串更短——58mm 行宽紧张的根治手段。 */
+const yuan = (fen: number) => `￥${parseFloat((Number(fen) / 100).toFixed(2))}`;
 /** 小票时间固定按东八区渲染：API 容器时区是 UTC（无 TZ），getHours() 等本地
  *  方法在容器里会少 8 小时；业务是中国校园场景，显式锁 Asia/Shanghai 不依赖部署环境。 */
 const SHANGHAI_TIME = new Intl.DateTimeFormat('zh-CN', {
