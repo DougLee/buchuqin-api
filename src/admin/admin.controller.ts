@@ -318,6 +318,9 @@ export class AdminController {
     @Query('state') state?: string,
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
+    // 全量断链审计（2026-09-05）：前端搜索框一直发 keyword，但此处漏接漏传
+    // paginate，秒杀页搜索为死控件（其余列表端点均有）
+    @Query('keyword') keyword?: string,
   ) {
     this.authorize(req, 'marketing');
     return ok(
@@ -325,6 +328,7 @@ export class AdminController {
         await this.service.promotions(req.user.campusId, state),
         page,
         pageSize,
+        keyword,
       ),
     );
   }
