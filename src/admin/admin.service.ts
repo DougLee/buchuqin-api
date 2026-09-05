@@ -2652,6 +2652,10 @@ export class AdminService {
     const period = month ?? new Date().toISOString().slice(0, 7);
     if (!/^\d{4}-\d{2}$/.test(period))
       throw new BadRequestException('月份格式必须为 YYYY-MM');
+    // IKDHLN（道哥拍板A）：历史月只物化有业务的员工——原「查询即物化」
+    // 给切到的任何月份生成全员占位账单（底薪/0），换月观感"没变化"。
+    // 历史月无提成且无既有账单 → 跳过（空列表）；当月照旧全员（结算工作流）
+    const isCurrentPeriod = period === new Date().toISOString().slice(0, 7);
     const staffList = await this.db.staff.findMany({
       where: { campusId, status: { not: 'deleted' } },
     });
@@ -2666,6 +2670,13 @@ export class AdminService {
       const existing = await this.db.bmBill.findUnique({
         where: { staffId_period: { staffId: s.id, period } },
       });
+      if (
+        !isCurrentPeriod &&
+        !existing &&
+        commissionTotal === 0 &&
+        adjustment === 0
+      )
+        continue;
       if (!existing) {
         await this.db.bmBill.create({
           data: {
