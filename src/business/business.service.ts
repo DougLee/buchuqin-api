@@ -565,33 +565,52 @@ export class BusinessService {
   }
   async updateCart(userId: string, dto: UpdateCartDto) {
     await this.db.$transaction(async (tx) => {
+      // IKDFZK：下架/不存在行直接剔除（全量替换语义下 = 自动移出购物车），
+      // 不再整批抛错——旧行为会把售罄/下架商品变成"钉子户"（删不掉且
+      // 连累其他商品保存失败）；在售行仅当数量上升时校验库存（同 setCartItem
+      // 口径），减少/清零方向放行
+      const existing = await tx.cartItem.findMany({
+        where: { userId },
+        select: { productId: true, quantity: true },
+      });
+      const oldQty = new Map(existing.map((e) => [e.productId, e.quantity]));
+      const rows: { userId: string; productId: string; quantity: number }[] =
+        [];
       for (const line of dto.items) {
+        if (line.quantity <= 0) continue;
         const p = await tx.product.findUnique({
           where: { id: line.productId },
         });
-        if (!p || p.status !== 'on-sale')
-          throw new BadRequestException('商品不存在或已下架');
-        if (line.quantity > p.stock - p.lockedStock)
+        if (!p || p.status !== 'on-sale') continue;
+        if (
+          line.quantity > (oldQty.get(line.productId) ?? 0) &&
+          line.quantity > p.stock - p.lockedStock
+        )
           throw new BadRequestException(`${p.name}库存不足`);
+        rows.push({
+          userId,
+          productId: line.productId,
+          quantity: line.quantity,
+        });
       }
       await tx.cartItem.deleteMany({ where: { userId } });
-      if (dto.items.some((i) => i.quantity > 0))
-        await tx.cartItem.createMany({
-          data: dto.items
-            .filter((i) => i.quantity > 0)
-            .map((i) => ({
-              userId,
-              productId: i.productId,
-              quantity: i.quantity,
-            })),
-        });
+      if (rows.length) await tx.cartItem.createMany({ data: rows });
     });
     return this.cart(userId);
   }
   async setCartItem(userId: string, productId: string, quantity: number) {
     const p = await this.db.product.findUnique({ where: { id: productId } });
     if (!p) throw new NotFoundException('商品不存在');
-    if (quantity > p.stock - p.lockedStock)
+    // IKDFZK：库存校验只拦「增加」方向（新数量 > 购物车已有数量才比库存），
+    // 减少/清零放行——否则售罄商品的存量行永远删不掉
+    const existing = await this.db.cartItem.findUnique({
+      where: { userId_productId: { userId, productId } },
+      select: { quantity: true },
+    });
+    if (
+      quantity > (existing?.quantity ?? 0) &&
+      quantity > p.stock - p.lockedStock
+    )
       throw new BadRequestException(`${p.name}库存不足`);
     if (quantity === 0)
       await this.db.cartItem.deleteMany({ where: { userId, productId } });
