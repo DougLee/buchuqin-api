@@ -737,6 +737,20 @@ export class AdminController {
     this.authorize(req, 'users');
     return ok(await this.service.userOrders(id, this.campusScope(req)));
   }
+  @Get('users/:id/phone')
+  @ApiOperation({
+    summary: '查看用户明文手机号（列表恒脱敏，按需单查+审计留痕）',
+  })
+  async revealUserPhone(@Req() req: AuthRequest, @Param('id') id: string) {
+    this.authorize(req, 'users');
+    return ok(
+      await this.service.revealUserPhone(
+        id,
+        req.user.id,
+        this.campusScope(req),
+      ),
+    );
+  }
   @Get('users')
   @ApiOperation({
     summary: 'C 端用户列表（楼栋/注册时间/关键词筛选；hq ?campus 可选）',

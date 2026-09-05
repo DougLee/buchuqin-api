@@ -3921,6 +3921,25 @@ export class AdminService {
       createdAt: x.createdAt.toISOString(),
     }));
   }
+  /** 查看用户明文手机号（IKDG8V）：列表恒脱敏（maskPhone），明文按需
+   *  单查返回 + 审计留痕（敏感数据查看留痕，同后台操作惯例）。 */
+  async revealUserPhone(id: string, operator: string, campusId: string) {
+    const user = await this.db.user.findFirst({
+      where: { id, ...(campusId ? { campusId } : {}) },
+      select: { id: true, phone: true, campusId: true },
+    });
+    if (!user) throw new NotFoundException('用户不存在');
+    await this.audit(
+      operator,
+      'users.phone-reveal',
+      'user',
+      user.id,
+      null,
+      { revealed: true },
+      user.campusId,
+    );
+    return { id: user.id, phone: user.phone };
+  }
   private async assertNotLastAdmin(id: string) {
     await this.assertNotLastRole(id, 'admin');
   }
