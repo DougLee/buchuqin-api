@@ -66,8 +66,9 @@ describe('PrinterService (IKBT6N)', () => {
       expect(longLine).toBeTruthy();
     });
 
-    it('库位行粗体（2026-09-05 道哥）', () => {
-      expect(content).toContain('<B>  库位:A区-01</B>');
+    it('库位行常规字号（<B> 在芯烨云实测为放大加粗，2026-09-05 道哥反馈回调）', () => {
+      expect(content).toContain('  库位:A区-01');
+      expect(content).not.toContain('<B>  库位');
     });
 
     it('右对齐行不超 31 半角位（2026-09-05 挤行孤零回归）', () => {

@@ -12,7 +12,7 @@ import { PrismaService } from '../database/prisma.service';
  * 多联打印（IKCZOX；IKD6H4 调整联序）：Printer.copies 1/2/3——1=单联无联名
  * （旧票面），2=商家联+客户联，3=再加骑手联；一次 POST 拼 N 张票（每联尾
  * <CUT>），原子同成败，失败走补打兜底；出纸顺序商家→客户→骑手（卷纸后打在外）。
- * 库位（IKD6H4）：商品明细下缩进粗体显示「库位:区域-编号」，attachLocations 实时注入。
+ * 库位（IKD6H4）：商品明细下缩进显示「库位:区域-编号」，attachLocations 实时注入。
  * 金额去尾零+右对齐留 1 列边距（2026-09-05 道哥反馈：￥11.00 打满 32 列被挤行，
  * 末尾 0 成孤行——去尾零从根上缩短，对齐按 31 列留余量）。
  *
@@ -299,8 +299,9 @@ export class PrinterService {
       const loc = [line.product?.location, line.product?.locationCode]
         .filter(Boolean)
         .join('-');
-      // 库位加粗（2026-09-05 道哥）：分拣扫视更醒目；<B> 标签 ASCII，GBK 安全
-      if (loc) lines.push(TAG.bold(`  库位:${loc}`));
+      // 库位行常规字号（2026-09-05 道哥反馈回调加粗）：本机型 <B> 实测渲染为
+      // 放大加粗（客户联/实付同款标签在票面明显偏大），库位无需放大
+      if (loc) lines.push(`  库位:${loc}`);
     }
     lines.push('-'.repeat(LINE_WIDTH));
     lines.push(itemLine('商品金额', yuan(order.productAmount)));
