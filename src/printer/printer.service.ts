@@ -350,11 +350,14 @@ function itemLine(left: string, right: string): string {
   const bare = (s: string) => s.replace(/<[^>]+>/g, '');
   const scale = /<B>|<CB>/.test(right) ? 2 : 1;
   const rightW = Math.max(textWidth(bare(right)) * scale, 4);
+  const wLeft = textWidth(bare(left));
+  // 放大段（<B>）右缘留 4 列空隙、空格基准 11（2026-09-05 道哥实测票定版：
+  // 大字贴边显挤）；数位变长空格自适应收缩，物理宽永不超 31 列
+  const pad =
+    scale > 1
+      ? Math.max(1, Math.min(11, LINE_WIDTH - 5 - wLeft - rightW))
+      : Math.max(1, LINE_WIDTH - 1 - wLeft - rightW);
   const fixedLeft = truncate(left, LINE_WIDTH - 1 - rightW);
-  const pad = Math.max(
-    1,
-    LINE_WIDTH - 1 - textWidth(bare(fixedLeft)) - rightW,
-  );
   return fixedLeft + ' '.repeat(pad) + right;
 }
 /** 金额格式化：全角 ￥——半角 ¥(U+00A5) 不在 GBK 字符集，打印时会被云端静默丢弃。

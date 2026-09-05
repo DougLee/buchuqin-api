@@ -82,7 +82,7 @@ describe('PrinterService (IKBT6N)', () => {
       for (const line of money) expect(w(line)).toBeLessThanOrEqual(31);
     });
 
-    it('实付行放大金额物理宽度不超行宽（2026-09-05 换行回归）', () => {
+    it('实付行放大金额：空格基准 11、物理宽 ≤27 列（2026-09-05 道哥定版）', () => {
       const line = content.split('\n').find((l) => l.startsWith('实付'));
       expect(line).toBeTruthy();
       const bare = (line as string).replace(/<[^>]+>/g, '');
@@ -92,8 +92,9 @@ describe('PrinterService (IKBT6N)', () => {
         (n, ch) => n + (/[⺀-鿿豈-﫿！-｠　-〿]/.test(ch) ? 2 : 1),
         0,
       );
-      // <B> 放大段物理列 ×2：实付(4) + 空格 + 金额×2 ≤ 31
-      expect(4 + (m as RegExpMatchArray)[1].length + wAmount * 2).toBeLessThanOrEqual(31);
+      // <B> 放大段物理列 ×2：实付(4) + 空格(基准 11) + 金额×2 ≤ 27
+      expect((m as RegExpMatchArray)[1].length).toBeLessThanOrEqual(11);
+      expect(4 + (m as RegExpMatchArray)[1].length + wAmount * 2).toBeLessThanOrEqual(27);
     });
 
     it('金额段含商品金额/配送费/优惠/实付（去尾零）', () => {
