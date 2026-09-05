@@ -342,11 +342,14 @@ function truncate(s: string, max: number): string {
 }
 /** 左右两栏拼行：左侧截断，右侧贴右边距。
  *  量宽前剥掉 <B> 等排版标签（渲染指令不占列，此前按原文近似导致实付行空格失真）；
+ *  右列含 <B>/<CB> 时物理宽度 ×2——本机型该标签实测为放大加粗，放大段每个标称
+ *  列占 2 物理列，不按 2 倍算实付必换行（2026-09-05 道哥票面实拍二次实证）；
  *  右对齐整体按 LINE_WIDTH-1 留 1 列安全边距——58mm 机型混排行打满 32 列实测会把
- *  末字符挤到下一行（2026-09-05 道哥票面实拍）。 */
+ *  末字符挤到下一行。 */
 function itemLine(left: string, right: string): string {
   const bare = (s: string) => s.replace(/<[^>]+>/g, '');
-  const rightW = Math.max(textWidth(bare(right)), 4);
+  const scale = /<B>|<CB>/.test(right) ? 2 : 1;
+  const rightW = Math.max(textWidth(bare(right)) * scale, 4);
   const fixedLeft = truncate(left, LINE_WIDTH - 1 - rightW);
   const pad = Math.max(
     1,

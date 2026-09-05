@@ -82,6 +82,20 @@ describe('PrinterService (IKBT6N)', () => {
       for (const line of money) expect(w(line)).toBeLessThanOrEqual(31);
     });
 
+    it('实付行放大金额物理宽度不超行宽（2026-09-05 换行回归）', () => {
+      const line = content.split('\n').find((l) => l.startsWith('实付'));
+      expect(line).toBeTruthy();
+      const bare = (line as string).replace(/<[^>]+>/g, '');
+      const m = bare.match(/^实付( +)(\S+)$/);
+      expect(m).toBeTruthy();
+      const wAmount = [...(m as RegExpMatchArray)[2]].reduce(
+        (n, ch) => n + (/[⺀-鿿豈-﫿！-｠　-〿]/.test(ch) ? 2 : 1),
+        0,
+      );
+      // <B> 放大段物理列 ×2：实付(4) + 空格 + 金额×2 ≤ 31
+      expect(4 + (m as RegExpMatchArray)[1].length + wAmount * 2).toBeLessThanOrEqual(31);
+    });
+
     it('金额段含商品金额/配送费/优惠/实付（去尾零）', () => {
       expect(content).toContain('商品金额');
       expect(content).toContain('￥4');
