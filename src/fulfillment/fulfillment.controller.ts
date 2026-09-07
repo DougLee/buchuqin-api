@@ -83,6 +83,21 @@ export class FulfillmentController {
   @Get('tasks/:id') async task(@Req() r: AuthRequest, @Param('id') id: string) {
     return ok(await this.service.task(this.auth(r), id));
   }
+  /** 订阅消息额度上报（IKDQP9）：前端授权 accept N 次后上报，返回最新水位。 */
+  @Post('notify/grant')
+  async notifyGrant(
+    @Req() r: AuthRequest,
+    @Body() b: { count?: number },
+  ) {
+    return ok(
+      await this.service.grantNotifyQuota(this.auth(r), Number(b?.count) || 0),
+    );
+  }
+  /** 订阅消息水位查询（IKDQP9）：额度/低水位/当日推送失败标记。 */
+  @Get('notify/quota')
+  async notifyQuota(@Req() r: AuthRequest) {
+    return ok(await this.service.grantNotifyQuota(this.auth(r), 0));
+  }
   @Post('tasks/:id/actions/:action') async action(
     @Req() r: AuthRequest,
     @Param('id') id: string,

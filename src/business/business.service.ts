@@ -1092,6 +1092,14 @@ export class BusinessService {
       statusText: updated.statusText,
       payableAmount: updated.payableAmount,
     });
+    // IKDQP9：出库待接单 → 订阅消息通知本校区全部骑手（fire-and-forget）
+    void this.push?.notifyRidersOnFirstMile({
+      id: updated.id,
+      campusId: updated.campusId,
+      payableAmount: updated.payableAmount,
+      deliveryMode: updated.deliveryMode,
+      address: updated.address,
+    });
     return this.orderView(updated);
   }
 

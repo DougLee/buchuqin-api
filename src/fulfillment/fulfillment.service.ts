@@ -495,9 +495,39 @@ export class FulfillmentService {
             manager.staffNo,
             `订单 ${pushDone.orderNo} 已到楼下，请准备交接`,
           );
+        // IKDQP9：到楼待交接 → 订阅消息通知该楼栋楼长（含全部匹配楼长；
+        // 上面 wecomToStaff 仅企微单通道，此处为微信订阅消息主通道）
+        void this.push?.notifyManagerOnArrive(pushDone.orderId);
       }
     }
     return this.task(staffId, id);
+  }
+  /**
+   * 订阅消息额度上报/查询（IKDQP9，一法两用）：count>0 为授权上报（+N，
+   * 上限 10 防脏数据），count=0 为纯查询。返回水位与当日失败标记——
+   * 骑手端据此决定静默攒几条 & 是否显示低水位提示条。
+   */
+  async grantNotifyQuota(staffId: string, count: number) {
+    const safe = Math.min(10, Math.max(0, Math.floor(Number(count) || 0)));
+    if (safe > 0)
+      await this.db.staff.update({
+        where: { id: staffId },
+        data: { notifyQuota: { increment: safe } },
+      });
+    const s = await this.db.staff.findUniqueOrThrow({
+      where: { id: staffId },
+      select: { notifyQuota: true, notifyQuotaFailedAt: true },
+    });
+    // 北京时间今天 0 点（容器 UTC，+8 偏移后取当日零点）
+    const cnMidnight = new Date(Date.now() + 8 * 3600_000);
+    cnMidnight.setUTCHours(0, 0, 0, 0);
+    return {
+      quota: s.notifyQuota,
+      lowWater: s.notifyQuota < 5,
+      failedToday:
+        !!s.notifyQuotaFailedAt &&
+        s.notifyQuotaFailedAt.getTime() >= cnMidnight.getTime(),
+    };
   }
   async leave(staffId: string) {
     return this.db.leaveRequest.findMany({

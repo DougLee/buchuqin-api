@@ -473,6 +473,13 @@ model Staff {
   building            String
   status              String               @default("online")
   completedToday      Int                  @default(0)
+  /**
+   * 订阅消息额度记账（IKDQP9）：微信无查询 API，自记近似值——授权 accept
+   * 上报 +N / 推送成功 -1 / 43101 清零校准。只做展示不做推送门控。
+   */
+  notifyQuota         Int                  @default(0)
+  /** 最近一次额度耗尽（43101）时间：驱动骑手端低水位提示条（当天维度） */
+  notifyQuotaFailedAt DateTime?
   onTimeRate          Decimal              @db.Decimal(5, 2)
   proofRate           Decimal?             @db.Decimal(5, 2)
   income              Int

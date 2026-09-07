@@ -240,6 +240,183 @@ export class NotificationsService {
     }
   }
 
+  /* ---------- 履约端订阅消息（IKDQP9 骑手/楼长通知，2026-09-07 道哥拍板） ---------- */
+  /** 履约端 access_token 缓存（与用户端独立：不同 appid 各自缓存） */
+  private deliveryToken: { token: string; expiresAt: number } | null = null;
+  /** 「新订单提醒」模板（真机验证过字段：thing6/thing5/thing9/name7/time8） */
+  private static readonly DELIVERY_TMPL =
+    process.env.DELIVERY_NOTIFY_TEMPLATE_ID ??
+    'uqDmjNXOnCQH-QCfLE6ch8vTaDfXtiIxfklqmVv026M';
+
+  private async deliveryAccessToken(): Promise<string> {
+    if (this.deliveryToken && this.deliveryToken.expiresAt > Date.now())
+      return this.deliveryToken.token;
+    const res = await fetch(
+      `https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential` +
+        `&appid=${process.env.WX_APPID_DELIVERY}&secret=${process.env.WX_SECRET_DELIVERY}`,
+    );
+    const body = (await res.json()) as {
+      access_token?: string;
+      expires_in?: number;
+      errcode?: number;
+      errmsg?: string;
+    };
+    if (!body.access_token)
+      throw new Error(`delivery token ${body.errcode} ${body.errmsg}`);
+    this.deliveryToken = {
+      token: body.access_token,
+      expiresAt: Date.now() + ((body.expires_in ?? 7200) - 300) * 1000,
+    };
+    return body.access_token;
+  }
+
+  /**
+   * 单个员工订阅消息推送（IKDQP9）：额度记账随发送回写——成功 -1、
+   * 43101 清零并记 failedAt（驱动骑手端低水位提示）；记账只做展示，
+   * 不做推送门控（永远尝试发送）。
+   */
+  private async sendStaffSubscribe(
+    staffId: string,
+    openid: string,
+    data: Record<string, { value: string }>,
+  ): Promise<'ok' | 'no-quota' | 'fail'> {
+    try {
+      const token = await this.deliveryAccessToken();
+      const res = await fetch(
+        `https://api.weixin.qq.com/cgi-bin/message/subscribe/send?access_token=${token}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            touser: openid,
+            template_id: NotificationsService.DELIVERY_TMPL,
+            page: 'pages/tasks/index',
+            data,
+          }),
+        },
+      );
+      const body = (await res.json()) as { errcode?: number; errmsg?: string };
+      if (body.errcode === 0) {
+        // 成功：额度 -1（地板 0，记账不为负）
+        await this.db.staff.updateMany({
+          where: { id: staffId, notifyQuota: { gt: 0 } },
+          data: { notifyQuota: { decrement: 1 } },
+        });
+        return 'ok';
+      }
+      if (body.errcode === 43101) {
+        // 额度耗尽：清零校准 + 记录失败时间（骑手端低水位提示依据）
+        await this.db.staff.update({
+          where: { id: staffId },
+          data: { notifyQuota: 0, notifyQuotaFailedAt: new Date() },
+        });
+        return 'no-quota';
+      }
+      throw new Error(`${body.errcode} ${body.errmsg}`);
+    } catch (error) {
+      this.logger.warn(
+        `员工订阅消息推送失败（已忽略）staff=${staffId}: ${(error as Error).message}`,
+      );
+      return 'fail';
+    }
+  }
+
+  /**
+   * 出库待接单 → 通知本校区全部骑手（IKDQP9 策略：同校区所有骑手，
+   * 不限在线状态）。fire-and-forget，由业务触发点调用。
+   */
+  async notifyRidersOnFirstMile(order: {
+    id: string;
+    campusId: string;
+    payableAmount: number;
+    deliveryMode: string;
+    address: unknown;
+  }): Promise<void> {
+    try {
+      const riders = await this.db.staff.findMany({
+        where: {
+          campusId: order.campusId,
+          status: { not: 'deleted' },
+          openid: { not: null },
+          role: { in: ['fulltime-rider', 'parttime-rider'] },
+        },
+        select: { id: true, openid: true },
+      });
+      if (!riders.length) return;
+      const addr = (order.address ?? {}) as Record<string, unknown>;
+      const building = String(addr.buildingName ?? '');
+      const room = String(addr.room ?? '');
+      const yuan = (order.payableAmount / 100).toFixed(2);
+      const data = {
+        thing6: { value: `${building}新单待接 ¥${yuan}`.slice(0, 20) },
+        thing5: {
+          value: `待骑手接单 · ${order.deliveryMode === 'instant' ? '即时达' : '2小时达'}`,
+        },
+        thing9: { value: `${building} ${room}`.trim().slice(0, 20) },
+        name7: { value: '不出寝食社' },
+        time8: { value: NotificationsService.fmtCn(new Date()) },
+      };
+      await Promise.all(
+        riders.map((r) =>
+          this.sendStaffSubscribe(r.id, r.openid as string, data),
+        ),
+      );
+    } catch (error) {
+      this.logger.warn(
+        `出库骑手通知失败（已忽略）: ${(error as Error).message}`,
+      );
+    }
+  }
+
+  /**
+   * 到楼下待交接 → 定向通知该楼栋绑定的楼长（IKDQP9）。
+   * 楼长定位：订单地址 buildingId 优先，回退楼栋名匹配。fire-and-forget。
+   */
+  async notifyManagerOnArrive(orderId: string): Promise<void> {
+    try {
+      const order = await this.db.order.findUnique({
+        where: { id: orderId },
+        select: { campusId: true, address: true },
+      });
+      if (!order) return;
+      const addr = (order.address ?? {}) as Record<string, unknown>;
+      const buildingId = String(addr.buildingId ?? '');
+      const buildingName = String(addr.buildingName ?? '');
+      const room = String(addr.room ?? '');
+      const managers = await this.db.staff.findMany({
+        where: {
+          campusId: order.campusId,
+          role: 'building-manager',
+          status: { not: 'deleted' },
+          openid: { not: null },
+          ...(buildingId
+            ? { buildingId }
+            : buildingName
+              ? { building: buildingName }
+              : {}),
+        },
+        select: { id: true, openid: true },
+      });
+      if (!managers.length) return;
+      const data = {
+        thing6: { value: `${buildingName}包裹到楼待交接`.slice(0, 20) },
+        thing5: { value: '骑手已到楼下' },
+        thing9: { value: `${buildingName} ${room}`.trim().slice(0, 20) },
+        name7: { value: '不出寝食社' },
+        time8: { value: NotificationsService.fmtCn(new Date()) },
+      };
+      await Promise.all(
+        managers.map((m) =>
+          this.sendStaffSubscribe(m.id, m.openid as string, data),
+        ),
+      );
+    } catch (error) {
+      this.logger.warn(
+        `到楼楼长通知失败（已忽略）: ${(error as Error).message}`,
+      );
+    }
+  }
+
   /**
    * 北京时间格式化（订阅消息 time/date 字段展示用）。容器跑 UTC，订单客群在
    * 中国（湖工大），直接 +8 偏移避免引时区库；模板示例格式 "2020-09-24 11:20:56"。
