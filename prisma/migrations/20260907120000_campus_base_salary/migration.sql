@@ -1,0 +1,1 @@
+ALTER TABLE "Campus" ADD COLUMN "buildingManagerBaseSalary" INTEGER NOT NULL DEFAULT 0;

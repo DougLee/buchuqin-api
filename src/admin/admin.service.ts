@@ -2659,13 +2659,18 @@ export class AdminService {
     const staffList = await this.db.staff.findMany({
       where: { campusId, status: { not: 'deleted' } },
     });
+    // IKDOIU：楼长底薪改为校区维度后台配置（分，0=无底薪），取代硬编码 50000
+    const campus = await this.db.campus.findUnique({
+      where: { id: campusId },
+      select: { buildingManagerBaseSalary: true },
+    });
+    const managerBaseSalary = campus?.buildingManagerBaseSalary ?? 0;
     for (const s of staffList) {
       const { commissionTotal, adjustment } = await this.commissions.monthly(
         s.id,
         period,
       );
-      // 楼长底薪 500 元 = 50000 分（IK8W5K，金额单位:分）。
-      const baseSalary = s.role === 'building-manager' ? 50000 : 0;
+      const baseSalary = s.role === 'building-manager' ? managerBaseSalary : 0;
       const payable = baseSalary + commissionTotal + adjustment;
       const existing = await this.db.bmBill.findUnique({
         where: { staffId_period: { staffId: s.id, period } },
@@ -2800,6 +2805,10 @@ export class AdminService {
         shortName: body.shortName,
         warehouseName: body.warehouseName,
         address: body.address ?? '',
+        // IKDOIU：楼长月度底薪（分，0=无底薪），settlements 物化时读取
+        ...(body.buildingManagerBaseSalary != null
+          ? { buildingManagerBaseSalary: body.buildingManagerBaseSalary }
+          : {}),
         ...(body.deliveryFeeInstant != null
           ? { deliveryFeeInstant: body.deliveryFeeInstant }
           : {}),
@@ -2838,6 +2847,10 @@ export class AdminService {
           : {}),
         ...(body.address != null ? { address: body.address } : {}),
         ...(body.status ? { status: body.status } : {}),
+        // IKDOIU：楼长月度底薪（分，0=无底薪）
+        ...(body.buildingManagerBaseSalary != null
+          ? { buildingManagerBaseSalary: body.buildingManagerBaseSalary }
+          : {}),
         ...(body.deliveryFeeInstant != null
           ? { deliveryFeeInstant: body.deliveryFeeInstant }
           : {}),

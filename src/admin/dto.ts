@@ -411,6 +411,9 @@ export class CreateCampusDto {
   @Min(0)
   deliveryFeeScheduled?: number;
   @IsOptional() @Type(() => Number) @IsInt() @Min(0) deliveryThreshold?: number;
+  /** 楼长月度底薪（IKDOIU，分）：0 = 无底薪（纯提成+调整）。 */
+  @IsOptional() @Type(() => Number) @IsInt() @Min(0)
+  buildingManagerBaseSalary?: number;
 }
 export class UpdateCampusDto {
   @IsOptional() @IsString() @MinLength(2) @MaxLength(30) name?: string;
@@ -429,6 +432,9 @@ export class UpdateCampusDto {
   @Min(0)
   deliveryFeeScheduled?: number;
   @IsOptional() @Type(() => Number) @IsInt() @Min(0) deliveryThreshold?: number;
+  /** 楼长月度底薪（IKDOIU，分）：0 = 无底薪（纯提成+调整）。 */
+  @IsOptional() @Type(() => Number) @IsInt() @Min(0)
+  buildingManagerBaseSalary?: number;
 }
 
 /** 校区打印机绑定（IKBW0Q）：SN 在机身底部标签/自检页。
