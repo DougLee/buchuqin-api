@@ -587,15 +587,20 @@ export class FulfillmentService {
   }
   /**
    * 我的提成（IK8W5L）：统一从 Commission 记录读取（month=YYYY-MM，缺省当月）。
-   * 底薪口径：楼长 500/月，骑手 0（月度账单 BmBill 同口径）。
+   * 底薪口径（IKDOIU）：校区维度后台配置（Campus.buildingManagerBaseSalary，
+   * 分，0=无底薪），与月度账单 BmBill/settlements 同源——原硬编码 50000 退役。
    */
   async commissions(staffId: string, month?: string) {
     const s = await this.profile(staffId);
     const period = month ?? new Date().toISOString().slice(0, 7);
     const { records, commissionTotal, adjustment } =
       await this.commissionService.monthly(staffId, period);
-    // 楼长底薪 500 元 = 50000 分（IK8W5K，金额单位:分）。
-    const base = s.role === 'building-manager' ? 50000 : 0;
+    const campus = await this.db.campus.findUnique({
+      where: { id: s.campusId },
+      select: { buildingManagerBaseSalary: true },
+    });
+    const base =
+      s.role === 'building-manager' ? campus?.buildingManagerBaseSalary ?? 0 : 0;
     return {
       month: period,
       baseSalary: base,
