@@ -3047,6 +3047,8 @@ export class AdminService {
         // IKDEN2：不传 total = 不限量（null）
         total: body.total ?? null,
         status: 'active',
+        // 支付后推荐（道哥 2026-09-08）：支付成功页领券卡
+        featuredAfterPay: body.featuredAfterPay ?? false,
         expiresAt,
         issued: 0,
         claimed: 0,
@@ -3133,6 +3135,9 @@ export class AdminService {
     if (body.status !== undefined) data.status = body.status;
     if (body.name !== undefined) data.name = body.name;
     if (body.remark !== undefined) data.remark = body.remark;
+    // 支付后推荐（道哥 2026-09-08）：undefined 不动
+    if (body.featuredAfterPay !== undefined)
+      data.featuredAfterPay = body.featuredAfterPay;
     if (amount !== undefined) data.amount = amount;
     if (threshold !== undefined) data.threshold = threshold;
     // total/expiresAt：undefined 不动；null 显式转不限量/长期

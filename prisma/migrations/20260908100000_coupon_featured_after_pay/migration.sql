@@ -1,0 +1,1 @@
+ALTER TABLE "Coupon" ADD COLUMN "featuredAfterPay" BOOLEAN NOT NULL DEFAULT false;

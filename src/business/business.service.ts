@@ -214,6 +214,8 @@ export class BusinessService {
     claimed: number;
     status: string;
     expiresAt: Date | null;
+    /** 支付后推荐（道哥 2026-09-08）：支付成功页领券卡筛选用 */
+    featuredAfterPay: boolean;
   }) {
     return {
       id: coupon.id,
@@ -228,6 +230,7 @@ export class BusinessService {
       remain: coupon.total === null ? null : Math.max(0, coupon.total - coupon.claimed),
       status: coupon.status,
       expiresAt: coupon.expiresAt ? coupon.expiresAt.toISOString() : null,
+      featuredAfterPay: coupon.featuredAfterPay,
     };
   }
   async coupons(userId: string, campusId: string) {

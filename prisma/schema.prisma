@@ -363,6 +363,9 @@ model Coupon {
   total       Int?
   status      String
   expiresAt   DateTime? // null = 长期有效（IKDCVO）
+  // 支付后推荐（道哥 2026-09-08）：勾选的 manual 券出现在支付成功页
+  // 「领券卡」一键领取——支付完成后的复购营销位
+  featuredAfterPay Boolean @default(false)
   issued      Int          @default(0)
   claimed     Int          @default(0)
   used        Int          @default(0)

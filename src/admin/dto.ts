@@ -188,6 +188,8 @@ export class CreateCouponDto {
   @IsOptional() @IsIn(['platform', 'partner']) kind?: string;
   @IsOptional() @IsIn(['manual', 'lottery', 'signup']) trigger?: string;
   @IsOptional() @IsString() @MaxLength(60) remark?: string;
+  /** 支付后推荐（道哥 2026-09-08）：支付成功页领券卡展示 */
+  @IsOptional() @IsBoolean() featuredAfterPay?: boolean;
 }
 /**
  * 优惠券编辑（IKDERC）：全字段可选，至少传一个。
@@ -196,6 +198,8 @@ export class CreateCouponDto {
  */
 export class UpdateCouponDto {
   @IsOptional() @IsIn(['active', 'paused']) status?: 'active' | 'paused';
+  /** 支付后推荐（道哥 2026-09-08）：支付成功页领券卡展示。 */
+  @IsOptional() @IsBoolean() featuredAfterPay?: boolean;
   @IsOptional() @IsString() @MinLength(1) @MaxLength(40) name?: string;
   @IsOptional() @IsString() @MaxLength(60) remark?: string;
   @IsOptional() @ValidateIf((_, v) => v !== null) @Type(() => Number)
