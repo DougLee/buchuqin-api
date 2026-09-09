@@ -13,6 +13,7 @@ export interface AuthUser {
   role:
     | 'user'
     | 'building-manager'
+    | 'intern-building-manager'
     | 'fulltime-rider'
     | 'parttime-rider'
     | 'hq'

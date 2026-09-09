@@ -30,10 +30,14 @@ import {
 export class FulfillmentController {
   constructor(private readonly service: FulfillmentService) {}
   private auth(req: AuthRequest) {
+    // IKEAGE：实习楼长与正式楼长同权（招募审批产出，履约动作全放行）
     if (
-      !['building-manager', 'fulltime-rider', 'parttime-rider'].includes(
-        req.user.role,
-      )
+      ![
+        'building-manager',
+        'intern-building-manager',
+        'fulltime-rider',
+        'parttime-rider',
+      ].includes(req.user.role)
     )
       throw new ForbiddenException('无履约端权限');
     return req.user.id;

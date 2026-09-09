@@ -18,7 +18,10 @@ import {
 import type { LeaveRequestDto, TaskActionDto } from './dto';
 
 export type StaffRole =
-  'building-manager' | 'fulltime-rider' | 'parttime-rider';
+  | 'building-manager'
+  | 'intern-building-manager'
+  | 'fulltime-rider'
+  | 'parttime-rider';
 type JsonMap = Record<string, any>;
 /** 渠道推送上下文（IK8W5M）：事务内赋值、提交后发送。 */
 interface PushContext {

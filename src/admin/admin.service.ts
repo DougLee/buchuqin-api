@@ -2133,9 +2133,11 @@ export class AdminService {
     const roleText =
       body.role === 'building-manager'
         ? `${buildingName}楼长`
-        : body.role === 'fulltime-rider'
-          ? '全职配送员'
-          : '兼职配送员';
+        : body.role === 'intern-building-manager'
+          ? `${buildingName}实习楼长`
+          : body.role === 'fulltime-rider'
+            ? '全职配送员'
+            : '兼职配送员';
     const staff = await this.db.staff.create({
       data: {
         campusId,
@@ -2240,9 +2242,11 @@ export class AdminService {
       data.roleText =
         role === 'building-manager'
           ? `${buildingName}楼长`
-          : role === 'fulltime-rider'
-            ? '全职配送员'
-            : '兼职配送员';
+          : role === 'intern-building-manager'
+            ? `${buildingName}实习楼长`
+            : role === 'fulltime-rider'
+              ? '全职配送员'
+              : '兼职配送员';
     }
     const after = await this.db.staff.update({ where: { id }, data });
     await this.audit(
