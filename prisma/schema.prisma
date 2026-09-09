@@ -661,6 +661,8 @@ model RecruitingApplication {
   idCardNo     String    @default("")
   /** 后台补录身份证照片 URL 数组 */
   idCardImages Json?
+  /** 运营备注（面试评价等，admin 补录；与候选人自我介绍 note 相互独立） */
+  staffRemark  String    @default("")
   /** 审批通过创建的实习楼长 */
   staffId      String?
   auditBy      String    @default("")

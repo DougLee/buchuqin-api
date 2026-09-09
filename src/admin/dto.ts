@@ -490,7 +490,9 @@ export class UpsertWheelDto {
 export class UpdateRecruitApplicationDto {
   @IsOptional() @IsString() @MaxLength(30) idCardNo?: string;
   @IsOptional() @IsArray() @IsString({ each: true }) idCardImages?: string[];
-  /** 报名备注（运营视角） */
+  /** 运营备注（面试评价等，admin 独立字段；候选人自我介绍在 note 不经此处） */
+  @IsOptional() @IsString() @MaxLength(200) staffRemark?: string;
+  /** @deprecated 兼容旧调用（实为运营备注误用），保存接口已切换 staffRemark */
   @IsOptional() @IsString() @MaxLength(200) note?: string;
 }
 /** 拒绝报名（IKEAGE）：原因 C 端进度页可见。 */

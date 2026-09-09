@@ -4113,7 +4113,11 @@ export class AdminService {
       data: {
         idCardNo: body.idCardNo === undefined ? undefined : body.idCardNo.trim(),
         idCardImages: body.idCardImages as unknown as Prisma.InputJsonValue,
-        note: body.note === undefined ? undefined : body.note.trim(),
+        // IKEAGE：运营备注独立字段（原误绑候选人 note，已切分）
+        staffRemark:
+          body.staffRemark === undefined
+            ? undefined
+            : body.staffRemark.trim(),
       },
     });
     await this.audit(
@@ -4121,8 +4125,8 @@ export class AdminService {
       'recruit.update',
       'recruitingApplication',
       id,
-      { idCardNo: found.idCardNo, note: found.note },
-      { idCardNo: updated.idCardNo, note: updated.note },
+      { idCardNo: found.idCardNo, staffRemark: found.staffRemark },
+      { idCardNo: updated.idCardNo, staffRemark: updated.staffRemark },
       found.campusId,
     );
     return updated;
