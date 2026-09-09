@@ -60,6 +60,8 @@ import {
   AuditPurchaseRequestDto,
   UpdateAccountDto,
   UpdateBannerDto,
+  UpdateRecruitApplicationDto,
+  RejectRecruitApplicationDto,
   UpdateBuildingDto,
   UpdateCampusDto,
   UpdatePromotionDto,
@@ -1443,6 +1445,107 @@ export class AdminController {
         req.user.role,
       ),
       '账号已删除',
+    );
+  }
+
+  /* ---------- 楼长招募（IKEAGE 2026-09-09）：报名列表 → 面试审批 → 实习楼长 ---------- */
+  @Get('recruit-applications')
+  @ApiOperation({
+    summary:
+      '楼长招募报名列表（?status Tab 过滤、?campus 跨校区视角、?keyword 姓名/手机号；统一分页包裹）',
+  })
+  async recruitApplications(
+    @Req() req: AuthRequest,
+    @Query('status') status?: string,
+    @Query('campus') campus?: string,
+    @Query('keyword') keyword?: string,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+  ) {
+    this.authorize(req, 'recruit');
+    return ok(
+      paginate(
+        await this.service.recruitApplications(
+          this.campusScope(req, campus),
+          status,
+          keyword,
+        ),
+        page,
+        pageSize,
+        keyword,
+      ),
+    );
+  }
+  /** 状态 Tab 计数（IKEAGE）：pending/interviewing/approved/rejected。 */
+  @Get('recruit-applications/status-counts')
+  async recruitStatusCounts(
+    @Req() req: AuthRequest,
+    @Query('campus') campus?: string,
+  ) {
+    this.authorize(req, 'recruit');
+    return ok(
+      await this.service.recruitStatusCounts(this.campusScope(req, campus)),
+    );
+  }
+  /** 资料补录（IKEAGE）：身份证号/照片/运营备注，随时可补不占状态机。 */
+  @Patch('recruit-applications/:id')
+  async updateRecruitApplication(
+    @Req() req: AuthRequest,
+    @Param('id') id: string,
+    @Body() body: UpdateRecruitApplicationDto,
+  ) {
+    this.authorize(req, 'recruit', 'write');
+    return ok(
+      await this.service.updateRecruitApplication(
+        id,
+        body,
+        req.user.id,
+        this.campusScope(req),
+      ),
+    );
+  }
+  /** 待联系 → 面试中（IKEAGE）。 */
+  @Post('recruit-applications/:id/transition')
+  async recruitTransition(@Req() req: AuthRequest, @Param('id') id: string) {
+    this.authorize(req, 'recruit', 'write');
+    return ok(
+      await this.service.recruitTransition(
+        id,
+        req.user.id,
+        this.campusScope(req),
+      ),
+      '已进入面试',
+    );
+  }
+  /** 拒绝报名（IKEAGE）：原因 C 端进度页可见。 */
+  @Post('recruit-applications/:id/reject')
+  async recruitReject(
+    @Req() req: AuthRequest,
+    @Param('id') id: string,
+    @Body() body: RejectRecruitApplicationDto,
+  ) {
+    this.authorize(req, 'recruit', 'write');
+    return ok(
+      await this.service.recruitReject(
+        id,
+        body.reason,
+        req.user.id,
+        this.campusScope(req),
+      ),
+      '已拒绝',
+    );
+  }
+  /** 审批通过（IKEAGE）：事务创建实习楼长（工号 IBM-xxx 自动生成）并关联。 */
+  @Post('recruit-applications/:id/approve')
+  async recruitApprove(@Req() req: AuthRequest, @Param('id') id: string) {
+    this.authorize(req, 'recruit', 'write');
+    return ok(
+      await this.service.recruitApprove(
+        id,
+        req.user.id,
+        this.campusScope(req),
+      ),
+      '已通过并创建实习楼长',
     );
   }
 }

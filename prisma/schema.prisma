@@ -35,6 +35,7 @@ model Campus {
   printers             Printer[]
   lotteryWheel         LotteryWheel?
   purchaseRequests     PurchaseRequest[]
+  recruitApplications  RecruitingApplication[]
 }
 
 /**
@@ -141,6 +142,7 @@ model User {
   afterSales    AfterSale[]
   refunds       Refund[]
   userCoupons   UserCoupon[]
+  recruitApplications RecruitingApplication[]
 }
 
 model Category {
@@ -630,6 +632,45 @@ model LotteryWheel {
   updatedAt DateTime @updatedAt
 
   draws LotteryDraw[]
+}
+
+/**
+ * 楼长招募报名（IKEAGE，2026-09-09）：C 端报名（绑用户一人一档，校区自由选）
+ * → 后台联系面试/补录身份证 → 审批：通过创建实习楼长（staffId 关联），
+ * 拒绝记原因（C 端可见可重报）。身份证仅后台补录，C 端不采集。
+ */
+model RecruitingApplication {
+  id           String    @id @default(cuid())
+  userId       String
+  user         User      @relation(fields: [userId], references: [id])
+  campusId     String
+  campus       Campus    @relation(fields: [campusId], references: [id])
+  /** 报名楼栋 id（报名时所选校区下的楼栋） */
+  buildingId   String
+  /** 楼栋名快照（后台楼栋调整后报名记录仍可读） */
+  buildingName String
+  name         String
+  phone        String
+  /** 自我介绍（选填） */
+  note         String    @default("")
+  /// pending 待联系 | interviewing 面试中 | approved 已通过 | rejected 已拒绝
+  status       String    @default("pending")
+  /** 拒绝原因（C 端进度页展示） */
+  rejectReason String    @default("")
+  /** 后台补录身份证号（C 端不采集） */
+  idCardNo     String    @default("")
+  /** 后台补录身份证照片 URL 数组 */
+  idCardImages Json?
+  /** 审批通过创建的实习楼长 */
+  staffId      String?
+  auditBy      String    @default("")
+  auditByName  String    @default("")
+  auditedAt    DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([campusId, status])
+  @@index([userId, status])
 }
 
 /**
