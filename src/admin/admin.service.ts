@@ -39,6 +39,7 @@ import type {
   StocktakeDto,
   UpdateAccountDto,
   UpdateBannerDto,
+  UpdateRecruitApplicationDto,
   UpdateBuildingDto,
   UpdateCategoryDto,
   UpdateCommissionRuleDto,
@@ -4006,6 +4007,235 @@ export class AdminService {
   /** 审计留痕（全局 ~49 处调用）：写入失败只 warn 不抛——业务更新在审计前
    *  已提交，审计故障不应把成功的操作变成 500（IKC1AA「更新报错但实际
    *  已生效」的假报错即此形状）。 */
+  /* ---------- 楼长招募（IKEAGE，2026-09-09）：C 端报名 → 面试审批 → 实习楼长 ---------- */
+  /** 报名列表：campusId 空串=不限（hq/admin 跨校区视角）；附校区名与通过后的工号。 */
+  async recruitApplications(
+    campusId: string,
+    status?: string,
+    keyword?: string,
+  ) {
+    const xs = await this.db.recruitingApplication.findMany({
+      where: {
+        ...(campusId ? { campusId } : {}),
+        ...(status ? { status } : {}),
+        ...(keyword
+          ? {
+              OR: [
+                { name: { contains: keyword } },
+                { phone: { contains: keyword } },
+              ],
+            }
+          : {}),
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    const campuses = await this.db.campus.findMany({
+      where: { status: { not: 'official' } },
+      select: { id: true, name: true, shortName: true },
+    });
+    const nameById = new Map(
+      campuses.map((c) => [c.id, c.shortName || c.name]),
+    );
+    // approved 行附带工号（列表直接展示，不必逐行开详情）
+    const staffIds = xs.filter((x) => x.staffId).map((x) => x.staffId!);
+    const staffByid = staffIds.length
+      ? new Map(
+          (
+            await this.db.staff.findMany({
+              where: { id: { in: staffIds } },
+              select: { id: true, staffNo: true },
+            })
+          ).map((s) => [s.id, s.staffNo]),
+        )
+      : new Map<string, string>();
+    return xs.map((x) => ({
+      ...x,
+      campusName: nameById.get(x.campusId) ?? '',
+      staffNo: x.staffId ? (staffByid.get(x.staffId) ?? '') : '',
+    }));
+  }
+
+  /** 状态 Tab 计数（IKEAGE）：pending/interviewing/approved/rejected。 */
+  async recruitStatusCounts(campusId: string) {
+    const grouped = await this.db.recruitingApplication.groupBy({
+      by: ['status'],
+      where: campusId ? { campusId } : {},
+      _count: true,
+    });
+    return Object.fromEntries(grouped.map((g) => [g.status, g._count]));
+  }
+
+  /** 资料补录（IKEAGE）：身份证号/照片/运营备注随时可补，不占状态机。 */
+  async updateRecruitApplication(
+    id: string,
+    body: UpdateRecruitApplicationDto,
+    operator: string,
+    campusId: string,
+  ) {
+    const found = campusId
+      ? await this.db.recruitingApplication.findFirst({
+          where: { id, campusId },
+        })
+      : await this.db.recruitingApplication.findUnique({ where: { id } });
+    if (!found) throw new NotFoundException('报名不存在');
+    const updated = await this.db.recruitingApplication.update({
+      where: { id },
+      data: {
+        idCardNo: body.idCardNo === undefined ? undefined : body.idCardNo.trim(),
+        idCardImages: body.idCardImages as unknown as Prisma.InputJsonValue,
+        note: body.note === undefined ? undefined : body.note.trim(),
+      },
+    });
+    await this.audit(
+      operator,
+      'recruit.update',
+      'recruitingApplication',
+      id,
+      { idCardNo: found.idCardNo, note: found.note },
+      { idCardNo: updated.idCardNo, note: updated.note },
+      found.campusId,
+    );
+    return updated;
+  }
+
+  /** 待联系 → 面试中（运营已联系上候选人）。 */
+  async recruitTransition(
+    id: string,
+    operator: string,
+    campusId: string,
+  ) {
+    const found = campusId
+      ? await this.db.recruitingApplication.findFirst({
+          where: { id, campusId },
+        })
+      : await this.db.recruitingApplication.findUnique({ where: { id } });
+    if (!found) throw new NotFoundException('报名不存在');
+    if (found.status !== 'pending')
+      throw new BadRequestException('仅「待联系」状态可进入面试');
+    const updated = await this.db.recruitingApplication.update({
+      where: { id },
+      data: { status: 'interviewing' },
+    });
+    await this.audit(
+      operator,
+      'recruit.interview',
+      'recruitingApplication',
+      id,
+      { status: found.status },
+      { status: updated.status },
+      found.campusId,
+    );
+    return updated;
+  }
+
+  /** 拒绝（IKEAGE）：原因 C 端进度页展示；被拒后候选人可重新报名。 */
+  async recruitReject(
+    id: string,
+    reason: string,
+    operator: string,
+    campusId: string,
+  ) {
+    if (!reason.trim())
+      throw new BadRequestException('请填写拒绝原因（候选人可见）');
+    const found = campusId
+      ? await this.db.recruitingApplication.findFirst({
+          where: { id, campusId },
+        })
+      : await this.db.recruitingApplication.findUnique({ where: { id } });
+    if (!found) throw new NotFoundException('报名不存在');
+    if (found.status !== 'pending' && found.status !== 'interviewing')
+      throw new BadRequestException('该报名已结束流程');
+    const auditName =
+      (await this.operatorNames([operator])).get(operator) ?? '';
+    const updated = await this.db.recruitingApplication.update({
+      where: { id },
+      data: {
+        status: 'rejected',
+        rejectReason: reason.trim(),
+        auditBy: operator,
+        auditByName: auditName,
+        auditedAt: new Date(),
+      },
+    });
+    await this.audit(
+      operator,
+      'recruit.reject',
+      'recruitingApplication',
+      id,
+      { status: found.status },
+      { status: 'rejected', reason: reason.trim() },
+      found.campusId,
+    );
+    return updated;
+  }
+
+  /**
+   * 审批通过（IKEAGE）：事务内生成工号 IBM-{序号} + 创建实习楼长
+   * （campusId=报名校区，非操作者校区；与正式楼长同权同价，仅角色标记）。
+   */
+  async recruitApprove(id: string, operator: string, campusId: string) {
+    const result = await this.db.$transaction(async (tx) => {
+      const found = campusId
+        ? await tx.recruitingApplication.findFirst({
+            where: { id, campusId },
+          })
+        : await tx.recruitingApplication.findUnique({ where: { id } });
+      if (!found) throw new NotFoundException('报名不存在');
+      if (found.status === 'approved')
+        throw new BadRequestException('该报名已通过');
+      if (found.status === 'rejected')
+        throw new BadRequestException('该报名已被拒绝');
+      // 工号：IBM-{3位序号}，同前缀最大 +1（跨校区唯一序号段）
+      const last = await tx.staff.findFirst({
+        where: { staffNo: { startsWith: 'IBM-' } },
+        orderBy: { staffNo: 'desc' },
+        select: { staffNo: true },
+      });
+      const seq = last ? Number(last.staffNo.slice(4)) + 1 : 1;
+      const staffNo = `IBM-${String(seq).padStart(3, '0')}`;
+      const staff = await tx.staff.create({
+        data: {
+          campusId: found.campusId,
+          name: found.name,
+          role: 'intern-building-manager',
+          roleText: `${found.buildingName}实习楼长`,
+          staffNo,
+          buildingId: found.buildingId,
+          building: found.buildingName,
+          status: 'online',
+          onTimeRate: 100,
+          income: 0,
+        },
+      });
+      const account = await tx.adminAccount.findUnique({
+        where: { id: operator },
+        select: { nickname: true, username: true },
+      });
+      const auditName = account?.nickname || account?.username || '';
+      const application = await tx.recruitingApplication.update({
+        where: { id },
+        data: {
+          status: 'approved',
+          staffId: staff.id,
+          auditBy: operator,
+          auditByName: auditName,
+          auditedAt: new Date(),
+        },
+      });
+      return { application, staff };
+    });
+    await this.audit(
+      operator,
+      'recruit.approve',
+      'recruitingApplication',
+      id,
+      { status: 'pending' },
+      { status: 'approved', staffNo: result.staff.staffNo },
+      result.application.campusId,
+    );
+    return result;
+  }
+
   private async audit(
     operator: string,
     action: string,

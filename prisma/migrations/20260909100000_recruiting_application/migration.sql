@@ -21,7 +21,15 @@ CREATE TABLE "RecruitingApplication" (
 
     CONSTRAINT "RecruitingApplication_pkey" PRIMARY KEY ("id")
 );
+
+-- CreateTable
 ALTER TABLE "RecruitingApplication" ADD CONSTRAINT "RecruitingApplication_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- CreateTable
 ALTER TABLE "RecruitingApplication" ADD CONSTRAINT "RecruitingApplication_campusId_fkey" FOREIGN KEY ("campusId") REFERENCES "Campus"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- CreateIndex
 CREATE INDEX "RecruitingApplication_campusId_status_idx" ON "RecruitingApplication"("campusId", "status");
+
+-- CreateIndex
 CREATE INDEX "RecruitingApplication_userId_status_idx" ON "RecruitingApplication"("userId", "status");
