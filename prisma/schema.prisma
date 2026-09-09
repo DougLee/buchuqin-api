@@ -291,6 +291,11 @@ model Banner {
   content     String?
   // 展示位置（IKA57F）：home 首页轮播 / pay-success 支付成功页广告位
   placement   String  @default("home")
+  // 点击跳转（IKE9YC，2026-09-09）：none 无 / page 站内页面（linkUrl=页面
+  // 路径，支持带参）；预留 miniapp 跳转小程序（本期不做）。配置了跳转
+  // 优先于图文详情（detailImage/content 不再决定点击）
+  linkType    String  @default("none")
+  linkUrl     String  @default("")
   sort        Int     @default(0)
   status      String  @default("active")
 }

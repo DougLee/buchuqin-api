@@ -125,6 +125,10 @@ export class CreateBannerDto {
   /** 展示位置（IKA57F）：缺省 home 首页轮播。 */
   @IsOptional() @IsIn(['home', 'pay-success']) placement?:
     'home' | 'pay-success';
+  /** 点击跳转（IKE9YC）：none 无 / page 站内页面；跳转优先于图文详情。 */
+  @IsOptional() @IsIn(['none', 'page']) linkType?: 'none' | 'page';
+  /** 站内页面路径（支持带参，如 pages/coupons/index、pages/product/detail?id=x）。 */
+  @IsOptional() @IsString() @MaxLength(200) linkUrl?: string;
   @IsOptional() @Type(() => Number) @IsInt() sort?: number;
   /** 投放校区（IKAJSL Banner 归总部）：空串 = 全部校区；仅 hq 操作者生效。 */
   @IsOptional() @IsString() campusId?: string;
@@ -150,6 +154,10 @@ export class UpdateBannerDto {
   /** 展示位置（IKA57F）：undefined 跳过更新。 */
   @IsOptional() @IsIn(['home', 'pay-success']) placement?:
     'home' | 'pay-success';
+  /** 点击跳转（IKE9YC）：undefined 跳过；跳转优先于图文详情。 */
+  @IsOptional() @IsIn(['none', 'page']) linkType?: 'none' | 'page';
+  /** 站内页面路径：空串语义清空。 */
+  @IsOptional() @IsString() @MaxLength(200) linkUrl?: string;
   @IsOptional() @Type(() => Number) @IsInt() sort?: number;
   @IsOptional() @IsIn(['active', 'hidden']) status?: 'active' | 'hidden';
 }

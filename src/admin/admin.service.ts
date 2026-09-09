@@ -723,6 +723,9 @@ export class AdminService {
     const campus = await this.db.campus.findUnique({ where: { id: campusId } });
     if (!campus || campus.status === 'official')
       throw new BadRequestException('投放校区不存在');
+    // IKE9YC：page 跳转必须带路径（400 拦住后台漏填）
+    if (body.linkType === 'page' && !body.linkUrl?.trim())
+      throw new BadRequestException('配置了站内跳转，需填写页面路径');
     const banner = await this.db.banner.create({
       data: {
         campusId,
@@ -736,6 +739,9 @@ export class AdminService {
         detailImage: body.detailImage || null,
         // IKA57F：展示位置，缺省首页轮播
         placement: body.placement ?? 'home',
+        // IKE9YC：点击跳转，none=不跳（存量行为）；跳转优先于图文详情
+        linkType: body.linkType ?? 'none',
+        linkUrl: body.linkUrl?.trim() ?? '',
         sort: body.sort ?? 0,
       },
     });
@@ -761,6 +767,9 @@ export class AdminService {
       ? await this.db.banner.findFirst({ where: { id, campusId } })
       : await this.db.banner.findUnique({ where: { id } });
     if (!found) throw new NotFoundException('Banner 不存在');
+    // IKE9YC：page 跳转必须带路径（undefined 跳过校验，仅显式提交时拦）
+    if (body.linkType === 'page' && !body.linkUrl?.trim())
+      throw new BadRequestException('配置了站内跳转，需填写页面路径');
     const banner = await this.db.banner.update({
       where: { id },
       // Prisma 惯例：undefined 跳过更新；image 用空串语义清空（DTO 已限制非空 URL）
@@ -777,6 +786,9 @@ export class AdminService {
           body.detailImage === undefined ? undefined : body.detailImage || null,
         // IKA57F：undefined 跳过
         placement: body.placement,
+        // IKE9YC：undefined 跳过；linkType 显式 none 或 linkUrl 空串即清空跳转
+        linkType: body.linkType,
+        linkUrl: body.linkUrl === undefined ? undefined : body.linkUrl.trim(),
         sort: body.sort,
         status: body.status,
       },
