@@ -83,7 +83,8 @@ export class CreateAfterSalesDto {
 /** 抽奖（IKD6FB）：无请求体——每日 1 次，服务端判定资格与结果。 */
 export class DrawWheelDto {}
 
-/** 楼长报名（IKEAGE）：校区自由选（开放中），楼栋属该校区；一人一条在途 */
+/** 楼长报名（IKEAGE）：校区自由选（开放中），楼栋属该校区；一人一条在途。
+ *  审核前修改复用同结构（PATCH /recruit/application）。 */
 export class RecruitApplyDto {
   @IsString() campusId!: string;
   @IsString() buildingId!: string;

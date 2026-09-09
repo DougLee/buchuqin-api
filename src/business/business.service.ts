@@ -1807,4 +1807,45 @@ export class BusinessService {
       },
     });
   }
+
+
+  /** 审核前修改报名（IKEAGE）：仅 pending/interviewing 可改；校验同新建 */
+  async recruitUpdate(
+    userId: string,
+    body: {
+      campusId: string;
+      buildingId: string;
+      name: string;
+      phone: string;
+      note?: string;
+    },
+  ) {
+    const app = await this.db.recruitingApplication.findFirst({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (!app || !['pending', 'interviewing'].includes(app.status))
+      throw new BadRequestException('当前状态不可修改报名信息');
+    const campus = await this.db.campus.findFirst({
+      where: { id: body.campusId, status: 'active' },
+    });
+    if (!campus) throw new BadRequestException('校区不存在或未开放');
+    const building = await this.db.building.findFirst({
+      where: { id: body.buildingId, campusId: body.campusId, status: 'active' },
+    });
+    if (!building) throw new BadRequestException('楼栋不存在，请重新选择');
+    const name = body.name?.trim() ?? '';
+    if (!name) throw new BadRequestException('请填写姓名');
+    return this.db.recruitingApplication.update({
+      where: { id: app.id },
+      data: {
+        campusId: body.campusId,
+        buildingId: building.id,
+        buildingName: building.name,
+        name,
+        phone: body.phone?.trim() ?? app.phone,
+        note: (body.note ?? '').trim().slice(0, 200),
+      },
+    });
+  }
 }

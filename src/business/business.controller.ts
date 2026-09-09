@@ -367,4 +367,13 @@ export class BusinessController {
   ) {
     return ok(await this.service.recruitApply(req.user.id, dto));
   }
+  /** 审核前修改报名（IKEAGE）：仅待联系/面试中可改，body 同报名 */
+  @Patch('recruit/application')
+  @ApiOperation({ summary: '修改楼长报名（IKEAGE，审核前）' })
+  async recruitUpdate(
+    @Req() req: AuthRequest,
+    @Body() dto: RecruitApplyDto,
+  ) {
+    return ok(await this.service.recruitUpdate(req.user.id, dto));
+  }
 }
