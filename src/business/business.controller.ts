@@ -335,9 +335,13 @@ export class BusinessController {
   @Get('notifications/unread-count') async unread(@Req() req: AuthRequest) {
     return ok(await this.service.unreadNotificationCount(req.user.id));
   }
-  /** 进群二维码（IKAJSZ）：默认地址楼栋群 → 校级大群 → null（前端隐藏入口）。 */
-  @Get('wechat-group') async wechatGroup(@Req() req: AuthRequest) {
-    return ok(await this.service.wechatGroup(req.user.id));
+  /** 进群二维码（IKAJSZ）：当前地址楼栋群（?buildingId= 覆盖，缺省默认地址）
+   *  → 校级大群 → null（前端隐藏入口）。 */
+  @Get('wechat-group') async wechatGroup(
+    @Req() req: AuthRequest,
+    @Query('buildingId') buildingId?: string,
+  ) {
+    return ok(await this.service.wechatGroup(req.user.id, buildingId || undefined));
   }
 
   /** 转盘信息（IKD6FB）：首页入口显隐 + 转盘页奖位/今日已抽，两处共用。 */

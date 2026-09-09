@@ -1469,16 +1469,20 @@ export class BusinessService {
    * 进群二维码（IKAJSZ）：三级回落——默认地址的楼栋群 → 校级大群 → null。
    * Address 无 createdAt，默认地址按 isDefault 优先取。
    */
-  async wechatGroup(userId: string) {
+  async wechatGroup(userId: string, buildingIdOverride?: string) {
     const user = await this.db.user.findUnique({
       where: { id: userId },
       select: { campusId: true },
     });
     if (!user) return null;
-    const address = await this.db.address.findFirst({
-      where: { userId },
-      orderBy: { isDefault: 'desc' },
-    });
+    // 道哥 2026-09-09：群码跟随「当前收货地址」——前端显式传 buildingId
+    // （selectedAddressId 对应地址）优先；缺省回退默认地址原逻辑。
+    const address = buildingIdOverride
+      ? { buildingId: buildingIdOverride }
+      : await this.db.address.findFirst({
+          where: { userId },
+          orderBy: { isDefault: 'desc' },
+        });
     const group = address
       ? await this.db.wechatGroup.findUnique({
           where: {
