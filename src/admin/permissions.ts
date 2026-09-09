@@ -23,7 +23,8 @@ export type AdminSection =
   | 'audit'
   | 'accounts'
   | 'users'
-  | 'wechat-groups';
+  | 'wechat-groups'
+  | 'recruit';
 export type AdminAccess = 'read' | 'write';
 
 const ALL: AdminRole[] = ['admin', 'operations', 'warehouse', 'finance'];
@@ -95,6 +96,9 @@ export const ADMIN_MATRIX: Record<
   users: { read: [...OPS, 'hq'], write: [] },
   // 微信群二维码（IKAJSY）：组织营销域（校区自主）。
   'wechat-groups': { read: OPS, write: OPS },
+  // 楼长招募（IKEAGE 2026-09-09）：运营域（联系/面试/审批），与 staff 同口径；
+  // 报名校区自由选，数据范围走 campusScope（hq/admin 跨校区、运营本校区）。
+  recruit: { read: OPS, write: OPS },
 };
 
 /** 判断后台角色对板块的读/写权限。非后台角色一律 false。 */

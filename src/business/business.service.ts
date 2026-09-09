@@ -1743,4 +1743,68 @@ export class BusinessService {
     if (!coupon || coupon.campusId !== campusId) return null;
     return this.grantCouponInner(tx, userId, couponId, { repeat: true });
   }
+
+  /* ---------- 楼长招募（IKEAGE，2026-09-09）：C 端报名，一人一条在途 ---------- */
+  /** 我的报名（最新一条，任意状态）：C 端报名页即进度页；approved 附工号 */
+  async recruitApplication(userId: string) {
+    const app = await this.db.recruitingApplication.findFirst({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (!app) return null;
+    let staffNo = '';
+    if (app.status === 'approved' && app.staffId) {
+      const staff = await this.db.staff.findUnique({
+        where: { id: app.staffId },
+        select: { staffNo: true },
+      });
+      staffNo = staff?.staffNo ?? '';
+    }
+    return { ...app, staffNo };
+  }
+
+  /** 报名：在途（待联系/面试中/已通过）拦截；校区开放中；楼栋属该校区 */
+  async recruitApply(
+    userId: string,
+    body: {
+      campusId: string;
+      buildingId: string;
+      name: string;
+      phone: string;
+      note?: string;
+    },
+  ) {
+    const active = await this.db.recruitingApplication.findFirst({
+      where: { userId, status: { in: ['pending', 'interviewing', 'approved'] } },
+      select: { status: true },
+    });
+    if (active)
+      throw new BadRequestException(
+        active.status === 'approved'
+          ? '你已是楼长，无需重复报名'
+          : '已有报名在审核中，请耐心等待',
+      );
+    const campus = await this.db.campus.findFirst({
+      where: { id: body.campusId, status: 'active' },
+    });
+    if (!campus) throw new BadRequestException('校区不存在或未开放');
+    const building = await this.db.building.findFirst({
+      where: { id: body.buildingId, campusId: body.campusId, status: 'active' },
+    });
+    if (!building) throw new BadRequestException('楼栋不存在，请重新选择');
+    const name = body.name?.trim() ?? '';
+    const phone = body.phone?.trim() ?? '';
+    if (!name) throw new BadRequestException('请填写姓名');
+    return this.db.recruitingApplication.create({
+      data: {
+        userId,
+        campusId: body.campusId,
+        buildingId: building.id,
+        buildingName: building.name,
+        name,
+        phone,
+        note: (body.note ?? '').trim().slice(0, 200),
+      },
+    });
+  }
 }

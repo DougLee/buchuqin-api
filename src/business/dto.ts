@@ -82,3 +82,12 @@ export class CreateAfterSalesDto {
 
 /** 抽奖（IKD6FB）：无请求体——每日 1 次，服务端判定资格与结果。 */
 export class DrawWheelDto {}
+
+/** 楼长报名（IKEAGE）：校区自由选（开放中），楼栋属该校区；一人一条在途 */
+export class RecruitApplyDto {
+  @IsString() campusId!: string;
+  @IsString() buildingId!: string;
+  @IsString() @MaxLength(20) name!: string;
+  @Matches(/^1\d{10}$/, { message: '手机号格式不正确' }) phone!: string;
+  @IsOptional() @IsString() @MaxLength(200) note?: string;
+}

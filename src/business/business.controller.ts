@@ -27,7 +27,7 @@ import {
   CreateOrderDto,
   DrawWheelDto,
   UpdateAddressDto,
-  UpdateCartDto,
+  UpdateCartDto, RecruitApplyDto,
 } from './dto';
 @ApiTags('用户端')
 @ApiBearerAuth()
@@ -230,8 +230,12 @@ export class BusinessController {
       await this.service.setDefaultAddress(req.user.id, req.user.campusId, id),
     );
   }
-  @Get('campuses/current/buildings') async buildings(@Req() req: AuthRequest) {
-    return ok(await this.service.buildings(req.user.campusId));
+  @Get('campuses/current/buildings') async buildings(
+    @Req() req: AuthRequest,
+    // IKEAGE：楼长报名页跨校区选楼栋——?campusId= 指定开放中校区（缺省当前）
+    @Query('campusId') campusId?: string,
+  ) {
+    return ok(await this.service.buildings(campusId || req.user.campusId));
   }
   /** 楼栋寝室列表（IKD6FH）：?floor= 选填收窄到某层，供地址四级选择 */
   @Get('campuses/current/buildings/:buildingId/rooms')
@@ -346,5 +350,21 @@ export class BusinessController {
     @Body() _dto: DrawWheelDto,
   ) {
     return ok(await this.service.drawWheel(req.user.id, req.user.campusId));
+  }
+
+  /* ---------- 楼长招募（IKEAGE）：报名页即进度页（banner 自定义路径直达） ---------- */
+  /** 我的报名（最新一条任意状态；approved 附工号供 C 端展示登录指引） */
+  @Get('recruit/application')
+  @ApiOperation({ summary: '我的楼长报名（IKEAGE）' })
+  async recruitApplication(@Req() req: AuthRequest) {
+    return ok(await this.service.recruitApplication(req.user.id));
+  }
+  @Post('recruit/applications')
+  @ApiOperation({ summary: '楼长报名（IKEAGE）' })
+  async recruitApply(
+    @Req() req: AuthRequest,
+    @Body() dto: RecruitApplyDto,
+  ) {
+    return ok(await this.service.recruitApply(req.user.id, dto));
   }
 }

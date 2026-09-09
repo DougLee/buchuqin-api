@@ -485,3 +485,15 @@ export class UpsertWheelDto {
   @Type(() => WheelPrizeDto)
   prizes!: WheelPrizeDto[];
 }
+
+/** 楼长招募资料补录（IKEAGE）：身份证等运营线下收集后代录（C 端不采集）。 */
+export class UpdateRecruitApplicationDto {
+  @IsOptional() @IsString() @MaxLength(30) idCardNo?: string;
+  @IsOptional() @IsArray() @IsString({ each: true }) idCardImages?: string[];
+  /** 报名备注（运营视角） */
+  @IsOptional() @IsString() @MaxLength(200) note?: string;
+}
+/** 拒绝报名（IKEAGE）：原因 C 端进度页可见。 */
+export class RejectRecruitApplicationDto {
+  @IsString() @MaxLength(100) reason!: string;
+}
