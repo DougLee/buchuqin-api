@@ -536,10 +536,40 @@ export class AdminService {
       .sort((a, b) => b.time.localeCompare(a.time))
       .slice(0, 8);
   }
-  async products(campusId: string, statuses?: string[], categoryId?: string) {
+  async products(
+    campusId: string,
+    statuses?: string[],
+    categoryId?: string,
+    // 导入弹窗去重（道哥 2026-09-09）：传操作者本校区 id 时，排除该校区
+    // 已导入（sourceProductId 指向）的官方商品。仅 official-library 端点
+    // 传此参数；官方库管理视角（GET /admin/products view=official）与
+    // 状态计数不受影响，各校区互不干扰。
+    excludeImportedBy?: string,
+  ) {
+    // 先取本校区已导入行指向的官方商品 id 集；为空必须跳过 notIn
+    // （Prisma notIn: [] 会排除全部行）
+    const importedSourceIds = excludeImportedBy
+      ? (
+          await this.db.product.findMany({
+            where: {
+              campusId: excludeImportedBy,
+              sourceProductId: { not: null },
+            },
+            select: { sourceProductId: true },
+          })
+        )
+          .map((x) => x.sourceProductId)
+          .filter((id): id is string => !!id)
+      : [];
     const xs = await this.db.product.findMany({
       // IKD6FG：categoryId 分类筛选（官方库/本校区/库存共用）
-      where: { campusId, ...(categoryId ? { categoryId } : {}) },
+      where: {
+        campusId,
+        ...(categoryId ? { categoryId } : {}),
+        ...(importedSourceIds.length
+          ? { id: { notIn: importedSourceIds } }
+          : {}),
+      },
       orderBy: { sales: 'desc' },
     });
     // IKAJSO「上游已更新」角标：官方库 updatedAt 晚于本校区同步时间即标记

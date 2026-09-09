@@ -180,10 +180,12 @@ export class AdminController {
       await this.service.productStatusCounts(this.productCampus(req, view)),
     );
   }
-  /** 官方库浏览（IKAJSO 导入弹窗）：校区角色只读官方库行，用于搜索+多选导入。 */
+  /** 官方库浏览（IKAJSO 导入弹窗）：校区角色只读官方库行，用于搜索+多选导入；
+   *  2026-09-09 去重：操作者本校区已导入的官方商品不再进候选池（JWT 本校区口径）。 */
   @Get('products/official-library')
   @ApiOperation({
-    summary: '官方商品库列表（校区导入弹窗用，只读；IKC1AB 仅含总部放行的可售商品）',
+    summary:
+      '官方商品库列表（校区导入弹窗用，只读；IKC1AB 仅含总部放行的可售商品；本校区已导入商品自动排除）',
   })
   async officialLibrary(
     @Req() req: AuthRequest,
@@ -194,8 +196,14 @@ export class AdminController {
     this.authorize(req, 'products');
     return ok(
       paginate(
-        // IKC1AB：导入候选池只见总部放行（可售）的商品
-        await this.service.products(OFFICIAL_CAMPUS_ID, ['on-sale']),
+        // IKC1AB：导入候选池只见总部放行（可售）的商品；
+        // 2026-09-09 去重：排除操作者本校区（JWT campusId）已导入的官方商品
+        await this.service.products(
+          OFFICIAL_CAMPUS_ID,
+          ['on-sale'],
+          undefined,
+          req.user.campusId,
+        ),
         page,
         pageSize,
         keyword,
