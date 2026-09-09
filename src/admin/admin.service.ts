@@ -1992,6 +1992,10 @@ export class AdminService {
       { status: after.status, reason: body.reason ?? '' },
       campusId,
     );
+    // 2026-09-09：手动置「已到楼下待交接」与履约端 arrive 同口径——补推该楼栋
+    // 全部楼长/实习楼长订阅消息（fire-and-forget 静默；上方同态早退已兜住幂等）。
+    if (body.status === 'waiting-handover')
+      void this.push?.notifyManagerOnArrive(id);
     return after;
   }
   /* ---------- 库位管理（IKA0VG）：库位字典 CRUD，商品表单下拉消费 ---------- */

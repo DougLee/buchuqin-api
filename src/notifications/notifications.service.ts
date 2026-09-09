@@ -369,8 +369,13 @@ export class NotificationsService {
   }
 
   /**
-   * 到楼下待交接 → 定向通知该楼栋绑定的楼长（IKDQP9）。
-   * 楼长定位：订单地址 buildingId 优先，回退楼栋名匹配。fire-and-forget。
+   * 到楼下待交接（订单进入 waiting-handover，骑手 arrive 触发）→ 通知该楼栋
+   * 绑定的**全部楼长与实习楼长**（2026-09-09 道哥反馈：同楼栋可配多人，
+   * 此前 role 只查 'building-manager' 漏了 intern-building-manager）。
+   * 楼长定位：订单地址快照 buildingId 优先，回退楼栋名匹配
+   * （address JSON = business.service createOrder 时 json(address) 全量
+   * 写入的 Address 模型，字段名 buildingId/buildingName）。fire-and-forget，
+   * 失败静默不阻塞履约主流程。
    */
   async notifyManagerOnArrive(orderId: string): Promise<void> {
     try {
@@ -386,7 +391,7 @@ export class NotificationsService {
       const managers = await this.db.staff.findMany({
         where: {
           campusId: order.campusId,
-          role: 'building-manager',
+          role: { in: ['building-manager', 'intern-building-manager'] },
           status: { not: 'deleted' },
           openid: { not: null },
           ...(buildingId

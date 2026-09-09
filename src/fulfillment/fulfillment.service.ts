@@ -479,10 +479,11 @@ export class FulfillmentService {
       });
       if (pushDone.notifyManager) {
         const addr = pushDone.address as JsonMap;
+        // 2026-09-09：企微通道接收人角色与订阅消息对齐（含实习楼长）。
         const manager = await this.db.staff.findFirst({
           where: {
             campusId: pushDone.campusId,
-            role: 'building-manager',
+            role: { in: ['building-manager', 'intern-building-manager'] },
             status: { not: 'deleted' },
             OR: [
               { buildingId: String(addr?.buildingId ?? '') },
