@@ -378,6 +378,33 @@ export class NotificationsService {
    * 失败静默不阻塞履约主流程。
    */
   async notifyManagerOnArrive(orderId: string): Promise<void> {
+    await this.notifyBuildingManagers(
+      orderId,
+      '骑手已到楼下',
+      (b) => `${b}包裹到楼待交接`,
+      '到楼楼长通知失败（已忽略）',
+    );
+  }
+
+  /** 配送中通知（道哥 2026-09-09）：骑手 depart 进入 first-mile 即提醒
+   *  楼长「包裹已出发」，与「到楼下」构成双时点提醒。 */
+  async notifyManagersOnDepart(orderId: string): Promise<void> {
+    await this.notifyBuildingManagers(
+      orderId,
+      '骑手已取件出发',
+      (b) => `${b}包裹配送中`,
+      '配送中楼长通知失败（已忽略）',
+    );
+  }
+
+  /** 楼栋楼长通知（IKEAGE 双角色）：按订单地址楼栋匹配全部楼长/实习楼长，
+   *  逐个走订阅消息（额度记账内部处理）；任何异常静默不阻塞履约。 */
+  private async notifyBuildingManagers(
+    orderId: string,
+    subText: string,
+    headline: (buildingName: string) => string,
+    errorLabel: string,
+  ): Promise<void> {
     try {
       const order = await this.db.order.findUnique({
         where: { id: orderId },
@@ -404,8 +431,8 @@ export class NotificationsService {
       });
       if (!managers.length) return;
       const data = {
-        thing6: { value: `${buildingName}包裹到楼待交接`.slice(0, 20) },
-        thing5: { value: '骑手已到楼下' },
+        thing6: { value: headline(buildingName).slice(0, 20) },
+        thing5: { value: subText },
         thing9: { value: `${buildingName} ${room}`.trim().slice(0, 20) },
         name7: { value: '不出寝食社' },
         time8: { value: NotificationsService.fmtCn(new Date()) },
@@ -416,9 +443,7 @@ export class NotificationsService {
         ),
       );
     } catch (error) {
-      this.logger.warn(
-        `到楼楼长通知失败（已忽略）: ${(error as Error).message}`,
-      );
+      this.logger.warn(`${errorLabel}: ${(error as Error).message}`);
     }
   }
 

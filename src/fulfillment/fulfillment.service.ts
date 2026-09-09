@@ -32,6 +32,8 @@ interface PushContext {
   statusText: string;
   payableAmount: number;
   notifyManager: boolean;
+  /** 道哥 2026-09-09：配送中（first-mile，骑手出发）也通知楼长——双时点提醒 */
+  notifyManagerDepart: boolean;
   campusId: string;
   address: unknown;
 }
@@ -464,6 +466,7 @@ export class FulfillmentService {
           statusText: next.text,
           payableAmount: order.payableAmount,
           notifyManager: action === 'arrive',
+          notifyManagerDepart: action === 'depart',
           campusId: staff.campusId,
           address: order.address,
         };
@@ -503,6 +506,10 @@ export class FulfillmentService {
         // 上面 wecomToStaff 仅企微单通道，此处为微信订阅消息主通道）
         void this.push?.notifyManagerOnArrive(pushDone.orderId);
       }
+      // 道哥 2026-09-09：配送中（骑手出发）也通知楼长——提前准备接货，
+      // 与「到楼下」构成双时点提醒（fire-and-forget 静默）
+      if (pushDone.notifyManagerDepart)
+        void this.push?.notifyManagersOnDepart(pushDone.orderId);
     }
     return this.task(staffId, id);
   }
