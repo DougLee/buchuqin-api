@@ -166,4 +166,107 @@ describe('PrinterService (IKBT6N)', () => {
       expect(body.content).toBe('hello');
     });
   });
+
+  describe('printOrderReceipt 联间间隔（IKFFHO）', () => {
+    const okRes = () =>
+      Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ code: 0, data: 'cloud-id' }),
+      } as Response);
+    beforeEach(() => {
+      process.env.XPYUN_USER = 'u';
+      process.env.XPYUN_USERKEY = 'k';
+      process.env.XPYUN_PRINTER_SN = 'SN123';
+    });
+    afterEach(() => {
+      jest.restoreAllMocks();
+    });
+
+    it('gap=0：copies=2 仍是单次 POST 拼联（存量行为不变）', async () => {
+      const fetchSpy = jest
+        .spyOn(global, 'fetch')
+        .mockImplementation(okRes as never);
+      await service.printOrderReceipt(order, undefined, 2, 0);
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      const body = JSON.parse(
+        (fetchSpy.mock.calls[0][1] as RequestInit).body as string,
+      );
+      // 两联拼一个 content，各自带 <CUT>
+      expect((body.content.match(/<CUT>/g) || []).length).toBe(2);
+      expect(body.content).toContain('商家联');
+      expect(body.content).toContain('客户联');
+    });
+
+    it('gap>0：拆 N 次推送且第二次在 sleep 之后（发送侧延迟）', async () => {
+      const fetchSpy = jest
+        .spyOn(global, 'fetch')
+        .mockImplementation(okRes as never);
+      // 真实 sleep 缩到 10ms 级别不可行——直接监听全局 setTimeout 累计时长
+      const delays: number[] = [];
+      jest.spyOn(global, 'setTimeout').mockImplementation(((cb: () => void, ms?: number) => {
+        delays.push(ms ?? 0);
+        cb();
+        return 0 as never;
+      }) as never);
+      await service.printOrderReceipt(order, undefined, 2, 3);
+      expect(fetchSpy).toHaveBeenCalledTimes(2);
+      // 每联独立 <CUT>，联间不再拼接
+      for (const call of fetchSpy.mock.calls) {
+        const c = JSON.parse((call[1] as RequestInit).body as string).content;
+        expect((c.match(/<CUT>/g) || []).length).toBe(1);
+      }
+      // 2 联只 sleep 1 次，间隔 = gapSeconds × 1000
+      expect(delays).toEqual([3000]);
+      // 第二联（客户联）剥掉库位
+      const second = JSON.parse(
+        (fetchSpy.mock.calls[1][1] as RequestInit).body as string,
+      ).content;
+      expect(second).not.toContain('库位');
+    });
+
+    it('gap>0 中间联失败：warn 后后续联照发（各联独立）', async () => {
+      let call = 0;
+      jest.spyOn(global, 'fetch').mockImplementation((() => {
+        call++;
+        return call === 2
+          ? Promise.resolve({
+              ok: true,
+              json: () => Promise.resolve({ code: 1001, msg: 'mock fail' }),
+            } as Response)
+          : okRes();
+      }) as never);
+      jest.spyOn(global, 'setTimeout').mockImplementation(((cb: () => void) => {
+        cb();
+        return 0 as never;
+      }) as never);
+      const warnSpy = jest
+        .spyOn((service as never as { logger: { warn: jest.Mock } }).logger, 'warn')
+        .mockImplementation(() => undefined);
+      await service.printOrderReceipt(order, undefined, 3, 2);
+      expect(fetchSpyCount()).toBe(3);
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      function fetchSpyCount() {
+        return call;
+      }
+    });
+
+    it('gap 越界钳制：99 → 5（上限），-1 → 0（走单 POST）', async () => {
+      const fetchSpy = jest
+        .spyOn(global, 'fetch')
+        .mockImplementation(okRes as never);
+      const delays: number[] = [];
+      jest.spyOn(global, 'setTimeout').mockImplementation(((cb: () => void, ms?: number) => {
+        delays.push(ms ?? 0);
+        cb();
+        return 0 as never;
+      }) as never);
+      await service.printOrderReceipt(order, undefined, 2, 99);
+      expect(delays).toEqual([5000]);
+      delays.length = 0;
+      fetchSpy.mockClear();
+      await service.printOrderReceipt(order, undefined, 2, -1);
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      expect(delays).toEqual([]);
+    });
+  });
 });
