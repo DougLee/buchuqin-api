@@ -2122,20 +2122,28 @@ export class AdminService {
       where: { staffNo: body.staffNo },
     });
     if (duplicate) throw new BadRequestException('工号已存在');
-    // IK9U3Y：骑手不绑楼栋；IK9U3X：楼长必须绑定且一楼一在职楼长
+    // IK9U3Y：骑手不绑楼栋；IK9U3X：楼长必须绑定且一楼一在职楼长。
+    // 2026-09-14 放开实习楼长手建：同属楼长系、必须绑楼栋；
+    // 一楼一在职楼长仅约束正式楼长——实习楼长可与正式楼长共存（与招募审批路径一致）
     const RIDER_ROLES = ['fulltime-rider', 'parttime-rider'];
     if (RIDER_ROLES.includes(body.role) && body.buildingId)
       throw new BadRequestException('配送员角色无需绑定楼栋');
-    if (body.role === 'building-manager') {
-      if (!body.buildingId) throw new BadRequestException('楼长必须绑定楼栋');
-      const clash = await this.db.staff.findFirst({
-        where: {
-          buildingId: body.buildingId,
-          role: 'building-manager',
-          status: { not: 'deleted' },
-        },
-      });
-      if (clash) throw new BadRequestException('该楼栋已有在职楼长');
+    if (
+      body.role === 'building-manager' ||
+      body.role === 'intern-building-manager'
+    ) {
+      if (!body.buildingId)
+        throw new BadRequestException('楼长必须绑定楼栋');
+      if (body.role === 'building-manager') {
+        const clash = await this.db.staff.findFirst({
+          where: {
+            buildingId: body.buildingId,
+            role: 'building-manager',
+            status: { not: 'deleted' },
+          },
+        });
+        if (clash) throw new BadRequestException('该楼栋已有在职楼长');
+      }
     }
     let buildingName = '湖北工业大学';
     if (body.buildingId) {
@@ -2218,8 +2226,10 @@ export class AdminService {
         }
       } else {
         // IKBW0E：楼长允许显式解绑（清空绑定进「待分配」态，见下方 buildingId null
-        // 分支）；绑有楼栋时才校验一楼一在职楼长，编辑改名等操作不受历史数据阻塞
+        // 分支）；绑有楼栋时才校验一楼一在职楼长，编辑改名等操作不受历史数据阻塞。
+        // 一楼一在职楼长仅约束正式楼长：实习楼长可与正式楼长共存（招募审批同理）
         if (
+          nextRole === 'building-manager' &&
           nextBuildingId &&
           (nextBuildingId !== before.buildingId || nextRole !== before.role)
         ) {

@@ -274,9 +274,16 @@ export class CreateRoomDto {
   @IsString() @MaxLength(10) roomNo!: string;
 }
 const STAFF_STATUSES = ['online', 'paused', 'offline'] as const;
+/** 楼长系含实习楼长（2026-09-14 道哥放开后台手建，此前仅招募审批可产出）。 */
+const STAFF_ROLES = [
+  'building-manager',
+  'intern-building-manager',
+  'fulltime-rider',
+  'parttime-rider',
+] as const;
 export class CreateStaffDto {
   @IsString() @MaxLength(20) name!: string;
-  @IsIn(['building-manager', 'fulltime-rider', 'parttime-rider']) role!: string;
+  @IsIn(STAFF_ROLES) role!: string;
   @IsString() @MaxLength(20) staffNo!: string;
   @IsOptional() @IsString() buildingId?: string;
   @IsOptional() @IsIn(STAFF_STATUSES) status?: string;
@@ -284,7 +291,7 @@ export class CreateStaffDto {
 export class UpdateStaffDto {
   @IsOptional() @IsString() @MaxLength(20) name?: string;
   @IsOptional()
-  @IsIn(['building-manager', 'fulltime-rider', 'parttime-rider'])
+  @IsIn(STAFF_ROLES)
   role?: string;
   @IsOptional() @IsString() @MaxLength(20) staffNo?: string;
   @IsOptional() @IsString() buildingId?: string | null;
