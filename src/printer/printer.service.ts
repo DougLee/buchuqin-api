@@ -82,6 +82,10 @@ const TAG = {
  *  1=商家单张；2=商家+客户；3=商家+客户+骑手（骑手联最外先揭，客户联贴袋）。 */
 const COPY_LABELS = ['商家联', '客户联', '骑手联'] as const;
 
+/** IKFFHO：联间发送间隔 sleep（ms）——发送侧延迟，非出纸回执间隔。 */
+const sleep = (ms: number) =>
+  new Promise<void>((resolve) => setTimeout(resolve, ms));
+
 @Injectable()
 export class PrinterService {
   private readonly logger = new Logger(PrinterService.name);
@@ -173,13 +177,19 @@ export class PrinterService {
   }
 
   /** 订单小票：构建 58mm 票面并推送（snOverride 见 printRaw，IKBW0Q）。
-   *  copies（IKCZOX）：1=旧票面无联名；2/3 按联序标联名拼一张 content 一次推送。
+   *  copies（IKCZOX）：1=旧票面无联名；2/3 按联序标联名。
+   *  gapSeconds（IKFFHO）：联间发送间隔秒数 0-5。0=单次 POST 拼 N 联（现状，
+   *  原子同成败）；>0 拆逐联推送——上一联受理成功后 sleep N 秒发下一联。发送侧
+   *  延迟而非出纸间隔（云打印无出纸回执，出纸间隔 ≈ N + 打印耗时 2-4 秒）；各联
+   *  独立失败仅 warn 后续联照发，失败联靠订单抽屉补打兜底；离线暂存（IKCJ35）
+   *  恢复后云端连续出纸、间隔失效（兜底场景出全联优先）。
    *  库位仅商家联显示（IKD6H4 道哥反馈）：库位是分拣信息，客户/骑手无需看到——
    *  多联时仅第一联（商家联）带库位，其余联剥掉 location/locationCode。 */
   async printOrderReceipt(
     order: ReceiptOrderContext,
     snOverride?: string,
     copies = 1,
+    gapSeconds = 0,
   ): Promise<void> {
     const n = Math.min(Math.max(1, Math.floor(copies)), COPY_LABELS.length);
     const parts =
@@ -202,9 +212,27 @@ export class PrinterService {
               label,
             );
           });
-    await this.printRaw(parts.join('\n'), snOverride, {
-      cacheIfOffline: true,
-    });
+    const gap = Math.min(Math.max(0, Math.floor(gapSeconds)), 5);
+    if (gap <= 0 || n <= 1) {
+      await this.printRaw(parts.join('\n'), snOverride, {
+        cacheIfOffline: true,
+      });
+      return;
+    }
+    // IKFFHO：逐联推送（间隔>0 才走），fire-and-forget 语义下 sleep 不占调用方事务
+    for (let i = 0; i < parts.length; i++) {
+      if (i > 0) await sleep(gap * 1000);
+      try {
+        await this.printRaw(parts[i], snOverride, { cacheIfOffline: true });
+      } catch (error) {
+        this.logger.warn(
+          `订单 ${order.orderNo} 第 ${i + 1} 联（${COPY_LABELS[i]}）推送失败` +
+            `（后续联照发，可订单抽屉补打）: ${
+              error instanceof Error ? error.message : error
+            }`,
+        );
+      }
+    }
   }
 
   /** 绑定终端到开发者账号（IKBW0Q）：POST addPrinters，items=[{sn,name}]。

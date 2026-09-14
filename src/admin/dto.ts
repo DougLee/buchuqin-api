@@ -462,6 +462,14 @@ export class BindPrinterDto {
   @IsInt()
   @IsIn([1, 2, 3])
   copies?: number;
+  /** 联间发送间隔秒数（IKFFHO）：0=连续（单次 POST 拼联）；1-5 逐联推送。
+   *  发送侧延迟——云打印无出纸回执，出纸间隔 ≈ N + 打印耗时。 */
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(5)
+  copiesGapSeconds?: number;
 }
 
 /** 转盘奖位（IKD6FC）：8 项，类型与字段约束在 service 校验。 */

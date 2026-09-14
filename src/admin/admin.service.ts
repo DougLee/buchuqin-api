@@ -1817,10 +1817,11 @@ export class AdminService {
         '打印机未配置，请联系平台管理员配置芯烨云凭证',
       );
     const order = (await this.order(id, campusId)) as Record<string, any>;
-    // IKBW0Q：校区绑定打印机优先，未绑定回落 env 试点单机；copies 随绑定带出
+    // IKBW0Q：校区绑定打印机优先，未绑定回落 env 试点单机；copies 随绑定带出；
+    // IKFFHO：联间发送间隔随绑定带出（补打同样应用间隔）
     const bound = await this.db.printer.findUnique({
       where: { campusId: order.campusId },
-      select: { sn: true, status: true, copies: true },
+      select: { sn: true, status: true, copies: true, copiesGapSeconds: true },
     });
     const active = bound && bound.status === 'active' ? bound : null;
     if (!active?.sn)
@@ -1856,6 +1857,7 @@ export class AdminService {
       receiptContext,
       active.sn,
       active.copies,
+      active.copiesGapSeconds,
     );
     await this.audit(
       operator,
@@ -1892,16 +1894,26 @@ export class AdminService {
     await this.printer.addPrinter(body.sn, body.name);
     let row;
     try {
-      // IKCZOX：copies 随绑定表单落库（缺省 1=旧票面）
+      // IKCZOX：copies 随绑定表单落库（缺省 1=旧票面）；
+      // IKFFHO：联间发送间隔随表单落库（缺省 0=单次 POST 拼联）
       const copies = body.copies ?? 1;
+      const copiesGapSeconds = body.copiesGapSeconds ?? 0;
       row = await this.db.printer.upsert({
         where: { campusId },
-        create: { campusId, name: body.name, sn: body.sn, key: '', copies },
+        create: {
+          campusId,
+          name: body.name,
+          sn: body.sn,
+          key: '',
+          copies,
+          copiesGapSeconds,
+        },
         update: {
           name: body.name,
           sn: body.sn,
           key: '',
           copies,
+          copiesGapSeconds,
           status: 'active',
         },
       });

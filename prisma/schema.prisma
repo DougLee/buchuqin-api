@@ -77,6 +77,12 @@ model Printer {
    * 小票联数（IKCZOX）：1=现状单联无联名；2=商家联+骑手联；3=再加用户联。
    */
   copies    Int      @default(1)
+  /**
+   * 多联联间发送间隔秒数（IKFFHO）：0=单次 POST 拼联（现状）；1-5 拆逐联推送，
+   * 上一联受理成功后 sleep N 秒发下一联。发送侧延迟——云打印无出纸回执，
+   * 实际出纸间隔 ≈ N + 打印耗时；离线暂存恢复后连续出纸、间隔失效。
+   */
+  copiesGapSeconds Int @default(0)
   status    String   @default("active")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
