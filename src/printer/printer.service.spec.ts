@@ -250,7 +250,7 @@ describe('PrinterService (IKBT6N)', () => {
       }
     });
 
-    it('gap 越界钳制：99 → 5（上限），-1 → 0（走单 POST）', async () => {
+    it('gap 越界钳制：99 → 10（上限），-1 → 0（走单 POST）', async () => {
       const fetchSpy = jest
         .spyOn(global, 'fetch')
         .mockImplementation(okRes as never);
@@ -261,7 +261,7 @@ describe('PrinterService (IKBT6N)', () => {
         return 0 as never;
       }) as never);
       await service.printOrderReceipt(order, undefined, 2, 99);
-      expect(delays).toEqual([5000]);
+      expect(delays).toEqual([10000]);
       delays.length = 0;
       fetchSpy.mockClear();
       await service.printOrderReceipt(order, undefined, 2, -1);

@@ -178,7 +178,7 @@ export class PrinterService {
 
   /** 订单小票：构建 58mm 票面并推送（snOverride 见 printRaw，IKBW0Q）。
    *  copies（IKCZOX）：1=旧票面无联名；2/3 按联序标联名。
-   *  gapSeconds（IKFFHO）：联间发送间隔秒数 0-5。0=单次 POST 拼 N 联（现状，
+   *  gapSeconds（IKFFHO）：联间发送间隔秒数 0-10。0=单次 POST 拼 N 联（现状，
    *  原子同成败）；>0 拆逐联推送——上一联受理成功后 sleep N 秒发下一联。发送侧
    *  延迟而非出纸间隔（云打印无出纸回执，出纸间隔 ≈ N + 打印耗时 2-4 秒）；各联
    *  独立失败仅 warn 后续联照发，失败联靠订单抽屉补打兜底；离线暂存（IKCJ35）
@@ -212,7 +212,7 @@ export class PrinterService {
               label,
             );
           });
-    const gap = Math.min(Math.max(0, Math.floor(gapSeconds)), 5);
+    const gap = Math.min(Math.max(0, Math.floor(gapSeconds)), 10);
     if (gap <= 0 || n <= 1) {
       await this.printRaw(parts.join('\n'), snOverride, {
         cacheIfOffline: true,
