@@ -5,6 +5,7 @@ import type { NestExpressApplication } from '@nestjs/platform-express';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { AppModule } from './app.module';
+import { ThrottlerExceptionFilter } from './common/throttler-exception.filter';
 
 const envFlag = (name: string) => {
   const value = process.env[name];
@@ -17,6 +18,11 @@ async function bootstrap() {
     rawBody: true,
   });
   app.setGlobalPrefix('api/v1');
+  // IKFQM9：信任反代一跳的 X-Forwarded-For——生产在 OpenResty 后，不设则
+  // req.ip 恒为 127.0.0.1，ThrottlerGuard 全站用户共享同一计数桶（曾致官库
+  // 菜单误触 429）。Node 端口不对公网暴露、仅反代可连，信任一跳无伪造风险；
+  // 本地开发直连无 XFF 不受影响。
+  app.set('trust proxy', 1);
   // 本地 uploads 静态目录（历史图片访问通道）：默认仅开发开启，生产需显式
   // LOCAL_UPLOADS_ENABLED=true（ADR-0003 后新图片走 COS 绝对 URL）。
   const uploadsEnabled =
@@ -32,6 +38,8 @@ async function bootstrap() {
     .filter(Boolean);
   app.enableCors({ origin: origins.length ? origins : false });
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+  // IKFQM9：429 英文异常转中文提示（admin/weapp 前端读 body.message 直显）
+  app.useGlobalFilters(new ThrottlerExceptionFilter());
   // Swagger /docs：默认生产关闭，显式 SWAGGER_ENABLED=true 才暴露。
   const swaggerEnabled =
     envFlag('SWAGGER_ENABLED') ?? process.env.NODE_ENV !== 'production';

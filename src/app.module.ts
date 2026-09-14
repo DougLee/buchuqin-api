@@ -34,9 +34,11 @@ const adminDistDir = process.env.ADMIN_DIST_DIR ?? '';
     ConfigModule.forRoot({ isGlobal: true }),
     // 支付超时关单 Cron（IK8W5I）：每分钟扫 pending-payment 超 15 分钟的单。
     ScheduleModule.forRoot(),
-    // 全局默认限流 120/分（APP_GUARD 全局生效）；敏感路由（登录类）
+    // 全局默认限流（APP_GUARD 全局生效）；敏感路由（登录类）
     // 用 @Throttle({ default: { limit: 10, ttl: 60_000 } }) 收紧，两者共存。
-    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 120 }]),
+    // IKFQM9：120 → 1000——配合 trust proxy 修复后按真实用户 IP 计数，
+    // 内部后台翻页/搜索场景 120 仍会误伤（正式官库菜单 Too Many Requests 实证）。
+    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 1000 }]),
     ...(adminDistDir && existsSync(adminDistDir)
       ? [
           ServeStaticModule.forRoot({
