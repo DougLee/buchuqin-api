@@ -1099,11 +1099,15 @@ export class AdminService {
     operator: string,
     campusId: string,
   ) {
-    // 条码唯一改校区维度（IKAJSM）：同校区内去重，官方库/他校区可同码
-    const duplicate = await this.db.product.findFirst({
-      where: { barcode: body.barcode, campusId },
-    });
-    if (duplicate) throw new BadRequestException('该条码已录入商品库');
+    // 条码唯一改校区维度（IKAJSM）：同校区内去重，官方库/他校区可同码。
+    // IKFQQ0：条码选填后必须前置非空判断——where.barcode 为 undefined 时
+    // Prisma 会忽略该条件，把同校区任意商品误判成重复
+    if (body.barcode != null) {
+      const duplicate = await this.db.product.findFirst({
+        where: { barcode: body.barcode, campusId },
+      });
+      if (duplicate) throw new BadRequestException('该条码已录入商品库');
+    }
     const category = await this.db.category.findUnique({
       where: { id: body.categoryId },
     });

@@ -1,7 +1,10 @@
 import { BadRequestException } from '@nestjs/common';
+import { plainToInstance } from 'class-transformer';
+import { validate } from 'class-validator';
 import { PrismaService } from '../database/prisma.service';
 import { BusinessService } from '../business/business.service';
 import { AdminService } from './admin.service';
+import { BarcodeDto } from './dto';
 import { OFFICIAL_CAMPUS_ID } from '../common/campus';
 
 /**
@@ -310,5 +313,71 @@ describe('official product library & campus import (IKAJSM/IKAJSO)', () => {
         OFFICIAL_CAMPUS_ID,
       ),
     ).rejects.toThrow('该条码已录入商品库');
+  });
+
+  // IKFQQ0：条码放开选填——散称/自制无码商品可录，空码以 null 落库。
+  // （空串归一/格式校验在 DTO 层 ValidationPipe 执行，service 直调不触发，
+  //  由下方 BarcodeDto 专项用例覆盖）
+  it('空条码建档落 null，同校区多个无码商品并存且不误报重复', async () => {
+    // 不传条码：barcode 为 undefined → 跳过查重（Prisma 会忽略 undefined
+    // 条件，若不前置非空判断会把同校区任意商品误判重复）、落 null
+    const noCode = await service.createProduct(
+      {
+        name: `${tag}-散装糖果`,
+        categoryId: 'snack',
+        price: 100,
+        originalPrice: 100,
+        stock: 10,
+      } as Parameters<typeof service.createProduct>[0],
+      'spec-hq',
+      OFFICIAL_CAMPUS_ID,
+    );
+    officialIds.push(noCode.id);
+    expect(noCode.barcode).toBeNull();
+    // 第二个无码商品并存：唯一索引不拦 NULL，查重不误报
+    const noCode2 = await service.createProduct(
+      {
+        name: `${tag}-现制卤味`,
+        categoryId: 'snack',
+        price: 200,
+        originalPrice: 200,
+        stock: 5,
+      } as Parameters<typeof service.createProduct>[0],
+      'spec-hq',
+      OFFICIAL_CAMPUS_ID,
+    );
+    officialIds.push(noCode2.id);
+    expect(noCode2.barcode).toBeNull();
+    expect(noCode2.id).not.toBe(noCode.id);
+  });
+});
+
+// IKFQQ0：DTO 层归一与格式校验（controller ValidationPipe 职责，service 直调不触发）
+describe('BarcodeDto 选填归一（IKFQQ0）', () => {
+  const mend = async (body: Record<string, unknown>) => {
+    const dto = plainToInstance(BarcodeDto, body);
+    const errors = await validate(dto);
+    return { dto, errors };
+  };
+
+  it('空串/空白归一为 undefined 且通过校验', async () => {
+    const empty = await mend({ barcode: '' });
+    expect(empty.dto.barcode).toBeUndefined();
+    expect(empty.errors).toHaveLength(0);
+    const blank = await mend({ barcode: '   ' });
+    expect(blank.dto.barcode).toBeUndefined();
+    expect(blank.errors).toHaveLength(0);
+  });
+
+  it('合法 8-14 位数字通过', async () => {
+    const ok = await mend({ barcode: '690123450001' });
+    expect(ok.errors).toHaveLength(0);
+  });
+
+  it('填了但非法仍拒：非数字、位数不足、超长', async () => {
+    for (const barcode of ['abc123', '1234567', '123456789012345']) {
+      const { errors } = await mend({ barcode });
+      expect(errors.some((e) => e.property === 'barcode')).toBe(true);
+    }
   });
 });

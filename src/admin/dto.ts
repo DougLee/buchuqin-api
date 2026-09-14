@@ -1,4 +1,4 @@
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   ArrayMinSize,
@@ -19,7 +19,20 @@ import {
   ValidateNested,
 } from 'class-validator';
 
+/** 条码选填（IKFQQ0）：空/缺省落 null（schema String?），填了才校验 8-14 位数字；
+ *  空串在 Transform 归一为 undefined，避免库内存空串撞复合唯一索引。 */
 export class BarcodeDto {
+  @IsOptional()
+  @Transform(({ value }) =>
+    typeof value === 'string' && value.trim() === '' ? undefined : value,
+  )
+  @IsString()
+  @Matches(/^\d{8,14}$/, { message: '条码必须是 8-14 位数字' })
+  barcode?: string;
+}
+
+/** 条码查询（录入弹窗带价查资料）必须有条码，不参与选填化（IKFQQ0）。 */
+export class LookupBarcodeDto {
   @IsString()
   @Matches(/^\d{8,14}$/, { message: '条码必须是 8-14 位数字' })
   barcode!: string;

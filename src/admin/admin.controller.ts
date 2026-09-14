@@ -34,10 +34,10 @@ import {
 } from './permissions';
 import {
   AdjustStockDto,
-  BarcodeDto,
   BatchProductStatusDto,
   BindPrinterDto,
   CreateAccountDto,
+  LookupBarcodeDto,
   UpsertWechatGroupDto,
   UpsertWheelDto,
   CreateBannerDto,
@@ -386,7 +386,7 @@ export class AdminController {
   }
   @Post('products/barcode/lookup') async lookupBarcode(
     @Req() req: AuthRequest,
-    @Body() body: BarcodeDto,
+    @Body() body: LookupBarcodeDto,
     @Query('view') view?: string,
   ) {
     this.authorize(req, 'products');
