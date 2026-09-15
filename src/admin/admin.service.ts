@@ -1775,17 +1775,13 @@ export class AdminService {
           // IKFTK7 第三轮（道哥拍板）：毛利成本口径 = 进货价。快照前历史单无
           // unitPurchaseCost 时补当前每单位进货成本供前端标「估算」展示；
           // 有快照的行绝不覆盖（快照是毛利的唯一精确口径）。
-          // 进货价未维护（换算结果 ≤0）时不补——补 0 会算出「毛利=售价」的假数据
+          // 进货价 0 = 成本 0 照补（道哥 2026-09-15：0 就按 0 计算，毛利=实收）
           const snapshotCost = (
             line?.product as { unitPurchaseCost?: number } | undefined
           )?.unitPurchaseCost;
           let estimate: number | undefined;
           if (live && snapshotCost == null) {
-            const est = perRetailUnitCostFen(
-              live.costPrice,
-              live.unitsPerCase,
-            );
-            if (est > 0) estimate = est;
+            estimate = perRetailUnitCostFen(live.costPrice, live.unitsPerCase);
           }
           return {
             ...line,

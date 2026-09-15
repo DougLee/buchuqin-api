@@ -197,7 +197,7 @@ describe('order line cost snapshot (IKFOPQ)', () => {
     }
   });
 
-  it('估算兜底不补 0：进货价未维护的历史单不产生估算字段（IKFTK7）', async () => {
+  it('估算兜底补 0：进货价 0 按成本 0 照补（道哥拍板，IKFTK7）', async () => {
     const admin = new AdminService(db, service);
     await db.product.update({ where: { id: LOOSE }, data: { costPrice: 0 } });
     const raw = (await db.order.findFirst({ where: { userId: USER } }))!;
@@ -215,6 +215,6 @@ describe('order line cost snapshot (IKFOPQ)', () => {
     const rows = await admin.orders(undefined, CAMPUS);
     const row = rows.find((r) => r.id === raw!.id)!;
     const line = (row.items as any[]).find((l) => l.product.id === LOOSE)!;
-    expect(line.product.currentUnitPurchaseCost).toBeUndefined();
+    expect(line.product.currentUnitPurchaseCost).toBe(0);
   });
 });
