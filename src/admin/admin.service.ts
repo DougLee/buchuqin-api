@@ -1616,17 +1616,27 @@ export class AdminService {
       where: hqScope ? {} : { campusId },
       select: { batchId: true, status: true },
     });
-    const agg = new Map<string, { orderTotal: number; orderConfirmed: number }>();
+    const agg = new Map<
+      string,
+      { orderTotal: number; orderConfirmed: number; orderShipped: number; orderReceived: number }
+    >();
     for (const o of orders) {
-      const cur = agg.get(o.batchId) ?? { orderTotal: 0, orderConfirmed: 0 };
+      const cur =
+        agg.get(o.batchId) ??
+        { orderTotal: 0, orderConfirmed: 0, orderShipped: 0, orderReceived: 0 };
       cur.orderTotal += 1;
-      if (o.status === 'confirmed') cur.orderConfirmed += 1;
+      // IKFOQ2：shipped/received 是 confirmed 的下游态，统计按最远进度
+      if (['confirmed', 'shipped', 'received'].includes(o.status)) cur.orderConfirmed += 1;
+      if (['shipped', 'received'].includes(o.status)) cur.orderShipped += 1;
+      if (o.status === 'received') cur.orderReceived += 1;
       agg.set(o.batchId, cur);
     }
     return rows.map((b) => ({
       ...this.restockBatchView(b),
       orderTotal: agg.get(b.id)?.orderTotal ?? 0,
       orderConfirmed: agg.get(b.id)?.orderConfirmed ?? 0,
+      orderShipped: agg.get(b.id)?.orderShipped ?? 0,
+      orderReceived: agg.get(b.id)?.orderReceived ?? 0,
     }));
   }
 
@@ -1724,6 +1734,7 @@ export class AdminService {
       include: {
         campus: { select: { id: true, name: true, shortName: true } },
         items: true,
+        shipment: { select: { shippedAt: true, receivedAt: true } },
       },
       orderBy: { updatedAt: 'desc' },
     });
@@ -1761,6 +1772,8 @@ export class AdminService {
         campusName: o.campus.name,
         campusShortName: o.campus.shortName,
         status: o.status,
+        shippedAt: o.shipment?.shippedAt ?? null,
+        receivedAt: o.shipment?.receivedAt ?? null,
         totalCases: o.items.reduce((s, i) => s + i.cases, 0),
         totalUnits: o.items.reduce((s, i) => s + i.cases * i.unitsPerCase, 0),
         submitByName: o.submitByName,
