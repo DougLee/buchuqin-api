@@ -1758,8 +1758,8 @@ export class AdminService {
             id: true,
             location: true,
             locationCode: true,
-            // IKFTK7：历史单毛利估算现价（换算成每零售单位，与快照同口径）
-            wholesalePrice: true,
+            // IKFTK7 第三轮：历史单毛利估算用进货价（换算成每零售单位，与快照同口径）
+            costPrice: true,
             unitsPerCase: true,
           },
         })
@@ -1772,16 +1772,17 @@ export class AdminService {
           const live = line?.product
             ? locationById.get((line.product as { id?: string }).id ?? '')
             : undefined;
-          // IKFTK7：快照前历史单无 unitWholesaleCost，补当前每单位批发成本供前端
-          // 标「估算」展示；有快照的行绝不覆盖（快照是毛利的唯一精确口径）。
-          // 批发价未维护（换算结果 ≤0）时不补——补 0 会算出「毛利=售价」的假数据
+          // IKFTK7 第三轮（道哥拍板）：毛利成本口径 = 进货价。快照前历史单无
+          // unitPurchaseCost 时补当前每单位进货成本供前端标「估算」展示；
+          // 有快照的行绝不覆盖（快照是毛利的唯一精确口径）。
+          // 进货价未维护（换算结果 ≤0）时不补——补 0 会算出「毛利=售价」的假数据
           const snapshotCost = (
-            line?.product as { unitWholesaleCost?: number } | undefined
-          )?.unitWholesaleCost;
+            line?.product as { unitPurchaseCost?: number } | undefined
+          )?.unitPurchaseCost;
           let estimate: number | undefined;
           if (live && snapshotCost == null) {
             const est = perRetailUnitCostFen(
-              live.wholesalePrice,
+              live.costPrice,
               live.unitsPerCase,
             );
             if (est > 0) estimate = est;
@@ -1795,7 +1796,7 @@ export class AdminService {
                     location: live.location,
                     locationCode: live.locationCode,
                     ...(estimate != null
-                      ? { currentUnitWholesaleCost: estimate }
+                      ? { currentUnitPurchaseCost: estimate }
                       : {}),
                   }
                 : {}),

@@ -160,18 +160,18 @@ describe('order line cost snapshot (IKFOPQ)', () => {
     expect(line.product.unitWholesaleCost).toBe(250); // 仍为支付时的 250
   });
 
-  it('历史单估算（IKFTK7）：无快照行补 currentUnitWholesaleCost，有快照行不受影响', async () => {
+  it('历史单估算（IKFTK7 第三轮）：无快照行按当前进货价补 currentUnitPurchaseCost，有快照行不受影响', async () => {
     const admin = new AdminService(db, service);
     await db.product.update({
       where: { id: CASED },
-      data: { wholesalePrice: 9600 }, // 现价 9600÷24=400 分/听
+      data: { costPrice: 12000 }, // 现进货价 12000÷24=500 分/听
     });
     // 抹掉 cased 行快照模拟历史单，loose 行保留快照（同单混合两面）
     const raw = (await db.order.findFirst({ where: { userId: USER } }))!;
     const stripped = (raw!.items as any[]).map((l) => {
       if (l.product.id !== CASED) return l;
       const rest = { ...l.product };
-      delete rest.unitWholesaleCost;
+      delete rest.unitPurchaseCost;
       return { ...l, product: rest };
     });
     await db.order.update({
@@ -185,26 +185,26 @@ describe('order line cost snapshot (IKFOPQ)', () => {
       a.product.id < b.product.id ? -1 : 1,
     );
     const cased = lines.find((l) => l.product.id === CASED)!;
-    expect(cased.product.unitWholesaleCost).toBeUndefined();
-    expect(cased.product.currentUnitWholesaleCost).toBe(400);
+    expect(cased.product.unitPurchaseCost).toBeUndefined();
+    expect(cased.product.currentUnitPurchaseCost).toBe(500);
     const loose = lines.find((l) => l.product.id === LOOSE)!;
-    expect(loose.product.unitWholesaleCost).toBe(150); // 快照原值不被覆盖
-    expect('currentUnitWholesaleCost' in loose.product).toBe(false);
+    expect(loose.product.unitPurchaseCost).toBe(100); // 快照原值不被覆盖
+    expect('currentUnitPurchaseCost' in loose.product).toBe(false);
     // C 端出口同样不出现估算字段（内部数据）
     const view = await service.order(USER, raw!.id);
     for (const line of view.items as any[]) {
-      expect('currentUnitWholesaleCost' in line.product).toBe(false);
+      expect('currentUnitPurchaseCost' in line.product).toBe(false);
     }
   });
 
-  it('估算兜底不补 0：批发价未维护的历史单不产生估算字段（IKFTK7）', async () => {
+  it('估算兜底不补 0：进货价未维护的历史单不产生估算字段（IKFTK7）', async () => {
     const admin = new AdminService(db, service);
-    await db.product.update({ where: { id: LOOSE }, data: { wholesalePrice: 0 } });
+    await db.product.update({ where: { id: LOOSE }, data: { costPrice: 0 } });
     const raw = (await db.order.findFirst({ where: { userId: USER } }))!;
     const stripped = (raw!.items as any[]).map((l) => {
       if (l.product.id !== LOOSE) return l;
       const rest = { ...l.product };
-      delete rest.unitWholesaleCost;
+      delete rest.unitPurchaseCost;
       return { ...l, product: rest };
     });
     await db.order.update({
@@ -215,6 +215,6 @@ describe('order line cost snapshot (IKFOPQ)', () => {
     const rows = await admin.orders(undefined, CAMPUS);
     const row = rows.find((r) => r.id === raw!.id)!;
     const line = (row.items as any[]).find((l) => l.product.id === LOOSE)!;
-    expect(line.product.currentUnitWholesaleCost).toBeUndefined();
+    expect(line.product.currentUnitPurchaseCost).toBeUndefined();
   });
 });
