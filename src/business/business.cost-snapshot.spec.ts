@@ -196,4 +196,25 @@ describe('order line cost snapshot (IKFOPQ)', () => {
       expect('currentUnitWholesaleCost' in line.product).toBe(false);
     }
   });
+
+  it('估算兜底不补 0：批发价未维护的历史单不产生估算字段（IKFTK7）', async () => {
+    const admin = new AdminService(db, service);
+    await db.product.update({ where: { id: LOOSE }, data: { wholesalePrice: 0 } });
+    const raw = (await db.order.findFirst({ where: { userId: USER } }))!;
+    const stripped = (raw!.items as any[]).map((l) => {
+      if (l.product.id !== LOOSE) return l;
+      const rest = { ...l.product };
+      delete rest.unitWholesaleCost;
+      return { ...l, product: rest };
+    });
+    await db.order.update({
+      where: { id: raw!.id },
+      data: { items: stripped as any },
+    });
+
+    const rows = await admin.orders(undefined, CAMPUS);
+    const row = rows.find((r) => r.id === raw!.id)!;
+    const line = (row.items as any[]).find((l) => l.product.id === LOOSE)!;
+    expect(line.product.currentUnitWholesaleCost).toBeUndefined();
+  });
 });

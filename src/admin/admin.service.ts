@@ -1773,10 +1773,19 @@ export class AdminService {
             ? locationById.get((line.product as { id?: string }).id ?? '')
             : undefined;
           // IKFTK7：快照前历史单无 unitWholesaleCost，补当前每单位批发成本供前端
-          // 标「估算」展示；有快照的行绝不覆盖（快照是毛利的唯一精确口径）
+          // 标「估算」展示；有快照的行绝不覆盖（快照是毛利的唯一精确口径）。
+          // 批发价未维护（换算结果 ≤0）时不补——补 0 会算出「毛利=售价」的假数据
           const snapshotCost = (
             line?.product as { unitWholesaleCost?: number } | undefined
           )?.unitWholesaleCost;
+          let estimate: number | undefined;
+          if (live && snapshotCost == null) {
+            const est = perRetailUnitCostFen(
+              live.wholesalePrice,
+              live.unitsPerCase,
+            );
+            if (est > 0) estimate = est;
+          }
           return {
             ...line,
             product: {
@@ -1785,13 +1794,8 @@ export class AdminService {
                 ? {
                     location: live.location,
                     locationCode: live.locationCode,
-                    ...(snapshotCost == null
-                      ? {
-                          currentUnitWholesaleCost: perRetailUnitCostFen(
-                            live.wholesalePrice,
-                            live.unitsPerCase,
-                          ),
-                        }
+                    ...(estimate != null
+                      ? { currentUnitWholesaleCost: estimate }
                       : {}),
                   }
                 : {}),
