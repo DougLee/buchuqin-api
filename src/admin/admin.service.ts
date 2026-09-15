@@ -1128,6 +1128,11 @@ export class AdminService {
         images: body.images,
         location: body.location ?? '',
         weight: body.weight ?? 0,
+        // 单位属性（IKFOPU）：零售单位空 = 展示不显示单位；批发单位缺省「件」、
+        // 含量缺省 1（无件概念），订货/入库链路按它换算
+        retailUnit: body.retailUnit?.trim() ?? '',
+        wholesaleUnit: body.wholesaleUnit?.trim() || '件',
+        unitsPerCase: body.unitsPerCase ?? 1,
         sales: 0,
         // IKC1AB：官方库商品默认「不可售」，总部核对后手动放行（校区导入
         // 候选池只见可售）；校区自建商品仍默认在售
@@ -1176,10 +1181,23 @@ export class AdminService {
       if (!category) throw new BadRequestException('分类不存在');
     }
     // IKC1AC：进货价/批发价格仅官方库行可改（校区视角不可见也不可写）
+    // IKFOPU：单位属性同属官方资料——校区「导入行」（有来源）剔除三字段只读，
+    // 校区自建行（无来源）保留可改
     const data: UpdateProductDto =
       campusId === OFFICIAL_CAMPUS_ID
         ? body
-        : { ...body, costPrice: undefined, wholesalePrice: undefined };
+        : before.sourceProductId
+          ? {
+              ...body,
+              costPrice: undefined,
+              wholesalePrice: undefined,
+              retailUnit: undefined,
+              wholesaleUnit: undefined,
+              unitsPerCase: undefined,
+            }
+          : { ...body, costPrice: undefined, wholesalePrice: undefined };
+    if (data.unitsPerCase != null && data.unitsPerCase < 1)
+      throw new BadRequestException('每件含量不能小于 1');
     const after = await this.db.product.update({ where: { id }, data });
     await this.audit(
       operator,
@@ -1290,6 +1308,10 @@ export class AdminService {
           images: (official.images as Prisma.InputJsonValue) ?? undefined,
           description: official.description,
           weight: official.weight,
+          // 单位属性（IKFOPU）：官方资料随导入落地校区行（校区只读）
+          retailUnit: official.retailUnit,
+          wholesaleUnit: official.wholesaleUnit,
+          unitsPerCase: official.unitsPerCase,
           sales: 0,
           status: 'off-sale',
           sourceProductId: official.id,
@@ -1351,6 +1373,10 @@ export class AdminService {
         description: official.description,
         categoryId: official.categoryId,
         weight: official.weight,
+        // 单位属性（IKFOPU）：官方改动随拉取同步（校区行只读语义闭环）
+        retailUnit: official.retailUnit,
+        wholesaleUnit: official.wholesaleUnit,
+        unitsPerCase: official.unitsPerCase,
         sourceSyncedAt: official.updatedAt,
       },
     });

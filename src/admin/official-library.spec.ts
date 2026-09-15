@@ -350,6 +350,82 @@ describe('official product library & campus import (IKAJSM/IKAJSO)', () => {
     expect(noCode2.barcode).toBeNull();
     expect(noCode2.id).not.toBe(noCode.id);
   });
+
+  // IKFOPU：单位属性随导入/pullUpstream 落地校区行；校区对同步行只读
+  it('单位属性：官方维护 → 导入复制 → 校区同步行剥离、自建行可改', async () => {
+    const official = await service.createProduct(
+      {
+        barcode: '6901234500003',
+        name: `${tag}-整箱可乐`,
+        categoryId: 'drink',
+        price: 6000,
+        originalPrice: 7200,
+        stock: 0,
+        retailUnit: '听',
+        wholesaleUnit: '件',
+        unitsPerCase: 24,
+      },
+      'spec-hq',
+      OFFICIAL_CAMPUS_ID,
+    );
+    officialIds.push(official.id);
+    expect(official.unitsPerCase).toBe(24);
+    await service.updateProduct(
+      official.id,
+      { status: 'on-sale' },
+      'spec-hq',
+      OFFICIAL_CAMPUS_ID,
+    );
+    // 校区 A 导入：三字段随官方资料落地
+    const result = await service.importProducts(
+      [official.id],
+      'spec-importer',
+      CAMPUS_A,
+    );
+    expect(result.importedCount).toBe(1);
+    const imported = await db.product.findFirst({
+      where: { sourceProductId: official.id, campusId: CAMPUS_A },
+    });
+    localIds.push(imported!.id);
+    expect(imported!.retailUnit).toBe('听');
+    expect(imported!.unitsPerCase).toBe(24);
+    // 校区视角改同步行单位 → service 剥离（只读），落库不变
+    const afterEdit = await service.updateProduct(
+      imported!.id,
+      { retailUnit: '瓶', unitsPerCase: 12 },
+      'spec-campus-admin',
+      CAMPUS_A,
+    );
+    expect(afterEdit.retailUnit).toBe('听');
+    expect(afterEdit.unitsPerCase).toBe(24);
+    // 校区自建行（无来源）单位可改
+    const selfMade = await db.product.create({
+      data: {
+        campusId: CAMPUS_A,
+        barcode: null,
+        name: `${tag}-自建称重糖`,
+        categoryId: 'snack',
+        subtitle: '',
+        price: 100,
+        originalPrice: 100,
+        stock: 5,
+        tag: '',
+        image: '',
+        weight: 0,
+        status: 'on-sale',
+        retailUnit: '颗',
+        unitsPerCase: 1,
+      },
+    });
+    localIds.push(selfMade.id);
+    const editedSelf = await service.updateProduct(
+      selfMade.id,
+      { retailUnit: '袋' },
+      'spec-campus-admin',
+      CAMPUS_A,
+    );
+    expect(editedSelf.retailUnit).toBe('袋');
+  });
 });
 
 // IKFQQ0：DTO 层归一与格式校验（controller ValidationPipe 职责，service 直调不触发）

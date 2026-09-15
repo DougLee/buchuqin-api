@@ -75,6 +75,11 @@ export class CreateProductDto extends BarcodeDto {
   @IsOptional() @IsString() @MaxLength(20) location?: string;
   /** 库位编号（IKA0VG）：区域内具体位置，规则人工控制，可不填。 */
   @IsOptional() @IsString() @MaxLength(20) locationCode?: string;
+  /** 单位属性（IKFOPU）：零售单位空 = 展示处不显示单位文字。 */
+  @IsOptional() @IsString() @MaxLength(6) retailUnit?: string;
+  @IsOptional() @IsString() @MaxLength(6) wholesaleUnit?: string;
+  /** 每件含量：批发单位包含的零售单位数，1~999，无件概念填 1。 */
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(999) unitsPerCase?: number;
   /** 商品介绍（IKAHAU）：纯文本多行 ≤2000 字，空 = C 端不渲染区块。 */
   @IsOptional() @IsString() @MaxLength(2000) description?: string;
 }
@@ -113,6 +118,10 @@ export class UpdateProductDto {
   /** 库位（IKA0VG）：字典区域名 + 编号手填。 */
   @IsOptional() @IsString() @MaxLength(20) location?: string;
   @IsOptional() @IsString() @MaxLength(20) locationCode?: string;
+  /** 单位属性（IKFOPU）：PATCH 语义可选；校区同步行由 service 剔除（只读）。 */
+  @IsOptional() @IsString() @MaxLength(6) retailUnit?: string;
+  @IsOptional() @IsString() @MaxLength(6) wholesaleUnit?: string;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(999) unitsPerCase?: number;
   /** 商品介绍（IKAHAU）：整段覆盖，空串清空。 */
   @IsOptional() @IsString() @MaxLength(2000) description?: string;
 }

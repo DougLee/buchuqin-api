@@ -203,6 +203,12 @@ model Product {
   locationCode    String         @default("")
   weight          Decimal        @db.Decimal(10, 3)
   status          String         @default("on-sale")
+  // 单位属性（IKFOPU）：零售按听/瓶卖、订货按件批发的双单位建模。
+  // 零售单位空 = 展示处不显示单位文字（存量 5442 商品零变化）；含量=批发
+  // 单位包含的零售单位数，无件概念填 1，订货入库按它换算（5 件×24=120 听）
+  retailUnit      String         @default("")
+  wholesaleUnit   String         @default("件")
+  unitsPerCase    Int            @default(1)
   /**
    * 官方库来源（IKAJSO）：本校区行来自官方库哪个商品；自建/历史商品为空
    */
