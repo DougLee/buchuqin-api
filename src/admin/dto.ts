@@ -597,3 +597,7 @@ export class ReceivePurchaseOrderDto {
 export class ClosePurchaseOrderDto {
   @IsOptional() @IsString() @MaxLength(100) note?: string;
 }
+/** 分拨发货（IKFOQ2）：整单发货无数量入参，仅备注。 */
+export class ShipRestockOrderDto {
+  @IsOptional() @IsString() @MaxLength(100) note?: string;
+}

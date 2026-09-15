@@ -35,6 +35,7 @@ import type {
   CreatePurchaseOrderDto,
   ReceivePurchaseOrderDto,
   ClosePurchaseOrderDto,
+  ShipRestockOrderDto,
   UpdateCampusDto,
   UpdatePromotionDto,
   UpdateProductDto,
@@ -456,6 +457,8 @@ export class AdminService {
     'purchase.reopen': '重开采购单',
     'restock.order-reject': '驳回订货单',
     'restock.order-revoke': '撤销订货确认',
+    'restock.ship': '订货分拨发货',
+    'restock.receipt': '订货确认到货',
     'room.import': '批量导入寝室',
     'location.create': '创建库位',
     'location.update': '更新库位',
@@ -500,6 +503,7 @@ export class AdminService {
     'wechat-group': '微信群码',
     'restock-batch': '订货批次',
     'purchase-order': '采购单',
+    'restock-shipment': '发货单',
     'restock-order': '订货单',
     staff: '履约人员',
     order: '订单',
@@ -1786,6 +1790,7 @@ export class AdminService {
         },
         campus: { select: { id: true, name: true, shortName: true } },
         items: true,
+        shipment: { select: { shippedAt: true, receivedAt: true } },
       },
       orderBy: { updatedAt: 'desc' },
     });
@@ -1798,6 +1803,8 @@ export class AdminService {
       campusName: o.campus.name,
       campusShortName: o.campus.shortName,
       status: o.status,
+      shippedAt: o.shipment?.shippedAt ?? null,
+      receivedAt: o.shipment?.receivedAt ?? null,
       totalCases: o.items.reduce((s, i) => s + i.cases, 0),
       totalUnits: o.items.reduce((s, i) => s + i.cases * i.unitsPerCase, 0),
       itemCount: o.items.length,
@@ -1833,6 +1840,7 @@ export class AdminService {
             },
           },
         },
+        shipment: true,
       },
     });
     if (!o) throw new NotFoundException('订货单不存在');
@@ -1946,6 +1954,8 @@ export class AdminService {
             },
           },
         },
+        // IKFOQ2：shipped 横幅+确认到货入口；received 展示到货时间
+        shipment: { select: { id: true, shippedAt: true, receivedAt: true, note: true } },
       },
     });
     return o;
@@ -2346,12 +2356,14 @@ export class AdminService {
         supplierName: body.supplierName.trim(),
         createdBy: operator,
         createdByName: account?.nickname ?? '',
+        // 行集合=实际提交的 lines（应收数量/含量仍以聚合快照为准）；
+        // 部分行补采单不再带出未采商品的 0 价行（IKFOQ2 修复）
         items: {
-          create: [...agg.entries()].map(([productId, a]) => ({
-            productId,
-            requiredCases: a.cases,
-            unitCost: costByLine.get(productId) ?? 0,
-            unitsPerCase: a.unitsPerCase,
+          create: body.lines.map((l) => ({
+            productId: l.productId,
+            requiredCases: agg.get(l.productId)!.cases,
+            unitCost: costByLine.get(l.productId)!,
+            unitsPerCase: agg.get(l.productId)!.unitsPerCase,
           })),
         },
       },
@@ -2547,6 +2559,306 @@ export class AdminService {
     });
     await this.audit(operator, 'purchase.reopen', 'purchase-order', id, null, null, '');
     return { id };
+  }
+
+  // ==================== 分拨发货（IKFOQ2 2026-09-15 grilling 定版）====================
+  // 已确认订货单一对一整单发货（不拆包）：总部仓 stock/lockedStock 双降（确认时
+  // 锁定转实扣），行落进货价/批发价快照（毛利② IKFOPR 数据源），出库流水
+  // restock-out；不支持撤销（grilling #4，发错线下调）。校区确认到货按发货数
+  // 全额入账（grilling #3 不登记差异），校区行缺失自动建（官方资料、下架态），
+  // 入账流水 restock-in。
+
+  async shipRestockOrder(id: string, body: ShipRestockOrderDto, operator: string) {
+    const order = await this.db.restockOrder.findUnique({
+      where: { id },
+      include: { items: true },
+    });
+    if (!order) throw new NotFoundException('订货单不存在');
+    if (order.status !== 'confirmed')
+      throw new BadRequestException('只有已确认的订货单可以发货');
+    const shipped = await this.db.restockShipment.findUnique({
+      where: { orderId: id },
+      select: { id: true },
+    });
+    if (shipped) throw new BadRequestException('该订货单已发货');
+    const account = await this.db.adminAccount.findUnique({
+      where: { id: operator },
+      select: { nickname: true },
+    });
+    // 总部仓行定位（同确认锁定口径）：官方行 id → sourceProductId 反查
+    const hqRows = await this.db.product.findMany({
+      where: {
+        campusId: HQ_CAMPUS_ID,
+        sourceProductId: { in: order.items.map((i) => i.productId) },
+      },
+      select: { id: true, sourceProductId: true, name: true, stock: true },
+    });
+    const hqBySource = new Map(hqRows.map((r) => [r.sourceProductId, r]));
+    // 成本快照（口径 #4）：批次采购单实际成交价（IQ7 可改后的真实价）优先，
+    // 多张采购单取最新一张；无采购单回退官方 costPrice
+    const poItems = await this.db.purchaseOrderItem.findMany({
+      where: {
+        productId: { in: order.items.map((i) => i.productId) },
+        order: { batchId: order.batchId },
+      },
+      select: {
+        productId: true,
+        unitCost: true,
+        order: { select: { createdAt: true } },
+      },
+      orderBy: { order: { createdAt: 'desc' } },
+    });
+    const costBySource = new Map<string, number>();
+    for (const pi of poItems)
+      // 0 价视为未报价（防御：历史 0 价行不污染成本快照）
+      if (pi.unitCost > 0 && !costBySource.has(pi.productId))
+        costBySource.set(pi.productId, pi.unitCost);
+    const officials = await this.db.product.findMany({
+      where: { id: { in: order.items.map((i) => i.productId) } },
+    });
+    const officialById = new Map(officials.map((p) => [p.id, p]));
+    const shortages: string[] = [];
+    for (const it of order.items) {
+      const hq = hqBySource.get(it.productId);
+      const units = it.cases * it.unitsPerCase;
+      if (!hq)
+        shortages.push(`${officialById.get(it.productId)?.name ?? it.productId}：总部仓未铺货`);
+      else if (hq.stock < units)
+        shortages.push(`${hq.name}：库存 ${hq.stock}，需 ${units}（缺 ${units - hq.stock}）`);
+    }
+    if (shortages.length)
+      throw new BadRequestException(`总部仓库存不足，无法发货：${shortages.join('；')}`);
+    await this.db.$transaction(async (tx) => {
+      const shipment = await tx.restockShipment.create({
+        data: {
+          orderId: order.id,
+          batchId: order.batchId,
+          campusId: order.campusId,
+          note: body?.note?.trim() ?? '',
+          shippedBy: operator,
+          shippedByName: account?.nickname ?? '',
+          items: {
+            create: order.items.map((it) => ({
+              productId: it.productId,
+              cases: it.cases,
+              unitsPerCase: it.unitsPerCase,
+              costPerCase:
+                costBySource.get(it.productId) ??
+                officialById.get(it.productId)?.costPrice ??
+                0,
+              wholesalePerCase: officialById.get(it.productId)?.price ?? 0,
+            })),
+          },
+        },
+      });
+      for (const it of order.items) {
+        const units = it.cases * it.unitsPerCase;
+        const hqId = hqBySource.get(it.productId)!.id;
+        await tx.product.update({
+          where: { id: hqId },
+          data: { stock: { decrement: units }, lockedStock: { decrement: units } },
+        });
+        await tx.inventoryTxn.create({
+          data: {
+            productId: hqId,
+            type: 'restock-out',
+            delta: -units,
+            reason: `分拨发货（单 ${shipment.id.slice(-6)}）`,
+            operator,
+          },
+        });
+      }
+      await tx.restockOrder.update({
+        where: { id: order.id },
+        data: { status: 'shipped' },
+      });
+    });
+    await this.audit(
+      operator,
+      'restock.ship',
+      'restock-order',
+      order.id,
+      { status: 'confirmed' },
+      { status: 'shipped', note: body?.note?.trim() ?? '' },
+      order.campusId,
+    );
+    return { id: order.id, status: 'shipped' as const };
+  }
+
+  /** 校区确认到货：按发货数全额入账；收货校区本人操作（hq 不代确认）。 */
+  async confirmRestockReceipt(id: string, operator: string, campusId: string) {
+    const order = await this.db.restockOrder.findUnique({
+      where: { id },
+      include: { items: true },
+    });
+    if (!order) throw new NotFoundException('订货单不存在');
+    if (!campusId || order.campusId !== campusId)
+      throw new ForbiddenException('只有收货校区可以确认到货');
+    const shipment = await this.db.restockShipment.findUnique({
+      where: { orderId: id },
+      include: { items: true },
+    });
+    if (!shipment || order.status !== 'shipped')
+      throw new BadRequestException('只有已发货的订货单可以确认到货');
+    const account = await this.db.adminAccount.findUnique({
+      where: { id: operator },
+      select: { nickname: true },
+    });
+    const officials = await this.db.product.findMany({
+      where: { id: { in: order.items.map((i) => i.productId) } },
+    });
+    const officialById = new Map(officials.map((p) => [p.id, p]));
+    const campusRows = await this.db.product.findMany({
+      where: {
+        campusId: order.campusId,
+        sourceProductId: { in: order.items.map((i) => i.productId) },
+      },
+      select: { id: true, sourceProductId: true },
+    });
+    const campusBySource = new Map(campusRows.map((r) => [r.sourceProductId, r.id]));
+    await this.db.$transaction(async (tx) => {
+      for (const it of order.items) {
+        const units = it.cases * it.unitsPerCase;
+        const official = officialById.get(it.productId);
+        if (!official)
+          throw new BadRequestException(`商品 ${it.productId} 官方资料缺失，无法入账`);
+        let rowId = campusBySource.get(it.productId);
+        if (rowId) {
+          await tx.product.update({
+            where: { id: rowId },
+            data: { stock: { increment: units } },
+          });
+        } else {
+          // 自动建档（grilling #2）：复制官方资料、下架态、库存=到货数，校区自己上架
+          // 条码撞该校区已有自建行时置空（货已到入账优先，条码可人工补）
+          const bcTaken = official.barcode
+            ? await tx.product.findFirst({
+                where: { campusId: order.campusId, barcode: official.barcode },
+                select: { id: true },
+              })
+            : null;
+          const created = await tx.product.create({
+            data: {
+              barcode: bcTaken ? null : official.barcode,
+              campusId: order.campusId,
+              categoryId: official.categoryId,
+              name: official.name,
+              subtitle: official.subtitle,
+              price: official.price,
+              originalPrice: official.originalPrice,
+              costPrice: official.costPrice,
+              wholesalePrice: official.price,
+              stock: units,
+              tag: official.tag,
+              image: official.image,
+              images: (official.images as Prisma.InputJsonValue) ?? undefined,
+              description: official.description,
+              weight: official.weight,
+              retailUnit: official.retailUnit,
+              wholesaleUnit: official.wholesaleUnit,
+              unitsPerCase: official.unitsPerCase,
+              sales: 0,
+              status: 'off-sale',
+              sourceProductId: official.id,
+              sourceSyncedAt: official.updatedAt,
+            },
+          });
+          rowId = created.id;
+        }
+        await tx.inventoryTxn.create({
+          data: {
+            productId: rowId,
+            type: 'restock-in',
+            delta: units,
+            reason: `订货到货入账（单 ${shipment.id.slice(-6)}）`,
+            operator,
+          },
+        });
+      }
+      await tx.restockShipment.update({
+        where: { id: shipment.id },
+        data: {
+          receivedBy: operator,
+          receivedByName: account?.nickname ?? '',
+          receivedAt: new Date(),
+        },
+      });
+      await tx.restockOrder.update({
+        where: { id: order.id },
+        data: { status: 'received' },
+      });
+    });
+    await this.audit(
+      operator,
+      'restock.receipt',
+      'restock-shipment',
+      shipment.id,
+      null,
+      { orderId: order.id, lineCount: order.items.length },
+      order.campusId,
+    );
+    return { id: order.id, status: 'received' as const };
+  }
+
+  /** 发货单详情（按订货单）：行快照价+发货/收货信息。校区限本单。 */
+  async restockShipmentDetail(orderId: string, hqScope: boolean, campusId: string) {
+    const shipment = await this.db.restockShipment.findUnique({
+      where: { orderId },
+      include: {
+        items: {
+          include: {
+            product: {
+              select: {
+                id: true,
+                name: true,
+                image: true,
+                retailUnit: true,
+                wholesaleUnit: true,
+              },
+            },
+          },
+          orderBy: { id: 'asc' },
+        },
+        order: {
+          select: {
+            campusId: true,
+            status: true,
+            campus: { select: { name: true, shortName: true } },
+          },
+        },
+        batch: { select: { name: true } },
+      },
+    });
+    if (!shipment) throw new NotFoundException('发货单不存在');
+    if (!hqScope && shipment.order.campusId !== campusId)
+      throw new ForbiddenException('只能查看本校区发货单');
+    return {
+      id: shipment.id,
+      orderId: shipment.orderId,
+      orderStatus: shipment.order.status,
+      batchId: shipment.batchId,
+      batchName: shipment.batch.name,
+      campusName: shipment.order.campus.name,
+      campusShortName: shipment.order.campus.shortName,
+      note: shipment.note,
+      shippedByName: shipment.shippedByName,
+      shippedAt: shipment.shippedAt,
+      receivedByName: shipment.receivedByName,
+      receivedAt: shipment.receivedAt,
+      totalCases: shipment.items.reduce((s, i) => s + i.cases, 0),
+      totalUnits: shipment.items.reduce((s, i) => s + i.cases * i.unitsPerCase, 0),
+      items: shipment.items.map((i) => ({
+        productId: i.productId,
+        name: i.product.name,
+        image: i.product.image,
+        retailUnit: i.product.retailUnit,
+        wholesaleUnit: i.product.wholesaleUnit,
+        cases: i.cases,
+        unitsPerCase: i.unitsPerCase,
+        costPerCase: i.costPerCase,
+        wholesalePerCase: i.wholesalePerCase,
+      })),
+    };
   }
 
   async inventoryTxns(productId: string | undefined, campusId: string) {

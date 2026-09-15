@@ -63,6 +63,7 @@ import {
   CreatePurchaseOrderDto,
   ReceivePurchaseOrderDto,
   ClosePurchaseOrderDto,
+  ShipRestockOrderDto,
   UpdateAccountDto,
   UpdateBannerDto,
   UpdateRecruitApplicationDto,
@@ -694,6 +695,43 @@ export class AdminController {
         : body.action === 'reject'
           ? '已驳回'
           : '已撤销确认，锁定库存已释放',
+    );
+  }
+
+  // ==================== 分拨发货（IKFOQ2）：发货/到货/发货单查看 ====================
+  /** 总部发货：整单发（锁转实扣），库存不足拦截。 */
+  @Post('restock/orders/:id/ship') async shipRestockOrder(
+    @Req() req: AuthRequest,
+    @Param('id') id: string,
+    @Body() body: ShipRestockOrderDto,
+  ) {
+    this.authorize(req, 'restock', 'write');
+    if (!isHqScope(req.user.role))
+      throw new ForbiddenException('只有总部可以发货');
+    return ok(await this.service.shipRestockOrder(id, body ?? ({} as ShipRestockOrderDto), req.user.id), '已发货，等待校区确认到货');
+  }
+  /** 校区确认到货：按发货数全额入账（收货校区本人操作）。 */
+  @Post('restock/orders/:id/receipt') async confirmRestockReceipt(
+    @Req() req: AuthRequest,
+    @Param('id') id: string,
+  ) {
+    this.authorize(req, 'restock', 'write');
+    return ok(
+      await this.service.confirmRestockReceipt(id, req.user.id, req.user.campusId),
+      '到货已确认，库存已入账',
+    );
+  }
+  @Get('restock/orders/:id/shipment') async restockShipmentDetail(
+    @Req() req: AuthRequest,
+    @Param('id') id: string,
+  ) {
+    this.authorize(req, 'restock', 'read');
+    return ok(
+      await this.service.restockShipmentDetail(
+        id,
+        isHqScope(req.user.role),
+        req.user.campusId,
+      ),
     );
   }
 

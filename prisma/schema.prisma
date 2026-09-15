@@ -232,6 +232,7 @@ model Product {
   restockBatchItems RestockBatchItem[]
   restockOrderItems RestockOrderItem[]
   purchaseOrderItems PurchaseOrderItem[]
+  shipmentItems RestockShipmentItem[]
 
   @@unique([campusId, barcode])
 }
@@ -254,6 +255,7 @@ model RestockBatch {
   items         RestockBatchItem[]
   orders        RestockOrder[]
   purchaseOrders PurchaseOrder[]
+  shipments     RestockShipment[]
 }
 
 /// 供应商采购单（IKFOQ1，2026-09-15 grilling 定版）：批次已确认订货单一键聚合生成。
@@ -326,9 +328,50 @@ model RestockOrder {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
   items        RestockOrderItem[]
+  shipment     RestockShipment?
 
   @@unique([batchId, campusId])
   @@index([campusId, status])
+}
+
+/// 发货单（IKFOQ2，2026-09-15 grilling 定版）：已确认订货单一对一整单发货
+/// （不拆包），锁定转实扣（总部仓 stock/lockedStock 双降）；不支持撤销。
+/// 行落进货价/批发价快照供毛利②（IKFOPR）。
+model RestockShipment {
+  id             String          @id @default(cuid())
+  orderId        String          @unique
+  order          RestockOrder    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  batchId        String
+  batch          RestockBatch    @relation(fields: [batchId], references: [id])
+  campusId       String
+  note           String          @default("")
+  shippedBy      String
+  shippedByName  String          @default("")
+  shippedAt      DateTime        @default(now())
+  /// 校区确认到货后回填；null=未到货（grilling #3：不登记差异，按发货数全额入账）
+  receivedBy     String?
+  receivedByName String          @default("")
+  receivedAt     DateTime?
+  items          RestockShipmentItem[]
+
+  @@index([batchId])
+  @@index([campusId])
+}
+
+/// 发货行：cases/unitsPerCase 复制订货行快照；costPerCase 进货价（批次采购
+/// 实际成交价优先，回退官方 costPrice）、wholesalePerCase 批发价（发货时实时），分/件
+model RestockShipmentItem {
+  id               String          @id @default(cuid())
+  shipmentId       String
+  shipment         RestockShipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  productId        String
+  product          Product         @relation(fields: [productId], references: [id])
+  cases            Int
+  unitsPerCase     Int
+  costPerCase      Int
+  wholesalePerCase Int
+
+  @@unique([shipmentId, productId])
 }
 
 /// 订货行：按批发单位（件）计；unitsPerCase 落快照防官方库改含量后换算漂移
