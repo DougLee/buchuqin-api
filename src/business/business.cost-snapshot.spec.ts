@@ -1,4 +1,5 @@
 import { PrismaService } from '../database/prisma.service';
+import { AdminService } from '../admin/admin.service';
 import { BusinessService } from './business.service';
 
 /**
@@ -157,5 +158,42 @@ describe('order line cost snapshot (IKFOPQ)', () => {
     const raw = (await db.order.findFirst({ where: { userId: USER } }))!;
     const line = (raw!.items as any[]).find((l) => l.product.id === CASED)!;
     expect(line.product.unitWholesaleCost).toBe(250); // 仍为支付时的 250
+  });
+
+  it('历史单估算（IKFTK7）：无快照行补 currentUnitWholesaleCost，有快照行不受影响', async () => {
+    const admin = new AdminService(db, service);
+    await db.product.update({
+      where: { id: CASED },
+      data: { wholesalePrice: 9600 }, // 现价 9600÷24=400 分/听
+    });
+    // 抹掉 cased 行快照模拟历史单，loose 行保留快照（同单混合两面）
+    const raw = (await db.order.findFirst({ where: { userId: USER } }))!;
+    const stripped = (raw!.items as any[]).map((l) => {
+      if (l.product.id !== CASED) return l;
+      const rest = { ...l.product };
+      delete rest.unitWholesaleCost;
+      return { ...l, product: rest };
+    });
+    await db.order.update({
+      where: { id: raw!.id },
+      data: { items: stripped as any },
+    });
+
+    const rows = await admin.orders(undefined, CAMPUS);
+    const row = rows.find((r) => r.id === raw!.id)!;
+    const lines = (row.items as any[]).sort((a, b) =>
+      a.product.id < b.product.id ? -1 : 1,
+    );
+    const cased = lines.find((l) => l.product.id === CASED)!;
+    expect(cased.product.unitWholesaleCost).toBeUndefined();
+    expect(cased.product.currentUnitWholesaleCost).toBe(400);
+    const loose = lines.find((l) => l.product.id === LOOSE)!;
+    expect(loose.product.unitWholesaleCost).toBe(150); // 快照原值不被覆盖
+    expect('currentUnitWholesaleCost' in loose.product).toBe(false);
+    // C 端出口同样不出现估算字段（内部数据）
+    const view = await service.order(USER, raw!.id);
+    for (const line of view.items as any[]) {
+      expect('currentUnitWholesaleCost' in line.product).toBe(false);
+    }
   });
 });

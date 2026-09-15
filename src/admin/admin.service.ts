@@ -12,6 +12,7 @@ import { PrismaService } from '../database/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PrinterService } from '../printer/printer.service';
 import { BusinessService } from '../business/business.service';
+import { perRetailUnitCostFen } from '../common/product-units';
 import { CommissionService } from '../commission/commission.service';
 import type {
   AdjustStockDto,
@@ -1753,7 +1754,14 @@ export class AdminService {
     const locationRows = productIds.length
       ? await this.db.product.findMany({
           where: { id: { in: productIds } },
-          select: { id: true, location: true, locationCode: true },
+          select: {
+            id: true,
+            location: true,
+            locationCode: true,
+            // IKFTK7：历史单毛利估算现价（换算成每零售单位，与快照同口径）
+            wholesalePrice: true,
+            unitsPerCase: true,
+          },
         })
       : [];
     const locationById = new Map(locationRows.map((p) => [p.id, p]));
@@ -1764,12 +1772,28 @@ export class AdminService {
           const live = line?.product
             ? locationById.get((line.product as { id?: string }).id ?? '')
             : undefined;
+          // IKFTK7：快照前历史单无 unitWholesaleCost，补当前每单位批发成本供前端
+          // 标「估算」展示；有快照的行绝不覆盖（快照是毛利的唯一精确口径）
+          const snapshotCost = (
+            line?.product as { unitWholesaleCost?: number } | undefined
+          )?.unitWholesaleCost;
           return {
             ...line,
             product: {
               ...line.product,
               ...(live
-                ? { location: live.location, locationCode: live.locationCode }
+                ? {
+                    location: live.location,
+                    locationCode: live.locationCode,
+                    ...(snapshotCost == null
+                      ? {
+                          currentUnitWholesaleCost: perRetailUnitCostFen(
+                            live.wholesalePrice,
+                            live.unitsPerCase,
+                          ),
+                        }
+                      : {}),
+                  }
                 : {}),
             },
           };
