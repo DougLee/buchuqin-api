@@ -1754,10 +1754,17 @@ export class AdminService {
     );
     const pos = await this.db.purchaseOrder.findMany({
       where: { batchId: id },
-      select: { id: true, closedAt: true, items: { select: { receivedCases: true, unitCost: true } } },
+      select: {
+        id: true,
+        closedAt: true,
+        items: { select: { receivedCases: true, unitCost: true, unitsPerCase: true } },
+      },
     });
+    // IKFOPR 按听报价：已收金额=件数×听数×每听单价
     const purchaseReceivedTotal = pos.reduce(
-      (sum, po) => sum + po.items.reduce((s2, i) => s2 + i.receivedCases * i.unitCost, 0),
+      (sum, po) =>
+        sum +
+        po.items.reduce((s2, i) => s2 + i.receivedCases * i.unitCost * i.unitsPerCase, 0),
       0,
     );
     return {
@@ -2229,7 +2236,13 @@ export class AdminService {
           select: { id: true, name: true, startAt: true, endAt: true, closedAt: true },
         },
         items: {
-          select: { requiredCases: true, receivedCases: true, badCases: true, unitCost: true },
+          select: {
+            requiredCases: true,
+            receivedCases: true,
+            badCases: true,
+            unitCost: true,
+            unitsPerCase: true,
+          },
         },
       },
       orderBy: { createdAt: 'desc' },
@@ -2249,9 +2262,15 @@ export class AdminService {
         requiredCases,
         receivedCases,
         badCases,
-        // 金额口径（IQ7）：采购总额=应收×单价；已收金额=已收×单价（坏品已含在已收里）
-        totalCost: po.items.reduce((s, i) => s + i.requiredCases * i.unitCost, 0),
-        receivedCost: po.items.reduce((s, i) => s + i.receivedCases * i.unitCost, 0),
+        // 金额口径（IQ7+IKFOPR 按听报价）：行金额=件数×听数×每听单价
+        totalCost: po.items.reduce(
+          (s, i) => s + i.requiredCases * i.unitCost * i.unitsPerCase,
+          0,
+        ),
+        receivedCost: po.items.reduce(
+          (s, i) => s + i.receivedCases * i.unitCost * i.unitsPerCase,
+          0,
+        ),
         closedAt: po.closedAt,
         createdByName: po.createdByName,
         createdAt: po.createdAt,
@@ -2655,11 +2674,13 @@ export class AdminService {
               productId: it.productId,
               cases: it.cases,
               unitsPerCase: it.unitsPerCase,
+              // 每件价=听价×听数（IKFOPR 拍板按听报价）：行金额=件数×每件价，整除无尾差
               costPerCase:
-                costBySource.get(it.productId) ??
-                officialById.get(it.productId)?.costPrice ??
-                0,
-              wholesalePerCase: officialById.get(it.productId)?.price ?? 0,
+                (costBySource.get(it.productId) ??
+                  officialById.get(it.productId)?.costPrice ??
+                  0) * it.unitsPerCase,
+              wholesalePerCase:
+                (officialById.get(it.productId)?.price ?? 0) * it.unitsPerCase,
             })),
           },
         },
@@ -2813,6 +2834,96 @@ export class AdminService {
     return { id: order.id, status: 'received' as const };
   }
 
+  // ==================== 总部经营日报（IKFOPR 2026-09-15 grilling 定版）====================
+  // 实时聚合发货单：按到货确认时点（receivedAt）计收，只计闭环单，收入/成本
+  // 同一张发货单同口径；行=日期×校区，毛利率万分比整数。不建跑批表
+  // （T+1 语义=昨日数已落定不再变，聚合即对账）。
+
+  async hqDailyReport(start: string, end: string, campusId?: string) {
+    // 业务日界按北京时间切
+    const startAt = new Date(`${start}T00:00:00+08:00`);
+    const endAt = new Date(`${end}T23:59:59.999+08:00`);
+    if (
+      Number.isNaN(startAt.getTime()) ||
+      Number.isNaN(endAt.getTime()) ||
+      startAt > endAt
+    )
+      throw new BadRequestException('日期范围不合法');
+    const shipments = await this.db.restockShipment.findMany({
+      where: {
+        receivedAt: { gte: startAt, lte: endAt },
+        ...(campusId ? { campusId } : {}),
+      },
+      include: {
+        items: {
+          select: { cases: true, costPerCase: true, wholesalePerCase: true },
+        },
+        order: { select: { campus: { select: { name: true, shortName: true } } } },
+      },
+    });
+    const agg = new Map<
+      string,
+      {
+        date: string;
+        campusId: string;
+        campusName: string;
+        campusShortName: string;
+        shipments: number;
+        wholesaleTotal: number;
+        costTotal: number;
+      }
+    >();
+    for (const s of shipments) {
+      const date = new Date(s.receivedAt!.getTime() + 8 * 3600 * 1000)
+        .toISOString()
+        .slice(0, 10);
+      const k = `${date}|${s.campusId}`;
+      const cur = agg.get(k) ?? {
+        date,
+        campusId: s.campusId,
+        campusName: s.order.campus.name,
+        campusShortName: s.order.campus.shortName,
+        shipments: 0,
+        wholesaleTotal: 0,
+        costTotal: 0,
+      };
+      cur.shipments += 1;
+      cur.wholesaleTotal += s.items.reduce(
+        (sum, i) => sum + i.cases * i.wholesalePerCase,
+        0,
+      );
+      cur.costTotal += s.items.reduce((sum, i) => sum + i.cases * i.costPerCase, 0);
+      agg.set(k, cur);
+    }
+    const rows = [...agg.values()]
+      .map((r) => {
+        const gross = r.wholesaleTotal - r.costTotal;
+        return {
+          ...r,
+          gross,
+          marginRate: r.wholesaleTotal
+            ? Math.round((gross / r.wholesaleTotal) * 10000)
+            : 0,
+        };
+      })
+      .sort((a, b) =>
+        a.date < b.date ? 1 : a.date > b.date ? -1 : a.campusName.localeCompare(b.campusName, 'zh'),
+      );
+    const tWholesale = rows.reduce((s, r) => s + r.wholesaleTotal, 0);
+    const tCost = rows.reduce((s, r) => s + r.costTotal, 0);
+    const tGross = tWholesale - tCost;
+    return {
+      totals: {
+        shipments: rows.reduce((s, r) => s + r.shipments, 0),
+        wholesaleTotal: tWholesale,
+        costTotal: tCost,
+        gross: tGross,
+        marginRate: tWholesale ? Math.round((tGross / tWholesale) * 10000) : 0,
+      },
+      rows,
+    };
+  }
+
   /** 发货单详情（按订货单）：行快照价+发货/收货信息。校区限本单。 */
   async restockShipmentDetail(orderId: string, hqScope: boolean, campusId: string) {
     const shipment = await this.db.restockShipment.findUnique({
@@ -2860,6 +2971,12 @@ export class AdminService {
       receivedAt: shipment.receivedAt,
       totalCases: shipment.items.reduce((s, i) => s + i.cases, 0),
       totalUnits: shipment.items.reduce((s, i) => s + i.cases * i.unitsPerCase, 0),
+      // IKFOPR 单据毛利（每件价口径）：批发金额−进货金额，gross=两者差
+      wholesaleTotal: shipment.items.reduce(
+        (s, i) => s + i.cases * i.wholesalePerCase,
+        0,
+      ),
+      costTotal: shipment.items.reduce((s, i) => s + i.cases * i.costPerCase, 0),
       items: shipment.items.map((i) => ({
         productId: i.productId,
         name: i.product.name,

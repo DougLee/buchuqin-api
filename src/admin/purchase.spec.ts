@@ -238,15 +238,15 @@ describe('purchase order (IKFOQ1)', () => {
     expect(row.phase).toBe('completed');
     expect(row.requiredCases).toBe(10);
     expect(row.receivedCases).toBe(10);
-    // 采购总额 = 7×280 + 3×300 = 2860 分；已收同额
-    expect(row.totalCost).toBe(7 * 280 + 3 * 300);
+    // 采购总额 = 7×280×24 + 3×300×24 = 68640 分（IKFOPR 按听报价：件×听×每听价）
+    expect(row.totalCost).toBe(7 * 280 * 24 + 3 * 300 * 24);
     expect(row.receivedCost).toBe(row.totalCost);
     // 批次毛利预估（IQ8）：批发价合计 − 采购已收
-    // 收入 = (7+3) 件 × 24 听 × 500 分 = 120000 分；成本 = 2860 分
+    // 收入 = (7+3) 件 × 24 听 × 500 分 = 120000 分；成本 = 68640 分
     const detail = await admin.restockBatchDetail(batchId, true, '');
     expect(detail.wholesaleTotal).toBe(10 * 24 * 500);
-    expect(detail.purchaseReceivedTotal).toBe(2860);
-    expect(detail.grossEstimate).toBe(120000 - 2860);
+    expect(detail.purchaseReceivedTotal).toBe(68640);
+    expect(detail.grossEstimate).toBe(120000 - 68640);
   });
 
   it('关闭禁验收、重开可继续；关闭单不再拦新单生成（补采）', async () => {

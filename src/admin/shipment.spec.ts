@@ -220,8 +220,11 @@ describe('restock shipment (IKFOQ2)', () => {
     expect(detail.orderStatus).toBe('shipped');
     expect(detail.totalUnits).toBe(48);
     const a = detail.items.find((i) => i.productId === OFF_A)!;
-    expect(a.costPerCase).toBe(280); // 采购实际价（IQ7 可改后）优先
-    expect(a.wholesalePerCase).toBe(500); // 发货时实时批发价
+    // 每件价=听价×听数（IKFOPR 按听报价）：采购实际价 280/听 → 6720/件；批发 500/听 → 12000/件
+    expect(a.costPerCase).toBe(280 * 24);
+    expect(a.wholesalePerCase).toBe(500 * 24);
+    expect(detail.wholesaleTotal).toBe(2 * 500 * 24); // 件数×每件批发价（2 件×12000）
+    expect(detail.costTotal).toBe(2 * 280 * 24);
     // 订货单列表带发货时间摘要
     const rows = await admin.restockOrders(true, '', { batchId });
     expect(rows.find((r) => r.id === orderId1)!.shippedAt).toBeTruthy();
@@ -237,7 +240,7 @@ describe('restock shipment (IKFOQ2)', () => {
     const detail = await admin.restockShipmentDetail(orderId2, true, '');
     expect(detail.totalUnits).toBe(36); // 24 + 12
     const b = detail.items.find((i) => i.productId === OFF_B)!;
-    expect(b.costPerCase).toBe(500); // 无采购行回退 costPrice
+    expect(b.costPerCase).toBe(500 * 12); // 无采购行回退 costPrice 500/听 → 6000/件
     const hqB = await db.product.findUniqueOrThrow({ where: { id: HQ_B } });
     expect(hqB.stock).toBe(240 - 12);
     expect(hqB.lockedStock).toBe(0); // 锁定清零
@@ -278,6 +281,23 @@ describe('restock shipment (IKFOQ2)', () => {
       where: { id: orderId2 },
     });
     expect(order2.status).toBe('received');
+  });
+
+  it('总部日报：receivedAt 落日×校区聚合，与发货单毛利同源；校区筛选可用', async () => {
+    const today = new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10);
+    const rep = await admin.hqDailyReport(today, today);
+    // 两单批发额 = 2×12000 + (12000+6000) = 42000；成本 = 13440 + (6720+6000) = 26160
+    expect(rep.totals.shipments).toBe(2);
+    expect(rep.totals.wholesaleTotal).toBe(42000);
+    expect(rep.totals.costTotal).toBe(26160);
+    expect(rep.totals.gross).toBe(15840);
+    expect(rep.totals.marginRate).toBe(Math.round((15840 / 42000) * 10000));
+    // campus1 筛选：只含本校区单（24000/13440）
+    const rep1 = await admin.hqDailyReport(today, today, CAMPUS_1);
+    expect(rep1.rows.length).toBe(1);
+    expect(rep1.rows[0].campusId).toBe(CAMPUS_1);
+    expect(rep1.totals.wholesaleTotal).toBe(24000);
+    expect(rep1.totals.costTotal).toBe(13440);
   });
 
   it('状态机拦截：shipped 禁撤销确认、received 禁再发/禁再确认、confirmed 门槛', async () => {

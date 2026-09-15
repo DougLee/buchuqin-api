@@ -735,6 +735,29 @@ export class AdminController {
     );
   }
 
+  // ==================== 总部经营日报（IKFOPR）：发货单实时聚合 ====================
+  @Get('reports/hq-daily') async hqDailyReport(
+    @Req() req: AuthRequest,
+    @Query('start') start?: string,
+    @Query('end') end?: string,
+    @Query('campusId') campusId?: string,
+  ) {
+    this.authorize(req, 'purchase');
+    if (!isHqScope(req.user.role))
+      throw new ForbiddenException('总部日报仅总部可用');
+    // 缺省=昨日（T+1 口径）
+    const yesterday = new Date(Date.now() + 8 * 3600 * 1000 - 86400 * 1000)
+      .toISOString()
+      .slice(0, 10);
+    return ok(
+      await this.service.hqDailyReport(
+        start || yesterday,
+        end || yesterday,
+        campusId || undefined,
+      ),
+    );
+  }
+
   // ==================== 采购单（IKFOQ1）：独立板块「采购管理」====================
   // 全链总部动作（hq/admin）：生成聚合/验收入库/关闭重开；权限 purchase section。
   @Get('purchase/orders') async purchaseOrders(@Req() req: AuthRequest) {
