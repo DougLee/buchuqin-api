@@ -12,6 +12,7 @@ export type AdminSection =
   | 'products'
   | 'categories'
   | 'inventory'
+  | 'restock'
   | 'staff'
   | 'campuses'
   | 'buildings'
@@ -77,6 +78,9 @@ export const ADMIN_MATRIX: Record<
   // IKFOPY（2026-09-15）：hq 补库存读写——总部仓=特殊校区，hq 视角经
   // campus 参数聚焦总部仓复用仓储页（写操作必须显式带 campus，controller 把关）
   inventory: { read: [...OPS, 'warehouse', 'hq'], write: [...OPS, 'warehouse', 'hq'] },
+  // 订货批次（IKFOQ0 2026-09-15）：批次管理+审单=hq/admin（对齐直接入库），
+  // 订货提交=operations/warehouse（对齐采购申请）；页面按角色显隐动作
+  restock: { read: [...OPS, 'warehouse', 'hq'], write: [...OPS, 'warehouse', 'hq'] },
   staff: { read: OPS, write: OPS },
   campuses: { read: [...OPS, 'hq'], write: [...OPS, 'hq'] },
   // 楼栋/寝室管理（IKCRS8 2026-09-02：从 campuses 拆独立键）——挂本校区

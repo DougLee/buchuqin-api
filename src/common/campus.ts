@@ -11,3 +11,9 @@ export const ADMIN_CAMPUS_ID = 'campus-hbut';
  * 好处：Product.campusId 保持非空 + 外键不变，全部按校区隔离的查询零改动。
  */
 export const OFFICIAL_CAMPUS_ID = 'campus-official';
+
+/**
+ * 总部仓固定 id（IKFOPY）：migration 预置的 Campus 行（type=hq），总部业务
+ * （订货批次锁库存 / 铺货）按它定位；不可停用、不可删（IKFOQ0 延续使用）。
+ */
+export const HQ_CAMPUS_ID = 'campus-hq';

@@ -23,7 +23,7 @@ import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagg
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import type { AuthRequest } from '../auth/jwt-auth.guard';
 import { ok } from '../common/api-response';
-import { OFFICIAL_CAMPUS_ID } from '../common/campus';
+import { HQ_CAMPUS_ID, OFFICIAL_CAMPUS_ID } from '../common/campus';
 import { filterByKeyword, paginate } from '../common/pagination';
 import { AdminService } from './admin.service';
 import {
@@ -58,6 +58,10 @@ import {
   StocktakeDto,
   CreatePurchaseRequestDto,
   AuditPurchaseRequestDto,
+  CreateRestockBatchDto,
+  UpdateRestockBatchDto,
+  SaveRestockOrderDto,
+  AuditRestockOrderDto,
   UpdateAccountDto,
   UpdateBannerDto,
   UpdateRecruitApplicationDto,
@@ -455,14 +459,22 @@ export class AdminController {
       ),
     );
   }
-  /** 校区从官方库导入商品（IKAJSO）：本地售价/上下架/库存自管。 */
+  /** 校区从官方库导入商品（IKAJSO）：本地售价/上下架/库存自管。
+   *  IKFOQ0：hq/admin 可带 ?campus=campus-hq 铺货到总部仓（订货锁库存的前提）。 */
   @Post('products/import') async importProducts(
     @Req() req: AuthRequest,
     @Body() body: ImportProductsDto,
+    @Query('campus') campus?: string,
   ) {
     this.authorize(req, 'products', 'write');
-    if (req.user.role === 'hq')
-      throw new ForbiddenException('总部账号请在官方商品库直接维护商品');
+    if (isHqScope(req.user.role)) {
+      const target = campus?.trim();
+      if (target !== HQ_CAMPUS_ID)
+        throw new ForbiddenException('总部账号仅可铺货至总部仓（?campus=campus-hq）');
+      return ok(
+        await this.service.importProducts(body.productIds, req.user.id, target),
+      );
+    }
     return ok(
       await this.service.importProducts(
         body.productIds,
@@ -587,6 +599,149 @@ export class AdminController {
         req.user.campusId,
       ),
       body.action === 'approved' ? '已通过并入库' : '已拒绝',
+    );
+  }
+
+  // ==================== 订货批次（IKFOQ0）：独立板块「订货管理」====================
+
+  /** 批次列表：阶段由时间窗推导；校区角色附带本校区单况统计。 */
+  @Get('restock/batches') async restockBatches(@Req() req: AuthRequest) {
+    this.authorize(req, 'restock', 'read');
+    return ok(
+      await this.service.restockBatches(isHqScope(req.user.role), req.user.campusId),
+    );
+  }
+  @Post('restock/batches') async createRestockBatch(
+    @Req() req: AuthRequest,
+    @Body() body: CreateRestockBatchDto,
+  ) {
+    this.authorize(req, 'restock', 'write');
+    if (!isHqScope(req.user.role))
+      throw new ForbiddenException('只有总部可以创建订货批次');
+    return ok(await this.service.createRestockBatch(body, req.user.id), '批次已创建');
+  }
+  @Patch('restock/batches/:id') async updateRestockBatch(
+    @Req() req: AuthRequest,
+    @Param('id') id: string,
+    @Body() body: UpdateRestockBatchDto,
+  ) {
+    this.authorize(req, 'restock', 'write');
+    if (!isHqScope(req.user.role))
+      throw new ForbiddenException('只有总部可以修改订货批次');
+    return ok(await this.service.updateRestockBatch(id, body, req.user.id), '批次已更新');
+  }
+  @Post('restock/batches/:id/close') async closeRestockBatch(
+    @Req() req: AuthRequest,
+    @Param('id') id: string,
+  ) {
+    this.authorize(req, 'restock', 'write');
+    if (!isHqScope(req.user.role))
+      throw new ForbiddenException('只有总部可以关闭订货批次');
+    return ok(await this.service.closeRestockBatch(id, req.user.id), '批次已关闭');
+  }
+  /** 批次详情：总部看全校区单，校区只看本校区单。 */
+  @Get('restock/batches/:id') async restockBatchDetail(
+    @Req() req: AuthRequest,
+    @Param('id') id: string,
+  ) {
+    this.authorize(req, 'restock', 'read');
+    return ok(
+      await this.service.restockBatchDetail(
+        id,
+        isHqScope(req.user.role),
+        req.user.campusId,
+      ),
+    );
+  }
+  /** 校区保存本批次订货单（upsert，草稿/驳回态可改）。 */
+  @Put('restock/batches/:batchId/order') async saveRestockOrder(
+    @Req() req: AuthRequest,
+    @Param('batchId') batchId: string,
+    @Body() body: SaveRestockOrderDto,
+  ) {
+    this.authorize(req, 'restock', 'write');
+    if (isHqScope(req.user.role))
+      throw new ForbiddenException('订货由校区发起，总部账号请走审核');
+    if (!req.user.campusId)
+      throw new BadRequestException('账号未绑定校区，无法订货');
+    return ok(
+      await this.service.saveRestockOrder(batchId, body, req.user.id, req.user.campusId),
+      '订货单已保存',
+    );
+  }
+  /** 校区提交订货单（窗口内）。 */
+  @Post('restock/batches/:batchId/order/submit') async submitRestockOrder(
+    @Req() req: AuthRequest,
+    @Param('batchId') batchId: string,
+  ) {
+    this.authorize(req, 'restock', 'write');
+    if (isHqScope(req.user.role))
+      throw new ForbiddenException('订货由校区发起，总部账号请走审核');
+    if (!req.user.campusId)
+      throw new BadRequestException('账号未绑定校区，无法订货');
+    return ok(
+      await this.service.submitRestockOrder(batchId, req.user.id, req.user.campusId),
+      '订货单已提交，等待总部审核',
+    );
+  }
+  /** 校区撤回（已提交未审核）。 */
+  @Post('restock/batches/:batchId/order/withdraw') async withdrawRestockOrder(
+    @Req() req: AuthRequest,
+    @Param('batchId') batchId: string,
+  ) {
+    this.authorize(req, 'restock', 'write');
+    if (isHqScope(req.user.role))
+      throw new ForbiddenException('订货由校区发起，总部账号请走审核');
+    if (!req.user.campusId)
+      throw new BadRequestException('账号未绑定校区，无法订货');
+    return ok(
+      await this.service.withdrawRestockOrder(batchId, req.user.id, req.user.campusId),
+      '订货单已撤回草稿',
+    );
+  }
+  /** 订货单列表（?batchId&status 过滤）。 */
+  @Get('restock/orders') async restockOrders(
+    @Req() req: AuthRequest,
+    @Query('batchId') batchId?: string,
+    @Query('status') status?: string,
+  ) {
+    this.authorize(req, 'restock', 'read');
+    return ok(
+      await this.service.restockOrders(isHqScope(req.user.role), req.user.campusId, {
+        batchId,
+        status,
+      }),
+    );
+  }
+  @Get('restock/orders/:id') async restockOrderDetail(
+    @Req() req: AuthRequest,
+    @Param('id') id: string,
+  ) {
+    this.authorize(req, 'restock', 'read');
+    return ok(
+      await this.service.restockOrderDetail(
+        id,
+        isHqScope(req.user.role),
+        req.user.campusId,
+      ),
+    );
+  }
+  /** 总部审核：confirm 锁总部仓库存（不足阻断），reject 驳回，revoke 撤销放锁。 */
+  @Post('restock/orders/:id/audit') async auditRestockOrder(
+    @Req() req: AuthRequest,
+    @Param('id') id: string,
+    @Body() body: AuditRestockOrderDto,
+  ) {
+    this.authorize(req, 'restock', 'write');
+    if (!isHqScope(req.user.role))
+      throw new ForbiddenException('只有总部可以审核订货单');
+    return ok(
+      await this.service.auditRestockOrder(id, body, req.user.id),
+      body.action === 'confirm'
+        ? '已确认并锁定总部仓库存'
+        : body.action === 'reject'
+          ? '已驳回'
+          : '已撤销确认，锁定库存已释放',
     );
   }
   @Post('inventory/adjust') async adjustStock(

@@ -39,6 +39,7 @@ model Campus {
   lotteryWheel         LotteryWheel?
   purchaseRequests     PurchaseRequest[]
   recruitApplications  RecruitingApplication[]
+  restockOrders        RestockOrder[]
 }
 
 /**
@@ -228,8 +229,82 @@ model Product {
   inventoryTxns   InventoryTxn[]
   promotions      Promotion[]
   purchaseRequests PurchaseRequest[]
+  restockBatchItems RestockBatchItem[]
+  restockOrderItems RestockOrderItem[]
 
   @@unique([campusId, barcode])
+}
+
+/**
+ * 订货批次（IKFOQ0）：总部创建起止窗口，窗口内校区按批发单位（件）订货。
+ * 不落状态字段——未开始/进行中/已结束由 startAt/endAt 推导；closedAt 非 null
+ * = 总部手动提前关闭（grilling #9）。
+ */
+model RestockBatch {
+  id            String    @id @default(cuid())
+  name          String
+  startAt       DateTime
+  endAt         DateTime
+  closedAt      DateTime?
+  createdBy     String
+  createdByName String    @default("")
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  items         RestockBatchItem[]
+  orders        RestockOrder[]
+}
+
+/// 批次可订商品范围：勾选的官方库商品行（grilling #7，建批次时默认全选在售落库）
+model RestockBatchItem {
+  batchId   String
+  batch     RestockBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product      @relation(fields: [productId], references: [id])
+
+  @@id([batchId, productId])
+}
+
+/**
+ * 校区订货单（IKFOQ0）：一批次一校区一张（@@unique 兜底）；草稿/驳回可改，
+ * 提交后锁定，总部确认即锁总部仓库存，发货转扣（IKFOQ2）。
+ */
+model RestockOrder {
+  id           String    @id @default(cuid())
+  batchId      String
+  batch        RestockBatch @relation(fields: [batchId], references: [id])
+  campusId     String
+  campus       Campus    @relation(fields: [campusId], references: [id])
+  /// draft | submitted | confirmed | rejected（撤回/重提/撤销环见 grilling #12）
+  status       String    @default("draft")
+  submitBy     String?
+  submitByName String    @default("")
+  submittedAt  DateTime?
+  auditBy      String?
+  auditByName  String    @default("")
+  auditNote    String    @default("")
+  auditAt      DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  items        RestockOrderItem[]
+
+  @@unique([batchId, campusId])
+  @@index([campusId, status])
+}
+
+/// 订货行：按批发单位（件）计；unitsPerCase 落快照防官方库改含量后换算漂移
+model RestockOrderItem {
+  id           String       @id @default(cuid())
+  orderId      String
+  order        RestockOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId    String
+  product      Product      @relation(fields: [productId], references: [id])
+  /// 件数（正整数）
+  cases        Int
+  /// 下单时官方行含量快照：1 件 = unitsPerCase 个零售单位
+  unitsPerCase Int
+  remark       String       @default("")
+
+  @@unique([orderId, productId])
 }
 
 /**
