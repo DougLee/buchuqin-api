@@ -1138,12 +1138,15 @@ export class AdminService {
         // 候选池只见可售）；校区自建商品仍默认在售
         status: campusId === OFFICIAL_CAMPUS_ID ? 'off-sale' : 'on-sale',
         // IKC1AC：进货价/批发价格仅官方库行维护；批发价缺省取 price
+        // IKFOPQ：校区自建行接受批发价（自报，行内毛利基数），进货价仍仅官方
         ...(campusId === OFFICIAL_CAMPUS_ID
           ? {
               costPrice: body.costPrice ?? 0,
               wholesalePrice: body.wholesalePrice ?? body.price,
             }
-          : {}),
+          : {
+              wholesalePrice: body.wholesalePrice ?? 0,
+            }),
       },
     });
     await this.audit(
@@ -1180,9 +1183,10 @@ export class AdminService {
       });
       if (!category) throw new BadRequestException('分类不存在');
     }
-    // IKC1AC：进货价/批发价格仅官方库行可改（校区视角不可见也不可写）
+    // IKC1AC：进货价仅官方库行可改（校区视角不可见也不可写）
     // IKFOPU：单位属性同属官方资料——校区「导入行」（有来源）剔除三字段只读，
     // 校区自建行（无来源）保留可改
+    // IKFOPQ：校区自建行放开批发价编辑——其行内毛利 = 售价 − 自报批发价
     const data: UpdateProductDto =
       campusId === OFFICIAL_CAMPUS_ID
         ? body
@@ -1195,7 +1199,7 @@ export class AdminService {
               wholesaleUnit: undefined,
               unitsPerCase: undefined,
             }
-          : { ...body, costPrice: undefined, wholesalePrice: undefined };
+          : { ...body, costPrice: undefined };
     if (data.unitsPerCase != null && data.unitsPerCase < 1)
       throw new BadRequestException('每件含量不能小于 1');
     const after = await this.db.product.update({ where: { id }, data });

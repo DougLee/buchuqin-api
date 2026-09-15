@@ -8,6 +8,7 @@ import {
 import { Prisma } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../database/prisma.service';
+import { perRetailUnitCostFen } from '../common/product-units';
 import { NotificationsService } from '../notifications/notifications.service';
 import {
   PrinterService,
@@ -73,7 +74,20 @@ export interface ProductSnapshot {
   tag: string;
   weight: number;
   categoryId: string;
+  /** 双成本快照（IKFOPQ）：支付事务写入，每零售单位成本（分，floor）。
+   *  校区行内毛利 = price − unitWholesaleCost；总部账（IKFOPR）用 Purchase。
+   *  C 端出口 orderView 必须剥离（进货价属内部数据，绝不进 C 端响应）。 */
+  unitWholesaleCost?: number;
+  unitPurchaseCost?: number;
+  /** 快照时的每件含量：成本换算的审计依据。 */
+  unitsPerCase?: number;
 }
+/** 快照字段名（IKFOPQ）：C 端出口剥离用，与 ProductSnapshot 保持同源。 */
+const COST_SNAPSHOT_KEYS = [
+  'unitWholesaleCost',
+  'unitPurchaseCost',
+  'unitsPerCase',
+] as const;
 export interface OrderLine {
   product: ProductSnapshot;
   quantity: number;
@@ -157,6 +171,16 @@ export class BusinessService {
       weight: number(product.weight),
     };
   }
+  /** C 端订单行脱敏（IKFOPQ）：剔除双成本快照字段，浅拷贝行与 product。 */
+  private stripCostSnapshot(items: OrderLine[]): OrderLine[] {
+    return (items ?? []).map((line) => {
+      const product = line.product as unknown as Record<string, unknown>;
+      if (!COST_SNAPSHOT_KEYS.some((k) => k in product)) return line;
+      const rest = { ...product };
+      for (const k of COST_SNAPSHOT_KEYS) delete rest[k];
+      return { ...line, product: rest } as unknown as OrderLine;
+    });
+  }
   private orderView(order: any) {
     return {
       ...order,
@@ -173,7 +197,9 @@ export class BusinessService {
       payableAmount: number(order.payableAmount),
       createdAt: order.createdAt.toISOString(),
       paidAt: order.paidAt?.toISOString(),
-      items: order.items as OrderLine[],
+      // IKFOPQ：C 端出口剥离双成本快照（进货价/批发成本属内部数据，
+      // 绝不进 C 端响应）；admin/履约端不经此视图，快照原样可用
+      items: this.stripCostSnapshot(order.items as OrderLine[]),
       timeline: order.timeline as TimelineStep[],
     };
   }
@@ -856,6 +882,18 @@ export class BusinessService {
         });
         if (!p || p.stock - p.lockedStock < line.quantity)
           throw new BadRequestException(`${line.product.name}库存不足`);
+        // 双成本快照（IKFOPQ）：支付时把每零售单位成本写进行快照——
+        // 商品批发价此后再改不影响历史订单毛利；除不尽 floor（毛利
+        // 一律整单「金额−金额」计算，快照仅作行级展示基数，不累乘）
+        line.product.unitWholesaleCost = perRetailUnitCostFen(
+          p.wholesalePrice,
+          p.unitsPerCase,
+        );
+        line.product.unitPurchaseCost = perRetailUnitCostFen(
+          p.costPrice,
+          p.unitsPerCase,
+        );
+        line.product.unitsPerCase = p.unitsPerCase;
       }
       const timeline = raw.timeline as unknown as TimelineStep[],
         paidAt = new Date();
@@ -868,6 +906,8 @@ export class BusinessService {
           status: 'paid',
           statusText: '仓库正在接单',
           paidAt,
+          // IKFOPQ：items 连同成本快照一并写回
+          items: json(items),
           timeline: json(timeline),
           // 包裹码随支付生成（骑手取货扫码时须回传校验）
           package: json({
