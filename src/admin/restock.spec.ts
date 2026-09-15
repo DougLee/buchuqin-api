@@ -85,7 +85,6 @@ describe('restock batch (IKFOQ0)', () => {
           name: `开放批次${tag}`,
           startAt: new Date(now - hour).toISOString(),
           endAt: new Date(now + 24 * hour).toISOString(),
-          productIds: [OFF_ID],
         } as any,
         HQ_OP,
       )
@@ -96,7 +95,6 @@ describe('restock batch (IKFOQ0)', () => {
           name: `未开始批次${tag}`,
           startAt: new Date(now + 24 * hour).toISOString(),
           endAt: new Date(now + 48 * hour).toISOString(),
-          productIds: [OFF_ID],
         } as any,
         HQ_OP,
       )
@@ -107,7 +105,6 @@ describe('restock batch (IKFOQ0)', () => {
           name: `已结束批次${tag}`,
           startAt: new Date(now - 48 * hour).toISOString(),
           endAt: new Date(now - 24 * hour).toISOString(),
-          productIds: [OFF_ID],
         } as any,
         HQ_OP,
       )
@@ -151,8 +148,8 @@ describe('restock batch (IKFOQ0)', () => {
     ).rejects.toThrow('批次已结束');
   });
 
-  it('批次外商品拒绝进入订货单', async () => {
-    await expect(save(1, `rs-not-in-batch-${tag}`)).rejects.toThrow('不在本批次可订范围');
+  it('非官方在售商品拒绝进入订货单（恒等全集口径）', async () => {
+    await expect(save(1, `rs-not-in-batch-${tag}`)).rejects.toThrow('不在官方库在售范围');
   });
 
   it('保存订货单：unitsPerCase 快照 + upsert 同一张单', async () => {
@@ -240,14 +237,7 @@ describe('restock batch (IKFOQ0)', () => {
     expect(s.status).toBe('submitted');
   });
 
-  it('已提交单锁死批次范围修改；关闭批次后拒新订', async () => {
-    await expect(
-      admin.updateRestockBatch(
-        openBatchId,
-        { productIds: [OFF_ID] } as any,
-        HQ_OP,
-      ),
-    ).rejects.toThrow('商品范围不可调整');
+  it('关闭批次后拒新订（关窗幂等）', async () => {
     await admin.closeRestockBatch(openBatchId, HQ_OP);
     await expect(
       admin.closeRestockBatch(openBatchId, HQ_OP),
@@ -260,10 +250,9 @@ describe('restock batch (IKFOQ0)', () => {
         CAMPUS_ID,
       ),
     ).rejects.toThrow('不能再订货');
-    // 收尾：释放确认态锁定（上轮 confirm 后 revoke，此处无锁定）
   });
 
-  it('列表与详情：校区只看本校区，总部看全校区', async () => {
+  it('列表与详情：校区只看本校区，总部看全校区；商品=在售全集', async () => {
     const campusOrders = await admin.restockOrders(false, CAMPUS_ID, {});
     expect(campusOrders.some((o) => o.id === orderId)).toBe(true);
     const otherCampus = await admin.restockOrders(false, `rs-other-${tag}`, {});
@@ -271,7 +260,7 @@ describe('restock batch (IKFOQ0)', () => {
     const hqOrders = await admin.restockOrders(true, '', {});
     expect(hqOrders.some((o) => o.id === orderId)).toBe(true);
     const detail = await admin.restockBatchDetail(openBatchId, true, '');
-    expect(detail.items).toHaveLength(1);
+    expect(detail.items.some((i) => i.productId === OFF_ID)).toBe(true);
     expect(detail.orders).toHaveLength(1);
     expect(detail.orders[0].totalUnits).toBe(8 * 24);
   });

@@ -279,18 +279,17 @@ export class AuditPurchaseRequestDto {
   @IsIn(['approved', 'rejected']) action!: 'approved' | 'rejected';
   @IsOptional() @IsString() @MaxLength(120) note?: string;
 }
-/** 订货批次（IKFOQ0）：总部创建，窗口内校区按件订货。 */
+/** 订货批次（IKFOQ0）：总部创建，窗口内校区按件订货。
+ *  IKFOQ0 第二轮（道哥拍板）：商品范围恒等官方库在售全集，不再勾选。 */
 export class CreateRestockBatchDto {
   @IsString() @MinLength(1) @MaxLength(60) name!: string;
   @IsDateString() startAt!: string;
   @IsDateString() endAt!: string;
-  @IsArray() @ArrayMinSize(1) @ArrayMaxSize(2000) productIds!: string[];
 }
 export class UpdateRestockBatchDto {
   @IsOptional() @IsString() @MinLength(1) @MaxLength(60) name?: string;
   @IsOptional() @IsDateString() startAt?: string;
   @IsOptional() @IsDateString() endAt?: string;
-  @IsOptional() @IsArray() @ArrayMaxSize(2000) productIds?: string[];
 }
 /** 订货行：按批发单位（件）计，换算按官方行 unitsPerCase 快照。 */
 export class RestockOrderItemDto {

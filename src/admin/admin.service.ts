@@ -1726,10 +1726,27 @@ export class AdminService {
     return { ...b, phase: this.restockPhase(b) };
   }
 
+  /** 官方库在售全集（IKFOQ0 第二轮：批次范围恒等此集合，不再勾选落快照）。 */
+  private officialOnSaleProducts() {
+    return this.db.product.findMany({
+      where: { campusId: OFFICIAL_CAMPUS_ID, status: 'on-sale' },
+      select: {
+        id: true,
+        name: true,
+        price: true,
+        image: true,
+        retailUnit: true,
+        wholesaleUnit: true,
+        unitsPerCase: true,
+        status: true,
+      },
+      orderBy: { name: 'asc' },
+    });
+  }
+
   async restockBatches(hqScope: boolean, campusId: string) {
     const rows = await this.db.restockBatch.findMany({
       orderBy: { startAt: 'desc' },
-      include: { items: { select: { productId: true } } },
     });
     const orders = await this.db.restockOrder.findMany({
       where: hqScope ? {} : { campusId },
@@ -1744,7 +1761,6 @@ export class AdminService {
     }
     return rows.map((b) => ({
       ...this.restockBatchView(b),
-      itemCount: b.items.length,
       orderTotal: agg.get(b.id)?.orderTotal ?? 0,
       orderConfirmed: agg.get(b.id)?.orderConfirmed ?? 0,
     }));
@@ -1757,17 +1773,6 @@ export class AdminService {
     const startAt = new Date(body.startAt);
     const endAt = new Date(body.endAt);
     if (endAt <= startAt) throw new BadRequestException('结束时间必须晚于开始时间');
-    // 商品范围只收官方库在售行（grilling #7，与校区导入 IKC1AB 放行口径一致）
-    const products = await this.db.product.findMany({
-      where: {
-        id: { in: body.productIds },
-        campusId: OFFICIAL_CAMPUS_ID,
-        status: 'on-sale',
-      },
-      select: { id: true },
-    });
-    if (!products.length)
-      throw new BadRequestException('商品范围内没有官方库在售商品');
     const account = await this.db.adminAccount.findUnique({
       where: { id: operator },
       select: { nickname: true },
@@ -1779,7 +1784,6 @@ export class AdminService {
         endAt,
         createdBy: operator,
         createdByName: account?.nickname ?? '',
-        items: { create: products.map((p) => ({ productId: p.id })) },
       },
     });
     await this.audit(
@@ -1788,7 +1792,7 @@ export class AdminService {
       'restock-batch',
       row.id,
       null,
-      { name: row.name, startAt, endAt, itemCount: products.length },
+      { name: row.name, startAt, endAt },
       HQ_CAMPUS_ID,
     );
     return this.restockBatchView(row);
@@ -1799,58 +1803,25 @@ export class AdminService {
     body: UpdateRestockBatchDto,
     operator: string,
   ) {
-    const before = await this.db.restockBatch.findUnique({
-      where: { id },
-      include: { items: { select: { productId: true } } },
-    });
+    const before = await this.db.restockBatch.findUnique({ where: { id } });
     if (!before) throw new NotFoundException('订货批次不存在');
     const phase = this.restockPhase(before);
     if (phase === 'ended' || phase === 'closed')
       throw new BadRequestException('批次已结束或已关闭，不可修改');
-    // 有校区已提交/已确认后收窄范围会悄悄废掉别人的订货行——拦住
-    const activeOrders = await this.db.restockOrder.count({
-      where: { batchId: id, status: { in: ['submitted', 'confirmed'] } },
-    });
-    if (activeOrders > 0 && body.productIds)
-      throw new BadRequestException('已有校区提交订货，商品范围不可调整');
     const startAt = body.startAt ? new Date(body.startAt) : before.startAt;
     const endAt = body.endAt ? new Date(body.endAt) : before.endAt;
     if (endAt <= startAt) throw new BadRequestException('结束时间必须晚于开始时间');
-    let itemOps: Prisma.RestockBatchUpdateInput['items'] | undefined;
-    let newItemCount = before.items.length;
-    if (body.productIds) {
-      const products = await this.db.product.findMany({
-        where: {
-          id: { in: body.productIds },
-          campusId: OFFICIAL_CAMPUS_ID,
-          status: 'on-sale',
-        },
-        select: { id: true },
-      });
-      if (!products.length)
-        throw new BadRequestException('商品范围内没有官方库在售商品');
-      itemOps = {
-        deleteMany: {},
-        create: products.map((p) => ({ productId: p.id })),
-      };
-      newItemCount = products.length;
-    }
     const row = await this.db.restockBatch.update({
       where: { id },
-      data: {
-        name: body.name?.trim() ?? before.name,
-        startAt,
-        endAt,
-        ...(itemOps ? { items: itemOps } : {}),
-      },
+      data: { name: body.name?.trim() ?? before.name, startAt, endAt },
     });
     await this.audit(
       operator,
       'restock.batch-update',
       'restock-batch',
       id,
-      { name: before.name, itemCount: before.items.length },
-      { name: row.name, itemCount: newItemCount },
+      { name: before.name, startAt: before.startAt, endAt: before.endAt },
+      { name: row.name, startAt, endAt },
       HQ_CAMPUS_ID,
     );
     return this.restockBatchView(row);
@@ -1876,31 +1847,14 @@ export class AdminService {
     return this.restockBatchView(row);
   }
 
-  /** 批次详情：可订商品 + （总部=全部校区 / 校区=本校区）订货单。 */
+  /** 批次详情：可订商品=官方在售实时全集（IKFOQ0 第二轮恒等全集）+ 订货单。 */
   async restockBatchDetail(id: string, hqScope: boolean, campusId: string) {
-    const batch = await this.db.restockBatch.findUnique({
-      where: { id },
-      include: {
-        items: {
-          select: {
-            productId: true,
-            product: {
-              select: {
-                id: true,
-                name: true,
-                price: true,
-                image: true,
-                retailUnit: true,
-                wholesaleUnit: true,
-                unitsPerCase: true,
-                status: true,
-              },
-            },
-          },
-        },
-      },
-    });
+    const batch = await this.db.restockBatch.findUnique({ where: { id } });
     if (!batch) throw new NotFoundException('订货批次不存在');
+    const items = (await this.officialOnSaleProducts()).map((p) => ({
+      productId: p.id,
+      product: p,
+    }));
     const orders = await this.db.restockOrder.findMany({
       where: hqScope ? { batchId: id } : { batchId: id, campusId },
       include: {
@@ -1911,7 +1865,7 @@ export class AdminService {
     });
     return {
       ...this.restockBatchView(batch),
-      items: batch.items,
+      items,
       orders: orders.map((o) => ({
         id: o.id,
         campusId: o.campusId,
@@ -2029,25 +1983,23 @@ export class AdminService {
     campusId: string,
   ) {
     await this.restockOrderForCampus(batchId, campusId);
-    // 去重 + 行内校验；商品必须在批次范围内
+    // 去重 + 行内校验；商品必须是官方库在售行（IKFOQ0 第二轮恒等全集）
     const seen = new Set<string>();
     const items = body.items.filter((i) => {
       if (seen.has(i.productId)) return false;
       seen.add(i.productId);
       return true;
     });
-    const allowed = await this.db.restockBatchItem.findMany({
-      where: { batchId },
-      select: { productId: true },
-    });
-    const allowedSet = new Set(allowed.map((x) => x.productId));
-    const unknown = items.filter((i) => !allowedSet.has(i.productId));
-    if (unknown.length)
-      throw new BadRequestException('部分商品不在本批次可订范围内');
     const officials = await this.db.product.findMany({
-      where: { id: { in: items.map((i) => i.productId) }, campusId: OFFICIAL_CAMPUS_ID },
+      where: {
+        id: { in: items.map((i) => i.productId) },
+        campusId: OFFICIAL_CAMPUS_ID,
+        status: 'on-sale',
+      },
       select: { id: true, unitsPerCase: true },
     });
+    if (officials.length !== items.length)
+      throw new BadRequestException('部分商品不在官方库在售范围，无法订货');
     const unitsById = new Map(officials.map((p) => [p.id, p.unitsPerCase]));
     const account = await this.db.adminAccount.findUnique({
       where: { id: operator },
