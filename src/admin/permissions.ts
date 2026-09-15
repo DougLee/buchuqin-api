@@ -13,6 +13,7 @@ export type AdminSection =
   | 'categories'
   | 'inventory'
   | 'restock'
+  | 'purchase'
   | 'staff'
   | 'campuses'
   | 'buildings'
@@ -81,6 +82,8 @@ export const ADMIN_MATRIX: Record<
   // 订货批次（IKFOQ0 2026-09-15）：批次管理+审单=hq/admin（对齐直接入库），
   // 订货提交=operations/warehouse（对齐采购申请）；页面按角色显隐动作
   restock: { read: [...OPS, 'warehouse', 'hq'], write: [...OPS, 'warehouse', 'hq'] },
+  // 采购单全链总部动作（IKFOQ1）：生成/验收/关闭重开仅 hq/admin
+  purchase: { read: ['hq', 'admin'], write: ['hq', 'admin'] },
   staff: { read: OPS, write: OPS },
   campuses: { read: [...OPS, 'hq'], write: [...OPS, 'hq'] },
   // 楼栋/寝室管理（IKCRS8 2026-09-02：从 campuses 拆独立键）——挂本校区

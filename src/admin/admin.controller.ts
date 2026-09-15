@@ -56,12 +56,13 @@ import {
   IssueCouponDto,
   StockInDto,
   StocktakeDto,
-  CreatePurchaseRequestDto,
-  AuditPurchaseRequestDto,
   CreateRestockBatchDto,
   UpdateRestockBatchDto,
   SaveRestockOrderDto,
   AuditRestockOrderDto,
+  CreatePurchaseOrderDto,
+  ReceivePurchaseOrderDto,
+  ClosePurchaseOrderDto,
   UpdateAccountDto,
   UpdateBannerDto,
   UpdateRecruitApplicationDto,
@@ -553,55 +554,6 @@ export class AdminController {
       '盘点已提交',
     );
   }
-  /** 采购申请列表（IKD6FJ）：校区看本校，hq 跨校区 */
-  @Get('inventory/purchase-requests') async purchaseRequests(
-    @Req() req: AuthRequest,
-    @Query('status') status?: string,
-    @Query('campus') campus?: string,
-  ) {
-    this.authorize(req, 'inventory');
-    return ok(
-      await this.service.purchaseRequests(
-        this.campusScope(req, campus),
-        status,
-      ),
-    );
-  }
-  /** 提交采购申请（IKD6FJ） */
-  @Post('inventory/purchase-requests') async createPurchaseRequest(
-    @Req() req: AuthRequest,
-    @Body() body: CreatePurchaseRequestDto,
-  ) {
-    this.authorize(req, 'inventory', 'write');
-    return ok(
-      await this.service.createPurchaseRequest(
-        body,
-        req.user.id,
-        req.user.campusId,
-      ),
-      '采购申请已提交，等待总部审核',
-    );
-  }
-  /** 采购审核（IKD6FJ）：仅平台视角角色（hq/admin） */
-  @Post('inventory/purchase-requests/:id/audit') async auditPurchaseRequest(
-    @Req() req: AuthRequest,
-    @Param('id') id: string,
-    @Body() body: AuditPurchaseRequestDto,
-  ) {
-    this.authorize(req, 'inventory', 'write');
-    if (!isHqScope(req.user.role))
-      throw new ForbiddenException('只有总部可以审核采购申请');
-    return ok(
-      await this.service.auditPurchaseRequest(
-        id,
-        body,
-        req.user.id,
-        req.user.campusId,
-      ),
-      body.action === 'approved' ? '已通过并入库' : '已拒绝',
-    );
-  }
-
   // ==================== 订货批次（IKFOQ0）：独立板块「订货管理」====================
 
   /** 批次列表：阶段由时间窗推导；校区角色附带本校区单况统计。 */
@@ -742,6 +694,77 @@ export class AdminController {
         : body.action === 'reject'
           ? '已驳回'
           : '已撤销确认，锁定库存已释放',
+    );
+  }
+
+  // ==================== 采购单（IKFOQ1）：独立板块「采购管理」====================
+  // 全链总部动作（hq/admin）：生成聚合/验收入库/关闭重开；权限 purchase section。
+  @Get('purchase/orders') async purchaseOrders(@Req() req: AuthRequest) {
+    this.authorize(req, 'purchase');
+    if (!isHqScope(req.user.role))
+      throw new ForbiddenException('采购管理仅总部可用');
+    return ok(await this.service.purchaseOrders());
+  }
+  @Get('purchase/orders/:id') async purchaseOrderDetail(
+    @Req() req: AuthRequest,
+    @Param('id') id: string,
+  ) {
+    this.authorize(req, 'purchase');
+    if (!isHqScope(req.user.role))
+      throw new ForbiddenException('采购管理仅总部可用');
+    return ok(await this.service.purchaseOrderDetail(id));
+  }
+  /** 一键聚合生成（grilling #2）：行=批次全部已确认订货单按商品求和。 */
+  @Post('restock/batches/:batchId/purchase-order') async createPurchaseOrder(
+    @Req() req: AuthRequest,
+    @Param('batchId') batchId: string,
+    @Body() body: CreatePurchaseOrderDto,
+  ) {
+    this.authorize(req, 'purchase', 'write');
+    if (!isHqScope(req.user.role))
+      throw new ForbiddenException('只有总部可以生成采购单');
+    return ok(
+      await this.service.createPurchaseOrder(batchId, body, req.user.id),
+      '采购单已生成',
+    );
+  }
+  /** 验收入库（grilling #3/#4）：快捷全收+坏品出库+双流水，单事务。 */
+  @Post('purchase/orders/:id/receive') async receivePurchaseOrder(
+    @Req() req: AuthRequest,
+    @Param('id') id: string,
+    @Body() body: ReceivePurchaseOrderDto,
+  ) {
+    this.authorize(req, 'purchase', 'write');
+    if (!isHqScope(req.user.role))
+      throw new ForbiddenException('只有总部可以验收');
+    return ok(
+      await this.service.receivePurchaseOrder(id, body, req.user.id),
+      '验收完成，库存已更新',
+    );
+  }
+  @Post('purchase/orders/:id/close') async closePurchaseOrder(
+    @Req() req: AuthRequest,
+    @Param('id') id: string,
+    @Body() body: ClosePurchaseOrderDto,
+  ) {
+    this.authorize(req, 'purchase', 'write');
+    if (!isHqScope(req.user.role))
+      throw new ForbiddenException('只有总部可以关闭采购单');
+    return ok(
+      await this.service.closePurchaseOrder(id, body, req.user.id),
+      '采购单已关闭，欠收作废',
+    );
+  }
+  @Post('purchase/orders/:id/reopen') async reopenPurchaseOrder(
+    @Req() req: AuthRequest,
+    @Param('id') id: string,
+  ) {
+    this.authorize(req, 'purchase', 'write');
+    if (!isHqScope(req.user.role))
+      throw new ForbiddenException('只有总部可以重开采购单');
+    return ok(
+      await this.service.reopenPurchaseOrder(id, req.user.id),
+      '采购单已重开，可继续验收',
     );
   }
   @Post('inventory/adjust') async adjustStock(

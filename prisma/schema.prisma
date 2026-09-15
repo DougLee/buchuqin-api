@@ -231,6 +231,7 @@ model Product {
   purchaseRequests PurchaseRequest[]
   restockBatchItems RestockBatchItem[]
   restockOrderItems RestockOrderItem[]
+  purchaseOrderItems PurchaseOrderItem[]
 
   @@unique([campusId, barcode])
 }
@@ -252,6 +253,45 @@ model RestockBatch {
   updatedAt     DateTime  @updatedAt
   items         RestockBatchItem[]
   orders        RestockOrder[]
+  purchaseOrders PurchaseOrder[]
+}
+
+/// 供应商采购单（IKFOQ1，2026-09-15 grilling 定版）：批次已确认订货单一键聚合生成。
+/// 状态由 已收/应收 推导（待到货/部分到货/已收齐），closedAt 非 null 即手动关闭（可重开）。
+model PurchaseOrder {
+  id            String    @id @default(cuid())
+  batchId       String
+  batch         RestockBatch @relation(fields: [batchId], references: [id])
+  supplierName  String
+  closedAt      DateTime?
+  closedNote    String    @default("")
+  closedBy      String    @default("")
+  closedByName  String    @default("")
+  createdBy     String
+  createdByName String    @default("")
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  items         PurchaseOrderItem[]
+
+  @@index([batchId])
+}
+
+/// 采购行：requiredCases=聚合快照，receivedCases/badCases 验收累计，
+/// unitCost 单价快照（预填 costPrice 可改，分），unitsPerCase 快照防换算漂移。
+model PurchaseOrderItem {
+  id            String         @id @default(cuid())
+  orderId       String
+  order         PurchaseOrder  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId     String
+  product       Product        @relation(fields: [productId], references: [id])
+  requiredCases Int
+  receivedCases Int            @default(0)
+  badCases      Int            @default(0)
+  unitCost      Int
+  unitsPerCase  Int
+  lastNote      String         @default("")
+
+  @@unique([orderId, productId])
 }
 
 /// 批次可订商品范围：勾选的官方库商品行（grilling #7，建批次时默认全选在售落库）

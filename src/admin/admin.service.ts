@@ -16,7 +16,6 @@ import { perRetailUnitCostFen } from '../common/product-units';
 import { CommissionService } from '../commission/commission.service';
 import type {
   AdjustStockDto,
-  AuditPurchaseRequestDto,
   CreateAccountDto,
   CreateBannerDto,
   CreateBuildingDto,
@@ -29,11 +28,13 @@ import type {
   CreateLocationDto,
   CreateProductDto,
   CreatePromotionDto,
-  CreatePurchaseRequestDto,
   CreateRestockBatchDto,
   UpdateRestockBatchDto,
   SaveRestockOrderDto,
   AuditRestockOrderDto,
+  CreatePurchaseOrderDto,
+  ReceivePurchaseOrderDto,
+  ClosePurchaseOrderDto,
   UpdateCampusDto,
   UpdatePromotionDto,
   UpdateProductDto,
@@ -449,6 +450,10 @@ export class AdminService {
     'restock.order-submit': '提交订货单',
     'restock.order-withdraw': '撤回订货单',
     'restock.order-confirm': '确认订货单',
+    'purchase.generate': '生成采购单',
+    'purchase.receive': '采购验收入库',
+    'purchase.close': '关闭采购单',
+    'purchase.reopen': '重开采购单',
     'restock.order-reject': '驳回订货单',
     'restock.order-revoke': '撤销订货确认',
     'room.import': '批量导入寝室',
@@ -494,6 +499,7 @@ export class AdminService {
     'dispatch-invitation': '调配邀请',
     'wechat-group': '微信群码',
     'restock-batch': '订货批次',
+    'purchase-order': '采购单',
     'restock-order': '订货单',
     staff: '履约人员',
     order: '订单',
@@ -1554,152 +1560,6 @@ export class AdminService {
    * 采购申请列表（IKD6FJ）：校区看本校区，hq 跨校区（附校区名）。
    * status 空查全部；默认按提交时间倒序。
    */
-  async purchaseRequests(campusId: string, status?: string) {
-    const rows = await this.db.purchaseRequest.findMany({
-      where: {
-        ...(campusId ? { campusId } : {}),
-        ...(status && status !== 'all' ? { status } : {}),
-      },
-      include: {
-        campus: { select: { id: true, name: true } },
-        product: { select: { id: true, name: true, stock: true } },
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 200,
-    });
-    return rows.map((x) => ({
-      id: x.id,
-      campusId: x.campusId,
-      campusName: x.campus.name,
-      productId: x.productId,
-      productName: x.product.name,
-      productStock: x.product.stock,
-      quantity: x.quantity,
-      reason: x.reason,
-      status: x.status,
-      applyByName: x.applyByName,
-      auditByName: x.auditByName,
-      auditNote: x.auditNote,
-      createdAt: x.createdAt.toISOString(),
-      auditedAt: x.updatedAt.toISOString(),
-    }));
-  }
-  /** 提交采购申请（IKD6FJ）：同商品存在待审申请时拒绝重复提交。 */
-  async createPurchaseRequest(
-    body: CreatePurchaseRequestDto,
-    operator: string,
-    campusId: string,
-  ) {
-    const product = await this.db.product.findFirst({
-      where: { id: body.productId, campusId },
-    });
-    if (!product) throw new NotFoundException('商品不存在');
-    const dup = await this.db.purchaseRequest.findFirst({
-      where: { productId: body.productId, campusId, status: 'pending' },
-      select: { id: true },
-    });
-    if (dup)
-      throw new BadRequestException('该商品已有待审核的采购申请，请耐心等待审核');
-    const account = await this.db.adminAccount.findUnique({
-      where: { id: operator },
-      select: { nickname: true },
-    });
-    const row = await this.db.purchaseRequest.create({
-      data: {
-        campusId,
-        productId: body.productId,
-        quantity: body.quantity,
-        reason: body.reason?.trim() ?? '',
-        applyBy: operator,
-        applyByName: account?.nickname ?? '',
-      },
-    });
-    await this.audit(
-      operator,
-      'inventory.purchase-apply',
-      'product',
-      body.productId,
-      null,
-      { requestId: row.id, quantity: body.quantity, reason: row.reason },
-      campusId,
-    );
-    return { id: row.id };
-  }
-  /**
-   * 采购审核（IKD6FJ）：仅 hq（controller 侧 role 门禁）。approve 走事务——
-   * 落 stock-in 流水并加库存，与 hq 直接 stockIn 同口径；reject 只记结论。
-   */
-  async auditPurchaseRequest(
-    id: string,
-    body: AuditPurchaseRequestDto,
-    operator: string,
-    campusId: string,
-  ) {
-    const row = await this.db.purchaseRequest.findUnique({ where: { id } });
-    if (!row) throw new NotFoundException('采购申请不存在');
-    if (row.status !== 'pending')
-      throw new BadRequestException('该申请已处理过，不能重复审核');
-    const account = await this.db.adminAccount.findUnique({
-      where: { id: operator },
-      select: { nickname: true },
-    });
-    if (body.action === 'rejected') {
-      const updated = await this.db.purchaseRequest.update({
-        where: { id },
-        data: {
-          status: 'rejected',
-          auditBy: operator,
-          auditByName: account?.nickname ?? '',
-          auditNote: body.note?.trim() ?? '',
-        },
-      });
-      await this.audit(
-        operator,
-        'inventory.purchase-audit',
-        'product',
-        row.productId,
-        { status: row.status },
-        { status: 'rejected', note: updated.auditNote },
-        campusId,
-      );
-      return { id, status: 'rejected' as const };
-    }
-    await this.db.$transaction(async (tx) => {
-      await tx.inventoryTxn.create({
-        data: {
-          productId: row.productId,
-          type: 'stock-in',
-          delta: row.quantity,
-          reason: `采购申请入库：${row.reason || '无备注'}`,
-          operator,
-        },
-      });
-      await tx.product.update({
-        where: { id: row.productId },
-        data: { stock: { increment: row.quantity } },
-      });
-      await tx.purchaseRequest.update({
-        where: { id },
-        data: {
-          status: 'approved',
-          auditBy: operator,
-          auditByName: account?.nickname ?? '',
-          auditNote: body.note?.trim() ?? '',
-        },
-      });
-    });
-    await this.audit(
-      operator,
-      'inventory.purchase-audit',
-      'product',
-      row.productId,
-      { status: row.status },
-      { status: 'approved', quantity: row.quantity },
-      campusId,
-    );
-    return { id, status: 'approved' as const };
-  }
-
   // ==================== 订货批次（IKFOQ0 2026-09-15 grilling 定版）====================
   // 批次=总部起止窗口+可订商品范围；校区一批次一张订货单按件订（unitsPerCase
   // 快照换算）；确认即锁总部仓库存（可用=stock−lockedStock），发货转扣（IKFOQ2）。
@@ -1863,9 +1723,34 @@ export class AdminService {
       },
       orderBy: { updatedAt: 'desc' },
     });
+    // IKFOQ1 毛利预估：批发价合计（confirmed 单，实时价）− 全部采购单已收金额
+    const confirmedItems = orders
+      .filter((o) => o.status === 'confirmed')
+      .flatMap((o) => o.items);
+    const priceById = new Map(
+      (await this.db.product.findMany({
+        where: { id: { in: [...new Set(confirmedItems.map((i) => i.productId))] } },
+        select: { id: true, price: true },
+      })).map((p) => [p.id, p.price]),
+    );
+    const wholesaleTotal = confirmedItems.reduce(
+      (sum, i) => sum + i.cases * i.unitsPerCase * (priceById.get(i.productId) ?? 0),
+      0,
+    );
+    const pos = await this.db.purchaseOrder.findMany({
+      where: { batchId: id },
+      select: { id: true, closedAt: true, items: { select: { receivedCases: true, unitCost: true } } },
+    });
+    const purchaseReceivedTotal = pos.reduce(
+      (sum, po) => sum + po.items.reduce((s2, i) => s2 + i.receivedCases * i.unitCost, 0),
+      0,
+    );
     return {
       ...this.restockBatchView(batch),
       items,
+      wholesaleTotal,
+      purchaseReceivedTotal,
+      grossEstimate: wholesaleTotal - purchaseReceivedTotal,
       orders: orders.map((o) => ({
         id: o.id,
         campusId: o.campusId,
@@ -2248,9 +2133,18 @@ export class AdminService {
       return { id: row.id, status: row.status };
     }
 
-    // revoke：confirmed → submitted，释放锁定库存（grilling #4）
+    // revoke：confirmed → submitted，释放锁定库存（grilling #4）。
+    // IKFOQ1：批次已生成采购单的订货单禁撤销——采购依据不能被抽走。
     if (order.status !== 'confirmed')
       throw new BadRequestException('只有已确认的订货单可以撤销确认');
+    const poExists = await this.db.purchaseOrder.findFirst({
+      where: { batchId: order.batchId },
+      select: { id: true },
+    });
+    if (poExists)
+      throw new BadRequestException(
+        '该批次已生成采购单，订货单不能撤销确认；如需调整请走采购单关闭/重开',
+      );
     const hqRows = await this.db.product.findMany({
       where: {
         campusId: HQ_CAMPUS_ID,
@@ -2286,6 +2180,375 @@ export class AdminService {
     );
     return { id: order.id, status: 'submitted' as const };
   }
+
+  // ==================== 采购单（IKFOQ1 2026-09-15 grilling 定版）====================
+  // 批次已确认订货单一键聚合生成（供应商名称必填，一期不建档案）；快捷全收
+  // （预填欠收可改小）；坏品入库再出库（到货全入库存，坏品自动出库扣回）；
+  // 状态推导（待到货/部分到货/已收齐）+手动关闭可重开；金额=行单价×已收数量，
+  // 行单价快照预填 costPrice 可改（IQ7）；批次详情预估毛利=批发价合计−已收金额（IQ8）。
+
+  /** 采购单推导状态：closedAt 优先；已收 0 待到货 / 部分 / 已收齐（grilling #5）。 */
+  private purchasePhase(
+    po: { closedAt: Date | null },
+    items: { requiredCases: number; receivedCases: number }[],
+  ) {
+    if (po.closedAt) return 'closed';
+    const required = items.reduce((s, i) => s + i.requiredCases, 0);
+    const received = items.reduce((s, i) => s + i.receivedCases, 0);
+    if (received === 0) return 'pending';
+    return received >= required ? 'completed' : 'partial';
+  }
+
+  async purchaseOrders() {
+    const rows = await this.db.purchaseOrder.findMany({
+      include: {
+        batch: {
+          select: { id: true, name: true, startAt: true, endAt: true, closedAt: true },
+        },
+        items: {
+          select: { requiredCases: true, receivedCases: true, badCases: true, unitCost: true },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    return rows.map((po) => {
+      const requiredCases = po.items.reduce((s, i) => s + i.requiredCases, 0);
+      const receivedCases = po.items.reduce((s, i) => s + i.receivedCases, 0);
+      const badCases = po.items.reduce((s, i) => s + i.badCases, 0);
+      return {
+        id: po.id,
+        batchId: po.batchId,
+        batchName: po.batch.name,
+        batchPhase: this.restockPhase(po.batch),
+        supplierName: po.supplierName,
+        phase: this.purchasePhase(po, po.items),
+        lineCount: po.items.length,
+        requiredCases,
+        receivedCases,
+        badCases,
+        // 金额口径（IQ7）：采购总额=应收×单价；已收金额=已收×单价（坏品已含在已收里）
+        totalCost: po.items.reduce((s, i) => s + i.requiredCases * i.unitCost, 0),
+        receivedCost: po.items.reduce((s, i) => s + i.receivedCases * i.unitCost, 0),
+        closedAt: po.closedAt,
+        createdByName: po.createdByName,
+        createdAt: po.createdAt,
+        updatedAt: po.updatedAt,
+      };
+    });
+  }
+
+  /** 采购单详情（行含商品资料、应收/已收/欠收、单价）。 */
+  async purchaseOrderDetail(id: string) {
+    const po = await this.db.purchaseOrder.findUnique({
+      where: { id },
+      include: {
+        batch: { select: { id: true, name: true, startAt: true, endAt: true, closedAt: true } },
+        items: {
+          include: {
+            product: {
+              select: {
+                id: true,
+                name: true,
+                image: true,
+                retailUnit: true,
+                wholesaleUnit: true,
+              },
+            },
+          },
+          orderBy: { id: 'asc' },
+        },
+      },
+    });
+    if (!po) throw new NotFoundException('采购单不存在');
+    return {
+      id: po.id,
+      batchId: po.batchId,
+      batchName: po.batch.name,
+      batchPhase: this.restockPhase(po.batch),
+      supplierName: po.supplierName,
+      phase: this.purchasePhase(po, po.items),
+      supplier: po.supplierName,
+      closedAt: po.closedAt,
+      closedNote: po.closedNote,
+      closedByName: po.closedByName,
+      createdByName: po.createdByName,
+      createdAt: po.createdAt,
+      items: po.items.map((i) => ({
+        id: i.id,
+        productId: i.productId,
+        name: i.product.name,
+        image: i.product.image,
+        retailUnit: i.product.retailUnit,
+        wholesaleUnit: i.product.wholesaleUnit,
+        requiredCases: i.requiredCases,
+        receivedCases: i.receivedCases,
+        badCases: i.badCases,
+        unitCost: i.unitCost,
+        lastNote: i.lastNote,
+        unitsPerCase: i.unitsPerCase,
+      })),
+    };
+  }
+
+  /** 一键聚合生成采购单（grilling #2）：行=该批次全部已确认订货单按商品求和。 */
+  async createPurchaseOrder(
+    batchId: string,
+    body: CreatePurchaseOrderDto,
+    operator: string,
+  ) {
+    const batch = await this.db.restockBatch.findUnique({ where: { id: batchId } });
+    if (!batch) throw new NotFoundException('订货批次不存在');
+    const openPo = await this.db.purchaseOrder.findFirst({
+      where: { batchId, closedAt: null },
+      select: { id: true },
+    });
+    if (openPo)
+      throw new BadRequestException(
+        '该批次已有进行中的采购单，请先验收完毕或关闭后再生成（补采走新单）',
+      );
+    // 聚合快照：confirmed 订货单行按 productId 求 cases 和（应收以聚合为准）
+    const confirmed = await this.db.restockOrder.findMany({
+      where: { batchId, status: 'confirmed' },
+      select: { items: { select: { productId: true, cases: true, unitsPerCase: true } } },
+    });
+    const agg = new Map<string, { cases: number; unitsPerCase: number }>();
+    for (const o of confirmed) {
+      for (const i of o.items) {
+        const prev = agg.get(i.productId);
+        agg.set(i.productId, {
+          cases: (prev?.cases ?? 0) + i.cases,
+          unitsPerCase: i.unitsPerCase,
+        });
+      }
+    }
+    if (!agg.size)
+      throw new BadRequestException('该批次还没有已确认的订货单，无法生成采购单');
+    const costByLine = new Map(
+      body.lines.map((l) => [l.productId, l.unitCost]),
+    );
+    const unknown = body.lines
+      .filter((l) => !agg.has(l.productId))
+      .map((l) => l.productId);
+    if (unknown.length)
+      throw new BadRequestException('采购行包含不属于本批次已确认订货的商品');
+    if (costByLine.size !== body.lines.length)
+      throw new BadRequestException('采购行存在重复商品');
+    // 行必须 ⊆ 聚合集合；允许部分行（关闭旧单后的补采可只采欠收部分，
+    // 前端主入口仍按一键全量预填，IQ2 口径不变）
+    // if 覆盖校验由前端全量预填保证，后端不硬拦部分行
+    const account = await this.db.adminAccount.findUnique({
+      where: { id: operator },
+      select: { nickname: true },
+    });
+    const row = await this.db.purchaseOrder.create({
+      data: {
+        batchId,
+        supplierName: body.supplierName.trim(),
+        createdBy: operator,
+        createdByName: account?.nickname ?? '',
+        items: {
+          create: [...agg.entries()].map(([productId, a]) => ({
+            productId,
+            requiredCases: a.cases,
+            unitCost: costByLine.get(productId) ?? 0,
+            unitsPerCase: a.unitsPerCase,
+          })),
+        },
+      },
+    });
+    await this.audit(
+      operator,
+      'purchase.generate',
+      'purchase-order',
+      row.id,
+      null,
+      { batchId, supplierName: body.supplierName.trim(), lines: agg.size },
+      '',
+    );
+    return { id: row.id };
+  }
+
+  /**
+   * 验收入库（grilling #3/#4）：快捷全收（前端预填欠收可改小）；单事务内
+   * 已收累计 + 总部仓入库 + 坏品自动出库 + 双流水；禁超收、已关闭拒收。
+   */
+  async receivePurchaseOrder(
+    id: string,
+    body: ReceivePurchaseOrderDto,
+    operator: string,
+  ) {
+    const po = await this.db.purchaseOrder.findUnique({
+      where: { id },
+      include: { items: true },
+    });
+    if (!po) throw new NotFoundException('采购单不存在');
+    if (po.closedAt) throw new BadRequestException('采购单已关闭，不能再验收');
+    const byProduct = new Map(po.items.map((i) => [i.productId, i]));
+    const account = await this.db.adminAccount.findUnique({
+      where: { id: operator },
+      select: { nickname: true },
+    });
+    type Line = {
+      item: (typeof po.items)[number];
+      receive: number;
+      bad: number;
+      note: string;
+    };
+    const lines: Line[] = [];
+    const seen = new Set<string>();
+    for (const l of body.lines) {
+      if (seen.has(l.productId)) continue;
+      seen.add(l.productId);
+      const item = byProduct.get(l.productId);
+      if (!item)
+        throw new BadRequestException('验收行包含不属于本采购单的商品');
+      const shortage = item.requiredCases - item.receivedCases;
+      if (l.receiveCases > shortage)
+        throw new BadRequestException(
+          `${item.productId} 超收：欠收仅 ${shortage} 件`,
+        );
+      if (l.badCases > l.receiveCases)
+        throw new BadRequestException('坏品数不能大于本次到货数');
+      if (l.receiveCases > 0)
+        lines.push({
+          item,
+          receive: l.receiveCases,
+          bad: l.badCases,
+          note: l.note?.trim() ?? '',
+        });
+      else if (l.badCases > 0)
+        throw new BadRequestException('未到货的行不能登记坏品');
+    }
+    if (!lines.length)
+      throw new BadRequestException('本次验收数量全为 0，无需提交');
+    // 总部仓铺货行定位（同锁定口径）：官方行 id → sourceProductId 反查
+    const hqRows = await this.db.product.findMany({
+      where: {
+        campusId: HQ_CAMPUS_ID,
+        sourceProductId: { in: lines.map((l) => l.item.productId) },
+      },
+      select: { id: true, sourceProductId: true, name: true },
+    });
+    const hqBySource = new Map(hqRows.map((r) => [r.sourceProductId, r]));
+    const missing = lines
+      .filter((l) => !hqBySource.has(l.item.productId))
+      .map((l) => l.item.productId);
+    if (missing.length)
+      throw new BadRequestException(
+        `部分商品总部仓未铺货，无法验收入库：${missing.join('、')}`,
+      );
+    await this.db.$transaction(async (tx) => {
+      for (const l of lines) {
+        const units = l.receive * l.item.unitsPerCase;
+        const badUnits = l.bad * l.item.unitsPerCase;
+        const hqId = hqBySource.get(l.item.productId)!.id;
+        await tx.product.update({
+          where: { id: hqId },
+          data: { stock: { increment: units - badUnits } },
+        });
+        if (units)
+          await tx.inventoryTxn.create({
+            data: {
+              productId: hqId,
+              type: 'purchase-receive',
+              delta: units,
+              reason: `采购验收入库：${po.supplierName}（单 ${po.id.slice(-6)}）`,
+              operator,
+            },
+          });
+        if (badUnits)
+          await tx.inventoryTxn.create({
+            data: {
+              productId: hqId,
+              type: 'purchase-bad',
+              delta: -badUnits,
+              reason: `采购坏品出库：${po.supplierName}（单 ${po.id.slice(-6)}）`,
+              operator,
+            },
+          });
+        await tx.purchaseOrderItem.update({
+          where: { id: l.item.id },
+          data: {
+            receivedCases: { increment: l.receive },
+            badCases: { increment: l.bad },
+            lastNote: l.note,
+          },
+        });
+      }
+    });
+    await this.audit(
+      operator,
+      'purchase.receive',
+      'purchase-order',
+      po.id,
+      null,
+      {
+        lines: lines.map((l) => ({
+          productId: l.item.productId,
+          receive: l.receive,
+          bad: l.bad,
+        })),
+      },
+      '',
+    );
+    const fresh = await this.db.purchaseOrder.findUnique({
+      where: { id },
+      select: { items: { select: { requiredCases: true, receivedCases: true } }, closedAt: true },
+    });
+    return {
+      id,
+      phase: fresh ? this.purchasePhase(fresh, fresh.items) : 'pending',
+    };
+  }
+
+  /** 关闭采购单：欠收作废禁验收（grilling #5），可重开继续收。 */
+  async closePurchaseOrder(id: string, body: ClosePurchaseOrderDto, operator: string) {
+    const po = await this.db.purchaseOrder.findUnique({ where: { id } });
+    if (!po) throw new NotFoundException('采购单不存在');
+    if (po.closedAt) throw new BadRequestException('采购单已关闭');
+    const account = await this.db.adminAccount.findUnique({
+      where: { id: operator },
+      select: { nickname: true },
+    });
+    await this.db.purchaseOrder.update({
+      where: { id },
+      data: {
+        closedAt: new Date(),
+        closedNote: body.note?.trim() ?? '',
+        closedBy: operator,
+        closedByName: account?.nickname ?? '',
+      },
+    });
+    await this.audit(
+      operator,
+      'purchase.close',
+      'purchase-order',
+      id,
+      null,
+      { note: body.note?.trim() ?? '' },
+      '',
+    );
+    return { id, phase: 'closed' as const };
+  }
+
+  async reopenPurchaseOrder(id: string, operator: string) {
+    const po = await this.db.purchaseOrder.findUnique({ where: { id } });
+    if (!po) throw new NotFoundException('采购单不存在');
+    if (!po.closedAt) throw new BadRequestException('采购单未关闭，无需重开');
+    const openPo = await this.db.purchaseOrder.findFirst({
+      where: { batchId: po.batchId, closedAt: null, id: { not: id } },
+      select: { id: true },
+    });
+    if (openPo)
+      throw new BadRequestException('该批次已有另一张进行中的采购单，不能重开两张');
+    await this.db.purchaseOrder.update({
+      where: { id },
+      data: { closedAt: null, closedNote: '', closedBy: '', closedByName: '' },
+    });
+    await this.audit(operator, 'purchase.reopen', 'purchase-order', id, null, null, '');
+    return { id };
+  }
+
   async inventoryTxns(productId: string | undefined, campusId: string) {
     const rows = await this.db.inventoryTxn.findMany({
       where: {

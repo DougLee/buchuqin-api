@@ -565,3 +565,35 @@ export class UpdateRecruitApplicationDto {
 export class RejectRecruitApplicationDto {
   @IsString() @MaxLength(100) reason!: string;
 }
+
+/** IKFOQ1 采购汇总：生成采购单行（应收以后端聚合为准，只传单价；分）。 */
+export class PurchaseOrderLineDto {
+  @IsString() productId!: string;
+  /** 实际成交单价（分），默认预填商品 costPrice */
+  @IsInt() @Min(0) unitCost!: number;
+}
+/** 一键聚合生成采购单：供应商名称必填字符串（一期不建供应商档案）。 */
+export class CreatePurchaseOrderDto {
+  @IsString() @MinLength(1) @MaxLength(60) supplierName!: string;
+  @ArrayMinSize(1)
+  @ValidateNested({ each: true })
+  @Type(() => PurchaseOrderLineDto)
+  lines!: PurchaseOrderLineDto[];
+}
+/** 验收行：本次到货件数（≤欠收禁超收）+ 坏品数（≤本次到货）+ 备注。 */
+export class PurchaseReceiveLineDto {
+  @IsString() productId!: string;
+  @IsInt() @Min(0) receiveCases!: number;
+  @IsInt() @Min(0) badCases!: number;
+  @IsOptional() @IsString() @MaxLength(100) note?: string;
+}
+export class ReceivePurchaseOrderDto {
+  @ArrayMinSize(1)
+  @ValidateNested({ each: true })
+  @Type(() => PurchaseReceiveLineDto)
+  lines!: PurchaseReceiveLineDto[];
+}
+/** 关闭采购单（欠收作废禁验收，可重开）。 */
+export class ClosePurchaseOrderDto {
+  @IsOptional() @IsString() @MaxLength(100) note?: string;
+}

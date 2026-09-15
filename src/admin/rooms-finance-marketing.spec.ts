@@ -182,61 +182,8 @@ describe('Rooms / stocktake / purchase / marketing map (IKD6FH/FI/FJ)', () => {
     await service.stocktake({ productId: PRODUCT, countedQty: 100 }, OPERATOR, CAMPUS);
   });
 
-  it('runs purchase through apply → hq audit → stock-in, rejects dup/double-audit', async () => {
-    // 校区提交申请
-    const { id } = await service.createPurchaseRequest(
-      { productId: PRODUCT, quantity: 10, reason: '开学补货' },
-      OPERATOR,
-      CAMPUS,
-    );
-    // 同商品重复待审申请拒绝
-    await expect(
-      service.createPurchaseRequest({ productId: PRODUCT, quantity: 5 }, OPERATOR, CAMPUS),
-    ).rejects.toThrow('已有待审核的采购申请');
-
-    // hq 审核通过 → 入库 +10
-    const approved = await service.auditPurchaseRequest(
-      id,
-      { action: 'approved', note: '同意' },
-      'hq-operator',
-      '',
-    );
-    expect(approved.status).toBe('approved');
-    expect(await db.product.findUniqueOrThrow({ where: { id: PRODUCT } }))
-      .toMatchObject({ stock: 110 });
-    const txn = await db.inventoryTxn.findFirst({
-      where: { productId: PRODUCT, type: 'stock-in', reason: { contains: '采购申请入库' } },
-    });
-    expect(txn?.delta).toBe(10);
-
-    // 重复审核拒绝
-    await expect(
-      service.auditPurchaseRequest(id, { action: 'rejected' }, 'hq-operator', ''),
-    ).rejects.toThrow('已处理过');
-
-    // 拒绝路径：不动库存
-    const { id: id2 } = await service.createPurchaseRequest(
-      { productId: PRODUCT, quantity: 5 },
-      OPERATOR,
-      CAMPUS,
-    );
-    await service.auditPurchaseRequest(
-      id2,
-      { action: 'rejected', note: '库存充足' },
-      'hq-operator',
-      '',
-    );
-    expect(await db.product.findUniqueOrThrow({ where: { id: PRODUCT } }))
-      .toMatchObject({ stock: 110 });
-
-    // 列表口径：本校区可见两种状态
-    const list = await service.purchaseRequests(CAMPUS);
-    expect(list.filter((x) => x.status === 'approved')).toHaveLength(1);
-    expect(list.filter((x) => x.status === 'rejected')).toHaveLength(1);
-
-    // 恢复 100
-    await service.stocktake({ productId: PRODUCT, countedQty: 100 }, OPERATOR, CAMPUS);
-  });
+  // 采购申请链路已退役（IKFOQ1 grilling #1，2026-09-15）：补货统一走
+  // 订货批次→采购单→验收，原 apply→audit→stock-in 用例随接口一并删除。
 
   it('aggregates marketing map with zero-fill for ordered and idle rooms', async () => {
     await db.order.create({
