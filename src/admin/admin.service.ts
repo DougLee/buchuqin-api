@@ -2972,6 +2972,10 @@ export class AdminService {
     if (!before) throw new NotFoundException('校区不存在');
     if (before.status === 'official')
       throw new BadRequestException('官方商品库校区不可修改');
+    // IKFOPY：总部仓是系统预置中转仓——名称可改，但不可停用（停用即从
+    // 授权切换/库存视角消失，中转链路断）；type 永不改（DTO 亦无此字段）
+    if (before.type === 'hq' && body.status && body.status !== 'active')
+      throw new BadRequestException('总部仓不可停用');
     const after = await this.db.campus.update({
       where: { id },
       data: {

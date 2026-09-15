@@ -115,10 +115,16 @@ export class AdminController {
    * （默认 official 与 hq 同口径）；校区角色固定本校区（官方库只读，经 import
    * 拉取落地）。非法 view 值按默认处理，不报错。
    */
-  private productCampus(req: AuthRequest, view?: string): string {
-    if (req.user.role === 'hq') return OFFICIAL_CAMPUS_ID;
+  private productCampus(req: AuthRequest, view?: string, campus?: string): string {
+    if (req.user.role === 'hq') {
+      // IKFOPY：校区上下文操作（库存选品/入库/盘点）可显式指定校区（含总部仓）；
+      // 不传回落官方库（商品管理主视角不变）
+      return campus?.trim() || OFFICIAL_CAMPUS_ID;
+    }
     if (req.user.role === 'admin') {
-      return view === 'campus' ? req.user.campusId : OFFICIAL_CAMPUS_ID;
+      return view === 'campus'
+        ? campus?.trim() || req.user.campusId
+        : OFFICIAL_CAMPUS_ID;
     }
     return req.user.campusId;
   }
@@ -150,12 +156,13 @@ export class AdminController {
     @Query('status') status?: string,
     @Query('view') view?: string,
     @Query('categoryId') categoryId?: string,
+    @Query('campus') campus?: string,
   ) {
     this.authorize(req, 'products');
     return ok(
       paginate(
         await this.service.products(
-          this.productCampus(req, view),
+          this.productCampus(req, view, campus),
           status && status !== 'all'
             ? status.split(',').map((s) => s.trim()).filter(Boolean)
             : undefined,
@@ -485,12 +492,14 @@ export class AdminController {
     @Query('pageSize') pageSize?: string,
     @Query('keyword') keyword?: string,
     @Query('categoryId') categoryId?: string,
+    @Query('campus') campus?: string,
   ) {
     this.authorize(req, 'inventory');
     return ok(
       paginate(
         await this.service.inventory(
-          req.user.campusId,
+          // IKFOPY：campusScope 化——平台视角可聚焦总部仓/任一校区
+          this.campusScope(req, campus),
           // IKD6FG：分类筛选（库存按类别盘点）
           categoryId || undefined,
         ),
@@ -503,6 +512,7 @@ export class AdminController {
   @Post('inventory/stock-in') async stockIn(
     @Req() req: AuthRequest,
     @Body() body: StockInDto,
+    @Query('campus') campus?: string,
   ) {
     this.authorize(req, 'inventory', 'write');
     // 采购申请-审核制（IKD6FJ）：校区走采购申请，直接入库仅限平台视角角色
@@ -510,19 +520,24 @@ export class AdminController {
       throw new ForbiddenException(
         '采购已改为申请-审核制，请提交采购申请，由总部审核后入库',
       );
-    return ok(
-      await this.service.stockIn(body, req.user.id, req.user.campusId),
-      '入库完成',
-    );
+    const campusId = this.campusScope(req, campus);
+    // IKFOPY：平台视角 campusId 不来自账号，必须显式指定仓库（含总部仓）
+    if (!campusId)
+      throw new BadRequestException('请先选择入库仓库（校区或总部仓）');
+    return ok(await this.service.stockIn(body, req.user.id, campusId), '入库完成');
   }
   /** 盘点校准（IKD6FJ）：提交实际清点数量，系统自动算差额落账 */
   @Post('inventory/stocktake') async stocktake(
     @Req() req: AuthRequest,
     @Body() body: StocktakeDto,
+    @Query('campus') campus?: string,
   ) {
     this.authorize(req, 'inventory', 'write');
+    const campusId = this.campusScope(req, campus);
+    if (!campusId)
+      throw new BadRequestException('请先选择盘点仓库（校区或总部仓）');
     return ok(
-      await this.service.stocktake(body, req.user.id, req.user.campusId),
+      await this.service.stocktake(body, req.user.id, campusId),
       '盘点已提交',
     );
   }
@@ -577,10 +592,14 @@ export class AdminController {
   @Post('inventory/adjust') async adjustStock(
     @Req() req: AuthRequest,
     @Body() body: AdjustStockDto,
+    @Query('campus') campus?: string,
   ) {
     this.authorize(req, 'inventory', 'write');
+    const campusId = this.campusScope(req, campus);
+    if (!campusId)
+      throw new BadRequestException('请先选择调整仓库（校区或总部仓）');
     return ok(
-      await this.service.adjustStock(body, req.user.id, req.user.campusId),
+      await this.service.adjustStock(body, req.user.id, campusId),
       '库存已调整',
     );
   }
@@ -592,11 +611,12 @@ export class AdminController {
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
     @Query('keyword') keyword?: string,
+    @Query('campus') campus?: string,
   ) {
     this.authorize(req, 'inventory');
     return ok(
       paginate(
-        await this.service.inventoryTxns(productId, req.user.campusId),
+        await this.service.inventoryTxns(productId, this.campusScope(req, campus)),
         page,
         pageSize,
         keyword,

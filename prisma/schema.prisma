@@ -12,6 +12,9 @@ datasource db {
 
 model Campus {
   id                   String            @id @default(cuid())
+  // IKFOPY：campus=普通校区（用户可见可下单）；hq=总部仓（中转仓储，用户端
+  // 与校区角色全屏蔽，hq/admin 视角经库存 campusScope 聚焦使用仓储页）
+  type                 String            @default("campus")
   name                 String
   shortName            String
   warehouseName        String

@@ -74,7 +74,9 @@ export const ADMIN_MATRIX: Record<
   products: { read: [...OPS, 'warehouse', 'hq'], write: [...OPS, 'warehouse', 'hq'] },
   // 类别字典（2026-08-19 独立菜单）：全局字典，总部统一维护。
   categories: { read: [...OPS, 'warehouse', 'hq'], write: [...OPS, 'warehouse', 'hq'] },
-  inventory: { read: [...OPS, 'warehouse'], write: [...OPS, 'warehouse'] },
+  // IKFOPY（2026-09-15）：hq 补库存读写——总部仓=特殊校区，hq 视角经
+  // campus 参数聚焦总部仓复用仓储页（写操作必须显式带 campus，controller 把关）
+  inventory: { read: [...OPS, 'warehouse', 'hq'], write: [...OPS, 'warehouse', 'hq'] },
   staff: { read: OPS, write: OPS },
   campuses: { read: [...OPS, 'hq'], write: [...OPS, 'hq'] },
   // 楼栋/寝室管理（IKCRS8 2026-09-02：从 campuses 拆独立键）——挂本校区

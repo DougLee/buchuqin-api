@@ -366,10 +366,11 @@ export class BusinessService {
       throw new BadRequestException('优惠券已过期');
     return record;
   }
-  /** 校区选项（IKAJT2 选校区流程）：仅开放中校区，官方库伪校区天然排除。 */
+  /** 校区选项（IKAJT2 选校区流程）：仅开放中的普通校区，官方库伪校区
+   *  （status=official）与总部仓（type=hq，IKFOPY）均排除。 */
   async campusOptions() {
     return this.db.campus.findMany({
-      where: { status: 'active' },
+      where: { status: 'active', type: 'campus' },
       orderBy: { createdAt: 'asc' },
       select: { id: true, name: true, shortName: true },
     });
@@ -380,8 +381,9 @@ export class BusinessService {
    * 切回原校区可重新设默认。幂等：切到当前校区直接返回。
    */
   async switchUserCampus(userId: string, campusId: string) {
+    // IKFOPY：总部仓（type=hq）不对用户开放，切不进也选不到
     const campus = await this.db.campus.findFirst({
-      where: { id: campusId, status: 'active' },
+      where: { id: campusId, status: 'active', type: 'campus' },
     });
     if (!campus) throw new BadRequestException('校区不存在或暂未开放');
     const user = await this.db.user.findUnique({ where: { id: userId } });
