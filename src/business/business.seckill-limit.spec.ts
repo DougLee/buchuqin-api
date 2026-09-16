@@ -1,0 +1,256 @@
+import type { Prisma } from '@prisma/client';
+import { BadRequestException } from '@nestjs/common';
+import { PrismaService } from '../database/prisma.service';
+import { buildOrderTimeline } from '../common/order-state';
+import { BusinessService } from './business.service';
+
+/**
+ * 秒杀限购集成测试（IKG8FF）：同一用户同一秒杀商品每活动限 1 件——
+ * 加购数量上限/已购拒绝/结算兜底/退款释放/取消不占/窗外订单不占/
+ * 临期特惠不限购。独立 fixture，afterAll 清理。
+ */
+describe('seckill per-user limit (IKG8FF)', () => {
+  const db = new PrismaService();
+  const service = new BusinessService(db);
+  const CAMPUS = 'campus-seckill-spec';
+  const USER = 'user-seckill-spec';
+  const CAT = 'cat-seckill-spec';
+  const SKU = 'sku-seckill-spec';
+  const SKU_CL = 'sku-seckill-clearance';
+  const PROMO = 'promo-seckill-spec';
+  const PROMO_CL = 'promo-clearance-spec';
+  const ADDR = 'addr-seckill-spec';
+  const json = (value: unknown) =>
+    JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
+
+  /** 活动窗：过去 1 小时 ~ 未来 1 天（判定边界内）。 */
+  const startsAt = new Date(Date.now() - 3600_000);
+  const endsAt = new Date(Date.now() + 86_400_000);
+
+  const orderNo = () =>
+    `BCQSK${Date.now()}${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+
+  /** 造已支付订单：items 快照带 promotion 锁价块（判定依据 IKG8FF）。 */
+  const makePaidOrder = async (
+    productId: string,
+    promoId: string,
+    status = 'completed',
+    paidAt = new Date(),
+  ) => {
+    const p = await db.product.findUniqueOrThrow({ where: { id: productId } });
+    return db.order.create({
+      data: {
+        orderNo: orderNo(),
+        userId: USER,
+        campusId: CAMPUS,
+        status,
+        statusText: '测试',
+        address: json({ buildingName: '测试楼', room: '101' }),
+        deliveryMode: 'instant',
+        items: json([
+          {
+            product: {
+              id: p.id,
+              name: p.name,
+              price: 1500,
+              originalPrice: Number(p.price),
+              categoryId: p.categoryId,
+              promotion: { id: promoId, type: 'seckill', price: 1500, endsAt },
+            },
+            quantity: 1,
+          },
+        ]),
+        productAmount: 1500,
+        totalQuantity: 1,
+        deliveryThreshold: 10,
+        deliveryFee: 4,
+        discount: 0,
+        payableAmount: 1504,
+        estimatedArrival: '预计 30-60 分钟送达',
+        timeline: json(buildOrderTimeline('测试楼 101')),
+        paidAt,
+      },
+    });
+  };
+
+  beforeAll(async () => {
+    await db.campus.create({
+      data: {
+        id: CAMPUS,
+        name: '秒杀限购测试校园',
+        shortName: '限购',
+        warehouseName: '限购仓',
+      } as any,
+    });
+    await db.user.create({
+      data: {
+        id: USER,
+        openid: 'openid-seckill-spec',
+        nickname: '限购测试用户',
+        phone: '13800000011',
+        campusId: CAMPUS,
+      } as any,
+    });
+    await db.category.create({
+      data: { id: CAT, name: '秒杀限购测试分类' } as any,
+    });
+    await db.product.create({
+      data: {
+        id: SKU,
+        campusId: CAMPUS,
+        categoryId: CAT,
+        name: '限购测试可乐',
+        subtitle: 'spec',
+        price: 2000,
+        originalPrice: 2500,
+        stock: 50,
+        tag: 'spec',
+        image: '',
+        weight: 0.5,
+      } as any,
+    });
+    await db.product.create({
+      data: {
+        id: SKU_CL,
+        campusId: CAMPUS,
+        categoryId: CAT,
+        name: '临期特惠测试面',
+        subtitle: 'spec',
+        price: 2000,
+        originalPrice: 2500,
+        stock: 50,
+        tag: 'spec',
+        image: '',
+        weight: 0.5,
+      } as any,
+    });
+    await db.promotion.create({
+      data: {
+        id: PROMO,
+        productId: SKU,
+        type: 'seckill',
+        price: 1500,
+        startsAt,
+        endsAt,
+      } as any,
+    });
+    await db.promotion.create({
+      data: {
+        id: PROMO_CL,
+        productId: SKU_CL,
+        type: 'clearance',
+        price: 1500,
+        startsAt,
+        endsAt,
+      } as any,
+    });
+    await db.address.create({
+      data: {
+        id: ADDR,
+        userId: USER,
+        campusId: CAMPUS,
+        campusName: '秒杀限购测试校园',
+        buildingId: 'building-seckill-spec',
+        buildingName: '测试楼',
+        floor: 1,
+        room: '101',
+        contactName: 'spec',
+        phone: '13800000000',
+        isDefault: true,
+      } as any,
+    });
+  });
+
+  afterAll(async () => {
+    await db.order.deleteMany({ where: { userId: USER } });
+    await db.cartItem.deleteMany({ where: { userId: USER } });
+    await db.promotion.deleteMany({ where: { id: { in: [PROMO, PROMO_CL] } } });
+    await db.product.deleteMany({ where: { id: { in: [SKU, SKU_CL] } } });
+    await db.address.deleteMany({ where: { id: ADDR } });
+    await db.category.deleteMany({ where: { id: CAT } });
+    await db.user.deleteMany({ where: { id: USER } });
+    await db.campus.deleteMany({ where: { id: CAMPUS } });
+  });
+
+  it('未购用户：商品视图挂 seckillLimit(purchased:false)，临期商品不挂', async () => {
+    const detail = (await service.product(SKU, CAMPUS, USER)) as any;
+    expect(detail.seckillLimit).toEqual({ limit: 1, purchased: false });
+    const clearance = (await service.product(SKU_CL, CAMPUS, USER)) as any;
+    expect(clearance.seckillLimit).toBeUndefined();
+  });
+
+  it('秒杀商品加购数量上限 1 件', async () => {
+    await expect(
+      service.setCartItem(USER, SKU, 2),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it('临期特惠商品不限购：2 件可加购', async () => {
+    await expect(service.setCartItem(USER, SKU_CL, 2)).resolves.toBeTruthy();
+    await service.setCartItem(USER, SKU_CL, 0); // 清行，不影响后续用例
+  });
+
+  it('已购（已支付订单）后：加购拒绝 + 详情/购物车 purchased:true', async () => {
+    await service.setCartItem(USER, SKU, 1); // 先加购（合法）
+    const order = await makePaidOrder(SKU, PROMO); // 另一单已支付
+    await expect(
+      service.setCartItem(USER, SKU, 1),
+    ).rejects.toThrow('您已抢购过该商品');
+    const detail = (await service.product(SKU, CAMPUS, USER)) as any;
+    expect(detail.seckillLimit).toEqual({ limit: 1, purchased: true });
+    const cart = await service.cart(USER);
+    const line = cart.items.find((i) => i.product.id === SKU) as any;
+    expect(line.product.seckillLimit.purchased).toBe(true);
+    // 结算兜底：购物车已有秒杀行 + 已购订单 → checkout 拒绝
+    await expect(
+      service.checkout(USER, CAMPUS, {
+        addressId: ADDR,
+        deliveryMode: 'instant',
+      } as any),
+    ).rejects.toThrow('每人限购 1 件');
+    await db.order.delete({ where: { id: order.id } });
+  });
+
+  it('updateCart 全量替换同样拦截：秒杀行数量 >1 拒绝', async () => {
+    await expect(
+      service.updateCart(USER, {
+        items: [{ productId: SKU, quantity: 2 }],
+      } as any),
+    ).rejects.toThrow('每人限购 1 件');
+  });
+
+  it('窗外订单不占名额：paidAt 早于活动开始可正常加购', async () => {
+    const order = await makePaidOrder(
+      SKU,
+      PROMO,
+      'completed',
+      new Date(startsAt.getTime() - 86_400_000),
+    );
+    await expect(service.setCartItem(USER, SKU, 1)).resolves.toBeTruthy();
+    await db.order.delete({ where: { id: order.id } });
+    await service.setCartItem(USER, SKU, 0);
+  });
+
+  it('取消订单不占名额', async () => {
+    const order = await makePaidOrder(SKU, PROMO, 'cancelled');
+    await expect(service.setCartItem(USER, SKU, 1)).resolves.toBeTruthy();
+    await db.order.delete({ where: { id: order.id } });
+    await service.setCartItem(USER, SKU, 0);
+  });
+
+  it('退款释放名额：refunded 后可重新加购 + purchased:false', async () => {
+    const order = await makePaidOrder(SKU, PROMO);
+    await expect(
+      service.setCartItem(USER, SKU, 1),
+    ).rejects.toThrow('您已抢购过该商品');
+    await db.order.update({
+      where: { id: order.id },
+      data: { status: 'refunded', statusText: '已退款' },
+    });
+    await expect(service.setCartItem(USER, SKU, 1)).resolves.toBeTruthy();
+    const detail = (await service.product(SKU, CAMPUS, USER)) as any;
+    expect(detail.seckillLimit.purchased).toBe(false);
+    await db.order.delete({ where: { id: order.id } });
+    await service.setCartItem(USER, SKU, 0);
+  });
+});

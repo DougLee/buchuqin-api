@@ -78,7 +78,12 @@ export class BusinessController {
   ) {
     return ok(
       paginate(
-        await this.service.listProducts(req.user.campusId, category, keyword),
+        await this.service.listProducts(
+        req.user.campusId,
+        category,
+        keyword,
+        req.user.id,
+      ),
         page,
         pageSize,
       ),
@@ -88,13 +93,13 @@ export class BusinessController {
   @Get('promotions/seckill')
   @ApiOperation({ summary: '限时秒杀商品列表（进行中活动，含促销价）' })
   async seckill(@Req() req: AuthRequest) {
-    return ok(await this.service.listSeckill(req.user.campusId));
+    return ok(await this.service.listSeckill(req.user.campusId, req.user.id));
   }
   @Get('products/:id') async product(
     @Req() req: AuthRequest,
     @Param('id') id: string,
   ) {
-    return ok(await this.service.product(id, req.user.campusId));
+    return ok(await this.service.product(id, req.user.campusId, req.user.id));
   }
   @Get('cart') async cart(@Req() req: AuthRequest) {
     return ok(await this.service.cart(req.user.id));

@@ -144,6 +144,87 @@ export class BusinessService {
     return map;
   }
   /**
+   * 当前生效 seckill 活动映射（IKG8FF）：仅秒杀类型（clearance 不限购，
+   * 道 2026-09-16 拍板），同商品多活动取 endsAt 最近者（与 promotionMap 同口径）。
+   */
+  private async activeSeckillMap(
+    productIds: string[],
+    now = new Date(),
+  ): Promise<Map<string, any>> {
+    if (!productIds.length) return new Map<string, any>();
+    const rows = await this.db.promotion.findMany({
+      where: {
+        productId: { in: productIds },
+        type: 'seckill',
+        status: 'active',
+        startsAt: { lte: now },
+        endsAt: { gt: now },
+      },
+      orderBy: [{ endsAt: 'asc' }, { createdAt: 'asc' }],
+    });
+    const map = new Map<string, any>();
+    for (const r of rows) if (!map.has(r.productId)) map.set(r.productId, r);
+    return map;
+  }
+
+  /**
+   * 秒杀限购资格（IKG8FF）：动态判定——当前生效秒杀活动窗内「已支付且未退款/
+   * 未取消」订单的 items 快照含该 promotionId 即已抢购；退款后订单落出判定
+   * 口径，名额天然释放（道哥拍板：退款返还名额，无需回补动作）。
+   * 返回已抢购的 productId 集合；资格按活动行算，下场活动重置。
+   */
+  private async seckillPurchased(
+    userId: string,
+    productIds: string[],
+    now = new Date(),
+  ): Promise<Set<string>> {
+    const hit = new Set<string>();
+    if (!userId || !productIds.length) return hit;
+    const byProduct = await this.activeSeckillMap(productIds, now);
+    if (!byProduct.size) return hit;
+    const productByPromo = new Map<string, string>();
+    const starts: number[] = [];
+    const ends: number[] = [];
+    for (const [productId, p] of byProduct) {
+      productByPromo.set(p.id, productId);
+      starts.push(p.startsAt.getTime());
+      ends.push(p.endsAt.getTime());
+    }
+    const orders = await this.db.order.findMany({
+      where: {
+        userId,
+        paidAt: {
+          gte: new Date(Math.min(...starts)),
+          lt: new Date(Math.max(...ends)),
+        },
+        status: { notIn: ['refunded', 'cancelled'] },
+      },
+      select: { items: true },
+    });
+    for (const o of orders)
+      for (const line of o.items as Array<{
+        product?: { promotion?: { id?: string } };
+      }>) {
+        const productId = line.product?.promotion?.id
+          ? productByPromo.get(line.product.promotion.id)
+          : undefined;
+        if (productId) hit.add(productId);
+      }
+    return hit;
+  }
+
+  /**
+   * 视图挂限购状态（IKG8FF）：仅生效秒杀商品带 seckillLimit，C 端据此置灰
+   * 「已抢购」/数量上限 1；非秒杀商品不带字段，响应结构不变。
+   */
+  private attachSeckillLimit(views: any[], purchased: Set<string>) {
+    for (const v of views)
+      if (v.promotion?.type === 'seckill')
+        v.seckillLimit = { limit: 1, purchased: purchased.has(v.id) };
+    return views;
+  }
+
+  /**
    * 商品视图（ADR-0006）：活动期 price=促销价（生效价单一事实，所有金额出口
    * 读 .price 即正确），划线位 originalPrice 让给 product.price；promotion 块
    * 供 C 端角标/倒计时与订单快照审计（含 promotionId，下单锁价）。
@@ -507,7 +588,12 @@ export class BusinessService {
       take: 2,
     });
   }
-  async listProducts(campusId: string, categoryId?: string, keyword?: string) {
+  async listProducts(
+    campusId: string,
+    categoryId?: string,
+    keyword?: string,
+    userId?: string,
+  ) {
     const products = await this.db.product.findMany({
       where: {
         campusId,
@@ -522,14 +608,21 @@ export class BusinessService {
       orderBy: { sales: 'desc' },
     });
     const promoMap = await this.promotionMap(products.map((p) => p.id));
-    return products.map((p) => this.productView(p, false, promoMap.get(p.id)));
+    const views = products.map((p) =>
+      this.productView(p, false, promoMap.get(p.id)),
+    );
+    // IKG8FF：秒杀商品挂限购资格，C 端据此置灰「已抢购」
+    return this.attachSeckillLimit(
+      views,
+      await this.seckillPurchased(userId ?? '', products.map((p) => p.id)),
+    );
   }
   /**
    * 限时秒杀商品列表（IKBW0K）：进行中的 seckill 活动带促销价，供分类页
    * 「限时秒杀」特殊分类。结构同 listProducts（productView 出品，带 promotion
    * 块），不受 home 版块 take 20/混入临期 的限制。
    */
-  async listSeckill(campusId: string) {
+  async listSeckill(campusId: string, userId?: string) {
     const now = new Date();
     const rows = await this.db.promotion.findMany({
       where: {
@@ -542,15 +635,26 @@ export class BusinessService {
       orderBy: [{ endsAt: 'asc' }, { createdAt: 'asc' }],
       include: { product: true },
     });
-    return rows.map((x) => this.productView(x.product, false, x));
+    const views = rows.map((x) => this.productView(x.product, false, x));
+    return this.attachSeckillLimit(
+      views,
+      await this.seckillPurchased(
+        userId ?? '',
+        rows.map((x) => x.productId),
+      ),
+    );
   }
-  async product(id: string, campusId: string) {
+  async product(id: string, campusId: string, userId?: string) {
     const item = await this.db.product.findFirst({
       where: { id, campusId, status: 'on-sale' },
     });
     if (!item) throw new NotFoundException('商品不存在');
     const promo = (await this.promotionMap([item.id])).get(item.id);
-    return this.productView(item, true, promo);
+    const view = this.productView(item, true, promo);
+    return this.attachSeckillLimit(
+      [view],
+      await this.seckillPurchased(userId ?? '', [item.id]),
+    )[0];
   }
   async cart(userId: string) {
     const [rows, user] = await Promise.all([
@@ -573,14 +677,24 @@ export class BusinessService {
     // 生效价（ADR-0006）：活动期视图 price 即促销价，productAmount/券门槛/
     // 下单快照全部随 cart 单一来源走，下游零特判
     const promoMap = await this.promotionMap(rows.map((r) => r.productId));
-    const items = rows.map((row) => ({
-      product: this.productView(
+    // IKG8FF：购物车行同样挂秒杀限购状态（购物车页置灰/文案）
+    const purchased = await this.seckillPurchased(
+      userId,
+      rows.map((r) => r.productId),
+    );
+    const items = rows.map((row) => {
+      const product = this.productView(
         row.product,
         false,
         promoMap.get(row.productId),
-      ),
-      quantity: row.quantity,
-    }));
+      );
+      if (product.promotion?.type === 'seckill')
+        product.seckillLimit = {
+          limit: 1,
+          purchased: purchased.has(row.productId),
+        };
+      return { product, quantity: row.quantity };
+    });
     // 金额单位:分——全整数运算，无浮点误差（IK8W5K）。
     const productAmount = items.reduce(
       (sum, i) => sum + i.product.price * i.quantity,
@@ -605,6 +719,17 @@ export class BusinessService {
         select: { productId: true, quantity: true },
       });
       const oldQty = new Map(existing.map((e) => [e.productId, e.quantity]));
+      // IKG8FF：全量替换入口同样拦秒杀限购——数量上限 1 + 已购拒绝
+      const seckillIds = new Set(
+        (
+          await this.activeSeckillMap(
+            dto.items.filter((l) => l.quantity > 0).map((l) => l.productId),
+          )
+        ).keys(),
+      );
+      const purchased = seckillIds.size
+        ? await this.seckillPurchased(userId, [...seckillIds])
+        : new Set<string>();
       const rows: { userId: string; productId: string; quantity: number }[] =
         [];
       for (const line of dto.items) {
@@ -613,6 +738,14 @@ export class BusinessService {
           where: { id: line.productId },
         });
         if (!p || p.status !== 'on-sale') continue;
+        if (seckillIds.has(line.productId)) {
+          if (line.quantity > 1)
+            throw new BadRequestException(`秒杀商品「${p.name}」每人限购 1 件`);
+          if (purchased.has(line.productId))
+            throw new BadRequestException(
+              `您已抢购过「${p.name}」，每人限购 1 件`,
+            );
+        }
         if (
           line.quantity > (oldQty.get(line.productId) ?? 0) &&
           line.quantity > p.stock - p.lockedStock
@@ -632,6 +765,13 @@ export class BusinessService {
   async setCartItem(userId: string, productId: string, quantity: number) {
     const p = await this.db.product.findUnique({ where: { id: productId } });
     if (!p) throw new NotFoundException('商品不存在');
+    // IKG8FF：秒杀商品限购——每人每活动 1 件（已购拒加购，未购上限 1 件）
+    if (quantity > 0 && (await this.activeSeckillMap([productId])).size) {
+      if (quantity > 1) throw new BadRequestException('秒杀商品每人限购 1 件');
+      const hit = await this.seckillPurchased(userId, [productId]);
+      if (hit.has(productId))
+        throw new BadRequestException('您已抢购过该商品，每人限购 1 件');
+    }
     // IKDFZK：库存校验只拦「增加」方向（新数量 > 购物车已有数量才比库存），
     // 减少/清零放行——否则售罄商品的存量行永远删不掉
     const existing = await this.db.cartItem.findUnique({
@@ -682,6 +822,17 @@ export class BusinessService {
       if (!p || line.quantity > p.stock - p.lockedStock)
         throw new BadRequestException(`${line.product.name}库存不足`);
     }
+    // IKG8FF：结算兜底——加购到支付之间名额可能被同活动订单占掉；
+    // 独立查资格不依赖视图挂载字段（quote/checkout/createOrder 全覆盖）
+    const seckillBought = await this.seckillPurchased(
+      userId,
+      cart.items.map((i) => i.product.id),
+    );
+    for (const line of cart.items)
+      if (seckillBought.has(line.product.id))
+        throw new BadRequestException(
+          `您已抢购过「${line.product.name}」，每人限购 1 件`,
+        );
     if (dto.deliveryMode === 'scheduled') {
       if (!dto.deliverySlot) throw new BadRequestException('请选择送达时段');
       const slot = await this.db.deliverySlot.findFirst({
