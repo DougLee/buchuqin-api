@@ -251,10 +251,17 @@ export class NotificationsService {
   private async deliveryAccessToken(): Promise<string> {
     if (this.deliveryToken && this.deliveryToken.expiresAt > Date.now())
       return this.deliveryToken.token;
-    const res = await fetch(
-      `https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential` +
-        `&appid=${process.env.WX_APPID_DELIVERY}&secret=${process.env.WX_SECRET_DELIVERY}`,
-    );
+    // IKG9J2：stable_token 有效期内返回同一张票——测试/生产同 appid 不再互踩
+    const res = await fetch('https://api.weixin.qq.com/cgi-bin/stable_token', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        grant_type: 'client_credential',
+        appid: process.env.WX_APPID_DELIVERY,
+        secret: process.env.WX_SECRET_DELIVERY,
+        force_refresh: false,
+      }),
+    });
     const body = (await res.json()) as {
       access_token?: string;
       expires_in?: number;
@@ -457,14 +464,21 @@ export class NotificationsService {
     return withSeconds ? iso.slice(0, 19).replace('T', ' ') : iso.slice(0, 16).replace('T', ' ');
   }
 
-  /** 微信 access_token：client_credential 模式，带缓存与提前刷新。 */
+  /** 微信 access_token：stable_token 模式（IKG9J2），带缓存与提前刷新。 */
   private async wechatAccessToken(): Promise<string> {
     if (this.wxToken && this.wxToken.expiresAt > Date.now())
       return this.wxToken.token;
-    const res = await fetch(
-      `https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential` +
-        `&appid=${process.env.WX_APPID_USER}&secret=${process.env.WX_SECRET_USER}`,
-    );
+    // IKG9J2：stable_token 有效期内返回同一张票——测试/生产同 appid 不再互踩
+    const res = await fetch('https://api.weixin.qq.com/cgi-bin/stable_token', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        grant_type: 'client_credential',
+        appid: process.env.WX_APPID_USER,
+        secret: process.env.WX_SECRET_USER,
+        force_refresh: false,
+      }),
+    });
     const body = (await res.json()) as {
       access_token?: string;
       expires_in?: number;

@@ -589,11 +589,22 @@ export class AuthController {
       errmsg?: string;
     };
     try {
+      // IKG9J2：cgi-bin/token 是独占型（新票作废旧票）——测试/生产同 appid
+      // 各自缓存会互踩致 40001。stable_token 有效期内重复获取返回同一张票，
+      // 多环境共享同一凭证互不干扰（force_refresh 恒 false）。
       const response = await fetch(
-        `https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid=${encodeURIComponent(
-          credentials.appid,
-        )}&secret=${encodeURIComponent(credentials.secret)}`,
-        { signal: AbortSignal.timeout(5000) },
+        'https://api.weixin.qq.com/cgi-bin/stable_token',
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            grant_type: 'client_credential',
+            appid: credentials.appid,
+            secret: credentials.secret,
+            force_refresh: false,
+          }),
+          signal: AbortSignal.timeout(5000),
+        },
       );
       data = (await response.json()) as typeof data;
     } catch {
