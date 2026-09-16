@@ -1603,6 +1603,9 @@ export class AdminService {
         wholesaleUnit: true,
         unitsPerCase: true,
         status: true,
+        // IKG7B9：订货单编辑器商品筛选（类别下拉）需要类别归属
+        categoryId: true,
+        category: { select: { name: true } },
       },
       orderBy: { name: 'asc' },
     });
