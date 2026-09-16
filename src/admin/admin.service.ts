@@ -3046,6 +3046,165 @@ export class AdminService {
     };
   }
 
+  // ==================== 营销作战地图（IKFOQ3）：寝室级下单覆盖 ====================
+  // 口径（2026-09-17 道哥拍板）：🟢 paidAt 非空即算已下单（付过钱=被触达，含退款/
+  // 履约中）；🟡 有注册用户（Address buildingId+roomNo 二元匹配，roomNo 全楼唯一）
+  // 但无订单；⚪ 均无=未开发。实时聚合不建跑批表。
+  private async battleMapBuildingChecked(campusId: string, buildingId: string) {
+    const building = await this.db.building.findUnique({
+      where: { id: buildingId },
+    });
+    // 防串校区：楼栋必须属于当前运营校区（顶栏切换上下文）
+    if (!building || building.campusId !== campusId)
+      throw new NotFoundException('楼栋不存在');
+    return building;
+  }
+
+  async battleMapBuilding(campusId: string, buildingId: string) {
+    const building = await this.battleMapBuildingChecked(campusId, buildingId);
+    const rooms = await this.db.room.findMany({
+      where: { buildingId },
+      orderBy: [{ floor: 'asc' }, { roomNo: 'asc' }],
+      select: { id: true, floor: true, roomNo: true },
+    });
+    // 已支付订单按房号聚合（address Json 的 buildingId+room 二元匹配）
+    const orders = await this.db.order.findMany({
+      where: {
+        paidAt: { not: null },
+        address: { path: ['buildingId'], equals: buildingId },
+      },
+      select: { address: true },
+    });
+    const ordersByRoom = new Map<string, number>();
+    for (const o of orders) {
+      const room = (o.address as { room?: string } | null)?.room ?? '';
+      ordersByRoom.set(room, (ordersByRoom.get(room) ?? 0) + 1);
+    }
+    // 注册用户按房号聚合（去重：一人多地址同寝室只算一次）
+    const addrs = await this.db.address.findMany({
+      where: { buildingId },
+      select: { room: true, userId: true },
+    });
+    const usersByRoom = new Map<string, Set<string>>();
+    for (const a of addrs) {
+      const set = usersByRoom.get(a.room) ?? new Set<string>();
+      set.add(a.userId);
+      usersByRoom.set(a.room, set);
+    }
+    // 按楼层组装：格子三色 + 汇总
+    const floorMap = new Map<
+      number,
+      {
+        floor: number;
+        total: number;
+        ordered: number;
+        registered: number;
+        fresh: number;
+        rooms: Array<{
+          roomId: string;
+          roomNo: string;
+          status: 'ordered' | 'registered' | 'fresh';
+          userCount: number;
+          orderCount: number;
+        }>;
+      }
+    >();
+    for (const r of rooms) {
+      const f =
+        floorMap.get(r.floor) ??
+        {
+          floor: r.floor,
+          total: 0,
+          ordered: 0,
+          registered: 0,
+          fresh: 0,
+          rooms: [],
+        };
+      f.total += 1;
+      const userCount = usersByRoom.get(r.roomNo)?.size ?? 0;
+      const orderCount = ordersByRoom.get(r.roomNo) ?? 0;
+      const status =
+        orderCount > 0 ? 'ordered' : userCount > 0 ? 'registered' : 'fresh';
+      if (status === 'ordered') f.ordered += 1;
+      else if (status === 'registered') f.registered += 1;
+      else f.fresh += 1;
+      f.rooms.push({ roomId: r.id, roomNo: r.roomNo, status, userCount, orderCount });
+      floorMap.set(r.floor, f);
+    }
+    return {
+      building: { id: building.id, name: building.name },
+      floors: [...floorMap.values()].map((f) => ({
+        ...f,
+        coverageRate: f.total ? Math.round((f.ordered / f.total) * 10000) : 0,
+      })),
+    };
+  }
+
+  async battleMapRoom(campusId: string, roomId: string) {
+    const room = await this.db.room.findUnique({ where: { id: roomId } });
+    if (!room) throw new NotFoundException('寝室不存在');
+    await this.battleMapBuildingChecked(campusId, room.buildingId);
+    // 寝室注册用户（Address 归属去重）
+    const addrs = await this.db.address.findMany({
+      where: { buildingId: room.buildingId, room: room.roomNo },
+      select: { userId: true },
+    });
+    const userIds = [...new Set(addrs.map((a) => a.userId))];
+    const users = userIds.length
+      ? await this.db.user.findMany({
+          where: { id: { in: userIds } },
+          select: { id: true, nickname: true, phone: true, createdAt: true },
+          orderBy: { createdAt: 'asc' },
+        })
+      : [];
+    // 每人已支付订单统计：累计 + 近 30 天（高频=近 30 天 ≥3）
+    const since = new Date(Date.now() - 30 * 86400 * 1000);
+    const [totalByUser, recentByUser, roomOrders] = await Promise.all([
+      this.db.order.groupBy({
+        by: ['userId'],
+        where: { userId: { in: userIds }, paidAt: { not: null } },
+        _count: { _all: true },
+        _sum: { payableAmount: true },
+      }),
+      this.db.order.groupBy({
+        by: ['userId'],
+        where: { userId: { in: userIds }, paidAt: { gte: since, not: null } },
+        _count: { _all: true },
+      }),
+      // 该寝室的已支付订单数（按订单地址 buildingId+room 匹配，与格子绿态同口径；
+      // Json filter 不支持字段内 AND，顶层 AND 组合两个 Json 条件）
+      this.db.order.count({
+        where: {
+          paidAt: { not: null },
+          AND: [
+            { address: { path: ['buildingId'], equals: room.buildingId } },
+            { address: { path: ['room'], equals: room.roomNo } },
+          ],
+        },
+      }),
+    ]);
+    const totalMap = new Map(totalByUser.map((x) => [x.userId, x]));
+    const recentMap = new Map(recentByUser.map((x) => [x.userId, x._count._all]));
+    return {
+      room: { id: room.id, roomNo: room.roomNo, floor: room.floor },
+      orderCount: roomOrders,
+      users: users.map((u) => {
+        const total = totalMap.get(u.id);
+        const recent = recentMap.get(u.id) ?? 0;
+        return {
+          userId: u.id,
+          nickname: u.nickname,
+          phone: this.maskPhone(u.phone),
+          registeredAt: u.createdAt.toISOString(),
+          orderCount: total?._count._all ?? 0,
+          totalAmount: total?._sum.payableAmount ?? 0,
+          recentCount: recent,
+          highFrequency: recent >= 3,
+        };
+      }),
+    };
+  }
+
   /** 发货单详情（按订货单）：行快照价+发货/收货信息。校区限本单。 */
   async restockShipmentDetail(orderId: string, hqScope: boolean, campusId: string) {
     const shipment = await this.db.restockShipment.findUnique({

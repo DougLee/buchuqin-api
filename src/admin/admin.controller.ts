@@ -785,6 +785,27 @@ export class AdminController {
     );
   }
 
+  // ==================== 营销作战地图（IKFOQ3）：寝室级下单覆盖 ====================
+  // 权限复用 buildings 键（admin/operations）；校区跟顶栏上下文，
+  // service 校验楼栋归属防串校区
+  @Get('battle-map/buildings/:buildingId') async battleMapBuilding(
+    @Req() req: AuthRequest,
+    @Param('buildingId') buildingId: string,
+  ) {
+    this.authorize(req, 'buildings');
+    return ok(
+      await this.service.battleMapBuilding(req.user.campusId, buildingId),
+    );
+  }
+
+  @Get('battle-map/rooms/:roomId') async battleMapRoom(
+    @Req() req: AuthRequest,
+    @Param('roomId') roomId: string,
+  ) {
+    this.authorize(req, 'buildings');
+    return ok(await this.service.battleMapRoom(req.user.campusId, roomId));
+  }
+
   // ==================== 采购单（IKFOQ1）：独立板块「采购管理」====================
   // 全链总部动作（hq/admin）：生成聚合/验收入库/关闭重开；权限 purchase section。
   @Get('purchase/orders') async purchaseOrders(@Req() req: AuthRequest) {
