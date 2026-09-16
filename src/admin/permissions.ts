@@ -14,6 +14,7 @@ export type AdminSection =
   | 'inventory'
   | 'restock'
   | 'purchase'
+  | 'campus-report'
   | 'staff'
   | 'campuses'
   | 'buildings'
@@ -84,6 +85,9 @@ export const ADMIN_MATRIX: Record<
   restock: { read: [...OPS, 'warehouse', 'hq'], write: [...OPS, 'warehouse', 'hq'] },
   // 采购单全链总部动作（IKFOQ1）：生成/验收/关闭重开仅 hq/admin
   purchase: { read: ['hq', 'admin'], write: ['hq', 'admin'] },
+  // 校区经营日报（IKFOPS 2026-09-16）：只读账表——hq/admin 跨校区视角，
+  // operations/finance 本校区（财务看账、运营看经营）；仓储不给
+  'campus-report': { read: ['hq', ...OPS, 'finance'], write: [] },
   staff: { read: OPS, write: OPS },
   campuses: { read: [...OPS, 'hq'], write: [...OPS, 'hq'] },
   // 楼栋/寝室管理（IKCRS8 2026-09-02：从 campuses 拆独立键）——挂本校区

@@ -2924,6 +2924,128 @@ export class AdminService {
     };
   }
 
+  // ==================== 校区经营日报（IKFOPS）：C 端订单实时聚合 ====================
+  // 口径（2026-09-16 道哥拍板，与 IKFOPR 同族）：paidAt 支付时间落日、只计 completed；
+  // 销售额=payableAmount 实付（配送费为无成本收入直接落毛利）；
+  // 成本=IKFOPQ 行级 unitWholesaleCost 快照×数量（快照上线前历史单按 0 计）；
+  // 实时聚合不建跑批表；行=日期×校区（校区角色查询天然单校区）。
+  async campusDailyReport(
+    start: string,
+    end: string,
+    opts: {
+      campusId?: string;
+      buildingId?: string;
+      hqScope: boolean;
+      userCampusId?: string;
+    },
+  ) {
+    // 业务日界按北京时间切
+    const startAt = new Date(`${start}T00:00:00+08:00`);
+    const endAt = new Date(`${end}T23:59:59.999+08:00`);
+    if (
+      Number.isNaN(startAt.getTime()) ||
+      Number.isNaN(endAt.getTime()) ||
+      startAt > endAt
+    )
+      throw new BadRequestException('日期范围不合法');
+    // 数据范围：平台视角（hq/admin）可跨校区筛选；校区角色锁本校区
+    const campusId = opts.hqScope ? opts.campusId : opts.userCampusId;
+    const orders = await this.db.order.findMany({
+      where: {
+        status: 'completed',
+        paidAt: { gte: startAt, lte: endAt },
+        ...(campusId ? { campusId } : {}),
+      },
+      select: {
+        campusId: true,
+        paidAt: true,
+        payableAmount: true,
+        items: true,
+        address: true,
+        campus: { select: { name: true, shortName: true } },
+      },
+    });
+    // 楼栋筛选：address Json 的 buildingId（老单缺失自然剔除）
+    const scoped = opts.buildingId
+      ? orders.filter(
+          (o) =>
+            (o.address as { buildingId?: string } | null)?.buildingId ===
+            opts.buildingId,
+        )
+      : orders;
+    const agg = new Map<
+      string,
+      {
+        date: string;
+        campusId: string;
+        campusName: string;
+        campusShortName: string;
+        orders: number;
+        salesTotal: number;
+        costTotal: number;
+      }
+    >();
+    for (const o of scoped) {
+      const date = new Date(o.paidAt!.getTime() + 8 * 3600 * 1000)
+        .toISOString()
+        .slice(0, 10);
+      const k = `${date}|${o.campusId}`;
+      const cur = agg.get(k) ?? {
+        date,
+        campusId: o.campusId,
+        campusName: o.campus.name,
+        campusShortName: o.campus.shortName,
+        orders: 0,
+        salesTotal: 0,
+        costTotal: 0,
+      };
+      cur.orders += 1;
+      cur.salesTotal += o.payableAmount;
+      // 行成本=数量×IKFOPQ 每零售单位批发成本快照（缺快照按 0）
+      cur.costTotal += (
+        o.items as Array<{
+          quantity: number;
+          product?: { unitWholesaleCost?: number };
+        }>
+      ).reduce(
+        (sum, line) => sum + line.quantity * (line.product?.unitWholesaleCost ?? 0),
+        0,
+      );
+      agg.set(k, cur);
+    }
+    const rows = [...agg.values()]
+      .map((r) => {
+        const gross = r.salesTotal - r.costTotal;
+        return {
+          ...r,
+          gross,
+          marginRate: r.salesTotal
+            ? Math.round((gross / r.salesTotal) * 10000)
+            : 0,
+        };
+      })
+      .sort((a, b) =>
+        a.date < b.date
+          ? 1
+          : a.date > b.date
+            ? -1
+            : a.campusName.localeCompare(b.campusName, 'zh'),
+      );
+    const tSales = rows.reduce((s, r) => s + r.salesTotal, 0);
+    const tCost = rows.reduce((s, r) => s + r.costTotal, 0);
+    const tGross = tSales - tCost;
+    return {
+      totals: {
+        orders: rows.reduce((s, r) => s + r.orders, 0),
+        salesTotal: tSales,
+        costTotal: tCost,
+        gross: tGross,
+        marginRate: tSales ? Math.round((tGross / tSales) * 10000) : 0,
+      },
+      rows,
+    };
+  }
+
   /** 发货单详情（按订货单）：行快照价+发货/收货信息。校区限本单。 */
   async restockShipmentDetail(orderId: string, hqScope: boolean, campusId: string) {
     const shipment = await this.db.restockShipment.findUnique({

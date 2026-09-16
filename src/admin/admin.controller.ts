@@ -758,6 +758,33 @@ export class AdminController {
     );
   }
 
+  // ==================== 校区经营日报（IKFOPS）：C 端订单实时聚合 ====================
+  // 平台视角（hq/admin）可跨校区筛选；校区角色锁本校区 + 楼栋筛选
+  @Get('reports/campus-daily') async campusDailyReport(
+    @Req() req: AuthRequest,
+    @Query('start') start?: string,
+    @Query('end') end?: string,
+    @Query('campusId') campusId?: string,
+    @Query('buildingId') buildingId?: string,
+  ) {
+    this.authorize(req, 'campus-report');
+    const hqScope = isHqScope(req.user.role);
+    if (!hqScope && !req.user.campusId)
+      throw new ForbiddenException('账号未绑定校区');
+    // 缺省=昨日（T+1 口径）
+    const yesterday = new Date(Date.now() + 8 * 3600 * 1000 - 86400 * 1000)
+      .toISOString()
+      .slice(0, 10);
+    return ok(
+      await this.service.campusDailyReport(start || yesterday, end || yesterday, {
+        campusId: campusId || undefined,
+        buildingId: buildingId || undefined,
+        hqScope,
+        userCampusId: req.user.campusId,
+      }),
+    );
+  }
+
   // ==================== 采购单（IKFOQ1）：独立板块「采购管理」====================
   // 全链总部动作（hq/admin）：生成聚合/验收入库/关闭重开；权限 purchase section。
   @Get('purchase/orders') async purchaseOrders(@Req() req: AuthRequest) {
