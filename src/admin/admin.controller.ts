@@ -512,8 +512,11 @@ export class AdminController {
     return ok(
       paginate(
         await this.service.inventory(
-          // IKFOPY：campusScope 化——平台视角可聚焦总部仓/任一校区
-          this.campusScope(req, campus),
+          // IKFOPY：campusScope 化——平台视角可聚焦总部仓/任一校区。
+          // 缺省落地（修复空串炸 P2025）：admin 用本校区归属，hq 无归属缺省总部仓
+          this.campusScope(req, campus) ||
+            req.user.campusId ||
+            HQ_CAMPUS_ID,
           // IKD6FG：分类筛选（库存按类别盘点）
           categoryId || undefined,
         ),
