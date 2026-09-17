@@ -3956,7 +3956,8 @@ export class AdminService {
     );
     return { id, deleted: true };
   }
-  /** IK9SO6：配送费/起送门槛按校园配置（business.cart/checkout 已按此生效）。 */
+  /** IK9SO6：配送费/起送门槛按校园配置（business.cart/checkout 已按此生效）。
+   *  IKG1C（IKGI1C 打烊停单）：闭店窗/手动开关同页一并读写。 */
   async deliveryConfig(campusId: string) {
     const campus = await this.db.campus.findFirstOrThrow({
       where: { id: campusId },
@@ -3964,6 +3965,9 @@ export class AdminService {
         deliveryFeeInstant: true,
         deliveryFeeScheduled: true,
         deliveryThreshold: true,
+        closeStart: true,
+        closeEnd: true,
+        manualClosed: true,
       },
     });
     return campus;
@@ -3980,11 +3984,21 @@ export class AdminService {
         deliveryFeeInstant: body.deliveryFeeInstant,
         deliveryFeeScheduled: body.deliveryFeeScheduled,
         deliveryThreshold: body.deliveryThreshold,
+        // IKG1C（IKGI1C 打烊停单）：三字段可选，不传/空（null、undefined）
+        // 不动原值——配错时间窗不至于把闭店开关一起带飞
+        ...(body.closeStart ? { closeStart: body.closeStart } : {}),
+        ...(body.closeEnd ? { closeEnd: body.closeEnd } : {}),
+        ...(body.manualClosed === undefined || body.manualClosed === null
+          ? {}
+          : { manualClosed: body.manualClosed }),
       },
       select: {
         deliveryFeeInstant: true,
         deliveryFeeScheduled: true,
         deliveryThreshold: true,
+        closeStart: true,
+        closeEnd: true,
+        manualClosed: true,
       },
     });
     await this.audit(

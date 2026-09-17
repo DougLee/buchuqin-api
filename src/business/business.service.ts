@@ -294,10 +294,72 @@ export class BusinessService {
       data: { userId, type, title, content },
     });
   }
+  /** 北京时间当前时刻 → 当日分钟数（IKGI1C：判定一律用服务端上海时区，
+   *  不依赖部署机本地时区）。 */
+  private beijingMinutes(now = new Date()): number {
+    const hm = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Asia/Shanghai',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).format(now);
+    const [h, m] = hm.split(':').map(Number);
+    return (h % 24) * 60 + m;
+  }
+
+  /** 打烊停单判定（IKGI1C，2026-09-17 道哥定版）：手动开关优先；时间窗按
+   *  请求时刻判定（不看送达时刻）。closeStart === closeEnd = 不打烊；
+   *  closeStart < closeEnd 命中 = start <= now < end；closeStart > closeEnd
+   *  （跨零点）命中 = now >= start || now < end。 */
+  private isClosedNow(campus: {
+    closeStart?: string | null;
+    closeEnd?: string | null;
+    manualClosed?: boolean | null;
+  }): { closed: boolean; reason: 'manual' | 'window' | null } {
+    if (campus.manualClosed) return { closed: true, reason: 'manual' };
+    const { closeStart: start, closeEnd: end } = campus;
+    if (!start || !end || start === end) return { closed: false, reason: null };
+    const toMin = (s: string) => {
+      const [h, m] = s.split(':').map(Number);
+      return (h || 0) * 60 + (m || 0);
+    };
+    const now = this.beijingMinutes();
+    const s = toMin(start);
+    const e = toMin(end);
+    const hit = s < e ? now >= s && now < e : now >= s || now < e;
+    return { closed: hit, reason: hit ? 'window' : null };
+  }
+
+  /** 命中打烊即抛（IKGI1C）：window → 恢复时间文案；manual → 商家休息。 */
+  private throwIfClosed(campus: {
+    closeStart?: string | null;
+    closeEnd?: string | null;
+    manualClosed?: boolean | null;
+  }) {
+    const { closed, reason } = this.isClosedNow(campus);
+    if (closed)
+      throw new BadRequestException(
+        reason === 'manual'
+          ? '商家已休息，暂停接单'
+          : `已打烊，${campus.closeEnd} 恢复接单`,
+      );
+  }
+
+  /** 按校区 ID 查打烊三字段并判定（IKGI1C）：加购/结算各链路共用。 */
+  private async throwIfCampusClosed(campusId: string) {
+    const campus = await this.db.campus.findUnique({
+      where: { id: campusId },
+      select: { closeStart: true, closeEnd: true, manualClosed: true },
+    });
+    if (campus) this.throwIfClosed(campus);
+  }
+
   async campus(campusId: string) {
     const item = await this.db.campus.findFirst({ where: { id: campusId } });
     if (!item) throw new NotFoundException('校园不存在');
-    return item;
+    // IKG1C（IKGI1C 打烊停单）：C 端闭店态一次拿全（weapp 横幅/置灰与下单拦截同口径）
+    const { closed, reason } = this.isClosedNow(item);
+    return { ...item, closedNow: closed, closedReason: reason };
   }
   async categories() {
     // 分类为全局字典（无 campusId 维度），商品侧按校园过滤。
@@ -709,6 +771,13 @@ export class BusinessService {
     };
   }
   async updateCart(userId: string, dto: UpdateCartDto) {
+    // IKG1C（IKGI1C 打烊停单）：购物车整单保存同样拦——按用户当前校区判定，
+    // 命中即整批拒绝（不做半保存）
+    const cartOwner = await this.db.user.findUnique({
+      where: { id: userId },
+      select: { campusId: true },
+    });
+    if (cartOwner?.campusId) await this.throwIfCampusClosed(cartOwner.campusId);
     await this.db.$transaction(async (tx) => {
       // IKDFZK：下架/不存在行直接剔除（全量替换语义下 = 自动移出购物车），
       // 不再整批抛错——旧行为会把售罄/下架商品变成"钉子户"（删不掉且
@@ -765,6 +834,9 @@ export class BusinessService {
   async setCartItem(userId: string, productId: string, quantity: number) {
     const p = await this.db.product.findUnique({ where: { id: productId } });
     if (!p) throw new NotFoundException('商品不存在');
+    // IKG1C（IKGI1C 打烊停单）：加购方向硬拦，判定在秒杀等校验之前；
+    // 减少/清零方向放行（同 IKDFZK 口径，别把购物车存量行变成删不掉的钉子户）
+    if (quantity > 0) await this.throwIfCampusClosed(p.campusId);
     // IKG8FF：秒杀商品限购——每人每活动 1 件（已购拒加购，未购上限 1 件）
     if (quantity > 0 && (await this.activeSeckillMap([productId])).size) {
       if (quantity > 1) throw new BadRequestException('秒杀商品每人限购 1 件');
@@ -802,6 +874,10 @@ export class BusinessService {
     campusId: string,
     dto: CreateOrderDto,
   ) {
+    // IKG1C（IKGI1C 打烊停单）：结算/下单/可用券全走这里，闭店判定放最前
+    // （quote/checkout/createOrder 全覆盖；已创建待支付单的支付不经此链路，
+    // 按定版口径不受拦）
+    await this.throwIfCampusClosed(campusId);
     const [cart, address] = await Promise.all([
       this.cart(userId),
       this.db.address.findFirst({ where: { id: dto.addressId, userId } }),

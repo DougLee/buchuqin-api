@@ -204,6 +204,17 @@ export class UpdateDeliveryConfigDto {
   @Type(() => Number) @IsInt() @Min(0) deliveryFeeInstant!: number;
   @Type(() => Number) @IsInt() @Min(0) deliveryFeeScheduled!: number;
   @Type(() => Number) @IsInt() @Min(0) deliveryThreshold!: number;
+  // 打烊停单（IKGI1C）：每日打烊窗 HH:mm（跨零点合法，相等 = 不打烊）+
+  // 手动闭店开关；三字段均可选，不传不动原值
+  @IsOptional()
+  @IsString()
+  @Matches(/^([01]\d|2[0-3]):[0-5]\d$/, { message: '打烊开始时间须为 HH:mm' })
+  closeStart?: string;
+  @IsOptional()
+  @IsString()
+  @Matches(/^([01]\d|2[0-3]):[0-5]\d$/, { message: '打烊结束时间须为 HH:mm' })
+  closeEnd?: string;
+  @IsOptional() @IsBoolean() manualClosed?: boolean;
 }
 export class CreateCouponDto {
   @IsString() @MaxLength(40) name!: string;

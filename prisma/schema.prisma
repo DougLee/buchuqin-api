@@ -24,6 +24,12 @@ model Campus {
   deliveryFeeInstant   Int               @default(400)
   deliveryFeeScheduled Int               @default(200)
   deliveryThreshold    Int               @default(1000)
+  // 打烊停单（IKGI1C，2026-09-17 道哥定版）：每日打烊窗 HH:mm，跨零点合法
+  // （closeStart > closeEnd = 跨天窗）；相等 = 不打烊
+  closeStart           String            @default("22:00")
+  closeEnd             String            @default("08:00")
+  // 手动闭店开关：与时间窗叠加判定，admin 配置页一键切换
+  manualClosed         Boolean           @default(false)
   // 楼长月度底薪（IKDOIU 道哥）：单位分，0 = 无底薪（纯提成+调整）——
   // 取代 settlements 硬编码 50000，校区维度自主配置
   buildingManagerBaseSalary Int          @default(0)
