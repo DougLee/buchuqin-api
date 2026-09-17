@@ -981,8 +981,27 @@ export class BusinessService {
       : (campus?.deliveryFeeScheduled ??
           BusinessService.DELIVERY_FEE_CENTS.scheduled);
   }
+  /** 楼长缺失提示（IKGN4W）：地址楼栋无任何在职楼长（正式/实习，未删除
+   *  口径与楼栋管理页一致）时返回提示文案；结算预览与下单响应共用，
+   *  纯预期管理，不影响履约/结算。 */
+  private async managerTipFor(address: {
+    buildingId?: string | null;
+  }): Promise<string | undefined> {
+    if (!address.buildingId) return undefined;
+    const manager = await this.db.staff.findFirst({
+      where: {
+        buildingId: address.buildingId,
+        role: { in: ['building-manager', 'intern-building-manager'] },
+        status: { not: 'deleted' },
+      },
+      select: { id: true },
+    });
+    return manager
+      ? undefined
+      : '本楼栋正在招募楼长，暂时需要您到寝室楼下取货，感谢理解～';
+  }
   async checkout(userId: string, campusId: string, dto: CreateOrderDto) {
-    const { cart } = await this.validateQuote(userId, campusId, dto);
+    const { cart, address } = await this.validateQuote(userId, campusId, dto);
     const deliveryFee = await this.deliveryFeeFor(campusId, dto.deliveryMode);
     const userCoupon = dto.couponId
       ? await this.validateUserCoupon(userId, dto.couponId, campusId)
@@ -993,6 +1012,9 @@ export class BusinessService {
     // IKB3K1：抵扣超过订单金额（商品+运费）的券直接拒绝——无门槛大额券会算出负数单
     if (userCoupon && discount > cart.productAmount + deliveryFee)
       throw new BadRequestException('该单无法使用此优惠券');
+    // IKGN4W：支付前提示（2026-09-17 道哥改版）——结算预览即返回楼长缺失
+    // 文案，weapp 提交前弹窗确认，不再等支付成功后 toast
+    const managerTip = await this.managerTipFor(address);
     return {
       ...cart,
       deliveryFee,
@@ -1003,6 +1025,7 @@ export class BusinessService {
         dto.deliveryMode === 'instant'
           ? '预计 30-60 分钟送达'
           : `${dto.deliverySlot} 送达`,
+      managerTip,
     };
   }
   async createOrder(userId: string, campusId: string, dto: CreateOrderDto) {
@@ -1054,22 +1077,9 @@ export class BusinessService {
       });
     });
     const view = this.orderView(order);
-    // 楼长缺失提示（IKGN4W，2026-09-17 道哥定版）：纯预期管理，不动履约——
-    // 地址楼栋无任何在职楼长（正式/实习，未删除口径与楼栋管理页一致）时，
-    // 响应附带「楼下自取」文案，weapp 下单成功后 toast 一次。
-    let managerTip: string | undefined;
-    if (address.buildingId) {
-      const manager = await this.db.staff.findFirst({
-        where: {
-          buildingId: address.buildingId,
-          role: { in: ['building-manager', 'intern-building-manager'] },
-          status: { not: 'deleted' },
-        },
-        select: { id: true },
-      });
-      if (!manager)
-        managerTip = '本楼栋正在招募楼长，暂时需要您到寝室楼下取货，感谢理解～';
-    }
+    // 楼长缺失提示（IKGN4W）：与结算预览同源共用 managerTipFor——纯预期
+    // 管理，不动履约；weapp 已提前在结算弹窗确认，此字段作响应级留档。
+    const managerTip = await this.managerTipFor(address);
     return managerTip ? { ...view, managerTip } : view;
   }
   /** 待支付超时阈值：15 分钟。 */
