@@ -1008,7 +1008,24 @@ export class BusinessService {
         },
       });
     });
-    return this.orderView(order);
+    const view = this.orderView(order);
+    // 楼长缺失提示（IKGN4W，2026-09-17 道哥定版）：纯预期管理，不动履约——
+    // 地址楼栋无任何在职楼长（正式/实习，未删除口径与楼栋管理页一致）时，
+    // 响应附带「楼下自取」文案，weapp 下单成功后 toast 一次。
+    let managerTip: string | undefined;
+    if (address.buildingId) {
+      const manager = await this.db.staff.findFirst({
+        where: {
+          buildingId: address.buildingId,
+          role: { in: ['building-manager', 'intern-building-manager'] },
+          status: { not: 'deleted' },
+        },
+        select: { id: true },
+      });
+      if (!manager)
+        managerTip = '本楼栋正在招募楼长，暂时需要您到寝室楼下取货，感谢理解～';
+    }
+    return managerTip ? { ...view, managerTip } : view;
   }
   /** 待支付超时阈值：15 分钟。 */
   static readonly PAYMENT_TIMEOUT_MS = 15 * 60 * 1000;
