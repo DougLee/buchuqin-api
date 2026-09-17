@@ -762,12 +762,21 @@ export class BusinessService {
       (sum, i) => sum + i.product.price * i.quantity,
       0,
     );
+    // IKGNMV：购物车里已有的秒杀 SKU（≤1，由加购拦截保证）——weapp 端
+    // 其他秒杀品加购钮置灰用；无秒杀行为 undefined
+    const seckillMap = await this.activeSeckillMap(
+      rows.map((r) => r.productId),
+    );
+    const seckillIdInCart = seckillMap.size
+      ? rows.find((r) => seckillMap.has(r.productId))?.productId
+      : undefined;
     return {
       items,
       productAmount,
       totalQuantity: items.reduce((sum, i) => sum + i.quantity, 0),
       deliveryThreshold:
         campus?.deliveryThreshold ?? BusinessService.DELIVERY_THRESHOLD_CENTS,
+      seckillIdInCart,
     };
   }
   async updateCart(userId: string, dto: UpdateCartDto) {
@@ -799,6 +808,17 @@ export class BusinessService {
       const purchased = seckillIds.size
         ? await this.seckillPurchased(userId, [...seckillIds])
         : new Set<string>();
+      // IKGNMV（一单一秒杀）：全量替换语义下，保存后的行集中秒杀 SKU 品种
+      // >1 整批拒绝（保留哪个由用户回购物车调整）
+      if (seckillIds.size > 1) {
+        const names = await tx.product.findMany({
+          where: { id: { in: [...seckillIds] } },
+          select: { name: true },
+        });
+        throw new BadRequestException(
+          `一个订单限一个秒杀商品，购物车里已有：${names.map((n) => n.name).join('、')}`,
+        );
+      }
       const rows: { userId: string; productId: string; quantity: number }[] =
         [];
       for (const line of dto.items) {
@@ -843,6 +863,18 @@ export class BusinessService {
       const hit = await this.seckillPurchased(userId, [productId]);
       if (hit.has(productId))
         throw new BadRequestException('您已抢购过该商品，每人限购 1 件');
+      // IKGNMV（一单一秒杀）：购物车已有**其他**秒杀 SKU 时拒加（品种 ≤1/单）；
+      // 排除自身——同秒杀品的合法增减不误拦；文案优先级在已购之后（验收口径）
+      const others = (
+        await this.db.cartItem.findMany({
+          where: { userId, quantity: { gt: 0 } },
+          select: { productId: true },
+        })
+      )
+        .map((r) => r.productId)
+        .filter((id) => id !== productId);
+      if (others.length && (await this.activeSeckillMap(others)).size)
+        throw new BadRequestException('购物车已有秒杀商品，一个订单限一个');
     }
     // IKDFZK：库存校验只拦「增加」方向（新数量 > 购物车已有数量才比库存），
     // 减少/清零放行——否则售罄商品的存量行永远删不掉
@@ -909,6 +941,19 @@ export class BusinessService {
         throw new BadRequestException(
           `您已抢购过「${line.product.name}」，每人限购 1 件`,
         );
+    // IKGNMV（一单一秒杀）结算兜底：绕过加购拦截的脏数据（并发/历史存量）
+    // 在结算时把关——购物车里秒杀 SKU 品种 >1 拒单，引导回购物车调整
+    const cartSeckillIds = new Set(
+      (
+        await this.activeSeckillMap(
+          cart.items.map((i) => i.product.id),
+        )
+      ).keys(),
+    );
+    if (cartSeckillIds.size > 1)
+      throw new BadRequestException(
+        '一个订单只能包含一个秒杀商品，请调整购物车后再试',
+      );
     if (dto.deliveryMode === 'scheduled') {
       if (!dto.deliverySlot) throw new BadRequestException('请选择送达时段');
       const slot = await this.db.deliverySlot.findFirst({

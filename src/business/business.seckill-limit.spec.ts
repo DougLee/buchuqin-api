@@ -17,8 +17,11 @@ describe('seckill per-user limit (IKG8FF)', () => {
   const CAT = 'cat-seckill-spec';
   const SKU = 'sku-seckill-spec';
   const SKU_CL = 'sku-seckill-clearance';
+  // IKGNMV（一单一秒杀）：第二个秒杀 SKU
+  const SKU2 = 'sku-seckill-spec-b';
   const PROMO = 'promo-seckill-spec';
   const PROMO_CL = 'promo-clearance-spec';
+  const PROMO2 = 'promo-seckill-spec-b';
   const ADDR = 'addr-seckill-spec';
   const json = (value: unknown) =>
     JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
@@ -124,6 +127,21 @@ describe('seckill per-user limit (IKG8FF)', () => {
         weight: 0.5,
       } as any,
     });
+    await db.product.create({
+      data: {
+        id: SKU2,
+        campusId: CAMPUS,
+        categoryId: CAT,
+        name: '限购测试辣条B',
+        subtitle: 'spec',
+        price: 2000,
+        originalPrice: 2500,
+        stock: 50,
+        tag: 'spec',
+        image: '',
+        weight: 0.5,
+      } as any,
+    });
     await db.promotion.create({
       data: {
         id: PROMO,
@@ -140,6 +158,16 @@ describe('seckill per-user limit (IKG8FF)', () => {
         productId: SKU_CL,
         type: 'clearance',
         price: 1500,
+        startsAt,
+        endsAt,
+      } as any,
+    });
+    await db.promotion.create({
+      data: {
+        id: PROMO2,
+        productId: SKU2,
+        type: 'seckill',
+        price: 1600,
         startsAt,
         endsAt,
       } as any,
@@ -164,8 +192,10 @@ describe('seckill per-user limit (IKG8FF)', () => {
   afterAll(async () => {
     await db.order.deleteMany({ where: { userId: USER } });
     await db.cartItem.deleteMany({ where: { userId: USER } });
-    await db.promotion.deleteMany({ where: { id: { in: [PROMO, PROMO_CL] } } });
-    await db.product.deleteMany({ where: { id: { in: [SKU, SKU_CL] } } });
+    await db.promotion.deleteMany({
+      where: { id: { in: [PROMO, PROMO_CL, PROMO2] } },
+    });
+    await db.product.deleteMany({ where: { id: { in: [SKU, SKU_CL, SKU2] } } });
     await db.address.deleteMany({ where: { id: ADDR } });
     await db.category.deleteMany({ where: { id: CAT } });
     await db.user.deleteMany({ where: { id: USER } });
@@ -250,6 +280,90 @@ describe('seckill per-user limit (IKG8FF)', () => {
     await expect(service.setCartItem(USER, SKU, 1)).resolves.toBeTruthy();
     const detail = (await service.product(SKU, CAMPUS, USER)) as any;
     expect(detail.seckillLimit.purchased).toBe(false);
+    await db.order.delete({ where: { id: order.id } });
+    await service.setCartItem(USER, SKU, 0);
+  });
+
+  // ---------- IKGNMV（一单一秒杀）：订单级秒杀 SKU 品种 ≤1 ----------
+
+  it('IKGNMV：购物车已有秒杀 A 时加秒杀 B 拒绝', async () => {
+    await service.setCartItem(USER, SKU, 1);
+    await expect(service.setCartItem(USER, SKU2, 1)).rejects.toThrow(
+      '购物车已有秒杀商品，一个订单限一个',
+    );
+    // 同秒杀品自身超量加购走 IKG8FF 上限文案，不误报一单一秒杀
+    await expect(service.setCartItem(USER, SKU, 2)).rejects.toThrow(
+      '秒杀商品每人限购 1 件',
+    );
+    await service.setCartItem(USER, SKU, 0);
+  });
+
+  it('IKGNMV：cart 出口挂 seckillIdInCart；clearance 与普通商品不受影响', async () => {
+    await service.setCartItem(USER, SKU, 1);
+    const cart = (await service.cart(USER)) as any;
+    expect(cart.seckillIdInCart).toBe(SKU);
+    await expect(
+      service.setCartItem(USER, SKU_CL, 2),
+    ).resolves.toBeTruthy(); // clearance 不受限
+    await service.setCartItem(USER, SKU_CL, 0);
+    await service.setCartItem(USER, SKU, 0);
+    const empty = (await service.cart(USER)) as any;
+    expect(empty.seckillIdInCart).toBeUndefined();
+  });
+
+  it('IKGNMV：删除秒杀 A 后秒杀 B 可正常加购', async () => {
+    await service.setCartItem(USER, SKU, 1);
+    await service.setCartItem(USER, SKU, 0);
+    await expect(service.setCartItem(USER, SKU2, 1)).resolves.toBeTruthy();
+    const cart = (await service.cart(USER)) as any;
+    expect(cart.seckillIdInCart).toBe(SKU2);
+    await service.setCartItem(USER, SKU2, 0);
+  });
+
+  it('IKGNMV：updateCart 全量替换含两个秒杀 SKU 整批拒绝', async () => {
+    await service.setCartItem(USER, SKU, 1);
+    await expect(
+      service.updateCart(USER, {
+        items: [
+          { productId: SKU, quantity: 1 },
+          { productId: SKU2, quantity: 1 },
+        ],
+      }),
+    ).rejects.toThrow('一个订单限一个秒杀商品');
+    // 替换后只留一个秒杀 + 普通行：放行
+    await expect(
+      service.updateCart(USER, {
+        items: [
+          { productId: SKU, quantity: 1 },
+          { productId: SKU_CL, quantity: 2 },
+        ],
+      }),
+    ).resolves.toBeTruthy();
+    await service.setCartItem(USER, SKU, 0);
+  });
+
+  it('IKGNMV：结算兜底——脏数据（直插两秒杀行）checkout 拒绝', async () => {
+    await db.cartItem.createMany({
+      data: [
+        { userId: USER, productId: SKU, quantity: 1 },
+        { userId: USER, productId: SKU2, quantity: 1 },
+      ],
+    });
+    await expect(
+      service.checkout(USER, CAMPUS, {
+        addressId: ADDR,
+        deliveryMode: 'instant',
+      } as any),
+    ).rejects.toThrow('一个订单只能包含一个秒杀商品');
+    await db.cartItem.deleteMany({ where: { userId: USER } });
+  });
+
+  it('IKGNMV：秒杀 B 已购过时优先报已购（文案优先级在品种拦截之前）', async () => {
+    await service.setCartItem(USER, SKU, 1);
+    const order = await makePaidOrder(SKU2, PROMO2);
+    await expect(service.setCartItem(USER, SKU2, 1)).rejects.toThrow(
+      '您已抢购过该商品',
+    );
     await db.order.delete({ where: { id: order.id } });
     await service.setCartItem(USER, SKU, 0);
   });
