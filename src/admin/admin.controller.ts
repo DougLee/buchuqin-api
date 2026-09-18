@@ -462,14 +462,18 @@ export class AdminController {
     );
   }
   /** 校区从官方库导入商品（IKAJSO）：本地售价/上下架/库存自管。
-   *  IKFOQ0：hq/admin 可带 ?campus=campus-hq 铺货到总部仓（订货锁库存的前提）。 */
+   *  IKFOQ0：总部视角（hq / 未绑校区的 admin）可带 ?campus=campus-hq 铺货到
+   *  总部仓（订货锁库存的前提）。
+   *  IKGNQ 修复（2026-09-18 道哥）：admin 绑定实际校区后，导入与校区角色
+   *  同语义——落自己绑定的校区，不再被 isHqScope 一刀切拦成「仅可铺货总部仓」。 */
   @Post('products/import') async importProducts(
     @Req() req: AuthRequest,
     @Body() body: ImportProductsDto,
     @Query('campus') campus?: string,
   ) {
     this.authorize(req, 'products', 'write');
-    if (isHqScope(req.user.role)) {
+    const hqOnly = !req.user.campusId || req.user.campusId === HQ_CAMPUS_ID;
+    if (isHqScope(req.user.role) && hqOnly) {
       const target = campus?.trim();
       if (target !== HQ_CAMPUS_ID)
         throw new ForbiddenException('总部账号仅可铺货至总部仓（?campus=campus-hq）');
