@@ -3792,7 +3792,21 @@ export class AdminService {
       online: x.status === 'online',
     }));
   }
+  /** 服务范围（IKGVOO，2026-09-18 道哥定版）：员工可选所属校区——必须是真实
+   *  运营校区（type=campus，拒绝 official/hq 伪校区），缺省回落账号绑定校区。 */
+  private async resolveStaffCampus(
+    requested: string | undefined,
+    fallback: string,
+  ): Promise<{ id: string; name: string }> {
+    const campus = await this.db.campus.findFirst({
+      where: { id: requested || fallback, type: 'campus' },
+    });
+    if (!campus)
+      throw new BadRequestException('所属校区不存在或不可用，请先选择服务范围');
+    return { id: campus.id, name: campus.name };
+  }
   async createStaff(body: CreateStaffDto, operator: string, campusId: string) {
+    const target = await this.resolveStaffCampus(body.campusId, campusId);
     const duplicate = await this.db.staff.findUnique({
       where: { staffNo: body.staffNo },
     });
@@ -3820,10 +3834,11 @@ export class AdminService {
         if (clash) throw new BadRequestException('该楼栋已有在职楼长');
       }
     }
-    let buildingName = '湖北工业大学';
+    // IKGVOO：兜底校名按所选校区（原硬编码「湖北工业大学」已清除）
+    let buildingName = target.name;
     if (body.buildingId) {
       const building = await this.db.building.findFirst({
-        where: { id: body.buildingId, campusId },
+        where: { id: body.buildingId, campusId: target.id },
       });
       if (!building) throw new BadRequestException('楼栋不存在');
       buildingName = building.name;
@@ -3838,7 +3853,7 @@ export class AdminService {
             : '兼职配送员';
     const staff = await this.db.staff.create({
       data: {
-        campusId,
+        campusId: target.id,
         name: body.name,
         role: body.role,
         roleText,
@@ -3860,19 +3875,14 @@ export class AdminService {
         name: staff.name,
         staffNo: staff.staffNo,
       },
-      campusId,
+      target.id,
     );
     return staff;
   }
-  async updateStaff(
-    id: string,
-    body: UpdateStaffDto,
-    operator: string,
-    campusId: string,
-  ) {
-    const before = await this.db.staff.findFirst({
-      where: { id, campusId },
-    });
+  async updateStaff(id: string, body: UpdateStaffDto, operator: string) {
+    // IKGVOO：改派支持——员工按 id 全局定位（改派后 campusId 变化，
+    // 不能再用登录账号校区过滤，否则改派过一次的员工永远查不到）
+    const before = await this.db.staff.findFirst({ where: { id } });
     if (!before || before.status === 'deleted')
       throw new NotFoundException('员工不存在');
     if (
@@ -3881,11 +3891,21 @@ export class AdminService {
       (await this.db.staff.findUnique({ where: { staffNo: body.staffNo } }))
     )
       throw new BadRequestException('工号已存在');
+    // 服务范围改派（IKGVOO）：改派时未显式指定新楼栋 → 自动清空绑定（待分配）
+    const target = await this.resolveStaffCampus(
+      body.campusId,
+      before.campusId,
+    );
+    const campusChanged = target.id !== before.campusId;
+    if (campusChanged && body.buildingId === undefined) {
+      body.buildingId = null;
+    }
     const data: Prisma.StaffUpdateInput = {};
     if (body.name !== undefined) data.name = body.name;
     if (body.role !== undefined) data.role = body.role;
     if (body.staffNo !== undefined) data.staffNo = body.staffNo;
     if (body.status !== undefined) data.status = body.status;
+    if (campusChanged) data.campus = { connect: { id: target.id } };
     let buildingName = before.building;
     // IK9U3X/IK9U3Y：仅在本次请求改角色或改楼栋时校验，避免历史数据阻塞改名等普通编辑
     if (body.role !== undefined || body.buildingId !== undefined) {
@@ -3896,8 +3916,9 @@ export class AdminService {
         // 骑手自动解绑楼栋（角色切换场景无需两步操作）
         if (nextBuildingId) {
           data.buildingRef = { disconnect: true };
-          data.building = '湖北工业大学';
-          buildingName = '湖北工业大学';
+          // IKGVOO：解绑快照按目标校区名（原硬编码「湖北工业大学」已清除）
+          data.building = target.name;
+          buildingName = target.name;
         }
       } else {
         // IKBW0E：楼长允许显式解绑（清空绑定进「待分配」态，见下方 buildingId null
@@ -3929,7 +3950,7 @@ export class AdminService {
         buildingName = '待分配';
       } else {
         const building = await this.db.building.findFirst({
-          where: { id: body.buildingId, campusId },
+          where: { id: body.buildingId, campusId: target.id },
         });
         if (!building) throw new BadRequestException('楼栋不存在');
         data.buildingRef = { connect: { id: building.id } };
@@ -3956,14 +3977,13 @@ export class AdminService {
       id,
       before,
       after,
-      campusId,
+      target.id,
     );
     return after;
   }
-  async deleteStaff(id: string, operator: string, campusId: string) {
-    const before = await this.db.staff.findFirst({
-      where: { id, campusId },
-    });
+  async deleteStaff(id: string, operator: string) {
+    // IKGVOO：按 id 全局定位（改派过校区的员工也要能删）
+    const before = await this.db.staff.findFirst({ where: { id } });
     if (!before || before.status === 'deleted')
       throw new NotFoundException('员工不存在');
     const after = await this.db.staff.update({
@@ -3977,7 +3997,7 @@ export class AdminService {
       id,
       before,
       after,
-      campusId,
+      before.campusId,
     );
     return { id, deleted: true };
   }

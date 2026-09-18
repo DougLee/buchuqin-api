@@ -349,6 +349,8 @@ export class CreateStaffDto {
   @IsString() @MaxLength(20) staffNo!: string;
   @IsOptional() @IsString() buildingId?: string;
   @IsOptional() @IsIn(STAFF_STATUSES) status?: string;
+  /** 服务范围（IKGVOO，2026-09-18 道哥）：可选所属校区，缺省回落账号绑定校区 */
+  @IsOptional() @IsString() campusId?: string;
 }
 export class UpdateStaffDto {
   @IsOptional() @IsString() @MaxLength(20) name?: string;
@@ -358,6 +360,8 @@ export class UpdateStaffDto {
   @IsOptional() @IsString() @MaxLength(20) staffNo?: string;
   @IsOptional() @IsString() buildingId?: string | null;
   @IsOptional() @IsIn(STAFF_STATUSES) status?: string;
+  /** 改派服务范围（IKGVOO）：改派时已绑楼栋自动清空为「待分配」 */
+  @IsOptional() @IsString() campusId?: string;
 }
 export class StockInDto {
   @IsString() productId!: string;

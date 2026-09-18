@@ -1305,7 +1305,7 @@ export class AdminController {
   ) {
     this.authorize(req, 'staff', 'write');
     return ok(
-      await this.service.updateStaff(id, body, req.user.id, req.user.campusId),
+      await this.service.updateStaff(id, body, req.user.id),
     );
   }
   @Delete('staff/:id') async deleteStaff(
@@ -1314,7 +1314,7 @@ export class AdminController {
   ) {
     this.authorize(req, 'staff', 'write');
     return ok(
-      await this.service.deleteStaff(id, req.user.id, req.user.campusId),
+      await this.service.deleteStaff(id, req.user.id),
       '员工已删除',
     );
   }
@@ -1349,10 +1349,18 @@ export class AdminController {
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
     @Query('keyword') keyword?: string,
+    @Query('campusId') campusId?: string,
   ) {
     this.authorize(req, 'buildings');
     return ok(
-      paginate(await this.service.buildings(req.user.campusId), page, pageSize, keyword),
+      // IKGVOO 员工服务范围：可传目标校区拉对应楼栋（员工建到哪个校区就绑哪个校区的楼），
+      // 缺省回落账号绑定校区
+      paginate(
+        await this.service.buildings(campusId?.trim() || req.user.campusId),
+        page,
+        pageSize,
+        keyword,
+      ),
     );
   }
   @Post('buildings') async createBuilding(
