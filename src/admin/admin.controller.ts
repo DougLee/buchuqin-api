@@ -1349,14 +1349,14 @@ export class AdminController {
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
     @Query('keyword') keyword?: string,
-    @Query('campusId') campusId?: string,
+    @Query('campus') campus?: string,
   ) {
     this.authorize(req, 'buildings');
     return ok(
       // IKGVOO 员工服务范围：可传目标校区拉对应楼栋（员工建到哪个校区就绑哪个校区的楼），
       // 缺省回落账号绑定校区
       paginate(
-        await this.service.buildings(campusId?.trim() || req.user.campusId),
+        await this.service.buildings(campus?.trim() || req.user.campusId),
         page,
         pageSize,
         keyword,
