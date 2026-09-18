@@ -89,7 +89,7 @@ export class AdminService {
   private async hqDashboard() {
     const startOfToday = new Date();
     startOfToday.setHours(0, 0, 0, 0);
-    const [campuses, paidAgg, userAgg, exceptionAgg, buildingAgg] =
+    const [campuses, paidAgg, userAgg, exceptionAgg, buildingAgg, profitRows] =
       await Promise.all([
         // status=official 是官方商品库伪校区（IKAJSM），不进运营汇总
         this.db.campus.findMany({
@@ -113,6 +113,12 @@ export class AdminService {
           _count: { _all: true },
         }),
         this.db.building.groupBy({ by: ['campusId'], _count: { _all: true } }),
+        // 校区概览毛利（2026-09-18 道哥）：口径与校区经营日报一致——
+        // 实付 − 行级 unitWholesaleCost 快照×数量（快照前历史单按 0 成本计）
+        this.db.order.findMany({
+          where: { createdAt: { gte: startOfToday }, paidAt: { not: null } },
+          select: { campusId: true, payableAmount: true, items: true },
+        }),
       ]);
     const paidByCampus = new Map(paidAgg.map((r) => [r.campusId, r]));
     const usersByCampus = new Map(
@@ -124,6 +130,22 @@ export class AdminService {
     const buildingsByCampus = new Map(
       buildingAgg.map((r) => [r.campusId, r._count._all]),
     );
+    const profitByCampus = new Map<string, number>();
+    for (const o of profitRows) {
+      const lines =
+        (o.items as unknown as Array<{
+          quantity: number;
+          product?: { unitWholesaleCost?: number };
+        }>) ?? [];
+      const cost = lines.reduce(
+        (sum, line) => sum + line.quantity * (line.product?.unitWholesaleCost ?? 0),
+        0,
+      );
+      profitByCampus.set(
+        o.campusId,
+        (profitByCampus.get(o.campusId) ?? 0) + (o.payableAmount - cost),
+      );
+    }
     const campusRows = campuses.map((c) => {
       const paid = paidByCampus.get(c.id);
       return {
@@ -133,6 +155,7 @@ export class AdminService {
         status: c.status,
         buildings: buildingsByCampus.get(c.id) ?? 0,
         revenue: this.num(paid?._sum.payableAmount ?? 0),
+        profit: this.num(profitByCampus.get(c.id) ?? 0),
         orders: paid?._count._all ?? 0,
         newUsers: usersByCampus.get(c.id) ?? 0,
         exceptions: exceptionByCampus.get(c.id) ?? 0,
@@ -142,6 +165,7 @@ export class AdminService {
       campusRows,
       kpis: {
         revenue: campusRows.reduce((sum, r) => sum + r.revenue, 0),
+        profit: campusRows.reduce((sum, r) => sum + r.profit, 0),
         orders: campusRows.reduce((sum, r) => sum + r.orders, 0),
         newUsers: campusRows.reduce((sum, r) => sum + r.newUsers, 0),
         exceptions: campusRows.reduce((sum, r) => sum + r.exceptions, 0),
@@ -149,6 +173,7 @@ export class AdminService {
       },
       caliber: {
         revenue: '全部校区今日支付的有效单实付金额合计（分）',
+        profit: '全部校区今日支付的有效单毛利合计（实付−行级批发成本快照，分）',
         orders: '全部校区今日支付的有效单合计',
         newUsers: '全部校区今日新增用户',
         exceptions: '状态为异常的未结订单（不限当日）',
