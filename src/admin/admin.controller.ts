@@ -1844,9 +1844,11 @@ export class AdminController {
     return ok(await this.rbac.listPermissions());
   }
   @Get('rbac/menus')
-  @ApiOperation({ summary: '菜单目录（两层模型第一层：key/名称/分组，角色勾选用）' })
-  async rbacMenus(@Req() req: AuthRequest) {
-    this.requirePerm(req, 'rbac.roles.read');
+  @ApiOperation({
+    summary: '菜单目录（两层模型第一层：key/名称/分组）',
+    description: '静态非敏感目录：角色勾选页与侧栏名称渲染共用（名称以库为准，改菜单名不发前端版）。登录即可读，不设权限码。',
+  })
+  async rbacMenus() {
     return ok(MENU_CATALOG);
   }
   @Get('rbac/roles')
