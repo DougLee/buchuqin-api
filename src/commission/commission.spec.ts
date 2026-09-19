@@ -113,6 +113,8 @@ describe('commission & settlement (IK8W5L)', () => {
         name: '提成测试大学',
         shortName: '提成测试',
         warehouseName: '提成测试校园仓',
+        // IKDOIU：楼长底薪改校区维度配置（分），本 spec 显式配 50000 覆盖底薪入账单口径
+        buildingManagerBaseSalary: 50000,
       },
     });
     const x = await db.building.create({

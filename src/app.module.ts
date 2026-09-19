@@ -17,6 +17,8 @@ import { FulfillmentController } from './fulfillment/fulfillment.controller';
 import { FulfillmentService } from './fulfillment/fulfillment.service';
 import { AdminController } from './admin/admin.controller';
 import { AdminService } from './admin/admin.service';
+import { RbacService } from './admin/rbac/rbac.service';
+import { AdminAuthGuard } from './admin/rbac/admin-auth.guard';
 import { CommissionService } from './commission/commission.service';
 import { PaymentsController } from './payments/payments.controller';
 import { PaymentsService } from './payments/payments.service';
@@ -80,6 +82,9 @@ const adminDistDir = process.env.ADMIN_DIST_DIR ?? '';
     PrinterService,
     JwtAuthGuard,
     UserRoleGuard,
+    // RBAC V1：权限登记同步 + 有效权限服务 + 后台鉴权守卫
+    RbacService,
+    AdminAuthGuard,
     // 全局限流守卫：所有路由默认 120/分，路由级 @Throttle 可覆盖
     { provide: APP_GUARD, useClass: ThrottlerGuard },
   ],

@@ -404,15 +404,15 @@ export class CreateDispatchInvitationDto {
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0) reward?: number;
 }
 
-/** 后台账号管理（IK9KWO）：仅 admin/hq 可增删改；角色口径同 permissions.ts。
- *  hq 仅总部长可用（IKAJSL），校区侧创建/授予 hq 由服务层守卫拒绝。 */
-export const ADMIN_ACCOUNT_ROLES = [
-  'hq',
-  'admin',
-  'operations',
-  'warehouse',
-  'finance',
-] as const;
+/** 后台账号管理（IK9KWO → RBAC V1 2026-09-19）：授权=角色+生效范围条目，
+ *  全量重设语义；权限永远经角色获得（不做账号直授权）。 */
+export class AccountGrantDto {
+  /** 角色编码（须为已存在角色，内置超管除外——超管为 platform 授权同码） */
+  @IsString() roleCode!: string;
+  /** platform=平台级（跨校区）| campus=指定校区（campusId 必填） */
+  @IsIn(['platform', 'campus']) scope!: 'platform' | 'campus';
+  @IsOptional() @IsString() campusId?: string;
+}
 export class CreateAccountDto {
   @Matches(/^[a-zA-Z0-9_]{3,20}$/, {
     message: '用户名需为 3-20 位字母/数字/下划线',
@@ -420,24 +420,28 @@ export class CreateAccountDto {
   username!: string;
   @IsString() @MinLength(8, { message: '密码至少 8 位' }) password!: string;
   @IsOptional() @IsString() @MaxLength(30) nickname?: string;
-  @IsIn(ADMIN_ACCOUNT_ROLES) role!: string;
-  /** 所属校区（IKAJSL）：仅 hq 操作者可用；空串 = 总部账号（role 须为 hq）。
-   *  校区操作者传了也被忽略，强制落操作者本人校区。 */
-  @IsOptional() @IsString() campusId?: string;
-  /** 可运营校区全集（IKB3KG 方案A）：仅 hq 操作者生效；缺省=[campusId]。
-   *  campusId=当前登录校区，本字段=顶栏可切换范围。 */
-  @IsOptional() @IsArray() @IsString({ each: true }) campusIds?: string[];
+  /** 初始授权（可空=建号后再配；roleCode/scope/campusId 由 RBAC 服务校验） */
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => AccountGrantDto)
+  grants?: AccountGrantDto[];
 }
 export class UpdateAccountDto {
   @IsOptional() @IsString() @MaxLength(30) nickname?: string;
-  @IsOptional() @IsIn(ADMIN_ACCOUNT_ROLES) role?: string;
-  /** 重置密码（超管操作，无需旧密码）。 */
+  /** 重置密码（超管操作，无需旧密码；重置后该账号全部会话失效）。 */
   @IsOptional()
   @IsString()
   @MinLength(8, { message: '密码至少 8 位' })
   password?: string;
-  /** 重设可运营校区全集（IKB3KG 方案A）：仅 hq 操作者生效，整体替换授权行。 */
-  @IsOptional() @IsArray() @IsString({ each: true }) campusIds?: string[];
+  /** active | disabled（停用即登录+鉴权双拒） */
+  @IsOptional() @IsIn(['active', 'disabled']) status?: 'active' | 'disabled';
+  /** 全量重设授权（整体替换） */
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => AccountGrantDto)
+  grants?: AccountGrantDto[];
 }
 /** 商品类别（全局字典）：名称 + 排序 + 类别图 + 可见性开关（IKC9M4），
  *  删除时有关联商品拒绝。 */

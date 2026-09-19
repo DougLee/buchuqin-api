@@ -35,6 +35,7 @@ import { JwtAuthGuard } from './jwt-auth.guard';
 import { USER_ROLES_KEY, UserRoleGuard } from './user-role.guard';
 import type { AuthRequest, AuthUser } from './jwt-auth.guard';
 import { BusinessService } from '../business/business.service';
+import { RbacService } from '../admin/rbac/rbac.service';
 
 class AdminLoginDto {
   @IsString()
@@ -122,6 +123,7 @@ export class AuthController {
     private readonly jwt: JwtService,
     private readonly db: PrismaService,
     private readonly business: BusinessService,
+    private readonly rbac: RbacService,
   ) {}
 
   /**
@@ -143,10 +145,14 @@ export class AuthController {
       : false;
     if (!account || !passwordOk)
       throw new UnauthorizedException('账号或密码不正确');
+    // RBAC V1：停用账号登录双拒（旧 token 也会被 Guard 拦）
+    if (account.status === 'disabled')
+      throw new UnauthorizedException('账号已停用，请联系超级管理员');
     const claims: AuthUser = {
       id: account.id,
       campusId: account.campusId,
       role: account.role as AuthUser['role'],
+      sv: account.sessionVersion,
     };
     return ok({
       token: this.jwt.sign(claims),
@@ -178,11 +184,15 @@ export class AuthController {
     if (!account) throw new BadRequestException('该账号类型不支持修改密码');
     if (!(await compare(body.oldPassword ?? '', account.passwordHash)))
       throw new UnauthorizedException('原密码不正确');
+    // RBAC V1：改密即 bump 会话版本——本账号全部旧 token（含当前）即刻失效，需重新登录
     await this.db.adminAccount.update({
       where: { id: account.id },
-      data: { passwordHash: await hash(body.newPassword, 10) },
+      data: {
+        passwordHash: await hash(body.newPassword, 10),
+        sessionVersion: { increment: 1 },
+      },
     });
-    return ok({ id: account.id }, '密码已更新');
+    return ok({ id: account.id }, '密码已更新，请重新登录');
   }
 
   /** 用户资料自助修改（IK9ROG）：昵称/头像落库，DB 为准（前端本地 storage 仅展示加速）。 */
@@ -220,20 +230,23 @@ export class AuthController {
         defaultAddressId: user.addresses.find((a) => a.isDefault)?.id ?? null,
       });
     }
-    // 后台账号（hq/admin/operations/warehouse/finance）来自 AdminAccount 表。
+    // 后台账号（旧五角色 + V1 'rbac' 标记账号）一律来自 AdminAccount 表。
+    const adminAccount = await this.db.adminAccount.findUnique({
+      where: { id: req.user.id },
+    });
+    if (adminAccount) {
+      return ok({
+        ...req.user,
+        nickname: adminAccount.nickname || adminAccount.username || '平台管理员',
+        phone: '',
+      });
+    }
     if (
       ['hq', 'admin', 'operations', 'warehouse', 'finance'].includes(
         req.user.role,
       )
     ) {
-      const account = await this.db.adminAccount.findUnique({
-        where: { id: req.user.id },
-      });
-      return ok({
-        ...req.user,
-        nickname: account?.nickname || account?.username || '平台管理员',
-        phone: '',
-      });
+      return ok({ ...req.user, nickname: '平台管理员', phone: '' });
     }
     const staff = await this.db.staff.findUnique({
       where: { id: req.user.id },
@@ -445,69 +458,70 @@ export class AuthController {
     );
   }
 
-  /* ---------- 后台账号多校区切换（IKB3KG 方案A）：授权表内自选，换发 token ---------- */
-  /** 我的可运营校区：授权表 ∪ 当前校区兜底；hq 跨校区视角返回空（前端不显示切换）。 */
+  /* ---------- 后台账号多校区切换（IKB3KG → RBAC V1 2026-09-19）：
+     可切校区=校区级角色授权集；超管=全部校区；纯平台级授权（总部长）跨校区视角不切换 ---------- */
+  /** 我的可运营校区（RBAC 校区级授权；超管全量）。 */
   @Get('admin/campuses')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: '我的可运营校区列表（后台账号）' })
+  @ApiOperation({ summary: '我的可运营校区列表（后台账号，RBAC 授权集）' })
   async adminCampuses(@Req() req: AuthRequest) {
-    if (req.user.role === 'hq' || req.user.role === 'user') return ok([]);
-    const rows = await this.db.adminCampusAccess.findMany({
-      where: { accountId: req.user.id },
-      select: { campusId: true },
+    const account = await this.db.adminAccount.findUnique({
+      where: { id: req.user.id },
     });
-    const ids = [
-      ...new Set([...rows.map((r) => r.campusId), req.user.campusId]),
-    ];
+    if (!account) return ok([]);
+    const ctx = await this.rbac.getEffective(account);
+    if (!ctx.super && !ctx.campuses.length) return ok([]);
+    const ids = ctx.super
+      ? undefined
+      : { in: ctx.campuses };
     const campuses = await this.db.campus.findMany({
-      where: { id: { in: ids }, status: 'active' },
+      where: { ...(ids ? { id: ids } : {}), status: 'active' },
       orderBy: { createdAt: 'asc' },
       select: { id: true, name: true, shortName: true },
     });
     return ok(
-      campuses.map((c) => ({ ...c, current: c.id === req.user.campusId })),
+      campuses.map((c) => ({ ...c, current: c.id === account.campusId })),
     );
   }
 
-  /** 切换运营校区（镜像用户端 /auth/campuses/select）：校验授权表 →
-   *  持久化 AdminAccount.campusId → 换发 campusId 口径 token。 */
+  /** 切换运营校区：RBAC 授权校验 → 持久化 campusId 上下文 → 换发 token（带 sv）。 */
   @Post('admin/campuses/select')
   @HttpCode(200)
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: '切换后台账号运营校区（校验授权，换发 token）' })
+  @ApiOperation({ summary: '切换后台账号运营校区（RBAC 授权校验，换发 token）' })
   async selectAdminCampus(
     @Req() req: AuthRequest,
     @Body() body: SelectCampusDto,
   ) {
-    if (
-      !['admin', 'operations', 'warehouse', 'finance'].includes(req.user.role)
-    )
+    const account = await this.db.adminAccount.findUnique({
+      where: { id: req.user.id },
+    });
+    if (!account)
       throw new ForbiddenException('该账号不支持切换校区');
+    if (account.status === 'disabled')
+      throw new UnauthorizedException('账号已停用');
+    const ctx = await this.rbac.getEffective(account);
     const campusId = body.campusId.trim();
     const campus = await this.db.campus.findFirst({
       where: { id: campusId, status: 'active' },
     });
     if (!campus) throw new BadRequestException('目标校区不存在或未开放');
-    if (campusId !== req.user.campusId) {
-      const granted = await this.db.adminCampusAccess.findUnique({
-        where: { accountId_campusId: { accountId: req.user.id, campusId } },
-      });
-      if (!granted)
-        throw new ForbiddenException('未授权运营该校区，请联系总部开通');
+    const allowed = ctx.super || ctx.campuses.includes(campusId);
+    if (!allowed)
+      throw new ForbiddenException('未授权运营该校区，请联系超级管理员');
+    if (campusId !== account.campusId) {
       await this.db.adminAccount.update({
-        where: { id: req.user.id },
+        where: { id: account.id },
         data: { campusId },
       });
     }
-    const account = await this.db.adminAccount.findUniqueOrThrow({
-      where: { id: req.user.id },
-    });
     const claims: AuthUser = {
       id: account.id,
-      campusId: account.campusId,
+      campusId,
       role: account.role as AuthUser['role'],
+      sv: account.sessionVersion,
     };
     return ok(
       {

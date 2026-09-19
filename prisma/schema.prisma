@@ -114,8 +114,10 @@ model StorageLocation {
   @@index([campusId, sort])
 }
 
-// 后台账号（ADR-0004 / IK9JHP）：账号密码认证，role ∈ admin/operations/warehouse/finance。
-// campusId 为普通字段（同 AuditLog），不建外键——账号生命周期独立于校园数据清理。
+// 后台账号（ADR-0004 / IK9JHP → RBAC V1 2026-09-19）：账号密码认证。
+// role 为旧静态角色留档（迁移对照与展示用；运行时鉴权一律走 RBAC 五表）。
+// campusId 为普通字段（同 AuditLog），不建外键——账号生命周期独立于校园数据清理；
+// 语义=当前运营校区上下文（切换校区换发 token），不是权限范围。
 model AdminAccount {
   id           String              @id @default(cuid())
   username     String              @unique
@@ -123,9 +125,90 @@ model AdminAccount {
   nickname     String              @default("")
   role         String
   campusId     String
+  /// RBAC V1：active 正常 | disabled 停用（登录与鉴权双拒，旧 token 随 sessionVersion 失效）
+  status       String              @default("active")
+  /// 会话版本：改密/停用 bump 进 JWT；Guard 比对不一致即 401（旧 token 缺省视为 0）
+  sessionVersion Int               @default(0)
   createdAt    DateTime            @default(now())
   updatedAt    DateTime            @updatedAt
   accesses     AdminCampusAccess[]
+  rbacRoles    AdminAccountRole[]
+}
+
+/* ---------- RBAC V1（2026-09-19 道哥 goal）：账号 → 角色 → 权限，按校区生效 ---------- */
+
+/// 角色：一个角色关联多个权限；builtin 内置角色（super-admin）受保护不可删改权限。
+model AdminRole {
+  id          String               @id @default(cuid())
+  code        String               @unique
+  name        String
+  remark      String               @default("")
+  /// active | disabled（停用后经由它的授权全部失效）
+  status      String               @default("active")
+  /// 内置角色：不可删除；super-admin 权限集固定不可编辑
+  builtin     Boolean              @default(false)
+  /// 迁移模板角色首灌标记：false=尚未灌注初始权限（启动同步负责灌注）；true 后不再自动重置
+  seeded      Boolean              @default(false)
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+  permissions AdminRolePermission[]
+  accounts    AdminAccountRole[]
+}
+
+/// 权限点：由开发在代码登记（src/admin/rbac/registry.ts）同步入库，后台只读。
+/// scope=platform 平台功能（跨校区数据/仅平台级授权可用）| campus 校区业务（平台级或校区级授权皆可）。
+model AdminPermission {
+  id          String               @id @default(cuid())
+  code        String               @unique
+  name        String
+  /// 业务分组（工作台/订单/商品/库存/…），权限目录展示用
+  group       String
+  scope       String
+  /// 组内排序
+  sort        Int                  @default(0)
+  remark      String               @default("")
+  builtin     Boolean              @default(true)
+  createdAt   DateTime             @default(now())
+  roles       AdminRolePermission[]
+}
+
+/// 角色-权限关联（全量重设式维护）。
+model AdminRolePermission {
+  id            String         @id @default(cuid())
+  role          AdminRole      @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  roleId        String
+  permission    AdminPermission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  permissionId  String
+  createdAt     DateTime       @default(now())
+
+  @@unique([roleId, permissionId])
+}
+
+/// 账号-角色绑定（含生效范围）：scope=platform 平台级（覆盖全校区）| campus 指定校区。
+/// 权限永远经角色获得，不做账号直授权。同一账号同一角色至多一条绑定（服务层以重设语义维护）。
+model AdminAccountRole {
+  id        String       @id @default(cuid())
+  account   AdminAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  accountId String
+  role      AdminRole    @relation(fields: [roleId], references: [id])
+  roleId    String
+  /// platform | campus
+  scope     String
+  /// scope=campus 时必填（迁移层加 CHECK 约束）；scope=platform 恒 NULL——不用空串冒充"全部校区"
+  campusId  String?
+  /// 授权人（AdminAccount.username 快照，审计追溯）
+  grantedBy String       @default("")
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  @@index([accountId, scope, campusId])
+}
+
+/// RBAC 全局版本号：任何角色/权限/授权变更 bump，用于有效权限缓存的显式失效。
+model RbacState {
+  id      String   @id @default("global")
+  version Int      @default(0)
+  updatedAt DateTime @updatedAt
 }
 
 /**

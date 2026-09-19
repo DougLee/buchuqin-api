@@ -1,8 +1,9 @@
-import { ForbiddenException } from '@nestjs/common';
+import { BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
 import { BusinessService } from '../business/business.service';
 import { AdminService } from './admin.service';
-import { canAdmin } from './permissions';
+import { RbacService } from './rbac/rbac.service';
+import { legacyRbacCtx } from './rbac/spec-fixtures';
 import { AuthController } from '../auth/auth.controller';
 import { JwtService } from '@nestjs/jwt';
 
@@ -21,7 +22,13 @@ describe('hq role & cross-campus views (IKAJSL)', () => {
   const db = new PrismaService();
   const business = new BusinessService(db);
   const service = new AdminService(db, business);
-  const auth = new AuthController(new JwtService({ secret: 'spec-secret' }), db);
+  const rbac = new RbacService(db);
+  const auth = new AuthController(
+    new JwtService({ secret: 'spec-secret' }),
+    db,
+    business,
+    rbac,
+  );
   const CAMPUS_A = 'campus-hbut';
   const json = (value: unknown) =>
     JSON.parse(JSON.stringify(value)) as never;
@@ -35,6 +42,12 @@ describe('hq role & cross-campus views (IKAJSL)', () => {
   const accountIds: string[] = [];
 
   beforeAll(async () => {
+    // 角色/权限登记入库（生产为启动同步；spec 手动触发）
+    try {
+      await rbac.syncRegistry();
+    } catch {
+      await rbac.syncRegistry();
+    }
     // 校区本体走 service.createCampus（顺带覆盖 IKAJSL 新增口径）
     CAMPUS_B = (
       await service.createCampus(
@@ -95,15 +108,17 @@ describe('hq role & cross-campus views (IKAJSL)', () => {
     await db.$disconnect();
   });
 
-  it('权限矩阵：banners 校区自管归 admin（IKBW0A，hq 投放废止）；hq 不碰校区营销/订单写', () => {
-    expect(canAdmin('hq', 'banners', 'write')).toBe(false);
-    expect(canAdmin('hq', 'banners', 'read')).toBe(false);
-    expect(canAdmin('admin', 'banners', 'read')).toBe(true);
-    expect(canAdmin('admin', 'banners', 'write')).toBe(true);
-    expect(canAdmin('operations', 'banners', 'read')).toBe(false);
-    expect(canAdmin('hq', 'marketing', 'read')).toBe(false);
-    expect(canAdmin('hq', 'orders', 'write')).toBe(false);
-    expect(canAdmin('hq', 'orders', 'read')).toBe(true);
+  it('权限映射（RBAC V1）：banners 校区自管归 admin 超管（IKBW0A）；hq 不碰校区营销/订单写', () => {
+    // 旧 canAdmin 矩阵已退役：等价断言走模板权限（legacyRbacCtx=迁移产物语义）
+    const has = (role: string, code: string) => rbac.has(legacyRbacCtx(role), code);
+    expect(has('hq', 'banners.write')).toBe(false);
+    expect(has('hq', 'banners.read')).toBe(false);
+    expect(has('admin', 'banners.read')).toBe(true);
+    expect(has('admin', 'banners.write')).toBe(true);
+    expect(has('operations', 'banners.read')).toBe(false);
+    expect(has('hq', 'marketing.read')).toBe(false);
+    expect(has('hq', 'orders.write')).toBe(false);
+    expect(has('hq', 'orders.read')).toBe(true);
   });
 
   it('hq dashboard：跨校区汇总含两校区，B 校今日支付计入', async () => {
@@ -180,89 +195,88 @@ describe('hq role & cross-campus views (IKAJSL)', () => {
     expect(homeB.banners.map((x) => x.id)).not.toContain(bannerA.id);
   });
 
-  it('账号同权（IKBFJ4）：admin 可建 hq/跨校区管理；hq 建号规则与登录闭环', async () => {
+  it('账号管理（IKBFJ4→RBAC V1）：建号+授权分离；登录闭环与跨校区列表', async () => {
+    const actor = { id: 'spec-hq', username: 'spec-hq' };
+    // 平台超管 = super-admin 平台级授权（role 列只留 'rbac' 标记）
     const campusAdmin = await service.createAccount(
-      { username: `${tag}-a-admin`, password: 'campus-pass-1', role: 'admin' },
+      { username: `${tag}-a-admin`, password: 'campus-pass-1', nickname: '规格超管' },
       'spec-hq',
-      CAMPUS_A,
-      'admin',
     );
     accountIds.push(campusAdmin.id);
-    // IKBFJ4：平台超管 admin（campusId 绑 A 校）创建 hq 合法（总部角色不绑校区）
+    await rbac.setAccountRoles(actor, campusAdmin.id, [
+      { roleCode: 'super-admin', scope: 'platform' },
+    ]);
+    // 超管造总部长（hq-director 平台级授权；V1：role 字段不再入参）
     const adminMintedHq = await service.createAccount(
-      { username: `${tag}-a-admin-hq`, password: 'hq-pass-12345', role: 'hq' },
+      { username: `${tag}-a-admin-hq`, password: 'hq-pass-12345', nickname: '规格总部长' },
       campusAdmin.id,
-      CAMPUS_A,
-      'admin',
     );
-    expect(adminMintedHq.role).toBe('hq');
     accountIds.push(adminMintedHq.id);
-    // 职能角色不可创建 hq 角色（服务层兜底，正常无入口）
-    await expect(
-      service.createAccount(
-        { username: `${tag}-bad-hq`, password: 'whatever-123', role: 'hq' },
-        'spec-hq',
-        CAMPUS_A,
-        'operations',
-      ),
-    ).rejects.toThrow(ForbiddenException);
-    // hq 角色不允许绑校区
+    await rbac.setAccountRoles(
+      { id: campusAdmin.id, username: `${tag}-a-admin` },
+      adminMintedHq.id,
+      [{ roleCode: 'hq-director', scope: 'platform' }],
+    );
+    const hqGrants = await db.adminAccountRole.findMany({
+      where: { accountId: adminMintedHq.id },
+      include: { role: { select: { code: true } } },
+    });
+    expect(hqGrants.map((g) => g.role.code)).toEqual(['hq-director']);
+    expect(hqGrants[0].scope).toBe('platform');
+    const mintedRow = await db.adminAccount.findUniqueOrThrow({
+      where: { id: adminMintedHq.id },
+    });
+    expect(mintedRow.role).toBe('rbac');
+    // 纯平台级授权不绑校区（campusId 空串）
+    expect(mintedRow.campusId).toBe('');
+    // 授权入参校验：无效校区 / 角色不存在拒绝
     await expect(
       service.createAccount(
         {
-          username: `${tag}-bad-bind`,
+          username: `${tag}-bad-campus`,
           password: 'whatever-123',
-          role: 'hq',
-          campusId: CAMPUS_A,
+          grants: [
+            { roleCode: 'campus-operations', scope: 'campus', campusId: 'campus-not-exist' },
+          ],
         },
         'spec-hq',
-        '',
-        'hq',
       ),
-    ).rejects.toThrow('总部角色账号不绑定校区');
-    // hq 建校区账号必须选校区
-    await expect(
-      service.createAccount(
-        { username: `${tag}-bad-empty`, password: 'whatever-123', role: 'admin' },
-        'spec-hq',
-        '',
-        'hq',
-      ),
-    ).rejects.toThrow('请为校区账号选择所属校区');
-    // hq 建 hq 账号（不绑校区）合法
-    const hqAccount = await service.createAccount(
-      { username: `${tag}-hq2`, password: 'hq-pass-12345', role: 'hq' },
+    ).rejects.toThrow('所属校区不存在');
+    const badRoleAcc = await service.createAccount(
+      { username: `${tag}-bad-role`, password: 'whatever-123' },
       'spec-hq',
-      '',
-      'hq',
     );
-    accountIds.push(hqAccount.id);
-    // hq 建 B 校 admin → 登录 token campusId 落 B 校
+    accountIds.push(badRoleAcc.id);
+    await expect(
+      rbac.setAccountRoles(actor, badRoleAcc.id, [
+        { roleCode: 'no-such-role', scope: 'platform' },
+      ]),
+    ).rejects.toThrow(BadRequestException);
+    // B 校校区账号 → 初始上下文落 B 校；登录 token campusId=B、role='rbac'
     const bAdmin = await service.createAccount(
       {
         username: `${tag}-b-admin`,
         password: 'campus-pass-1',
-        role: 'admin',
-        campusId: CAMPUS_B,
+        nickname: 'B校运营',
+        grants: [{ roleCode: 'campus-operations', scope: 'campus', campusId: CAMPUS_B }],
       },
       'spec-hq',
-      '',
-      'hq',
     );
     accountIds.push(bAdmin.id);
+    await rbac.setAccountRoles(actor, bAdmin.id, [
+      { roleCode: 'campus-operations', scope: 'campus', campusId: CAMPUS_B },
+    ]);
     const login = (await auth.adminLogin({
       username: `${tag}-b-admin`,
       password: 'campus-pass-1',
     })) as { data: { user: { campusId: string; role: string } } };
     expect(login.data.user.campusId).toBe(CAMPUS_B);
-    expect(login.data.user.role).toBe('admin');
-    // IKBFJ4：A 校绑定的平台 admin 可跨校区改 B 校账号
+    expect(login.data.user.role).toBe('rbac');
+    // 平台超管可跨校区改其他账号（V1：updateAccount 只管昵称，无校区/角色门槛）
     const renamed = (await service.updateAccount(
       bAdmin.id,
       { nickname: '跨校区改名' },
       campusAdmin.id,
-      CAMPUS_A,
-      'admin',
     )) as { nickname?: string };
     expect(renamed.nickname).toBe('跨校区改名');
     // A 校账号列表只见本校
@@ -270,11 +284,11 @@ describe('hq role & cross-campus views (IKAJSL)', () => {
       campusId: string;
     }>;
     expect(listA.every((x) => x.campusId === CAMPUS_A)).toBe(true);
-    // hq 列表带 campusName（空 = 总部）
+    // 全量列表带 campusName（空 = 平台；旧「总部」更名）
     const listHq = (await service.accounts()) as Array<{
       campusId: string;
       campusName?: string;
     }>;
-    expect(listHq.find((x) => x.campusId === '')?.campusName).toBe('总部');
+    expect(listHq.find((x) => x.campusId === '')?.campusName).toBe('平台');
   });
 });

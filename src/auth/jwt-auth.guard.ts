@@ -21,6 +21,8 @@ export interface AuthUser {
     | 'operations'
     | 'warehouse'
     | 'finance';
+  /** RBAC V1 会话版本（仅后台账号签发）：AdminAccount.sessionVersion，bump 即旧 token 失效 */
+  sv?: number;
 }
 export interface AuthRequest extends Request {
   user: AuthUser;

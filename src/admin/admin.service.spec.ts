@@ -2,15 +2,18 @@ import { PrismaService } from '../database/prisma.service';
 import { BusinessService } from '../business/business.service';
 import { AdminController } from './admin.controller';
 import { AdminService } from './admin.service';
+import { RbacService } from './rbac/rbac.service';
+import { specReq } from './rbac/spec-fixtures';
 
 describe('AdminService PostgreSQL integration', () => {
   const db = new PrismaService();
   const business = new BusinessService(db);
   const service = new AdminService(db, business);
-  const controller = new AdminController(service);
-  const adminUser = {
-    user: { id: 'admin-001', campusId: 'campus-hbut', role: 'admin' as const },
-  } as unknown as Parameters<typeof controller.products>[0];
+  const controller = new AdminController(service, new RbacService(db));
+  // RBAC V1：控制器判权看 req.rbac（specReq 给 admin=超管通配上下文）
+  const adminUser = specReq('admin') as Parameters<
+    typeof controller.products
+  >[0];
   afterAll(() => db.$disconnect());
   it('aggregates persisted operational data', async () => {
     expect((await service.dashboard('campus-hbut')).campus.name).toBe(
@@ -21,7 +24,11 @@ describe('AdminService PostgreSQL integration', () => {
   });
 
   it('wraps list endpoints in the unified pagination envelope (IK8W5X)', async () => {
-    const products = (await controller.products(adminUser, '2', '5')).data;
+    // RBAC V1：平台上下文商品默认官方库视角——view=campus 切本校区（旧 token
+    // campusId 口径的等价调用面）
+    const products = (
+      await controller.products(adminUser, '2', '5', undefined, undefined, 'campus')
+    ).data;
     expect(products.page).toBe(2);
     expect(products.pageSize).toBe(5);
     expect(products.items).toHaveLength(5);

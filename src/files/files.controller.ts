@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Controller,
+  ForbiddenException,
   Post,
   Query,
   Req,
@@ -17,6 +18,8 @@ import COS from 'cos-nodejs-sdk-v5';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import type { AuthRequest } from '../auth/jwt-auth.guard';
 import { ok } from '../common/api-response';
+import { PrismaService } from '../database/prisma.service';
+import { RbacService } from '../admin/rbac/rbac.service';
 
 const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
 // MIME 白名单：位图格式收敛，拒绝 svg+xml（可携带脚本导致存储型 XSS）。
@@ -52,15 +55,24 @@ const monthlyFolder = () => {
 // IK9VBI/IK9VBM：目录白名单——app/ 系放小程序静态素材（Banner 背景 app/、
 // 商品图 app/product/、分类图 app/category/、群码 app/wechat-group/ IKC1AE），
 // 缺省 uploads/（按月归档）放运营素材；其余值拒绝，防任意前缀落桶。
+// RBAC V1（2026-09-19）：app/idcard=身份证照片私有目录——private ACL +
+// recruit.idcard.write 门控，读取走签名 URL（cos-presign.ts），不复用公开图。
 const FOLDERS = new Set([
   'uploads',
   'app',
   'app/product',
   'app/category',
   'app/wechat-group',
+  'app/idcard',
 ]);
+const PRIVATE_FOLDERS = new Set(['app/idcard']);
 
-const putToCos = (key: string, buffer: Buffer, mimetype: string) =>
+const putToCos = (
+  key: string,
+  buffer: Buffer,
+  mimetype: string,
+  acl: 'public-read' | 'private',
+) =>
   new Promise<string>((resolve, reject) => {
     getCos().putObject(
       {
@@ -69,7 +81,7 @@ const putToCos = (key: string, buffer: Buffer, mimetype: string) =>
         Key: key,
         Body: buffer,
         ContentType: mimetype,
-        ACL: 'public-read',
+        ACL: acl,
       },
       (err, data) => {
         if (err) reject(err);
@@ -83,6 +95,10 @@ const putToCos = (key: string, buffer: Buffer, mimetype: string) =>
 @UseGuards(JwtAuthGuard)
 @Controller('files')
 export class FilesController {
+  constructor(
+    private readonly db: PrismaService,
+    private readonly rbac: RbacService,
+  ) {}
   @Post('images')
   @UseInterceptors(
     FileInterceptor('file', {
@@ -104,7 +120,7 @@ export class FilesController {
   )
   @ApiConsumes('multipart/form-data')
   async uploadImage(
-    @Req() _req: AuthRequest,
+    @Req() req: AuthRequest,
     @Query('folder') folder?: string,
     @UploadedFile() file?: Express.Multer.File,
   ) {
@@ -117,6 +133,21 @@ export class FilesController {
         `不支持的目录：${target}（可选 ${[...FOLDERS].join(' / ')}）`,
       );
 
+    // RBAC V1：私有目录（身份证照片）须为在职后台账号且持 recruit.idcard.write
+    if (PRIVATE_FOLDERS.has(target)) {
+      const account = await this.db.adminAccount.findUnique({
+        where: { id: req.user.id },
+      });
+      if (!account || account.status !== 'active')
+        throw new ForbiddenException('该目录仅后台账号可用');
+      const tokenSv = (req.user as { sv?: number }).sv ?? 0;
+      if (tokenSv !== account.sessionVersion)
+        throw new ForbiddenException('登录已失效，请重新登录');
+      const ctx = await this.rbac.getEffective(account);
+      if (!this.rbac.has(ctx, 'recruit.idcard.write'))
+        throw new ForbiddenException('无身份证资料上传权限');
+    }
+
     const ext = extname(file.originalname || '').toLowerCase();
     const safeExt = /^\.[a-z0-9]{1,5}$/.test(ext) ? ext : '.jpg';
     // app/ 系（小程序素材，IK9VBI）直接落白名单对应 COS 子目录（IKC1AE 起
@@ -125,13 +156,24 @@ export class FilesController {
     const key = `${dir}/${randomUUID()}${safeExt}`;
 
     try {
-      await putToCos(key, file.buffer, file.mimetype);
+      await putToCos(
+        key,
+        file.buffer,
+        file.mimetype,
+        PRIVATE_FOLDERS.has(target) ? 'private' : 'public-read',
+      );
     } catch (error) {
       throw new BadRequestException(
         `上传到对象存储失败：${(error as Error).message}`,
       );
     }
 
-    return ok({ url: `${COS_PUBLIC_BASE}/${key}` }, '上传成功');
+    return ok(
+      {
+        url: `${COS_PUBLIC_BASE}/${key}`,
+        private: PRIVATE_FOLDERS.has(target),
+      },
+      '上传成功',
+    );
   }
 }

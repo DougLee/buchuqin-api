@@ -2159,7 +2159,18 @@ export class BusinessService {
       });
       staffNo = staff?.staffNo ?? '';
     }
-    return { ...app, staffNo };
+    // RBAC V1（2026-09-19 goal）：后台补录的证件与运营备注不回 C 端——
+    // 候选人只需进度（状态/拒绝原因/工号），身份证照片更是私有附件
+    const {
+      idCardNo: _idCardNo,
+      idCardImages: _idCardImages,
+      staffRemark: _staffRemark,
+      ...safe
+    } = app;
+    void _idCardNo;
+    void _idCardImages;
+    void _staffRemark;
+    return { ...safe, staffNo };
   }
 
   /** 报名：在途（待联系/面试中/已通过）拦截；校区开放中；楼栋属该校区 */

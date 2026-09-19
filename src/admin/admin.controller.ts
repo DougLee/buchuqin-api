@@ -20,18 +20,15 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import type { AuthRequest } from '../auth/jwt-auth.guard';
 import { ok } from '../common/api-response';
 import { HQ_CAMPUS_ID, OFFICIAL_CAMPUS_ID } from '../common/campus';
 import { filterByKeyword, paginate } from '../common/pagination';
 import { AdminService } from './admin.service';
-import {
-  canAdmin,
-  isHqScope,
-  type AdminAccess,
-  type AdminSection,
-} from './permissions';
+import { AdminAuthGuard } from './rbac/admin-auth.guard';
+import { RbacService } from './rbac/rbac.service';
+import { SECTION_ACCESS_CODE } from './rbac/registry';
+import type { RbacContext } from './rbac/rbac.service';
 import {
   AdjustStockDto,
   BatchProductStatusDto,
@@ -84,56 +81,93 @@ import {
 
 @ApiTags('PC 管理后台 MVP')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+// RBAC V1（2026-09-19）：AdminAuthGuard = JWT 验签 + AdminAccount 实时校验
+//（状态/会话版本）+ 有效权限装载（request.rbac）；每端点经 authorize/requirePerm
+// 按权限码判权，默认拒绝。旧 5 角色静态矩阵（permissions.ts）已退役为迁移基线。
+@UseGuards(AdminAuthGuard)
 @Controller('admin')
 export class AdminController {
-  constructor(private readonly service: AdminService) {}
+  constructor(
+    private readonly service: AdminService,
+    private readonly rbac: RbacService,
+  ) {}
+  /** 本请求 RBAC 上下文（守卫已装载；单元测试可注入伪造） */
+  private ctx(req: AuthRequest): RbacContext {
+    const ctx = (req as { rbac?: RbacContext }).rbac;
+    if (!ctx) throw new ForbiddenException('未授权的访问');
+    return ctx;
+  }
+  /** 权限码判定（超管通配）；未持有抛 403 */
+  private requirePerm(req: AuthRequest, code: string) {
+    const ctx = this.ctx(req);
+    if (!this.rbac.has(ctx, code))
+      throw new ForbiddenException('当前账号无该操作权限');
+  }
+  /** 权限码判定（非抛出版） */
+  private hasPerm(req: AuthRequest, code: string): boolean {
+    const ctx = (req as { rbac?: RbacContext }).rbac;
+    return !!ctx && this.rbac.has(ctx, code);
+  }
   /**
-   * RBAC（IK9JHR）：按 ADR-0004 签字矩阵校验 角色×板块×读写，
-   * 矩阵定义在 ./permissions.ts，改权限只改那张表。
+   * 兼容层：旧板块×读写调用面 → 权限码（映射表 rbac/registry.ts SECTION_ACCESS_CODE）。
+   * 细粒度端点（改价/上下架/入库/盘点/出库/身份证/账单/提成规则/库位/配送配置等）
+   * 已直接改用 requirePerm(具体码)。
    */
   private authorize(
     req: AuthRequest,
-    section: AdminSection,
-    access: AdminAccess = 'read',
+    section: string,
+    access: 'read' | 'write' = 'read',
   ) {
-    if (!canAdmin(req.user.role, section, access))
-      throw new ForbiddenException('当前角色无权访问该板块');
+    const mapped = SECTION_ACCESS_CODE[section]?.[access];
+    if (!mapped) throw new ForbiddenException(`未登记的板块权限: ${section}.${access}`);
+    this.requirePerm(req, mapped);
   }
   /**
-   * 多校区数据范围（IKAJSL → IKCHEW）：校区角色固定本校区（JWT campusId）；
-   * 平台视角角色（hq/admin）跨校区，可用 ?campus= 选定单校区查看。
-   * 返回空串表示"不限定校区"（service 侧跳过 campusId 过滤）。
+   * 多校区数据范围（RBAC V1）：平台级授权 → ?campus= 可选聚焦（需真实存在的
+   * 校区，服务端校验，空=跨校区全量）；校区级授权 → 恒定本上下文校区（参数被
+   * 忽略，杜绝越校区查询）。
    */
-  private campusScope(req: AuthRequest, campus?: string): string {
-    return isHqScope(req.user.role) ? campus?.trim() ?? '' : req.user.campusId;
+  private async campusScope(req: AuthRequest, campus?: string): Promise<string> {
+    const ctx = this.ctx(req);
+    if (ctx.platform) {
+      const c = campus?.trim() ?? '';
+      if (c && !(await this.rbac.knownCampusIds()).has(c))
+        throw new BadRequestException('目标校区不存在');
+      return c;
+    }
+    return ctx.campusId;
+  }
+  /** 校区级写入目标校验：目标校区必须在授权范围内（平台级=存在即可；校区级=已授权校区） */
+  private async assertCampusAllowed(req: AuthRequest, campusId?: string): Promise<string> {
+    const ctx = this.ctx(req);
+    const target = campusId?.trim() || ctx.campusId;
+    if (!target) throw new BadRequestException('未指定校区');
+    if (!(await this.rbac.knownCampusIds()).has(target))
+      throw new BadRequestException('校区不存在');
+    if (!ctx.platform && target !== ctx.campusId && !ctx.campuses.includes(target))
+      throw new ForbiddenException('未授权在该校区操作');
+    return target;
   }
   /**
    * Banner 数据范围（IKBW0A）：校区自管——一律限定操作者本校区（多校区账号
-   * 经切换校区换 token）。原 hq/admin 跨校区投放（IKAJSL、2026-08-26 决策）
-   * 随「总部去掉投放功能」废止；hq 已移出 banners 权限矩阵。
+   * 经切换校区换 token）。
    */
   private bannerScope(req: AuthRequest): string {
-    return req.user.campusId;
+    return this.ctx(req).campusId;
   }
   /**
-   * 商品板块数据范围（IKAJSM → IKCHEW 双视角）：hq 固定官方商品库伪校区；
-   * admin 平台超管双视角——?view=official 官方库 / ?view=campus 本校区
-   * （默认 official 与 hq 同口径）；校区角色固定本校区（官方库只读，经 import
-   * 拉取落地）。非法 view 值按默认处理，不报错。
+   * 商品板块数据范围（RBAC V1 双视角）：平台级授权（总部长/超管）默认官方库，
+   * ?view=campus 切本校区（可显式 ?campus=）；校区级授权固定本校区。
+   * 旧 hq/admin 分支语义由 platform 授权等价承接。
    */
   private productCampus(req: AuthRequest, view?: string, campus?: string): string {
-    if (req.user.role === 'hq') {
-      // IKFOPY：校区上下文操作（库存选品/入库/盘点）可显式指定校区（含总部仓）；
-      // 不传回落官方库（商品管理主视角不变）
-      return campus?.trim() || OFFICIAL_CAMPUS_ID;
-    }
-    if (req.user.role === 'admin') {
+    const ctx = this.ctx(req);
+    if (ctx.platform) {
       return view === 'campus'
-        ? campus?.trim() || req.user.campusId
+        ? campus?.trim() || ctx.campusId || OFFICIAL_CAMPUS_ID
         : OFFICIAL_CAMPUS_ID;
     }
-    return req.user.campusId;
+    return ctx.campusId;
   }
   @Get('dashboard')
   @ApiOperation({
@@ -149,7 +183,7 @@ export class AdminController {
     @Query('campus') campus?: string,
   ) {
     this.authorize(req, 'dashboard');
-    return ok(await this.service.dashboard(this.campusScope(req, campus)));
+    return ok(await this.service.dashboard(await this.campusScope(req, campus)));
   }
   @Get('products')
   @ApiOperation({
@@ -385,7 +419,7 @@ export class AdminController {
   ) {
     this.authorize(req, 'marketing');
     if (!buildingId) throw new BadRequestException('请选择楼栋');
-    const scope = this.campusScope(req, campus);
+    const scope = await this.campusScope(req, campus);
     if (!scope)
       throw new BadRequestException('请先选择要查看的校区（?campus=）');
     return ok(
@@ -436,7 +470,9 @@ export class AdminController {
     @Body() body: BatchProductStatusDto,
     @Query('view') view?: string,
   ) {
-    this.authorize(req, 'products', 'write');
+    // 官方库视角批量放行/回收=平台码；本校区视角批量上下架=products.status
+    const official = this.productCampus(req, view) === OFFICIAL_CAMPUS_ID;
+    this.requirePerm(req, official ? 'products.official.write' : 'products.status');
     return ok(
       await this.service.batchUpdateProductStatus(
         body.ids,
@@ -454,7 +490,9 @@ export class AdminController {
     @Body() body: CreateProductDto,
     @Query('view') view?: string,
   ) {
-    this.authorize(req, 'products', 'write');
+    // 官方库视角建档=平台码；本校区视角=products.write
+    const officialCreate = this.productCampus(req, view) === OFFICIAL_CAMPUS_ID;
+    this.requirePerm(req, officialCreate ? 'products.official.write' : 'products.write');
     return ok(
       await this.service.createProduct(
         body,
@@ -470,7 +508,17 @@ export class AdminController {
     @Body() body: UpdateProductDto,
     @Query('view') view?: string,
   ) {
-    this.authorize(req, 'products', 'write');
+    // 官方库视角编辑=平台码；本校区=products.write；价格字段另需 products.price
+    //（RBAC V1 字段级分权：普通编辑不得夹带改价）
+    const officialUpdate = this.productCampus(req, view) === OFFICIAL_CAMPUS_ID;
+    this.requirePerm(req, officialUpdate ? 'products.official.write' : 'products.write');
+    if (!officialUpdate) {
+      const PRICE_FIELDS = ['price', 'originalPrice', 'costPrice', 'wholesalePrice'];
+      const touchingPrice = PRICE_FIELDS.some(
+        (f) => (body as Record<string, unknown>)[f] !== undefined,
+      );
+      if (touchingPrice) this.requirePerm(req, 'products.price');
+    }
     return ok(
       await this.service.updateProduct(
         id,
@@ -492,7 +540,7 @@ export class AdminController {
   ) {
     this.authorize(req, 'products', 'write');
     const hqOnly = !req.user.campusId || req.user.campusId === HQ_CAMPUS_ID;
-    if (isHqScope(req.user.role) && hqOnly) {
+    if (this.ctx(req).platform && hqOnly) {
       const target = campus?.trim();
       if (target !== HQ_CAMPUS_ID)
         throw new ForbiddenException('总部账号仅可铺货至总部仓（?campus=campus-hq）');
@@ -514,7 +562,8 @@ export class AdminController {
     @Param('id') id: string,
   ) {
     this.authorize(req, 'products', 'write');
-    if (req.user.role === 'hq')
+    // 平台级且无校区上下文（官方库视角）=商品源头，无需拉取
+    if (this.ctx(req).platform && (!req.user.campusId || req.user.campusId === HQ_CAMPUS_ID))
       throw new ForbiddenException('官方商品库即商品源头，无需拉取上游');
     return ok(
       await this.service.pullUpstream(id, req.user.id, req.user.campusId),
@@ -537,7 +586,7 @@ export class AdminController {
         await this.service.inventory(
           // IKFOPY：campusScope 化——平台视角可聚焦总部仓/任一校区。
           // 缺省落地（修复空串炸 P2025）：admin 用本校区归属，hq 无归属缺省总部仓
-          this.campusScope(req, campus) ||
+          await this.campusScope(req, campus) ||
             req.user.campusId ||
             HQ_CAMPUS_ID,
           // IKD6FG：分类筛选（库存按类别盘点）
@@ -554,13 +603,12 @@ export class AdminController {
     @Body() body: StockInDto,
     @Query('campus') campus?: string,
   ) {
-    this.authorize(req, 'inventory', 'write');
-    // 采购申请-审核制（IKD6FJ）：校区走采购申请，直接入库仅限平台视角角色
-    if (!isHqScope(req.user.role))
+    // 直接入库=平台口径（IKD6FJ，inventory.inbound）：校区走订货/采购申请
+    if (!this.hasPerm(req, 'inventory.inbound'))
       throw new ForbiddenException(
         '采购已改为申请-审核制，请提交采购申请，由总部审核后入库',
       );
-    const campusId = this.campusScope(req, campus);
+    const campusId = await this.campusScope(req, campus);
     // IKFOPY：平台视角 campusId 不来自账号，必须显式指定仓库（含总部仓）
     if (!campusId)
       throw new BadRequestException('请先选择入库仓库（校区或总部仓）');
@@ -572,8 +620,8 @@ export class AdminController {
     @Body() body: StocktakeDto,
     @Query('campus') campus?: string,
   ) {
-    this.authorize(req, 'inventory', 'write');
-    const campusId = this.campusScope(req, campus);
+    this.requirePerm(req, 'inventory.adjust');
+    const campusId = await this.campusScope(req, campus);
     if (!campusId)
       throw new BadRequestException('请先选择盘点仓库（校区或总部仓）');
     return ok(
@@ -587,16 +635,15 @@ export class AdminController {
   @Get('restock/batches') async restockBatches(@Req() req: AuthRequest) {
     this.authorize(req, 'restock', 'read');
     return ok(
-      await this.service.restockBatches(isHqScope(req.user.role), req.user.campusId),
+      await this.service.restockBatches(this.ctx(req).platform, req.user.campusId),
     );
   }
   @Post('restock/batches') async createRestockBatch(
     @Req() req: AuthRequest,
     @Body() body: CreateRestockBatchDto,
   ) {
-    this.authorize(req, 'restock', 'write');
-    if (!isHqScope(req.user.role))
-      throw new ForbiddenException('只有总部可以创建订货批次');
+    // 建批/改批/关批=平台动作（restock.manage 平台码，校区授权拿不到）
+    this.requirePerm(req, 'restock.manage');
     return ok(await this.service.createRestockBatch(body, req.user.id), '批次已创建');
   }
   @Patch('restock/batches/:id') async updateRestockBatch(
@@ -604,18 +651,14 @@ export class AdminController {
     @Param('id') id: string,
     @Body() body: UpdateRestockBatchDto,
   ) {
-    this.authorize(req, 'restock', 'write');
-    if (!isHqScope(req.user.role))
-      throw new ForbiddenException('只有总部可以修改订货批次');
+    this.requirePerm(req, 'restock.manage');
     return ok(await this.service.updateRestockBatch(id, body, req.user.id), '批次已更新');
   }
   @Post('restock/batches/:id/close') async closeRestockBatch(
     @Req() req: AuthRequest,
     @Param('id') id: string,
   ) {
-    this.authorize(req, 'restock', 'write');
-    if (!isHqScope(req.user.role))
-      throw new ForbiddenException('只有总部可以关闭订货批次');
+    this.requirePerm(req, 'restock.manage');
     return ok(await this.service.closeRestockBatch(id, req.user.id), '批次已关闭');
   }
   /** 批次详情：总部看全校区单，校区只看本校区单。 */
@@ -627,7 +670,7 @@ export class AdminController {
     return ok(
       await this.service.restockBatchDetail(
         id,
-        isHqScope(req.user.role),
+        this.ctx(req).platform,
         req.user.campusId,
       ),
     );
@@ -638,9 +681,7 @@ export class AdminController {
     @Param('batchId') batchId: string,
     @Body() body: SaveRestockOrderDto,
   ) {
-    this.authorize(req, 'restock', 'write');
-    if (isHqScope(req.user.role))
-      throw new ForbiddenException('订货由校区发起，总部账号请走审核');
+    this.requirePerm(req, 'restock.order');
     if (!req.user.campusId)
       throw new BadRequestException('账号未绑定校区，无法订货');
     return ok(
@@ -653,9 +694,7 @@ export class AdminController {
     @Req() req: AuthRequest,
     @Param('batchId') batchId: string,
   ) {
-    this.authorize(req, 'restock', 'write');
-    if (isHqScope(req.user.role))
-      throw new ForbiddenException('订货由校区发起，总部账号请走审核');
+    this.requirePerm(req, 'restock.order');
     if (!req.user.campusId)
       throw new BadRequestException('账号未绑定校区，无法订货');
     return ok(
@@ -668,9 +707,7 @@ export class AdminController {
     @Req() req: AuthRequest,
     @Param('batchId') batchId: string,
   ) {
-    this.authorize(req, 'restock', 'write');
-    if (isHqScope(req.user.role))
-      throw new ForbiddenException('订货由校区发起，总部账号请走审核');
+    this.requirePerm(req, 'restock.order');
     if (!req.user.campusId)
       throw new BadRequestException('账号未绑定校区，无法订货');
     return ok(
@@ -686,7 +723,7 @@ export class AdminController {
   ) {
     this.authorize(req, 'restock', 'read');
     return ok(
-      await this.service.restockOrders(isHqScope(req.user.role), req.user.campusId, {
+      await this.service.restockOrders(this.ctx(req).platform, req.user.campusId, {
         batchId,
         status,
       }),
@@ -700,7 +737,7 @@ export class AdminController {
     return ok(
       await this.service.restockOrderDetail(
         id,
-        isHqScope(req.user.role),
+        this.ctx(req).platform,
         req.user.campusId,
       ),
     );
@@ -711,9 +748,8 @@ export class AdminController {
     @Param('id') id: string,
     @Body() body: AuditRestockOrderDto,
   ) {
-    this.authorize(req, 'restock', 'write');
-    if (!isHqScope(req.user.role))
-      throw new ForbiddenException('只有总部可以审核订货单');
+    // 审单=平台动作（restock.manage）
+    this.requirePerm(req, 'restock.manage');
     return ok(
       await this.service.auditRestockOrder(id, body, req.user.id),
       body.action === 'confirm'
@@ -731,9 +767,8 @@ export class AdminController {
     @Param('id') id: string,
     @Body() body: ShipRestockOrderDto,
   ) {
-    this.authorize(req, 'restock', 'write');
-    if (!isHqScope(req.user.role))
-      throw new ForbiddenException('只有总部可以发货');
+    // 发货=平台动作（restock.manage）
+    this.requirePerm(req, 'restock.manage');
     return ok(await this.service.shipRestockOrder(id, body ?? ({} as ShipRestockOrderDto), req.user.id), '已发货，等待校区确认到货');
   }
   /** 校区确认到货：按发货数全额入账（收货校区本人操作）。 */
@@ -755,7 +790,7 @@ export class AdminController {
     return ok(
       await this.service.restockShipmentDetail(
         id,
-        isHqScope(req.user.role),
+        this.ctx(req).platform,
         req.user.campusId,
       ),
     );
@@ -768,9 +803,8 @@ export class AdminController {
     @Query('end') end?: string,
     @Query('campusId') campusId?: string,
   ) {
-    this.authorize(req, 'purchase');
-    if (!isHqScope(req.user.role))
-      throw new ForbiddenException('总部日报仅总部可用');
+    // 总部日报=平台动作（purchase.read 平台码，校区授权拿不到）
+    this.requirePerm(req, 'purchase.read');
     // 缺省=昨日（T+1 口径）
     const yesterday = new Date(Date.now() + 8 * 3600 * 1000 - 86400 * 1000)
       .toISOString()
@@ -794,7 +828,7 @@ export class AdminController {
     @Query('buildingId') buildingId?: string,
   ) {
     this.authorize(req, 'campus-report');
-    const hqScope = isHqScope(req.user.role);
+    const hqScope = this.ctx(req).platform;
     if (!hqScope && !req.user.campusId)
       throw new ForbiddenException('账号未绑定校区');
     // 缺省=昨日（T+1 口径）
@@ -835,18 +869,15 @@ export class AdminController {
   // ==================== 采购单（IKFOQ1）：独立板块「采购管理」====================
   // 全链总部动作（hq/admin）：生成聚合/验收入库/关闭重开；权限 purchase section。
   @Get('purchase/orders') async purchaseOrders(@Req() req: AuthRequest) {
-    this.authorize(req, 'purchase');
-    if (!isHqScope(req.user.role))
-      throw new ForbiddenException('采购管理仅总部可用');
+    // 采购=平台码（purchase.read/write），校区授权天然拿不到，无需再判平台
+    this.requirePerm(req, 'purchase.read');
     return ok(await this.service.purchaseOrders());
   }
   @Get('purchase/orders/:id') async purchaseOrderDetail(
     @Req() req: AuthRequest,
     @Param('id') id: string,
   ) {
-    this.authorize(req, 'purchase');
-    if (!isHqScope(req.user.role))
-      throw new ForbiddenException('采购管理仅总部可用');
+    this.requirePerm(req, 'purchase.read');
     return ok(await this.service.purchaseOrderDetail(id));
   }
   /** 一键聚合生成（grilling #2）：行=批次全部已确认订货单按商品求和。 */
@@ -855,9 +886,7 @@ export class AdminController {
     @Param('batchId') batchId: string,
     @Body() body: CreatePurchaseOrderDto,
   ) {
-    this.authorize(req, 'purchase', 'write');
-    if (!isHqScope(req.user.role))
-      throw new ForbiddenException('只有总部可以生成采购单');
+    this.requirePerm(req, 'purchase.write');
     return ok(
       await this.service.createPurchaseOrder(batchId, body, req.user.id),
       '采购单已生成',
@@ -869,9 +898,7 @@ export class AdminController {
     @Param('id') id: string,
     @Body() body: ReceivePurchaseOrderDto,
   ) {
-    this.authorize(req, 'purchase', 'write');
-    if (!isHqScope(req.user.role))
-      throw new ForbiddenException('只有总部可以验收');
+    this.requirePerm(req, 'purchase.write');
     return ok(
       await this.service.receivePurchaseOrder(id, body, req.user.id),
       '验收完成，库存已更新',
@@ -882,9 +909,7 @@ export class AdminController {
     @Param('id') id: string,
     @Body() body: ClosePurchaseOrderDto,
   ) {
-    this.authorize(req, 'purchase', 'write');
-    if (!isHqScope(req.user.role))
-      throw new ForbiddenException('只有总部可以关闭采购单');
+    this.requirePerm(req, 'purchase.write');
     return ok(
       await this.service.closePurchaseOrder(id, body, req.user.id),
       '采购单已关闭，欠收作废',
@@ -894,9 +919,7 @@ export class AdminController {
     @Req() req: AuthRequest,
     @Param('id') id: string,
   ) {
-    this.authorize(req, 'purchase', 'write');
-    if (!isHqScope(req.user.role))
-      throw new ForbiddenException('只有总部可以重开采购单');
+    this.requirePerm(req, 'purchase.write');
     return ok(
       await this.service.reopenPurchaseOrder(id, req.user.id),
       '采购单已重开，可继续验收',
@@ -907,8 +930,8 @@ export class AdminController {
     @Body() body: AdjustStockDto,
     @Query('campus') campus?: string,
   ) {
-    this.authorize(req, 'inventory', 'write');
-    const campusId = this.campusScope(req, campus);
+    this.requirePerm(req, 'inventory.adjust');
+    const campusId = await this.campusScope(req, campus);
     if (!campusId)
       throw new BadRequestException('请先选择调整仓库（校区或总部仓）');
     return ok(
@@ -929,7 +952,7 @@ export class AdminController {
     this.authorize(req, 'inventory');
     return ok(
       paginate(
-        await this.service.inventoryTxns(productId, this.campusScope(req, campus)),
+        await this.service.inventoryTxns(productId, await this.campusScope(req, campus)),
         page,
         pageSize,
         keyword,
@@ -954,7 +977,7 @@ export class AdminController {
       paginate(
         await this.service.orders(
           status,
-          this.campusScope(req, campus),
+          await this.campusScope(req, campus),
           // IKD6FG：配送方式筛选（instant/scheduled）
           deliveryMode || undefined,
         ),
@@ -972,7 +995,7 @@ export class AdminController {
     @Query('campus') campus?: string,
   ) {
     this.authorize(req, 'orders');
-    return ok(await this.service.orderStatusCounts(this.campusScope(req, campus)));
+    return ok(await this.service.orderStatusCounts(await this.campusScope(req, campus)));
   }
   @Get('orders/:id') async order(
     @Req() req: AuthRequest,
@@ -987,7 +1010,7 @@ export class AdminController {
     @Param('action') action: string,
   ) {
     // 仓库出库（IKA0UQ）落在库存板块：仓储角色对 orders 只读但可出库。
-    this.authorize(req, action === 'outbound' ? 'inventory' : 'orders', 'write');
+    this.requirePerm(req, action === 'outbound' ? 'inventory.outbound' : 'orders.write');
     return ok(
       await this.service.orderAction(
         id,
@@ -1073,7 +1096,7 @@ export class AdminController {
     @Query('campus') campus?: string,
   ) {
     this.authorize(req, 'users');
-    return ok(await this.service.userStats(this.campusScope(req, campus)));
+    return ok(await this.service.userStats(await this.campusScope(req, campus)));
   }
   @Get('users/:id/orders')
   @ApiOperation({ summary: '单个用户订单流水（IKAJSW 详情抽屉）' })
@@ -1082,19 +1105,20 @@ export class AdminController {
     @Param('id') id: string,
   ) {
     this.authorize(req, 'users');
-    return ok(await this.service.userOrders(id, this.campusScope(req)));
+    return ok(await this.service.userOrders(id, await this.campusScope(req)));
   }
   @Get('users/:id/phone')
   @ApiOperation({
     summary: '查看用户明文手机号（列表恒脱敏，按需单查+审计留痕）',
   })
   async revealUserPhone(@Req() req: AuthRequest, @Param('id') id: string) {
-    this.authorize(req, 'users');
+    // 敏感分权：明文手机号单列权限码（users.read 只给脱敏视图）
+    this.requirePerm(req, 'users.phone.reveal');
     return ok(
       await this.service.revealUserPhone(
         id,
         req.user.id,
-        this.campusScope(req),
+        await this.campusScope(req),
       ),
     );
   }
@@ -1114,7 +1138,7 @@ export class AdminController {
   ) {
     this.authorize(req, 'users');
     return ok(
-      await this.service.users(this.campusScope(req, campus), {
+      await this.service.users(await this.campusScope(req, campus), {
         buildingId: buildingId || undefined,
         dateFrom: dateFrom || undefined,
         dateTo: dateTo || undefined,
@@ -1181,7 +1205,7 @@ export class AdminController {
   }
   /* ---------- 库位管理（IKA0VG）：随库存板块权限走 ---------- */
   @Get('locations') async locations(@Req() req: AuthRequest) {
-    this.authorize(req, 'inventory');
+    this.requirePerm(req, 'locations.read');
     return ok(await this.service.locations(req.user.campusId));
   }
   @Post('locations')
@@ -1189,7 +1213,7 @@ export class AdminController {
     @Req() req: AuthRequest,
     @Body() body: CreateLocationDto,
   ) {
-    this.authorize(req, 'inventory', 'write');
+    this.requirePerm(req, 'locations.write');
     return ok(
       await this.service.createLocation(body, req.user.id, req.user.campusId),
       '库位已创建',
@@ -1201,7 +1225,7 @@ export class AdminController {
     @Param('id') id: string,
     @Body() body: UpdateLocationDto,
   ) {
-    this.authorize(req, 'inventory', 'write');
+    this.requirePerm(req, 'locations.write');
     return ok(
       await this.service.updateLocation(
         id,
@@ -1214,7 +1238,7 @@ export class AdminController {
   }
   @Delete('locations/:id')
   async deleteLocation(@Req() req: AuthRequest, @Param('id') id: string) {
-    this.authorize(req, 'inventory', 'write');
+    this.requirePerm(req, 'locations.write');
     await this.service.deleteLocation(id, req.user.id, req.user.campusId);
     return ok({ id }, '库位已删除');
   }
@@ -1312,8 +1336,10 @@ export class AdminController {
     @Body() body: CreateStaffDto,
   ) {
     this.authorize(req, 'staff', 'write');
+    // RBAC V1：目标校区必须在授权范围内（修复旧 resolveStaffCampus 只验存在不验授权）
+    body.campusId = await this.assertCampusAllowed(req, body.campusId);
     return ok(
-      await this.service.createStaff(body, req.user.id, req.user.campusId),
+      await this.service.createStaff(body, req.user.id, body.campusId),
       '员工已创建',
     );
   }
@@ -1323,6 +1349,8 @@ export class AdminController {
     @Body() body: UpdateStaffDto,
   ) {
     this.authorize(req, 'staff', 'write');
+    if (body.campusId !== undefined)
+      body.campusId = await this.assertCampusAllowed(req, body.campusId);
     return ok(
       await this.service.updateStaff(id, body, req.user.id),
     );
@@ -1351,7 +1379,8 @@ export class AdminController {
     @Req() req: AuthRequest,
     @Body() body: UpdateDeliveryConfigDto,
   ) {
-    this.authorize(req, 'campuses', 'write');
+    // 本校区配送配置（campuses.config.write 校区码）；校区本体增改走 campuses.manage
+    this.requirePerm(req, 'campuses.config.write');
     return ok(
       await this.service.updateDeliveryConfig(
         body,
@@ -1375,7 +1404,10 @@ export class AdminController {
       // IKGVOO 员工服务范围：可传目标校区拉对应楼栋（员工建到哪个校区就绑哪个校区的楼），
       // 缺省回落账号绑定校区
       paginate(
-        await this.service.buildings(campus?.trim() || req.user.campusId),
+        // RBAC V1：目标校区经授权校验（校区级忽略参数恒本校区；平台级验存在）
+        await this.service.buildings(
+          (await this.campusScope(req, campus)) || req.user.campusId,
+        ),
         page,
         pageSize,
         keyword,
@@ -1539,7 +1571,7 @@ export class AdminController {
     @Req() req: AuthRequest,
     @Body() body: CreateCommissionRuleDto,
   ) {
-    this.authorize(req, 'finance', 'write');
+    this.requirePerm(req, 'finance.rules.write');
     return ok(
       await this.service.createCommissionRule(
         body,
@@ -1554,7 +1586,7 @@ export class AdminController {
     @Param('id') id: string,
     @Body() body: UpdateCommissionRuleDto,
   ) {
-    this.authorize(req, 'finance', 'write');
+    this.requirePerm(req, 'finance.rules.write');
     return ok(
       await this.service.updateCommissionRule(
         id,
@@ -1590,7 +1622,7 @@ export class AdminController {
     @Req() req: AuthRequest,
     @Param('id') id: string,
   ) {
-    this.authorize(req, 'finance', 'write');
+    this.requirePerm(req, 'finance.confirm');
     return ok(
       await this.service.confirmSettlement(id, req.user.id, req.user.campusId),
       '账单已确认',
@@ -1600,7 +1632,7 @@ export class AdminController {
     @Req() req: AuthRequest,
     @Param('id') id: string,
   ) {
-    this.authorize(req, 'finance', 'write');
+    this.requirePerm(req, 'finance.pay');
     return ok(
       await this.service.paySettlement(id, req.user.id, req.user.campusId),
       '账单已支付',
@@ -1615,24 +1647,20 @@ export class AdminController {
   }
   /* ---------- 校区本体管理（IKAJSL）：新校区接入 ---------- */
   @Post('campuses')
-  @ApiOperation({ summary: '新建校区（总部/平台超管）' })
+  @ApiOperation({ summary: '新建校区（平台级权限 campuses.manage）' })
   async createCampus(@Req() req: AuthRequest, @Body() body: CreateCampusDto) {
-    // 本体增改是平台级动作，不进矩阵单列板块。IKBWRT（2026-08-29 道哥定版）：
-    // admin 平台超管全菜单操作权限，与 hq 同权建改校区（对齐 IKBFJ4 账号同权）；
-    // operations 等职能角色仍只管楼栋域。
-    if (req.user.role !== 'hq' && req.user.role !== 'admin')
-      throw new ForbiddenException('仅总部/平台超管账号可新增校区');
+    // 本体增改=平台级动作（campuses.manage 平台码；旧手写 hq/admin 角色判断退役）
+    this.requirePerm(req, 'campuses.manage');
     return ok(await this.service.createCampus(body, req.user.id), '校区已创建');
   }
   @Patch('campuses/:id')
-  @ApiOperation({ summary: '修改校区信息/启停（总部/平台超管）' })
+  @ApiOperation({ summary: '修改校区信息/启停（平台级权限 campuses.manage）' })
   async updateCampus(
     @Req() req: AuthRequest,
     @Param('id') id: string,
     @Body() body: UpdateCampusDto,
   ) {
-    if (req.user.role !== 'hq' && req.user.role !== 'admin')
-      throw new ForbiddenException('仅总部/平台超管账号可修改校区');
+    this.requirePerm(req, 'campuses.manage');
     return ok(
       await this.service.updateCampus(id, body, req.user.id),
       '校区已更新',
@@ -1714,19 +1742,17 @@ export class AdminController {
     this.authorize(req, 'audit');
     return ok(
       paginate(
-        await this.service.auditLogs(this.campusScope(req, campus)),
+        await this.service.auditLogs(await this.campusScope(req, campus)),
         page,
         pageSize,
         keyword,
       ),
     );
   }
-  /* ---------- 后台账号管理（IK9KWO）：accounts 板块仅 hq/admin ----------
-     IKBFJ4（2026-08-27）：平台超管 admin 与 hq 同权——列表全量、可建/改/删任意角色；
-     保护规则（最后一名 admin/hq、不可删自己）不变。 */
+  /* ---------- 后台账号管理（IK9KWO → RBAC V1）：仅超管（rbac.accounts.* 平台码） ---------- */
   @Get('accounts')
   @ApiOperation({
-    summary: '后台账号列表（hq/admin 全量带 campusName/campusNames）',
+    summary: '后台账号列表（全量，附状态与 RBAC 角色授权明细）',
   })
   async accounts(
     @Req() req: AuthRequest,
@@ -1734,12 +1760,10 @@ export class AdminController {
     @Query('pageSize') pageSize?: string,
     @Query('keyword') keyword?: string,
   ) {
-    this.authorize(req, 'accounts');
-    // IKAJSL→IKBFJ4：平台角色跨校区查全部；其余视角（现无入口）按校区
-    const platform = req.user.role === 'hq' || req.user.role === 'admin';
+    this.requirePerm(req, 'rbac.accounts.read');
     return ok(
       paginate(
-        await this.service.accounts(platform ? undefined : req.user.campusId),
+        await this.service.accounts(),
         page,
         pageSize,
         keyword,
@@ -1748,53 +1772,145 @@ export class AdminController {
   }
   @Post('accounts')
   @ApiOperation({
-    summary: '新建后台账号（hq/admin 可建总部或任意校区账号）',
+    summary: '新建后台账号（含初始授权 grants=[{roleCode,scope,campusId}]）',
   })
   async createAccount(@Req() req: AuthRequest, @Body() body: CreateAccountDto) {
-    this.authorize(req, 'accounts', 'write');
-    return ok(
-      await this.service.createAccount(
-        body,
-        req.user.id,
-        req.user.campusId,
-        req.user.role,
-      ),
-      '账号已创建',
-    );
+    this.requirePerm(req, 'rbac.accounts.write');
+    const created = await this.service.createAccount(body, req.user.id);
+    if (body.grants?.length)
+      await this.rbac.setAccountRoles(
+        { id: req.user.id, username: this.ctx(req).username },
+        created.id,
+        body.grants,
+      );
+    return ok(created, '账号已创建');
   }
   @Patch('accounts/:id')
   @ApiOperation({
-    summary: '改昵称/角色或重置密码；最后一个 admin/hq 不可降级删除',
+    summary: '改昵称/重置密码/停启用/全量重设授权（rbac.accounts.write）',
   })
   async updateAccount(
     @Req() req: AuthRequest,
     @Param('id') id: string,
     @Body() body: UpdateAccountDto,
   ) {
-    this.authorize(req, 'accounts', 'write');
-    return ok(
-      await this.service.updateAccount(
-        id,
-        body,
-        req.user.id,
-        req.user.campusId,
-        req.user.role,
-      ),
-    );
+    this.requirePerm(req, 'rbac.accounts.write');
+    const actor = { id: req.user.id, username: this.ctx(req).username };
+    let after: { id: string; username: string; nickname?: string; status?: string } | null = null;
+    if (body.nickname !== undefined || body.password !== undefined) {
+      after = await this.service.updateAccount(id, { nickname: body.nickname }, req.user.id);
+    }
+    if (body.password) {
+      await this.rbac.resetAccountPassword(actor, id, body.password);
+      after = { ...(after ?? { id, username: '' }), id };
+    }
+    if (body.status) {
+      await this.rbac.setAccountStatus(actor, id, body.status);
+    }
+    if (body.grants) {
+      await this.rbac.setAccountRoles(actor, id, body.grants);
+    }
+    if (!after && !body.status && !body.grants)
+      throw new BadRequestException('没有可更新的字段');
+    return ok({ id }, '账号已更新');
   }
   @Delete('accounts/:id')
-  @ApiOperation({ summary: '删除后台账号；不可删自己/最后一个 admin 或 hq' })
+  @ApiOperation({ summary: '删除后台账号；不可删自己/最后一个有效超管' })
   async deleteAccount(@Req() req: AuthRequest, @Param('id') id: string) {
-    this.authorize(req, 'accounts', 'write');
+    this.requirePerm(req, 'rbac.accounts.write');
     return ok(
-      await this.service.deleteAccount(
-        id,
-        req.user.id,
-        req.user.campusId,
-        req.user.role,
-      ),
+      await this.service.deleteAccount(id, req.user.id),
       '账号已删除',
     );
+  }
+
+  /* ---------- RBAC V1（2026-09-19）：有效权限 / 角色管理 / 权限目录 / 审计 ---------- */
+  @Get('rbac/me')
+  @ApiOperation({
+    summary: '当前账号有效权限（角色来源+权限码+可切校区+授权版本）',
+    description: '前端菜单/路由/按钮统一以此为准；切校区后重新拉取。',
+  })
+  async rbacMe(@Req() req: AuthRequest) {
+    // 任意后台账号可读自己的上下文（不设权限码——这就是权限读取入口）
+    const ctx = this.ctx(req);
+    const account = await this.service.findAccount(ctx.accountId);
+    if (!account) throw new ForbiddenException('账号不存在');
+    return ok(await this.rbac.buildMeResponse(account));
+  }
+  @Get('rbac/permissions')
+  @ApiOperation({ summary: '权限目录（代码登记只读同步；分组+含义+范围）' })
+  async rbacPermissions(@Req() req: AuthRequest) {
+    this.requirePerm(req, 'rbac.permissions.read');
+    return ok(await this.rbac.listPermissions());
+  }
+  @Get('rbac/roles')
+  @ApiOperation({ summary: '角色列表（含权限集与关联账号数）' })
+  async rbacRoles(@Req() req: AuthRequest) {
+    this.requirePerm(req, 'rbac.roles.read');
+    const roles = await this.rbac.listRoles();
+    return ok(
+      roles.map((r) => ({
+        id: r.id,
+        code: r.code,
+        name: r.name,
+        remark: r.remark,
+        status: r.status,
+        builtin: r.builtin,
+        accountCount: r._count.accounts,
+        permissions: r.permissions.map((p) => p.permission.code),
+      })),
+    );
+  }
+  @Post('rbac/roles')
+  @ApiOperation({ summary: '新建角色（code+name+权限码集）' })
+  async rbacCreateRole(
+    @Req() req: AuthRequest,
+    @Body() body: { code: string; name: string; remark?: string; permissionCodes?: string[] },
+  ) {
+    this.requirePerm(req, 'rbac.roles.write');
+    const role = await this.rbac.createRole(
+      { username: this.ctx(req).username },
+      { code: body.code, name: body.name, remark: body.remark, permissionCodes: body.permissionCodes ?? [] },
+    );
+    return ok({ id: role.id, code: role.code }, '角色已创建');
+  }
+  @Patch('rbac/roles/:id')
+  @ApiOperation({ summary: '编辑角色（名称/备注/启停/权限集全量重设；内置超管不可编辑）' })
+  async rbacUpdateRole(
+    @Req() req: AuthRequest,
+    @Param('id') id: string,
+    @Body() body: { name?: string; remark?: string; status?: 'active' | 'disabled'; permissionCodes?: string[] },
+  ) {
+    this.requirePerm(req, 'rbac.roles.write');
+    await this.rbac.updateRole({ username: this.ctx(req).username }, id, body);
+    return ok({ id }, '角色已更新');
+  }
+  @Delete('rbac/roles/:id')
+  @ApiOperation({ summary: '删除角色（有账号引用须先撤权；内置不可删）' })
+  async rbacDeleteRole(@Req() req: AuthRequest, @Param('id') id: string) {
+    this.requirePerm(req, 'rbac.roles.write');
+    await this.rbac.deleteRole({ username: this.ctx(req).username }, id);
+    return ok({ id }, '角色已删除');
+  }
+  @Get('rbac/audit')
+  @ApiOperation({ summary: '权限审计（授权/撤权/角色变更/敏感访问）' })
+  async rbacAudit(
+    @Req() req: AuthRequest,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+  ) {
+    this.requirePerm(req, 'rbac.audit.read');
+    const rows = await this.rbac.listRbacAudit(
+      Math.max(1, Number(page) || 1),
+      Math.min(100, Math.max(1, Number(pageSize) || 50)),
+    );
+    return ok({ items: rows, total: rows.length });
+  }
+  @Get('rbac/accounts/:id/preview')
+  @ApiOperation({ summary: '账号有效权限预览（账号管理抽屉用）' })
+  async rbacPreview(@Req() req: AuthRequest, @Param('id') id: string) {
+    this.requirePerm(req, 'rbac.accounts.read');
+    return ok(await this.rbac.previewAccount(id));
   }
 
   /* ---------- 楼长招募（IKEAGE 2026-09-09）：报名列表 → 面试审批 → 实习楼长 ---------- */
@@ -1815,7 +1931,7 @@ export class AdminController {
     return ok(
       paginate(
         await this.service.recruitApplications(
-          this.campusScope(req, campus),
+          await this.campusScope(req, campus),
           status,
           keyword,
         ),
@@ -1833,35 +1949,70 @@ export class AdminController {
   ) {
     this.authorize(req, 'recruit');
     return ok(
-      await this.service.recruitStatusCounts(this.campusScope(req, campus)),
+      await this.service.recruitStatusCounts(await this.campusScope(req, campus)),
     );
   }
-  /** 资料补录（IKEAGE）：身份证号/照片/运营备注，随时可补不占状态机。 */
+  /** 资料补录（IKEAGE → RBAC V1 字段级分权）：身份证补录与运营备注各自独立权限码。 */
   @Patch('recruit-applications/:id')
   async updateRecruitApplication(
     @Req() req: AuthRequest,
     @Param('id') id: string,
     @Body() body: UpdateRecruitApplicationDto,
   ) {
-    this.authorize(req, 'recruit', 'write');
-    return ok(
-      await this.service.updateRecruitApplication(
-        id,
-        body,
-        req.user.id,
-        this.campusScope(req),
-      ),
+    const touchingIdcard =
+      body.idCardNo !== undefined || body.idCardImages !== undefined;
+    const touchingNote = body.staffRemark !== undefined;
+    if (touchingIdcard) this.requirePerm(req, 'recruit.idcard.write');
+    if (touchingNote) this.requirePerm(req, 'recruit.note');
+    if (!touchingIdcard && !touchingNote) this.requirePerm(req, 'recruit.note');
+    const updated = await this.service.updateRecruitApplication(
+      id,
+      body,
+      req.user.id,
+      await this.campusScope(req),
     );
+    // 响应白名单：证件字段不回显（刚写入的内容无需回传）；备注仅对持有者回显
+    const { idCardNo, idCardImages, ...safe } = updated as Record<string, unknown>;
+    void idCardNo;
+    void idCardImages;
+    if (!this.hasPerm(req, 'recruit.note')) delete (safe as Record<string, unknown>).staffRemark;
+    return ok(safe);
+  }
+  /** 身份证/运营备注专用读取（RBAC V1）：recruit.idcard.read 或 recruit.note
+   *  持有者可用；身份证照片回 5 分钟签名 URL；每次访问落敏感审计。 */
+  @Get('recruit-applications/:id/idcard')
+  @ApiOperation({ summary: '读取候选人身份证与运营备注（权限+审计留痕）' })
+  async recruitIdcard(@Req() req: AuthRequest, @Param('id') id: string) {
+    const canIdcard = this.hasPerm(req, 'recruit.idcard.read');
+    const canNote = this.hasPerm(req, 'recruit.note');
+    if (!canIdcard && !canNote)
+      throw new ForbiddenException('当前账号无该操作权限');
+    const data = await this.service.recruitIdcard(
+      id,
+      await this.campusScope(req),
+    );
+    if (!canIdcard) {
+      (data as Record<string, unknown>).idCardNo = '';
+      (data as Record<string, unknown>).idCardImages = [];
+    }
+    if (!canNote) (data as Record<string, unknown>).staffRemark = '';
+    await this.rbac.auditSensitiveAccess(
+      this.ctx(req).username,
+      canIdcard ? 'rbac.sensitive.idcard-read' : 'rbac.sensitive.remark-read',
+      id,
+      this.ctx(req).campusId,
+    );
+    return ok(data);
   }
   /** 待联系 → 面试中（IKEAGE）。 */
   @Post('recruit-applications/:id/transition')
   async recruitTransition(@Req() req: AuthRequest, @Param('id') id: string) {
-    this.authorize(req, 'recruit', 'write');
+    this.requirePerm(req, 'recruit.interview');
     return ok(
       await this.service.recruitTransition(
         id,
         req.user.id,
-        this.campusScope(req),
+        await this.campusScope(req),
       ),
       '已进入面试',
     );
@@ -1873,13 +2024,13 @@ export class AdminController {
     @Param('id') id: string,
     @Body() body: RejectRecruitApplicationDto,
   ) {
-    this.authorize(req, 'recruit', 'write');
+    this.requirePerm(req, 'recruit.reject');
     return ok(
       await this.service.recruitReject(
         id,
         body.reason,
         req.user.id,
-        this.campusScope(req),
+        await this.campusScope(req),
       ),
       '已拒绝',
     );
@@ -1887,12 +2038,12 @@ export class AdminController {
   /** 审批通过（IKEAGE）：事务创建实习楼长（工号 IBM-xxx 自动生成）并关联。 */
   @Post('recruit-applications/:id/approve')
   async recruitApprove(@Req() req: AuthRequest, @Param('id') id: string) {
-    this.authorize(req, 'recruit', 'write');
+    this.requirePerm(req, 'recruit.approve');
     return ok(
       await this.service.recruitApprove(
         id,
         req.user.id,
-        this.campusScope(req),
+        await this.campusScope(req),
       ),
       '已通过并创建实习楼长',
     );

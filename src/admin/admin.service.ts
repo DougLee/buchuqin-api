@@ -13,6 +13,8 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { PrinterService } from '../printer/printer.service';
 import { BusinessService } from '../business/business.service';
 import { perRetailUnitCostFen } from '../common/product-units';
+import { maskIdCard } from '../common/sensitive';
+import { presignCosUrl } from '../files/cos-presign';
 import { CommissionService } from '../commission/commission.service';
 import type {
   AdjustStockDto,
@@ -5208,8 +5210,12 @@ export class AdminService {
     }));
   }
 
-  /* ---------- 后台账号管理（IK9KWO）：admin 管本校区职能账号，hq 管全部（IKAJSL） ---------- */
-  /** 列表不回 passwordHash；campusId 传空 = hq 查全部并附 campusName。 */
+  /* ---------- 后台账号管理（IK9KWO → RBAC V1 2026-09-19）：仅超管（rbac.accounts.*） ---------- */
+  /** 账号查询（rbac/me 等控制器路径用）。 */
+  findAccount(id: string) {
+    return this.db.adminAccount.findUnique({ where: { id } });
+  }
+  /** 列表不回 passwordHash；附 RBAC 角色授权明细与状态（V1 全量视角）。 */
   async accounts(campusId?: string) {
     const xs = await this.db.adminAccount.findMany({
       where: campusId ? { campusId } : {},
@@ -5220,218 +5226,145 @@ export class AdminService {
         nickname: true,
         role: true,
         campusId: true,
+        status: true,
         createdAt: true,
+        rbacRoles: {
+          include: { role: { select: { code: true, name: true, status: true } } },
+          orderBy: { createdAt: 'asc' },
+        },
       },
     });
-    // IKB3KG：附带可运营校区全集（账号管理多选回显）
-    const accesses = await this.db.adminCampusAccess.findMany({
-      where: { accountId: { in: xs.map((x) => x.id) } },
-      select: { accountId: true, campusId: true },
-    });
-    const scopeByAccount = new Map<string, string[]>();
-    for (const a of accesses) {
-      scopeByAccount.set(a.accountId, [
-        ...(scopeByAccount.get(a.accountId) ?? []),
-        a.campusId,
-      ]);
+    const grantsByAccount = new Map<
+      string,
+      { roleCode: string; roleName: string; roleStatus: string; scope: string; campusId: string | null }[]
+    >();
+    for (const x of xs) {
+      grantsByAccount.set(
+        x.id,
+        x.rbacRoles.map((g) => ({
+          roleCode: g.role.code,
+          roleName: g.role.name,
+          roleStatus: g.role.status,
+          scope: g.scope,
+          campusId: g.campusId,
+        })),
+      );
     }
-    const withScope = xs.map((x) => ({
-      ...x,
-      campusIds: x.campusId ? (scopeByAccount.get(x.id) ?? [x.campusId]) : [],
-    }));
-    if (campusId) return withScope;
     const campuses = await this.db.campus.findMany({
       select: { id: true, name: true, shortName: true },
     });
     const nameById = new Map(
       campuses.map((c) => [c.id, c.shortName || c.name]),
     );
-    // IKB5PC：hq 视角附全量可运营校区名（多校区账号逐个列出），campusName 保留当前校区口径
-    return withScope.map((x) => ({
+    return xs.map(({ rbacRoles, ...x }) => ({
       ...x,
-      campusName: x.campusId ? (nameById.get(x.campusId) ?? '') : '总部',
-      campusNames: x.campusIds
-        .map((id) => nameById.get(id) ?? '')
-        .filter(Boolean),
+      grants: grantsByAccount.get(x.id) ?? [],
+      campusName: x.campusId ? (nameById.get(x.campusId) ?? '') : '平台',
+      campusNames: [
+        ...new Set(
+          (grantsByAccount.get(x.id) ?? [])
+            .filter((g) => g.scope === 'campus' && g.campusId)
+            .map((g) => nameById.get(g.campusId!) ?? '')
+            .filter(Boolean),
+        ),
+      ],
     }));
   }
-  async createAccount(
-    body: CreateAccountDto,
-    operator: string,
-    operatorCampusId: string,
-    operatorRole: string,
-  ) {
+  /** RBAC V1 建号：只建账号本体；授权（角色×范围）由 controller 调
+   *  RbacService.setAccountRoles 落库（同一请求内完成，权限校验在 RBAC 层）。
+   *  role 字段写 'rbac' 标记（非旧五角色，杜绝启动迁移误接管）；campusId
+   *  取首个校区级授权校区作初始上下文，纯平台级授权为空串。 */
+  async createAccount(body: CreateAccountDto, operator: string) {
     const duplicate = await this.db.adminAccount.findUnique({
       where: { username: body.username },
     });
     if (duplicate) throw new BadRequestException('用户名已存在');
-    // IKBFJ4（2026-08-27）：平台超管 admin 与 hq 同权管账号——建任意角色/跨校区。
-    // 校区归属：hq 无本校上下文必须显式选；admin 建 hq 不绑校区、建校区角色缺省落本校。
-    const isPlatform = operatorRole === 'hq' || operatorRole === 'admin';
-    if (!isPlatform && body.role === 'hq')
-      throw new ForbiddenException('仅总部账号可创建总部角色账号');
-    const campusId =
-      operatorRole === 'hq'
-        ? (body.campusId ?? '')
-        : body.role === 'hq'
-          ? ''
-          : (body.campusId ?? operatorCampusId);
-    if (body.role === 'hq' && campusId)
-      throw new BadRequestException('总部角色账号不绑定校区');
-    if (isPlatform && body.role !== 'hq' && !campusId)
-      throw new BadRequestException('请为校区账号选择所属校区');
+    const firstCampusGrant = body.grants?.find(
+      (g) => g.scope === 'campus' && g.campusId,
+    );
+    const campusId = firstCampusGrant?.campusId ?? '';
     if (campusId) {
       const campus = await this.db.campus.findUnique({
         where: { id: campusId },
       });
-      if (!campus || campus.status === 'official')
-        throw new BadRequestException('所属校区不存在');
+      if (!campus) throw new BadRequestException('所属校区不存在');
     }
     const account = await this.db.adminAccount.create({
       data: {
         username: body.username,
         passwordHash: await hash(body.password, 10),
         nickname: body.nickname ?? '',
-        role: body.role,
+        role: 'rbac',
         campusId,
       },
     });
-    // IKB3KG：校区账号落可运营校区授权（缺省=所属校区；须包含所属校区）
-    if (account.role !== 'hq' && campusId) {
-      const campusIds = [
-        ...new Set(
-          isPlatform && body.campusIds?.length
-            ? [...body.campusIds, campusId]
-            : [campusId],
-        ),
-      ];
-      await this.replaceCampusAccess(account.id, campusIds, campusId);
-    }
     await this.audit(
       operator,
       'account.create',
       'admin-account',
       account.id,
       null,
-      { username: account.username, role: account.role },
+      { username: account.username, campusId: account.campusId },
       campusId,
     );
-    return { id: account.id, username: account.username, role: account.role };
+    return { id: account.id, username: account.username, campusId };
   }
+  /** RBAC V1 改号：只管昵称；密码重置/停启用/授权重设走各自专用通道。 */
   async updateAccount(
     id: string,
-    body: UpdateAccountDto,
+    body: { nickname?: string },
     operator: string,
-    operatorCampusId: string,
-    operatorRole: string,
   ) {
     const before = await this.db.adminAccount.findUnique({ where: { id } });
     if (!before) throw new NotFoundException('账号不存在');
-    // IKAJSL→IKBFJ4：平台角色（hq/admin）管全部账号；其余视角只能改本校区职能账号
-    if (operatorRole !== 'hq' && operatorRole !== 'admin') {
-      if (before.role === 'hq' || before.campusId !== operatorCampusId)
-        throw new ForbiddenException('只能管理本校区的后台账号');
-      if (body.role === 'hq')
-        throw new ForbiddenException('仅总部账号可授予总部角色');
-    }
-    // 保护：最后一个 admin/hq 不可降级/删除（否则权限体系锁死）。
-    if (before.role === 'admin' && body.role && body.role !== 'admin')
-      await this.assertNotLastAdmin(id);
-    if (before.role === 'hq' && body.role && body.role !== 'hq')
-      await this.assertNotLastRole(id, 'hq');
-    // IKB3KG 方案A：hq 重设可运营校区全集（整体替换授权行）；
-    // 若当前登录校区被移出授权，顺带把 campusId 挪到新集合首个校区。
-    let campusIdNext = before.campusId;
-    const rescope =
-      operatorRole === 'hq' &&
-      before.role !== 'hq' &&
-      before.campusId &&
-      body.campusIds;
-    if (rescope) {
-      campusIdNext = await this.replaceCampusAccess(
-        id,
-        body.campusIds!,
-        before.campusId,
-      );
-    }
     const after = await this.db.adminAccount.update({
       where: { id },
-      data: {
-        ...(body.nickname != null ? { nickname: body.nickname } : {}),
-        ...(body.role ? { role: body.role } : {}),
-        ...(body.password
-          ? { passwordHash: await hash(body.password, 10) }
-          : {}),
-        ...(rescope ? { campusId: campusIdNext } : {}),
-      },
-      select: { id: true, username: true, nickname: true, role: true },
+      data: { ...(body.nickname != null ? { nickname: body.nickname } : {}) },
+      select: { id: true, username: true, nickname: true, status: true, role: true },
     });
     await this.audit(
       operator,
-      body.password ? 'account.reset-password' : 'account.update',
+      'account.update',
       'admin-account',
       id,
-      { username: before.username, role: before.role },
-      after,
-      operatorCampusId,
+      { nickname: before.nickname },
+      { nickname: after.nickname },
+      before.campusId,
     );
     return after;
   }
-  /** 整体替换账号的可运营校区授权（IKB3KG 方案A）：
-   *  校验校区真实存在（官方库伪校区排除）、至少一个；返回账号应驻留的
-   *  campusId（原校区仍在授权内则保持不变，否则挪到集合首个）。 */
-  private async replaceCampusAccess(
-    accountId: string,
-    campusIds: string[],
-    currentCampusId: string,
-  ): Promise<string> {
-    const ids = [...new Set(campusIds.map((x) => x.trim()).filter(Boolean))];
-    if (!ids.length) throw new BadRequestException('请至少保留一个可运营校区');
-    const campuses = await this.db.campus.findMany({
-      where: { id: { in: ids } },
-      select: { id: true, status: true },
+  /** RBAC V1 删号：不可删自己；删平台级超管须保留至少一个有效超管。 */
+  async deleteAccount(id: string, operator: string) {
+    const before = await this.db.adminAccount.findUnique({
+      where: { id },
+      include: { rbacRoles: { include: { role: { select: { code: true } } } } },
     });
-    const valid = new Set(
-      campuses.filter((c) => c.status !== 'official').map((c) => c.id),
-    );
-    const unknown = ids.filter((x) => !valid.has(x));
-    if (unknown.length)
-      throw new BadRequestException('可运营校区中包含无效校区');
-    await this.db.$transaction([
-      this.db.adminCampusAccess.deleteMany({ where: { accountId } }),
-      this.db.adminCampusAccess.createMany({
-        data: ids.map((campusId) => ({ accountId, campusId })),
-      }),
-    ]);
-    return ids.includes(currentCampusId) ? currentCampusId : ids[0];
-  }
-  async deleteAccount(
-    id: string,
-    operator: string,
-    operatorCampusId: string,
-    operatorRole: string,
-  ) {
-    const before = await this.db.adminAccount.findUnique({ where: { id } });
     if (!before) throw new NotFoundException('账号不存在');
     if (id === operator) throw new BadRequestException('不能删除当前登录账号');
-    // IKBFJ4：平台角色（hq/admin）可删任意账号；其余视角限本校区职能账号
-    if (
-      operatorRole !== 'hq' &&
-      operatorRole !== 'admin' &&
-      (before.role === 'hq' || before.campusId !== operatorCampusId)
-    )
-      throw new ForbiddenException('只能管理本校区的后台账号');
-    if (before.role === 'admin') await this.assertNotLastAdmin(id);
-    if (before.role === 'hq') await this.assertNotLastRole(id, 'hq');
+    const isSuper = before.rbacRoles.some(
+      (g) => g.scope === 'platform' && g.role.code === 'super-admin',
+    );
+    if (isSuper) {
+      const others = await this.db.adminAccountRole.count({
+        where: {
+          scope: 'platform',
+          role: { code: 'super-admin', status: 'active' },
+          account: { status: 'active' },
+          accountId: { not: id },
+        },
+      });
+      if (others < 1)
+        throw new ForbiddenException('必须保留至少一个有效的超级管理员');
+    }
     await this.db.adminAccount.delete({ where: { id } });
     await this.audit(
       operator,
-      'account.delete',
+      'rbac.account.delete',
       'admin-account',
       id,
       { username: before.username, role: before.role },
       null,
-      operatorCampusId,
+      before.campusId,
     );
     return { id, deleted: true };
   }
@@ -5866,9 +5799,36 @@ export class AdminService {
       : new Map<string, string>();
     return xs.map((x) => ({
       ...x,
+      // RBAC V1（goal 硬要求）：候选人列表不回后台证件与运营备注——
+      // 身份证号/照片/备注仅经 /recruit-applications/:id/idcard 专用端点（权限+审计）读取
+      idCardNo: undefined,
+      idCardImages: undefined,
+      staffRemark: undefined,
+      hasIdCard: Boolean(x.idCardNo || x.idCardImages),
       campusName: nameById.get(x.campusId) ?? '',
       staffNo: x.staffId ? (staffByid.get(x.staffId) ?? '') : '',
     }));
+  }
+
+  /** 身份证/运营备注专用读取（RBAC V1）：recruit.idcard.read 或 recruit.note
+   *  持有者可用；身份证照片回 COS 临时签名 URL（5 分钟，私有读）。 */
+  async recruitIdcard(id: string, campusId: string) {
+    const found = campusId
+      ? await this.db.recruitingApplication.findFirst({
+          where: { id, campusId },
+        })
+      : await this.db.recruitingApplication.findUnique({ where: { id } });
+    if (!found) throw new NotFoundException('报名不存在');
+    const images = Array.isArray(found.idCardImages)
+      ? (found.idCardImages as unknown as string[])
+      : [];
+    return {
+      id: found.id,
+      name: found.name,
+      idCardNo: found.idCardNo,
+      idCardImages: images.map((u) => presignCosUrl(u, 300)),
+      staffRemark: found.staffRemark,
+    };
   }
 
   /** 状态 Tab 计数（IKEAGE）：pending/interviewing/approved/rejected。 */
@@ -5911,8 +5871,9 @@ export class AdminService {
       'recruit.update',
       'recruitingApplication',
       id,
-      { idCardNo: found.idCardNo, staffRemark: found.staffRemark },
-      { idCardNo: updated.idCardNo, staffRemark: updated.staffRemark },
+      // RBAC V1：审计不留身份证明文（掩码保尾 2 位供核对）
+      { idCardNo: maskIdCard(found.idCardNo), staffRemark: found.staffRemark },
+      { idCardNo: maskIdCard(updated.idCardNo), staffRemark: updated.staffRemark },
       found.campusId,
     );
     return updated;
