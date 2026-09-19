@@ -185,6 +185,14 @@ export class UpdateBannerDto {
 }
 /** 促销活动（ADR-0006 / IKAHFF）：type 区分秒杀/临期，price 为促销价（分），
  *  必须低于商品现价；同商品时间窗重叠由 service 拒绝（同期唯一生效）。 */
+/** 首页推荐位保存（IKH0EK）：全量有序商品 id 列表（编辑态一次性提交） */
+export class SaveFeaturedDto {
+  @IsArray()
+  @IsString({ each: true })
+  @ArrayMaxSize(50)
+  productIds!: string[];
+}
+
 export class CreatePromotionDto {
   @IsString() productId!: string;
   @IsIn(['seckill', 'clearance']) type!: 'seckill' | 'clearance';

@@ -194,6 +194,11 @@ model Product {
   stock           Int
   lockedStock     Int            @default(0)
   sales           Int            @default(0)
+  // IKH0EK 首页推荐位（2026-09-19 道哥定版）：featured=运营在后台勾选的推荐位
+  // 商品（手动优先展示），featuredSort=推荐位顺序（小值在前）；销量补齐位跟在
+  // 推荐位之后。校区隔离天然成立（商品本就按校区归属）。
+  featured        Boolean        @default(false)
+  featuredSort    Int            @default(0)
   tag             String
   image           String
   /**

@@ -674,6 +674,46 @@ export class AdminService {
    * 名称应用层唯一（DB 无约束，避免迁移）；sort 升序 = 小程序分类 tab 顺序；
    * 有关联商品的类别拒绝删除（决策：提示数量，运营先转移再删）。
    */
+  /** 首页推荐位（IKH0EK）：本校区已选推荐商品，featuredSort 升序 */
+  async featured(campusId: string) {
+    return this.db.product.findMany({
+      where: { campusId, featured: true },
+      orderBy: { featuredSort: 'asc' },
+      select: {
+        id: true,
+        name: true,
+        price: true,
+        image: true,
+        status: true,
+        stock: true,
+        sales: true,
+        categoryId: true,
+      },
+    });
+  }
+  /** 推荐位保存（IKH0EK）：全量有序提交，事务清位重设；越界/跨校区 id 静默剔除 */
+  async saveFeatured(ids: string[], campusId: string) {
+    const own = await this.db.product.findMany({
+      where: { id: { in: ids }, campusId },
+      select: { id: true },
+    });
+    const ownIds = new Set(own.map((r) => r.id));
+    const valid = ids.filter((id) => ownIds.has(id));
+    await this.db.$transaction([
+      this.db.product.updateMany({
+        where: { campusId, featured: true },
+        data: { featured: false, featuredSort: 0 },
+      }),
+      // 逐行写序（数组序=展示序，1 起）
+      ...valid.map((id, i) =>
+        this.db.product.update({
+          where: { id },
+          data: { featured: true, featuredSort: i + 1 },
+        }),
+      ),
+    ]);
+    return { count: valid.length };
+  }
   async categories() {
     const rows = await this.db.category.findMany({
       orderBy: [{ sort: 'asc' }, { name: 'asc' }],

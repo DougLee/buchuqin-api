@@ -44,6 +44,7 @@ import {
   CreateBuildingDto,
   CreateCampusDto,
   CreatePromotionDto,
+  SaveFeaturedDto,
   CreateCategoryDto,
   CreateCommissionRuleDto,
   CreateCouponDto,
@@ -353,6 +354,24 @@ export class AdminController {
         pageSize,
         keyword,
       ),
+    );
+  }
+  /** 首页推荐位（IKH0EK 2026-09-19 道哥定版）：手动优先+销量补齐；本校区维度 */
+  @Get('featured')
+  @ApiOperation({ summary: '首页推荐位列表（本校区，featuredSort 升序）' })
+  async featured(@Req() req: AuthRequest) {
+    this.authorize(req, 'marketing');
+    return ok(await this.service.featured(req.user.campusId));
+  }
+  @Put('featured')
+  @ApiOperation({
+    summary: '保存推荐位（全量有序商品 id，事务清位重设；越界 id 静默剔除）',
+  })
+  async saveFeatured(@Req() req: AuthRequest, @Body() body: SaveFeaturedDto) {
+    this.authorize(req, 'marketing', 'write');
+    return ok(
+      await this.service.saveFeatured(body.productIds, req.user.campusId),
+      '推荐位已保存',
     );
   }
   /** 营销地图（IKD6FI）：楼栋×楼层×寝室下单聚合（近 N 天已支付） */

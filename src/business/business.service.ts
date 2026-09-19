@@ -585,7 +585,10 @@ export class BusinessService {
     });
   }
   async home(campusId: string) {
-    const [campus, banners, categories, products] = await Promise.all([
+    // IKH0EK 推荐位（2026-09-19 道哥定版）：运营勾选的 featured 商品按
+    // featuredSort 优先展示，剩余位置按销量补满 18（去重）；未配置即纯销量。
+    const onSale = { campusId, status: 'on-sale', category: { hidden: false } };
+    const [campus, banners, categories, featured, rest] = await Promise.all([
       this.campus(campusId),
       this.db.banner.findMany({
         // IKA57F：placement 区分首页轮播 / 支付成功页广告位；
@@ -599,11 +602,20 @@ export class BusinessService {
       }),
       this.categories(),
       this.db.product.findMany({
-        where: { campusId, status: 'on-sale', category: { hidden: false } },
+        where: { ...onSale, featured: true },
+        orderBy: { featuredSort: 'asc' },
+      }),
+      this.db.product.findMany({
+        where: onSale,
         orderBy: { sales: 'desc' },
-        take: 18,
+        take: 36,
       }),
     ]);
+    const seen = new Set(featured.map((p) => p.id));
+    const products = [...featured, ...rest.filter((p) => !seen.has(p.id))].slice(
+      0,
+      18,
+    );
     const now = new Date();
     const promoRows = await this.db.promotion.findMany({
       // 首页促销模块（ADR-0006）：进行中活动带商品视图，type 分组由前端渲染
@@ -1252,7 +1264,11 @@ export class BusinessService {
       for (const line of items)
         await tx.product.update({
           where: { id: line.product.id },
-          data: { stock: { decrement: line.quantity } },
+          // IKH0EK：支付成功累计销量（首页推荐补齐位/分类页段内排序的口径）
+          data: {
+            stock: { decrement: line.quantity },
+            sales: { increment: line.quantity },
+          },
         });
       const updated = await tx.order.findUniqueOrThrow({ where: { id } });
       if (raw.couponId) {
