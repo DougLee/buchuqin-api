@@ -1294,6 +1294,19 @@ export class AdminService {
     if (data.unitsPerCase != null && data.unitsPerCase < 1)
       throw new BadRequestException('每件含量不能小于 1');
     const after = await this.db.product.update({ where: { id }, data });
+    // 进货价自动下发（2026-09-19 道哥定版「统一用校区价格」）：官方库调进货价
+    // → 全部同步行的快照即时跟随（此前是导入时快照，总部调价后校区不自动跟，
+    // 促销弹窗与官方库出现两个进货价）。自建行（无来源）不受影响。
+    if (
+      campusId === OFFICIAL_CAMPUS_ID &&
+      body.costPrice !== undefined &&
+      body.costPrice !== before.costPrice
+    ) {
+      await this.db.product.updateMany({
+        where: { sourceProductId: id },
+        data: { costPrice: body.costPrice },
+      });
+    }
     await this.audit(
       operator,
       'product.update',
