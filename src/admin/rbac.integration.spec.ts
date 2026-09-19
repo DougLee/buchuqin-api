@@ -338,22 +338,41 @@ describe('RBAC V1 integration (real PG + HTTP)', () => {
   });
 
   it('超管保护：唯一超管不可自摘授权/自停/自删', async () => {
-    const sv = (await db.adminAccount.findUniqueOrThrow({ where: { id: superAcc.id } })).sessionVersion;
-    const t = token(superAcc, '', sv, 'rbac');
-    await request(app.getHttpServer())
-      .patch(`/api/v1/admin/accounts/${superAcc.id}`)
-      .set('Authorization', `Bearer ${t}`)
-      .send({ grants: [] })
-      .expect(403);
-    await request(app.getHttpServer())
-      .patch(`/api/v1/admin/accounts/${superAcc.id}`)
-      .set('Authorization', `Bearer ${t}`)
-      .send({ status: 'disabled' })
-      .expect(403);
-    await request(app.getHttpServer())
-      .delete(`/api/v1/admin/accounts/${superAcc.id}`)
-      .set('Authorization', `Bearer ${t}`)
-      .expect(400); // 不能删除当前登录账号
+    // 测试库常驻联调超管（super001 等）——先临时停用，保证本账号是唯一有效超管，
+    // 断言完恢复（联调环境不受影响）。
+    const others = await db.adminAccountRole.findMany({
+      where: {
+        scope: 'platform',
+        role: { code: 'super-admin' },
+        account: { status: 'active' },
+        accountId: { not: superAcc.id },
+      },
+      select: { accountId: true },
+    });
+    const paused = others.map((o) => o.accountId);
+    for (const id of paused)
+      await db.adminAccount.update({ where: { id }, data: { status: 'disabled' } });
+    try {
+      const sv = (await db.adminAccount.findUniqueOrThrow({ where: { id: superAcc.id } })).sessionVersion;
+      const t = token(superAcc, '', sv, 'rbac');
+      await request(app.getHttpServer())
+        .patch(`/api/v1/admin/accounts/${superAcc.id}`)
+        .set('Authorization', `Bearer ${t}`)
+        .send({ grants: [] })
+        .expect(403);
+      await request(app.getHttpServer())
+        .patch(`/api/v1/admin/accounts/${superAcc.id}`)
+        .set('Authorization', `Bearer ${t}`)
+        .send({ status: 'disabled' })
+        .expect(403);
+      await request(app.getHttpServer())
+        .delete(`/api/v1/admin/accounts/${superAcc.id}`)
+        .set('Authorization', `Bearer ${t}`)
+        .expect(400); // 不能删除当前登录账号
+    } finally {
+      for (const id of paused)
+        await db.adminAccount.update({ where: { id }, data: { status: 'active' } });
+    }
   });
 
   it('授权审计：授权重设与敏感访问都有 rbac.* 审计行', async () => {

@@ -14,6 +14,7 @@ import {
   ROLE_TEMPLATES,
   SUPER_ROLE_CODE,
   LEGACY_ROLE_MAP,
+  MENU_KEYS,
   type PermScope,
 } from './registry';
 
@@ -109,13 +110,22 @@ export class RbacService implements OnModuleInit {
         await tx.adminRole.update({ where: { id: superRole.id }, data: { status: 'active' } });
         changed = true;
       }
-      // 3) 迁移模板角色：存在则只对齐名称；未灌注则一次性灌注
+      // 3) 迁移模板角色：存在则只对齐名称；未灌注则一次性灌注。
+      //    菜单（两层模型第一层）：menus IS NULL 时按模板补齐——对已 seeded 的
+      //    模板角色也补（菜单是后加维度，一次性灌完不再自动重置）。
       for (const t of ROLE_TEMPLATES) {
         const role = await tx.adminRole.upsert({
           where: { code: t.code },
           update: { name: t.name, remark: t.remark },
           create: { code: t.code, name: t.name, remark: t.remark, seeded: false },
         });
+        if (role.menus === null || role.menus === undefined) {
+          await tx.adminRole.update({
+            where: { id: role.id },
+            data: { menus: t.menus as unknown as Prisma.InputJsonValue },
+          });
+          changed = true;
+        }
         if (role.seeded) continue;
         const codes = [...t.platformPermissions, ...t.campusPermissions];
         const perms = await tx.adminPermission.findMany({
@@ -293,7 +303,7 @@ export class RbacService implements OnModuleInit {
 
   /* ==================== 上下文与账号能力面 ==================== */
 
-  /** GET /admin/rbac/me：账号上下文（角色来源+权限清单+可切校区） */
+  /** GET /admin/rbac/me：账号上下文（角色来源+权限清单+可见菜单+可切校区） */
   async buildMeResponse(account: AdminAccount) {
     const ctx = await this.getEffective(account);
     const grants = await this.db.adminAccountRole.findMany({
@@ -306,6 +316,14 @@ export class RbacService implements OnModuleInit {
     const held = [...ctx.permissions]
       .sort()
       .map((code) => ({ code, scope: scopeOf.get(code) ?? 'campus' }));
+    // 可见菜单 = 各 active 角色菜单并集（超管通配全目录；两层模型第一层）
+    const menus = ctx.super
+      ? ['*']
+      : [...new Set(
+          grants
+            .filter((g) => g.role.status === 'active' && Array.isArray(g.role.menus))
+            .flatMap((g) => (g.role.menus as unknown as string[])),
+        )].sort();
     return {
       account: {
         id: account.id, username: account.username, nickname: account.nickname,
@@ -320,6 +338,7 @@ export class RbacService implements OnModuleInit {
         status: g.role.status, builtin: g.role.builtin,
       })),
       permissions: ctx.super ? [{ code: '*', scope: 'platform' as PermScope }] : held,
+      menus,
       /** 切换校区候选集：校区级授权校区；超管=全部校区；纯平台级（总部长）=空（跨校区视角） */
       switchableCampuses: await this.switchableCampuses(ctx),
       rbacVersion: await this.currentVersion(),
@@ -518,6 +537,14 @@ export class RbacService implements OnModuleInit {
 
   /* ==================== 角色管理（仅超管） ==================== */
 
+  /** 菜单 key 校验（两层模型第一层）：只允许目录内 key，去重 */
+  private validateMenus(menus?: string[]): string[] {
+    const list = [...new Set((menus ?? []).map((m) => m.trim()).filter(Boolean))];
+    for (const m of list)
+      if (!MENU_KEYS.has(m)) throw new BadRequestException(`未登记的菜单: ${m}`);
+    return list;
+  }
+
   listRoles() {
     return this.db.adminRole.findMany({
       orderBy: { createdAt: 'asc' },
@@ -530,7 +557,7 @@ export class RbacService implements OnModuleInit {
 
   async createRole(
     actor: { username: string },
-    input: { code: string; name: string; remark?: string; permissionCodes: string[] },
+    input: { code: string; name: string; remark?: string; permissionCodes: string[]; menus?: string[] },
   ) {
     const code = input.code.trim();
     if (!/^[a-z0-9-]{2,40}$/.test(code))
@@ -539,11 +566,15 @@ export class RbacService implements OnModuleInit {
       throw new BadRequestException('该角色编码为内置保留');
     for (const c of input.permissionCodes)
       if (!PERMISSION_CODES.has(c)) throw new BadRequestException(`未登记的权限码: ${c}`);
+    const menus = this.validateMenus(input.menus);
     const created = await this.db.$transaction(async (tx) => {
       const exists = await tx.adminRole.findUnique({ where: { code } });
       if (exists) throw new BadRequestException('角色编码已存在');
       const role = await tx.adminRole.create({
-        data: { code, name: input.name.trim(), remark: input.remark ?? '', seeded: true },
+        data: {
+          code, name: input.name.trim(), remark: input.remark ?? '', seeded: true,
+          menus: menus as unknown as Prisma.InputJsonValue,
+        },
       });
       if (input.permissionCodes.length) {
         const perms = await tx.adminPermission.findMany({
@@ -567,7 +598,7 @@ export class RbacService implements OnModuleInit {
   async updateRole(
     actor: { username: string },
     roleId: string,
-    input: { name?: string; remark?: string; status?: 'active' | 'disabled'; permissionCodes?: string[] },
+    input: { name?: string; remark?: string; status?: 'active' | 'disabled'; permissionCodes?: string[]; menus?: string[] },
   ) {
     const before = await this.db.adminRole.findUnique({
       where: { id: roleId },
@@ -579,6 +610,7 @@ export class RbacService implements OnModuleInit {
     if (input.permissionCodes)
       for (const c of input.permissionCodes)
         if (!PERMISSION_CODES.has(c)) throw new BadRequestException(`未登记的权限码: ${c}`);
+    const menus = input.menus !== undefined ? this.validateMenus(input.menus) : undefined;
     await this.db.$transaction(async (tx) => {
       await this.lockSuperGuard(tx);
       if (input.status === 'disabled' && before.status === 'active') {
@@ -590,6 +622,7 @@ export class RbacService implements OnModuleInit {
           ...(input.name ? { name: input.name.trim() } : {}),
           ...(input.remark !== undefined ? { remark: input.remark } : {}),
           ...(input.status ? { status: input.status } : {}),
+          ...(menus !== undefined ? { menus: menus as unknown as Prisma.InputJsonValue } : {}),
         },
       });
       if (input.permissionCodes) {

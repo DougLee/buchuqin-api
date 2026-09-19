@@ -149,6 +149,9 @@ model AdminRole {
   builtin     Boolean              @default(false)
   /// 迁移模板角色首灌标记：false=尚未灌注初始权限（启动同步负责灌注）；true 后不再自动重置
   seeded      Boolean              @default(false)
+  /// 可见菜单 key 清单（两层模型第一层，2026-09-19 道哥拍板 A）：只控前端菜单显隐，
+  /// 接口鉴权走权限码。null=未初始化（启动同步负责灌注模板菜单）。
+  menus       Json?
   createdAt   DateTime             @default(now())
   updatedAt   DateTime             @updatedAt
   permissions AdminRolePermission[]

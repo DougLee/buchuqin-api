@@ -27,7 +27,7 @@ import { filterByKeyword, paginate } from '../common/pagination';
 import { AdminService } from './admin.service';
 import { AdminAuthGuard } from './rbac/admin-auth.guard';
 import { RbacService } from './rbac/rbac.service';
-import { SECTION_ACCESS_CODE } from './rbac/registry';
+import { SECTION_ACCESS_CODE, MENU_CATALOG } from './rbac/registry';
 import type { RbacContext } from './rbac/rbac.service';
 import {
   AdjustStockDto,
@@ -1843,8 +1843,14 @@ export class AdminController {
     this.requirePerm(req, 'rbac.permissions.read');
     return ok(await this.rbac.listPermissions());
   }
+  @Get('rbac/menus')
+  @ApiOperation({ summary: '菜单目录（两层模型第一层：key/名称/分组，角色勾选用）' })
+  async rbacMenus(@Req() req: AuthRequest) {
+    this.requirePerm(req, 'rbac.roles.read');
+    return ok(MENU_CATALOG);
+  }
   @Get('rbac/roles')
-  @ApiOperation({ summary: '角色列表（含权限集与关联账号数）' })
+  @ApiOperation({ summary: '角色列表（含权限集、可见菜单与关联账号数）' })
   async rbacRoles(@Req() req: AuthRequest) {
     this.requirePerm(req, 'rbac.roles.read');
     const roles = await this.rbac.listRoles();
@@ -1858,28 +1864,29 @@ export class AdminController {
         builtin: r.builtin,
         accountCount: r._count.accounts,
         permissions: r.permissions.map((p) => p.permission.code),
+        menus: r.menus ?? [],
       })),
     );
   }
   @Post('rbac/roles')
-  @ApiOperation({ summary: '新建角色（code+name+权限码集）' })
+  @ApiOperation({ summary: '新建角色（code+name+菜单+权限码集）' })
   async rbacCreateRole(
     @Req() req: AuthRequest,
-    @Body() body: { code: string; name: string; remark?: string; permissionCodes?: string[] },
+    @Body() body: { code: string; name: string; remark?: string; permissionCodes?: string[]; menus?: string[] },
   ) {
     this.requirePerm(req, 'rbac.roles.write');
     const role = await this.rbac.createRole(
       { username: this.ctx(req).username },
-      { code: body.code, name: body.name, remark: body.remark, permissionCodes: body.permissionCodes ?? [] },
+      { code: body.code, name: body.name, remark: body.remark, permissionCodes: body.permissionCodes ?? [], menus: body.menus },
     );
     return ok({ id: role.id, code: role.code }, '角色已创建');
   }
   @Patch('rbac/roles/:id')
-  @ApiOperation({ summary: '编辑角色（名称/备注/启停/权限集全量重设；内置超管不可编辑）' })
+  @ApiOperation({ summary: '编辑角色（名称/备注/启停/菜单/权限集全量重设；内置超管不可编辑）' })
   async rbacUpdateRole(
     @Req() req: AuthRequest,
     @Param('id') id: string,
-    @Body() body: { name?: string; remark?: string; status?: 'active' | 'disabled'; permissionCodes?: string[] },
+    @Body() body: { name?: string; remark?: string; status?: 'active' | 'disabled'; permissionCodes?: string[]; menus?: string[] },
   ) {
     this.requirePerm(req, 'rbac.roles.write');
     await this.rbac.updateRole({ username: this.ctx(req).username }, id, body);

@@ -130,6 +130,63 @@ export function assertKnownCodes(codes: string[]): void {
 /** 受保护内置超管：权限恒为全量（通配，不落 AdminRolePermission，杜绝被改权/删权） */
 export const SUPER_ROLE_CODE = 'super-admin';
 
+/* ---------- 菜单目录（2026-09-19 道哥拍板 A：两层模型——角色直接勾可见菜单） ----------
+ * 菜单 key=前端路由/菜单树 key（session.ts ROUTE_PERM 同源）。菜单只控前端显隐；
+ * 后端接口鉴权照旧走权限码。菜单与操作权限互相独立（勾菜单不隐含任何接口权限），
+ * 配置界面负责提示「菜单无查看权限」的错配。 */
+export interface MenuDef {
+  key: string;
+  name: string;
+  group: string;
+}
+
+export const MENU_CATALOG: MenuDef[] = [
+  // 运营中心
+  { key: 'dashboard', name: '经营总览', group: '运营中心' },
+  { key: 'orders', name: '订单配送', group: '运营中心' },
+  { key: 'after-sales', name: '售后退款', group: '运营中心' },
+  { key: 'battle-map', name: '营销作战地图', group: '运营中心' },
+  { key: 'campus-report', name: '校区日报', group: '运营中心' },
+  // 仓储中心
+  { key: 'official-products', name: '官方商品库', group: '仓储中心' },
+  { key: 'products', name: '商品管理', group: '仓储中心' },
+  { key: 'categories', name: '商品类别', group: '仓储中心' },
+  { key: 'inventory', name: '库存总览', group: '仓储中心' },
+  { key: 'warehouse-orders', name: '拣货任务', group: '仓储中心' },
+  { key: 'inventory-txns', name: '出入库流水', group: '仓储中心' },
+  { key: 'locations', name: '库位管理', group: '仓储中心' },
+  // 订货与采购
+  { key: 'restock', name: '订货管理', group: '订货与采购' },
+  { key: 'purchase', name: '采购管理', group: '订货与采购' },
+  // 营销活动
+  { key: 'banners', name: 'Banner 配置', group: '营销活动' },
+  { key: 'pay-ads', name: '支付广告位', group: '营销活动' },
+  { key: 'coupons', name: '优惠券配置', group: '营销活动' },
+  { key: 'promotions', name: '限时秒杀', group: '营销活动' },
+  { key: 'featured', name: '推荐位管理', group: '营销活动' },
+  { key: 'wheel', name: '抽奖转盘', group: '营销活动' },
+  // 组织管理
+  { key: 'staff', name: '履约人员', group: '组织管理' },
+  { key: 'dispatch', name: '调配与请假', group: '组织管理' },
+  { key: 'recruit', name: '楼长招募', group: '组织管理' },
+  { key: 'buildings', name: '楼栋管理', group: '组织管理' },
+  { key: 'campuses', name: '校区管理', group: '组织管理' },
+  { key: 'users', name: 'C端用户', group: '组织管理' },
+  { key: 'wechat-groups', name: '微信群码', group: '组织管理' },
+  // 财务系统
+  { key: 'finance', name: '结算中心', group: '财务系统' },
+  { key: 'rules', name: '提成规则', group: '财务系统' },
+  { key: 'audit', name: '审计日志', group: '财务系统' },
+  // 系统
+  { key: 'accounts', name: '账号管理', group: '系统' },
+  { key: 'rbac-roles', name: '角色管理', group: '系统' },
+  { key: 'rbac-permissions', name: '权限目录', group: '系统' },
+  { key: 'rbac-audit', name: '权限审计', group: '系统' },
+  { key: 'printers', name: '打印机', group: '系统' },
+];
+
+export const MENU_KEYS = new Set(MENU_CATALOG.map((m) => m.key));
+
 export interface RoleTemplateDef {
   code: string;
   name: string;
@@ -138,6 +195,8 @@ export interface RoleTemplateDef {
   platformPermissions: string[];
   /** 校区级授权持有这些权限（旧校区角色的迁移落点） */
   campusPermissions: string[];
+  /** 可见菜单（旧前端 PERMISSIONS.sections 迁移基线，两层模型第一层） */
+  menus: string[];
 }
 
 /**
@@ -166,6 +225,10 @@ export const ROLE_TEMPLATES: RoleTemplateDef[] = [
       'users.read', 'audit.read',
     ],
     campusPermissions: [],
+    menus: [
+      'dashboard', 'orders', 'campus-report', 'official-products', 'categories',
+      'restock', 'purchase', 'campuses', 'accounts', 'users', 'audit',
+    ],
   },
   {
     code: 'campus-operations',
@@ -193,6 +256,13 @@ export const ROLE_TEMPLATES: RoleTemplateDef[] = [
       'audit.read',
       'users.read', 'users.phone.reveal',
     ],
+    menus: [
+      'dashboard', 'orders', 'after-sales', 'battle-map', 'campus-report',
+      'products', 'categories', 'inventory', 'warehouse-orders', 'inventory-txns', 'locations',
+      'restock', 'coupons', 'promotions', 'featured', 'wheel',
+      'staff', 'recruit', 'buildings', 'campuses', 'users', 'wechat-groups', 'dispatch',
+      'finance', 'rules', 'audit',
+    ],
   },
   {
     code: 'campus-warehouse',
@@ -209,6 +279,11 @@ export const ROLE_TEMPLATES: RoleTemplateDef[] = [
       'restock.read', 'restock.order',
       'after-sales.read',
     ],
+    menus: [
+      'dashboard', 'orders', 'after-sales',
+      'products', 'categories', 'inventory', 'warehouse-orders', 'inventory-txns', 'locations',
+      'restock',
+    ],
   },
   {
     code: 'campus-finance',
@@ -223,6 +298,7 @@ export const ROLE_TEMPLATES: RoleTemplateDef[] = [
       'campus-report.read',
       'audit.read',
     ],
+    menus: ['dashboard', 'orders', 'campus-report', 'finance', 'rules', 'audit'],
   },
 ];
 
@@ -269,6 +345,9 @@ export const SECTION_ACCESS_CODE: Record<
   recruit: { read: 'recruit.read', write: 'recruit.approve' },
 };
 
-// 启动即校验：模板/映射引用的权限码必须全部登记
+// 启动即校验：模板/映射引用的权限码与菜单 key 必须全部登记
 for (const t of ROLE_TEMPLATES) assertKnownCodes([...t.platformPermissions, ...t.campusPermissions]);
 for (const v of Object.values(SECTION_ACCESS_CODE)) assertKnownCodes([v.read, v.write]);
+for (const t of ROLE_TEMPLATES)
+  for (const m of t.menus)
+    if (!MENU_KEYS.has(m)) throw new Error(`模板 ${t.code} 引用未登记菜单: ${m}`);

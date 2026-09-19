@@ -77,3 +77,7 @@ CREATE TABLE "RbacState" (
     "updatedAt" TIMESTAMP(3) NOT NULL,
     CONSTRAINT "RbacState_pkey" PRIMARY KEY ("id")
 );
+
+-- 7) 角色可见菜单（两层模型第一层，2026-09-19 道哥拍板 A）：key 清单，
+--    模板角色菜单由启动同步灌注（menus IS NULL 时按模板补齐）
+ALTER TABLE "AdminRole" ADD COLUMN "menus" JSONB;

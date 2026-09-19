@@ -110,16 +110,39 @@ describe('admin account management (IK9KWO)', () => {
   });
 
   it('最后一个超管不可摘权也不可删除（AdminAccountRole 维度保护）', async () => {
-    // V1 变化：旧「降级 role 字段」通道已拆——摘权=重设授权，保护下探到授权行
-    await expect(
-      rbac.setAccountRoles(actor, superAdminId, [
-        { roleCode: 'campus-operations', scope: 'campus', campusId: CAMPUS },
-      ]),
-    ).rejects.toThrow('必须保留至少一个有效的超级管理员');
-    // 用另一个操作者身份绕过"不能删自己"，验证最后超管保护独立生效
-    await expect(
-      service.deleteAccount(superAdminId, 'someone-else'),
-    ).rejects.toThrow(ForbiddenException);
+    // 测试库常驻联调超管（super001 等）——先临时停用保证唯一性，断言完恢复
+    const others = await db.adminAccountRole.findMany({
+      where: {
+        scope: 'platform',
+        role: { code: 'super-admin' },
+        account: { status: 'active' },
+        accountId: { not: superAdminId },
+      },
+      select: { accountId: true },
+    });
+    for (const o of others)
+      await db.adminAccount.update({
+        where: { id: o.accountId },
+        data: { status: 'disabled' },
+      });
+    try {
+      // V1 变化：旧「降级 role 字段」通道已拆——摘权=重设授权，保护下探到授权行
+      await expect(
+        rbac.setAccountRoles(actor, superAdminId, [
+          { roleCode: 'campus-operations', scope: 'campus', campusId: CAMPUS },
+        ]),
+      ).rejects.toThrow('必须保留至少一个有效的超级管理员');
+      // 用另一个操作者身份绕过"不能删自己"，验证最后超管保护独立生效
+      await expect(
+        service.deleteAccount(superAdminId, 'someone-else'),
+      ).rejects.toThrow(ForbiddenException);
+    } finally {
+      for (const o of others)
+        await db.adminAccount.update({
+          where: { id: o.accountId },
+          data: { status: 'active' },
+        });
+    }
   });
 
   it('自助改密：旧密码失效、新密码可登录、错旧密码 401', async () => {
