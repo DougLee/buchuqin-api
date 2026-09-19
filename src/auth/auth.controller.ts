@@ -208,10 +208,12 @@ export class AuthController {
   @ApiBearerAuth()
   async profile(@Req() req: AuthRequest) {
     if (req.user.role === 'user') {
-      const user = await this.db.user.findUniqueOrThrow({
+      // 陈旧/无效 token（用户已删）给 401 而非 500（线上曾因旧 token 刷屏 P2025）
+      const user = await this.db.user.findUnique({
         where: { id: req.user.id },
         include: { addresses: true },
       });
+      if (!user) throw new UnauthorizedException('登录已失效，请重新登录');
       return ok({
         ...req.user,
         nickname: user.nickname,
