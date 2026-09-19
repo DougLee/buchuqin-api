@@ -16,9 +16,15 @@ describe('AdminService PostgreSQL integration', () => {
   >[0];
   afterAll(() => db.$disconnect());
   it('aggregates persisted operational data', async () => {
-    expect((await service.dashboard('campus-hbut')).campus.name).toBe(
-      '湖北工业大学',
-    );
+    // 单校区入参返回 { campus, ... }；跨校区（''）返回 { campusRows, ... }（联合类型）
+    const dash = (await service.dashboard('campus-hbut')) as {
+      campus?: { name: string };
+      campusRows?: { campusId: string; name: string }[];
+    };
+    expect(
+      dash.campus?.name ??
+        dash.campusRows?.find((r) => r.campusId === 'campus-hbut')?.name,
+    ).toBe('湖北工业大学');
     expect((await service.products('campus-hbut')).length).toBeGreaterThan(10);
     expect((await service.staff('campus-hbut')).length).toBe(3);
   });

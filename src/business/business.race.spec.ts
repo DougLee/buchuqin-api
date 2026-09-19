@@ -209,6 +209,9 @@ describe('BusinessService concurrency races (PostgreSQL)', () => {
       status: 'pending-payment',
       statusText: '等待支付',
     });
+    const stockBefore = (
+      await db.product.findUniqueOrThrow({ where: { id: PRODUCT_ID } })
+    ).stock;
     await service.pay(userId, order.id);
     await expect(service.cancel(userId, order.id)).rejects.toThrow(
       '订单已支付，如需取消请联系客服处理',
@@ -217,6 +220,11 @@ describe('BusinessService concurrency races (PostgreSQL)', () => {
     expect(await db.refund.count({ where: { orderId: order.id } })).toBe(0);
     const final = await db.order.findUniqueOrThrow({ where: { id: order.id } });
     expect(final.status).toBe('paid');
+    // 库存恢复（pay 已扣减）：本用例曾漏回补，多轮全量跑套件把演示库存耗到 0
+    await db.product.update({
+      where: { id: PRODUCT_ID },
+      data: { stock: stockBefore },
+    });
   });
 
   it('concurrent rider accept: only one rider wins the task', async () => {

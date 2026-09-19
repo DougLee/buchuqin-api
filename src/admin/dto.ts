@@ -83,6 +83,46 @@ export class CreateProductDto extends BarcodeDto {
   /** 商品介绍（IKAHAU）：纯文本多行 ≤2000 字，空 = C 端不渲染区块。 */
   @IsOptional() @IsString() @MaxLength(2000) description?: string;
 }
+/**
+ * 商品改价专用端点（蛋词体系字段级分权，2026-09-19）：
+ * 价格字段单独成 PATCH /admin/products/:id/price，判权走 products.price 按钮模式。
+ * 单位分；至少传一个价格字段（controller 校验）。
+ */
+export class UpdateProductPriceDto {
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) price?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0) originalPrice?: number;
+  /** 进货价：仅官方库行接受（service 校验 campus）。 */
+  @IsOptional() @Type(() => Number) @IsInt() @Min(0) costPrice?: number;
+  /** 批发价：仅官方库行接受（service 校验 campus）。 */
+  @IsOptional() @Type(() => Number) @IsInt() @Min(0) wholesalePrice?: number;
+}
+/** 身份证补录专用端点（POST /admin/recruit-applications/:id/idcard）。 */
+export class UpdateRecruitIdcardDto {
+  @IsOptional() @IsString() @MaxLength(30) idCardNo?: string;
+  @IsOptional() @IsArray() @IsString({ each: true }) idCardImages?: string[];
+}
+/** 建自建菜单节点（builtin=false；code 后端生成，结构可后续调整）。 */
+export class CreateAdminMenuDto {
+  @IsString() @MinLength(1) @MaxLength(30) name!: string;
+  @IsIn([0, 1, 2]) type!: number;
+  @IsOptional() @IsString() parentCode?: string;
+  /** URL 模式串（"METHOD /admin/…"），按钮行通常必填、目录行留空。 */
+  @IsOptional() @IsArray() @IsString({ each: true }) perms?: string[];
+  @IsOptional() @IsString() @MaxLength(120) path?: string;
+  @IsOptional() @IsString() @MaxLength(40) icon?: string;
+  @IsOptional() @Type(() => Number) @IsInt() orderNum?: number;
+}
+/** 改菜单：builtin 行仅表现字段生效（结构字段 service 层拒绝）；自建行全可改。 */
+export class UpdateAdminMenuDto {
+  @IsOptional() @IsString() @MinLength(1) @MaxLength(30) name?: string;
+  @IsOptional() @IsString() @MaxLength(40) icon?: string;
+  @IsOptional() @Type(() => Number) @IsInt() orderNum?: number;
+  @IsOptional() @IsBoolean() isShow?: boolean;
+  @IsOptional() @IsIn([0, 1, 2]) type?: number;
+  @IsOptional() @IsArray() @IsString({ each: true }) perms?: string[];
+  @IsOptional() @IsString() @MaxLength(120) path?: string;
+  @IsOptional() @IsString() parentId?: string | null;
+}
 /** 商品改价/改库存/换头图（IK9RWX）：image 走 COS 上传后的公网 URL。
  *  资料可编辑（IKAHAT）：名称/副标题/分类/原价/标签/重量并入 PATCH。 */
 export class UpdateProductDto {

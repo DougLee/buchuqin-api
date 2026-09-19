@@ -149,13 +149,13 @@ model AdminRole {
   builtin     Boolean              @default(false)
   /// 迁移模板角色首灌标记：false=尚未灌注初始权限（启动同步负责灌注）；true 后不再自动重置
   seeded      Boolean              @default(false)
-  /// 可见菜单 key 清单（两层模型第一层，2026-09-19 道哥拍板 A）：只控前端菜单显隐，
-  /// 接口鉴权走权限码。null=未初始化（启动同步负责灌注模板菜单）。
+  /// 已退役：两层模型时期的菜单 key 清单（真源已切 AdminRoleMenu，保留列供回滚）
   menus       Json?
   createdAt   DateTime             @default(now())
   updatedAt   DateTime             @updatedAt
-  permissions AdminRolePermission[]
-  accounts    AdminAccountRole[]
+  permissions   AdminRolePermission[]
+  accounts      AdminAccountRole[]
+  adminRoleMenus AdminRoleMenu[]
 }
 
 /// 权限点：由开发在代码登记（src/admin/rbac/registry.ts）同步入库，后台只读。
@@ -212,6 +212,50 @@ model RbacState {
   id      String   @id @default("global")
   version Int      @default(0)
   updatedAt DateTime @updatedAt
+}
+
+/* ---------- 蛋词体系对齐（2026-09-19 拍板 B）：菜单+按钮权限合一棵树 ---------- */
+
+/// 系统菜单（对齐蛋词 base_sys_menu）：type 0 目录/1 菜单/2 按钮；perms=URL 模式
+/// （"METHOD /admin/xxx/:seg" 逗号串）。code 为代码登记锚点：启动幂等 upsert——
+/// 结构字段（type/parent/perms/path）以代码为准；表现字段（name/icon/orderNum/isShow）
+/// 后台可改不被覆盖。parentId 为裸串不建外键（菜单树生命周期独立于关联行）。
+model AdminMenu {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  parentId  String?
+  name      String
+  /// 0=目录 1=菜单 2=按钮
+  type      Int      @default(0)
+  /// URL 模式逗号串（鉴权真源）；菜单行=查看类 GET，按钮行=操作类
+  perms     String   @default("")
+  /// 菜单：前端路由 path（如 /products）
+  path      String   @default("")
+  /// 菜单：前端组件标识（组件映射表键，动态注册用）
+  viewPath  String   @default("")
+  icon      String   @default("")
+  orderNum  Int      @default(0)
+  isShow    Boolean  @default(true)
+  status    String   @default("active")
+  /// 代码登记节点（启动同步维护）；后台自建节点 false
+  builtin   Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  roleMenus AdminRoleMenu[]
+
+  @@index([parentId, orderNum])
+}
+
+/// 角色-菜单（对齐蛋词 base_sys_role_menu）：勾目录/菜单/按钮一体。
+model AdminRoleMenu {
+  id        String    @id @default(cuid())
+  role      AdminRole @relation(fields: [roleId], references: [id])
+  roleId    String
+  menu      AdminMenu @relation(fields: [menuId], references: [id], onDelete: Cascade)
+  menuId    String
+  createdAt DateTime  @default(now())
+
+  @@unique([roleId, menuId])
 }
 
 /**

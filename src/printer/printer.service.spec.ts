@@ -1,8 +1,9 @@
 import { PrinterService, ReceiptOrderContext } from './printer.service';
+import { PrismaService } from '../database/prisma.service';
 
 /** 小票打印（IKBT6N）：sign 算法与 58mm 票面构建；网络调用用 stub 不真实外发。 */
 describe('PrinterService (IKBT6N)', () => {
-  const service = new PrinterService();
+  const service = new PrinterService(new PrismaService());
   const order: ReceiptOrderContext = {
     id: 'order-1',
     orderNo: 'BCQ20260828TEST01',

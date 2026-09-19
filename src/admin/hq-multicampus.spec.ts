@@ -108,17 +108,21 @@ describe('hq role & cross-campus views (IKAJSL)', () => {
     await db.$disconnect();
   });
 
-  it('权限映射（RBAC V1）：banners 校区自管归 admin 超管（IKBW0A）；hq 不碰校区营销/订单写', () => {
-    // 旧 canAdmin 矩阵已退役：等价断言走模板权限（legacyRbacCtx=迁移产物语义）
-    const has = (role: string, code: string) => rbac.has(legacyRbacCtx(role), code);
-    expect(has('hq', 'banners.write')).toBe(false);
-    expect(has('hq', 'banners.read')).toBe(false);
-    expect(has('admin', 'banners.read')).toBe(true);
-    expect(has('admin', 'banners.write')).toBe(true);
-    expect(has('operations', 'banners.read')).toBe(false);
-    expect(has('hq', 'marketing.read')).toBe(false);
-    expect(has('hq', 'orders.write')).toBe(false);
-    expect(has('hq', 'orders.read')).toBe(true);
+  it('权限映射（蛋词体系）：banners 校区自管归 admin 超管（IKBW0A）；hq 不碰校区营销/订单写', () => {
+    // 旧 canAdmin/权限码矩阵已退役：等价断言走 URL 模式（legacyRbacCtx=迁移产物语义）
+    const allow = (role: string, method: string, path: string) =>
+      rbac.allow(legacyRbacCtx(role), method, path);
+    expect(allow('hq', 'GET', '/admin/banners')).toBe(false);
+    expect(allow('hq', 'POST', '/admin/banners')).toBe(false);
+    expect(allow('admin', 'GET', '/admin/banners')).toBe(true);
+    expect(allow('admin', 'POST', '/admin/banners')).toBe(true);
+    // Banner 校区自管仅 admin（IKBW0A 旧矩阵铁律）：operations 读写皆拒
+    expect(allow('operations', 'GET', '/admin/banners')).toBe(false);
+    expect(allow('operations', 'POST', '/admin/banners')).toBe(false);
+    expect(allow('hq', 'GET', '/admin/coupons')).toBe(false); // marketing 域
+    expect(allow('hq', 'POST', '/admin/orders/o1/status')).toBe(false); // orders.write
+    // hq orders.read 保留（模板勾了 orders 菜单，与旧矩阵一致）
+    expect(allow('hq', 'GET', '/admin/orders')).toBe(true);
   });
 
   it('hq dashboard：跨校区汇总含两校区，B 校今日支付计入', async () => {

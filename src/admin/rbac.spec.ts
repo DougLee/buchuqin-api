@@ -1,210 +1,226 @@
-import { ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
-import { BusinessService } from '../business/business.service';
-import { AdminController } from './admin.controller';
-import { AdminService } from './admin.service';
-import { RbacService } from './rbac/rbac.service';
-import { legacyRbacCtx, specReq } from './rbac/spec-fixtures';
+import { RbacService, matchUrl } from './rbac/rbac.service';
+import { legacyRbacCtx } from './rbac/spec-fixtures';
+import { ADMIN_URL_WHITELIST } from './rbac/registry';
 import {
-  ROLE_TEMPLATES,
-  SECTION_ACCESS_CODE,
-} from './rbac/registry';
+  concreteRoute,
+  listAdminRoutes,
+  uncoveredRoutes,
+} from './rbac/route-inventory';
 
 /**
- * RBAC V1 迁移等价性（IK9JHR → 2026-09-19 重构）：
- * 旧静态矩阵（git main:src/admin/permissions.ts ADMIN_MATRIX，ADR-0004 签字版）
- * 在此冻结为基线——新体系（LEGACY_ROLE_MAP→ROLE_TEMPLATES 模板权限 + specReq
- * 上下文 + SECTION_ACCESS_CODE 端点映射）不得比旧矩阵缩水（有意变化除外，逐条注明）。
+ * RBAC 蛋词体系（2026-09-19 拍板 B）单元测试：
+ * - matchUrl 模式匹配内核（:seg 通配/方法区分/多模式/尾斜杠）；
+ * - 旧五角色（LEGACY_ROLE_MAP→ROLE_TEMPLATES 推导上下文）的关键 URL 模式
+ *   allow/deny 对账（冻结旧 ADMIN_MATRIX 的代表性端点，写语义无缩水）；
+ * - 有意行为变化逐条钉死（URL 通配固有语义 + V1 遗留收权）；
+ * - 模式覆盖自检：AdminController 每条路由必须被 ≥1 个 registry 模式覆盖
+ *   或在守卫白名单内（漏配即红——本任务的自检闭环）。
  */
 
-/* ---------- 冻结基线：旧 ADMIN_MATRIX 快照（勿改——迁移对账凭据） ---------- */
-type LegacyRole = 'admin' | 'hq' | 'operations' | 'warehouse' | 'finance';
-const LEGACY_ROLES: LegacyRole[] = [
-  'admin',
-  'hq',
-  'operations',
-  'warehouse',
-  'finance',
-];
-const LEGACY_MATRIX: Record<string, { read: LegacyRole[]; write: LegacyRole[] }> = {
-  dashboard: { read: [...LEGACY_ROLES], write: [] },
-  orders: {
-    read: [...LEGACY_ROLES],
-    write: ['admin', 'operations'],
-  },
-  products: {
-    read: ['admin', 'operations', 'warehouse', 'hq'],
-    write: ['admin', 'operations', 'warehouse', 'hq'],
-  },
-  categories: {
-    read: ['admin', 'operations', 'warehouse', 'hq'],
-    write: ['admin', 'operations', 'warehouse', 'hq'],
-  },
-  inventory: {
-    read: ['admin', 'operations', 'warehouse', 'hq'],
-    write: ['admin', 'operations', 'warehouse', 'hq'],
-  },
-  restock: {
-    read: ['admin', 'operations', 'warehouse', 'hq'],
-    write: ['admin', 'operations', 'warehouse', 'hq'],
-  },
-  purchase: { read: ['hq', 'admin'], write: ['hq', 'admin'] },
-  'campus-report': {
-    read: ['hq', 'admin', 'operations', 'finance'],
-    write: [],
-  },
-  staff: { read: ['admin', 'operations'], write: ['admin', 'operations'] },
-  campuses: {
-    read: ['admin', 'operations', 'hq'],
-    write: ['admin', 'operations', 'hq'],
-  },
-  buildings: { read: ['admin', 'operations'], write: ['admin', 'operations'] },
-  'after-sales': {
-    read: ['admin', 'operations', 'warehouse', 'finance'],
-    write: [],
-  },
-  finance: {
-    read: ['admin', 'operations', 'finance'],
-    write: ['admin', 'finance'],
-  },
-  marketing: { read: ['admin', 'operations'], write: ['admin', 'operations'] },
-  // IKBW0A：Banner 校区自管归 admin（hq 投放废止）
-  banners: { read: ['admin'], write: ['admin'] },
-  // IKBW0Q：打印机绑定与 banners 同口径
-  printers: { read: ['admin'], write: ['admin'] },
-  audit: {
-    read: ['admin', 'operations', 'finance', 'hq'],
-    write: [],
-  },
-  accounts: { read: ['hq', 'admin'], write: ['hq', 'admin'] },
-  users: { read: ['admin', 'operations', 'hq'], write: [] },
-  'wechat-groups': {
-    read: ['admin', 'operations'],
-    write: ['admin', 'operations'],
-  },
-  recruit: { read: ['admin', 'operations'], write: ['admin', 'operations'] },
-};
+describe('matchUrl（蛋词模式匹配内核）', () => {
+  it(':seg 通配单段；段数不同不匹配', () => {
+    expect(matchUrl(['GET /admin/orders/:id'], 'GET', '/admin/orders/abc123')).toBe(true);
+    expect(matchUrl(['GET /admin/orders/:id'], 'GET', '/admin/orders')).toBe(false);
+    expect(matchUrl(['GET /admin/orders/:id'], 'GET', '/admin/orders/a/b')).toBe(false);
+  });
+  it('方法严格区分（同路径不同 method 拒）', () => {
+    expect(matchUrl(['PATCH /admin/products/:id'], 'PATCH', '/admin/products/x')).toBe(true);
+    expect(matchUrl(['PATCH /admin/products/:id'], 'POST', '/admin/products/x')).toBe(false);
+    expect(matchUrl(['PATCH /admin/products/:id'], 'GET', '/admin/products/x')).toBe(false);
+  });
+  it('多模式并集：命中任一即放行', () => {
+    const pats = ['GET /admin/orders', 'GET /admin/orders/status-counts'];
+    expect(matchUrl(pats, 'GET', '/admin/orders')).toBe(true);
+    expect(matchUrl(pats, 'GET', '/admin/orders/status-counts')).toBe(true);
+    expect(matchUrl(pats, 'GET', '/admin/orders/other')).toBe(false);
+  });
+  it('字面段优先于通配心智：:id 也能匹配字面段（status-counts 被 :id 覆盖是固有语义）', () => {
+    expect(matchUrl(['GET /admin/orders/:id'], 'GET', '/admin/orders/status-counts')).toBe(true);
+  });
+  it('尾部斜杠归一（/admin/x/ 与 /admin/x 同权）', () => {
+    expect(matchUrl(['GET /admin/orders'], 'GET', '/admin/orders/')).toBe(true);
+  });
+  it('价格拆分端点与普通编辑端点模式互不误伤', () => {
+    expect(matchUrl(['PATCH /admin/products/:id/price'], 'PATCH', '/admin/products/x/price')).toBe(true);
+    expect(matchUrl(['PATCH /admin/products/:id/price'], 'PATCH', '/admin/products/x')).toBe(false);
+    expect(matchUrl(['PATCH /admin/products/:id'], 'PATCH', '/admin/products/x/price')).toBe(false);
+  });
+  it('无方法前缀的脏模式被忽略（不炸不误放）', () => {
+    expect(matchUrl(['/admin/orders'], 'GET', '/admin/orders')).toBe(false);
+  });
+});
 
-/* ---------- 等价改写：旧板块×角色 → 新端点权限码 ---------- */
-/**
- * 拆码改写（旧一格读写 → 新更细粒度；语义等价但码不同）：
- * - hq×products：旧「hq 商品板块=官方商品库」（IKAJSM）拆为 products.official.*；
- * - hq×restock(write)：旧「批次管理+审单」拆为平台码 restock.manage。
- * 其余板块×角色按 SECTION_ACCESS_CODE 直译。
- */
-const CODE_OVERRIDE: Record<
-  string,
-  { read?: string; write?: string }
-> = {
-  'hq|products': { read: 'products.official.read', write: 'products.official.write' },
-  'hq|restock': { write: 'restock.manage' },
-};
-const endpointCode = (role: string, section: string, access: 'read' | 'write') =>
-  CODE_OVERRIDE[`${role}|${section}`]?.[access] ??
-  SECTION_ACCESS_CODE[section][access];
+describe('admin RBAC 蛋词体系（角色×URL 模式对账）', () => {
+  const rbac = new RbacService(new PrismaService());
+  const allow = (role: string, method: string, path: string) =>
+    rbac.allow(legacyRbacCtx(role), method, path);
 
-/**
- * 有意变化（V1 收权/对齐，非缩水事故；单独用例逐一断言）：
- * - operations|campuses|write：旧矩阵写列含 operations，但 IKBWRT controller
- *   门禁实际只放 hq/admin（矩阵与门禁漂移）；V1 权限码与真实门禁对齐 → 拒。
- * - hq|accounts|write：旧 hq 可管账号；V1 收归超管（goal：仅超管管理账号授权）。
- */
-const INTENTIONAL_DENY = ['operations|campuses|write', 'hq|accounts|write'];
+  /* ---------- admin：超管通配 ---------- */
+  it('admin（超管）任意 method+path 放行', () => {
+    for (const [m, p] of [
+      ['GET', '/admin/anything'],
+      ['POST', '/admin/rbac/roles'],
+      ['DELETE', '/admin/rbac/menus/x'],
+      ['PATCH', '/admin/products/x/price'],
+    ] as const)
+      expect(allow('admin', m, p)).toBe(true);
+  });
 
-describe('admin RBAC migration (IK9JHR → V1)', () => {
-  const db = new PrismaService();
-  const rbac = new RbacService(db);
-  const admin = new AdminController(
-    new AdminService(db, new BusinessService(db)),
-    rbac,
-  );
-  const has = (role: string, code: string) =>
-    rbac.has(legacyRbacCtx(role), code);
-  /** 经控制器 authorize 兼容层（SECTION_ACCESS_CODE 映射 + requirePerm 链路） */
-  const authorize = (
-    role: string,
-    section: string,
-    access: 'read' | 'write' = 'read',
-  ) =>
-    (
-      admin as unknown as {
-        authorize: (r: unknown, s: unknown, a: unknown) => void;
-      }
-    ).authorize(specReq(role), section, access);
+  /* ---------- operations（campus-operations）：运营全权、平台动作拒绝 ---------- */
+  it('operations：读面板/订单读写/商品/订货/招募/营销全通', () => {
+    expect(allow('operations', 'GET', '/admin/dashboard')).toBe(true);
+    expect(allow('operations', 'GET', '/admin/orders')).toBe(true);
+    expect(allow('operations', 'GET', '/admin/orders/status-counts')).toBe(true);
+    expect(allow('operations', 'POST', '/admin/orders/o1/actions/ship')).toBe(true);
+    expect(allow('operations', 'POST', '/admin/orders/o1/status')).toBe(true);
+    expect(allow('operations', 'PATCH', '/admin/products/p1')).toBe(true);
+    expect(allow('operations', 'PATCH', '/admin/products/p1/price')).toBe(true);
+    expect(allow('operations', 'POST', '/admin/products/batch-status')).toBe(true);
+    expect(allow('operations', 'POST', '/admin/inventory/stocktake')).toBe(true);
+    expect(allow('operations', 'PUT', '/admin/restock/batches/b1/order')).toBe(true);
+    expect(allow('operations', 'POST', '/admin/staff')).toBe(true);
+    expect(allow('operations', 'POST', '/admin/recruit-applications/a1/idcard')).toBe(true);
+    expect(allow('operations', 'POST', '/admin/recruit-applications/a1/approve')).toBe(true);
+    expect(allow('operations', 'GET', '/admin/users/u1/phone')).toBe(true);
+    expect(allow('operations', 'GET', '/admin/marketing/map')).toBe(true);
+    expect(allow('operations', 'GET', '/admin/battle-map/rooms/r1')).toBe(true);
+    expect(allow('operations', 'POST', '/admin/coupons')).toBe(true);
+    expect(allow('operations', 'PUT', '/admin/wheel')).toBe(true);
+  });
+  it('operations：平台动作与超管域拒绝', () => {
+    expect(allow('operations', 'POST', '/admin/settlements/s1/confirm')).toBe(false); // 旧矩阵 finance.write 本就只 admin/finance
+    expect(allow('operations', 'POST', '/admin/inventory/stock-in')).toBe(false);
+    expect(allow('operations', 'GET', '/admin/purchase/orders')).toBe(false);
+    expect(allow('operations', 'POST', '/admin/campuses')).toBe(false); // 有意变化①（对齐 IKBWRT 真实门禁）
+    expect(allow('operations', 'POST', '/admin/rbac/roles')).toBe(false);
+    expect(allow('operations', 'POST', '/admin/rbac/menus')).toBe(false);
+    expect(allow('operations', 'GET', '/admin/accounts')).toBe(false);
+    // Banner：校区自管仅 admin（IKBW0A）；operations 读写皆拒（pay-ads 同源同拒）
+    expect(allow('operations', 'GET', '/admin/banners')).toBe(false);
+    expect(allow('operations', 'POST', '/admin/banners')).toBe(false);
+  });
 
-  afterAll(() => db.$disconnect());
+  /* ---------- warehouse（campus-warehouse）：订单只读+可出库 ---------- */
+  it('warehouse：商品/库存/订货可写；订单只读但可出库', () => {
+    expect(allow('warehouse', 'GET', '/admin/orders')).toBe(true);
+    expect(allow('warehouse', 'POST', '/admin/orders/o1/actions/outbound')).toBe(true);
+    expect(allow('warehouse', 'POST', '/admin/orders/o1/actions/cancel')).toBe(false);
+    expect(allow('warehouse', 'PATCH', '/admin/products/p1')).toBe(true);
+    expect(allow('warehouse', 'PATCH', '/admin/products/p1/price')).toBe(true);
+    expect(allow('warehouse', 'POST', '/admin/inventory/stocktake')).toBe(true);
+    expect(allow('warehouse', 'PUT', '/admin/restock/batches/b1/order')).toBe(true);
+    expect(allow('warehouse', 'POST', '/admin/restock/orders/r1/receipt')).toBe(true);
+  });
+  it('warehouse：直入/批次管理/财务/招募/员工全拒', () => {
+    expect(allow('warehouse', 'POST', '/admin/inventory/stock-in')).toBe(false);
+    expect(allow('warehouse', 'POST', '/admin/restock/batches')).toBe(false);
+    expect(allow('warehouse', 'POST', '/admin/restock/orders/r1/audit')).toBe(false);
+    expect(allow('warehouse', 'GET', '/admin/settlements')).toBe(false);
+    expect(allow('warehouse', 'GET', '/admin/staff')).toBe(false);
+    expect(allow('warehouse', 'GET', '/admin/recruit-applications')).toBe(false);
+    expect(allow('warehouse', 'GET', '/admin/users/u1/phone')).toBe(false);
+  });
 
-  it('冻结基线自检：旧矩阵 write ⊆ read，read 非空', () => {
-    for (const rule of Object.values(LEGACY_MATRIX)) {
-      for (const role of rule.write) expect(rule.read).toContain(role);
-      expect(rule.read.length).toBeGreaterThan(0);
+  /* ---------- finance（campus-finance）：结算/规则/日报 ---------- */
+  it('finance：结算确认/支付、提成规则、审计可写；不碰商品库存', () => {
+    expect(allow('finance', 'GET', '/admin/settlements')).toBe(true);
+    expect(allow('finance', 'POST', '/admin/settlements/s1/confirm')).toBe(true);
+    expect(allow('finance', 'POST', '/admin/settlements/s1/pay')).toBe(true);
+    expect(allow('finance', 'POST', '/admin/commission-rules')).toBe(true);
+    expect(allow('finance', 'PATCH', '/admin/commission-rules/c1')).toBe(true);
+    expect(allow('finance', 'GET', '/admin/audit-logs')).toBe(true);
+    expect(allow('finance', 'GET', '/admin/reports/campus-daily')).toBe(true);
+    expect(allow('finance', 'GET', '/admin/after-sales')).toBe(true);
+  });
+  it('finance：商品/库存/员工/招募拒绝（旧矩阵同口径）', () => {
+    expect(allow('finance', 'PATCH', '/admin/products/p1')).toBe(false);
+    expect(allow('finance', 'POST', '/admin/inventory/stocktake')).toBe(false);
+    expect(allow('finance', 'GET', '/admin/staff')).toBe(false);
+    expect(allow('finance', 'GET', '/admin/recruit-applications')).toBe(false);
+    expect(allow('finance', 'POST', '/admin/inventory/stock-in')).toBe(false);
+  });
+
+  /* ---------- hq（hq-director）：官方库/库存/订货批次/采购/校区本体 ---------- */
+  it('hq：官方库维护/直入/批次管理/采购/校区本体/账号只读', () => {
+    expect(allow('hq', 'GET', '/admin/products')).toBe(true);
+    expect(allow('hq', 'POST', '/admin/products')).toBe(true);
+    expect(allow('hq', 'PATCH', '/admin/products/p1')).toBe(true);
+    expect(allow('hq', 'POST', '/admin/products/batch-status')).toBe(true);
+    // official.write 模式含拉上游；端点内对「平台且无校区上下文」另有业务 403（官方库即源头）
+    expect(allow('hq', 'POST', '/admin/products/p1/pull-upstream')).toBe(true);
+    expect(allow('hq', 'GET', '/admin/inventory')).toBe(true);
+    expect(allow('hq', 'POST', '/admin/inventory/stock-in')).toBe(true);
+    expect(allow('hq', 'POST', '/admin/restock/batches')).toBe(true);
+    expect(allow('hq', 'POST', '/admin/restock/orders/r1/ship')).toBe(true);
+    expect(allow('hq', 'GET', '/admin/purchase/orders')).toBe(true);
+    expect(allow('hq', 'POST', '/admin/purchase/orders/p1/receive')).toBe(true);
+    expect(allow('hq', 'GET', '/admin/reports/hq-daily')).toBe(true);
+    expect(allow('hq', 'POST', '/admin/campuses')).toBe(true);
+    expect(allow('hq', 'PATCH', '/admin/campuses/c1')).toBe(true);
+    expect(allow('hq', 'GET', '/admin/accounts')).toBe(true); // 只读保留（旧矩阵 accounts.read）
+  });
+  it('hq：校区动作与超管域拒绝', () => {
+    expect(allow('hq', 'POST', '/admin/accounts')).toBe(false); // 有意变化②：账号管理收归超管
+    expect(allow('hq', 'PUT', '/admin/restock/batches/b1/order')).toBe(false); // 拆码：校区订货动作
+    expect(allow('hq', 'GET', '/admin/after-sales')).toBe(false); // 旧矩阵 hq 无售后
+    expect(allow('hq', 'POST', '/admin/rbac/roles')).toBe(false);
+    expect(allow('hq', 'POST', '/admin/rbac/menus')).toBe(false);
+    expect(allow('hq', 'GET', '/admin/settlements')).toBe(false);
+    expect(allow('hq', 'GET', '/admin/banners')).toBe(false);
+  });
+
+  /* ---------- 模板无缩水抽查：旧矩阵 write=true 的端点全部可达 ---------- */
+  it('旧矩阵 write 语义无缩水（各角色写端点都在模板 patterns 内）', () => {
+    // orders.write: admin/operations
+    expect(allow('operations', 'POST', '/admin/orders/o1/status')).toBe(true);
+    // products/categories/inventory/restock write: admin/operations/warehouse/hq（hq=官方库+批次管理拆码）
+    expect(allow('warehouse', 'PATCH', '/admin/categories/c1')).toBe(true);
+    expect(allow('hq', 'PATCH', '/admin/categories/c1')).toBe(true);
+    expect(allow('warehouse', 'DELETE', '/admin/locations/l1')).toBe(true);
+    expect(allow('hq', 'DELETE', '/admin/locations/l1')).toBe(true);
+    expect(allow('hq', 'POST', '/admin/restock/orders/r1/audit')).toBe(true);
+    // purchase write: hq/admin
+    expect(allow('hq', 'POST', '/admin/restock/batches/b1/purchase-order')).toBe(true);
+    expect(allow('operations', 'POST', '/admin/restock/batches/b1/purchase-order')).toBe(false);
+    // staff/buildings/recruit/marketing/wechat-groups write: admin/operations
+    expect(allow('operations', 'PATCH', '/admin/staff/s1')).toBe(true);
+    expect(allow('operations', 'POST', '/admin/buildings')).toBe(true);
+    expect(allow('operations', 'POST', '/admin/buildings/b1/rooms')).toBe(true);
+    expect(allow('operations', 'POST', '/admin/buildings/b1/rooms/import')).toBe(true);
+    expect(allow('operations', 'PATCH', '/admin/recruit-applications/a1')).toBe(true);
+    expect(allow('operations', 'POST', '/admin/coupons/c1/issue')).toBe(true);
+    expect(allow('operations', 'DELETE', '/admin/wechat-groups/w1')).toBe(true);
+    // finance write: admin/finance
+    expect(allow('finance', 'POST', '/admin/settlements/s1/pay')).toBe(true);
+    expect(allow('operations', 'POST', '/admin/settlements/s1/pay')).toBe(false);
+    // campuses write: admin/hq（operations 有意拒绝，见上）
+    expect(allow('hq', 'POST', '/admin/campuses')).toBe(true);
+  });
+  it('admin 独占写（banners/printers/rbac）模板角色全拒', () => {
+    for (const role of ['hq', 'operations', 'warehouse', 'finance']) {
+      expect(allow(role, 'POST', '/admin/banners')).toBe(false);
+      expect(allow(role, 'POST', '/admin/printers')).toBe(false);
+      expect(allow(role, 'DELETE', '/admin/printers/p1')).toBe(false);
+      expect(allow(role, 'GET', '/admin/rbac/permissions')).toBe(false);
+      expect(allow(role, 'GET', '/admin/rbac/audit')).toBe(false);
     }
   });
 
-  it('迁移无缩水：旧矩阵 read/write=true → 新体系等价放行对应端点码；=false → 拒绝', () => {
-    const mismatches: string[] = [];
-    for (const [section, rule] of Object.entries(LEGACY_MATRIX)) {
-      for (const access of ['read', 'write'] as const) {
-        // 旧 write=[] 的板块无写端点（新映射 write 码=读码同值），不做写断言
-        if (access === 'write' && rule.write.length === 0) continue;
-        for (const role of LEGACY_ROLES) {
-          if (INTENTIONAL_DENY.includes(`${role}|${section}|${access}`)) continue;
-          const legacyAllowed = rule[access].includes(role);
-          const nowAllowed = has(role, endpointCode(role, section, access));
-          if (legacyAllowed !== nowAllowed)
-            mismatches.push(
-              `${role} ${section}.${access}(${endpointCode(role, section, access)}): 旧=${legacyAllowed} 新=${nowAllowed}`,
-            );
-        }
-      }
-    }
-    expect(mismatches).toEqual([]);
+  /* ---------- 有意行为变化（URL 模式固有语义，逐条钉死） ---------- */
+  it('有意变化③：orders.write 通配动作段——operations 现在可出库（旧码分 outbound 单列）', () => {
+    // 旧 V1：outbound 单列 inventory.outbound，operations 无该码被拒；
+    // 蛋词 URL 模式 POST /admin/orders/:id/actions/:action 天然覆盖 outbound 段
+    expect(allow('operations', 'POST', '/admin/orders/o1/actions/outbound')).toBe(true);
   });
-
-  it('admin（超管通配）全板块读写放行', () => {
-    for (const [section, codes] of Object.entries(SECTION_ACCESS_CODE)) {
-      void section;
-      expect(has('admin', codes.read)).toBe(true);
-      expect(has('admin', codes.write)).toBe(true);
-    }
-  });
-
-  it('代表性拒绝：warehouse 结算/营销/员工只字不提；finance 不碰商品库存', () => {
-    expect(has('warehouse', 'finance.read')).toBe(false);
-    expect(has('warehouse', 'marketing.read')).toBe(false);
-    expect(has('warehouse', 'staff.read')).toBe(false);
-    expect(has('warehouse', 'orders.write')).toBe(false);
-    expect(has('finance', 'products.read')).toBe(false);
-    expect(has('finance', 'inventory.adjust')).toBe(false);
-    expect(has('operations', 'purchase.read')).toBe(false);
-    expect(has('operations', 'banners.read')).toBe(false);
-  });
-
-  it('拆码等价：hq 商品=官方库（products.official.*）；hq 订货写=批次管理（restock.manage）', () => {
-    for (const code of [
-      'products.official.read',
-      'products.official.write',
-      'restock.manage',
-    ])
-      expect(has('hq', code)).toBe(true);
-    // 校区商品/校区订货提交不在 hq 权限面（拆码后职责边界）
-    expect(has('hq', 'products.read')).toBe(false);
-    expect(has('hq', 'restock.order')).toBe(false);
-  });
-
-  it('有意变化①：operations 建校区被拒（V1 对齐 IKBWRT 真实门禁，修旧矩阵漂移）', () => {
-    expect(has('operations', 'campuses.manage')).toBe(false);
-    expect(has('warehouse', 'campuses.manage')).toBe(false);
-    expect(has('finance', 'campuses.manage')).toBe(false);
-    // hq/admin 仍放行（与旧行为一致）
-    expect(has('hq', 'campuses.manage')).toBe(true);
-    expect(has('admin', 'campuses.manage')).toBe(true);
-  });
-
-  it('有意变化②：hq 账号管理收归超管（V1 goal：仅超管管理账号授权）', () => {
-    expect(has('hq', 'rbac.accounts.write')).toBe(false);
-    // 只读保留（旧矩阵 hq accounts.read=true）
-    expect(has('hq', 'rbac.accounts.read')).toBe(true);
+  it('有意变化④：纯备注角色（recruit.note）不再能经 GET :id/idcard 读备注', () => {
+    // recruit.note 节点 perms 仅 PATCH /admin/recruit-applications/:id；
+    // 备注回显保留在 PATCH 响应（controller allowUrl 复检）
+    const patterns = legacyRbacCtx('operations').patterns;
+    expect(matchUrl(patterns, 'PATCH', '/admin/recruit-applications/a1')).toBe(true);
+    // 构造仅勾 recruit+recruit.note 的角色视角：菜单 perms 并集不含 GET idcard 模式
+    const noteOnlyPats = ['GET /admin/recruit-applications', 'PATCH /admin/recruit-applications/:id'];
+    expect(matchUrl(noteOnlyPats, 'GET', '/admin/recruit-applications/a1/idcard')).toBe(false);
   });
 
   it('非后台角色（user/楼长/骑手）无法构造后台上下文', () => {
@@ -212,47 +228,38 @@ describe('admin RBAC migration (IK9JHR → V1)', () => {
       expect(() => legacyRbacCtx(role)).toThrow('非后台角色');
   });
 
-  it('SECTION_ACCESS_CODE 每个 write 码在对应模板或超管可达', () => {
-    const templateCodes = new Set(
-      ROLE_TEMPLATES.flatMap((t) => [
-        ...t.platformPermissions,
-        ...t.campusPermissions,
-      ]),
-    );
-    const superCtx = legacyRbacCtx('admin');
-    const onlySuper: string[] = [];
-    for (const { write } of Object.values(SECTION_ACCESS_CODE)) {
-      expect(rbac.has(superCtx, write)).toBe(true); // 超管通配全量可达
-      if (!templateCodes.has(write)) onlySuper.push(write);
-    }
-    // 模板不可达、仅超管持有的写码，恰为旧矩阵「admin 独占写」板块
-    // （banners/printers）+ V1 有意收权的账号管理：
-    expect(onlySuper.sort()).toEqual([
-      'banners.write',
-      'printers.write',
-      'rbac.accounts.write',
+  it('超管上下文 menuCodes=全部目录/菜单行；校区角色不含未勾菜单', () => {
+    const adminCtx = legacyRbacCtx('admin');
+    expect(adminCtx.menuCodes.has('g.ops')).toBe(true);
+    expect(adminCtx.menuCodes.has('orders')).toBe(true);
+    expect(adminCtx.menuCodes.size).toBeGreaterThanOrEqual(42);
+    const finCtx = legacyRbacCtx('finance');
+    expect(finCtx.menuCodes.has('finance')).toBe(true);
+    expect(finCtx.menuCodes.has('orders')).toBe(true);
+    expect(finCtx.menuCodes.has('products')).toBe(false);
+    expect(finCtx.patterns.has('GET /admin/settlements')).toBe(true);
+  });
+});
+
+describe('守卫白名单与模式覆盖自检（漏配即红）', () => {
+  it('白名单恰为三个登录可读端点', () => {
+    expect([...ADMIN_URL_WHITELIST].sort()).toEqual([
+      'GET /admin/rbac/me',
+      'GET /admin/rbac/menus',
+      'GET /admin/rbac/permmenu',
     ]);
   });
-
-  it('控制器 authorize 兼容层按映射判权（等价矩阵的代表通路）', () => {
-    expect(() => authorize('warehouse', 'inventory', 'write')).not.toThrow();
-    expect(() => authorize('warehouse', 'products', 'write')).not.toThrow();
-    expect(() => authorize('finance', 'finance', 'write')).not.toThrow();
-    expect(() => authorize('operations', 'orders', 'write')).not.toThrow();
-    expect(() => authorize('operations', 'after-sales', 'read')).not.toThrow();
-    expect(() => authorize('warehouse', 'orders', 'write')).toThrow(
-      ForbiddenException,
-    );
-    expect(() => authorize('finance', 'marketing', 'read')).toThrow(
-      ForbiddenException,
-    );
-    expect(() => authorize('operations', 'banners', 'read')).toThrow(
-      ForbiddenException,
-    );
-    // 校区角色 hq 专属平台动作不可达（purchase 仅 hq/admin）
-    expect(() => authorize('operations', 'purchase', 'read')).toThrow(
-      ForbiddenException,
-    );
-    expect(() => authorize('hq', 'purchase', 'read')).not.toThrow();
+  it('白名单端点在控制器路由中真实存在（GET）', () => {
+    const routes = listAdminRoutes().map((r) => `${r.method} ${r.path}`);
+    for (const w of ADMIN_URL_WHITELIST) expect(routes).toContain(w);
+  });
+  it('AdminController 全部路由被 registry 模式覆盖（或白名单）——漏配清单为空', () => {
+    expect(uncoveredRoutes()).toEqual([]);
+  });
+  it('concreteRoute 参数段替换后仍与模式匹配（矩阵扫描前提）', () => {
+    const routes = listAdminRoutes();
+    expect(routes.length).toBeGreaterThan(120);
+    const sample = concreteRoute({ method: 'GET', path: '/admin/products/:id/price' });
+    expect(sample.path).toBe('/admin/products/spec-p1/price');
   });
 });

@@ -265,8 +265,8 @@ describe('Promotion engine (ADR-0006)', () => {
     expect(quote.discount).toBe(1900);
 
     const list = await service.availableCoupons(USER, CAMPUS, dto);
-    const huge = list.find((x: any) => x.id === 'uc-promo-huge');
-    const exact = list.find((x: any) => x.id === 'uc-promo-exact');
+    const huge = list.find((x: any) => x.id === 'uc-promo-huge')!;
+    const exact = list.find((x: any) => x.id === 'uc-promo-exact')!;
     expect(huge.available).toBe(false);
     expect(huge.unavailableReason).toBe('该单无法使用此优惠券');
     expect(exact.available).toBe(true);

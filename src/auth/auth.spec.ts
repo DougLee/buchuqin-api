@@ -2,6 +2,8 @@ import { UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { hash } from 'bcryptjs';
 import { PrismaService } from '../database/prisma.service';
+import { BusinessService } from '../business/business.service';
+import { RbacService } from '../admin/rbac/rbac.service';
 import { ADMIN_CAMPUS_ID } from '../common/campus';
 import { AuthController } from './auth.controller';
 import type { AuthUser } from './jwt-auth.guard';
@@ -13,7 +15,7 @@ describe('auth admin-login (IK9JHP)', () => {
     secret: process.env.JWT_SECRET ?? 'test-secret',
     signOptions: { expiresIn: '7d' },
   });
-  const controller = new AuthController(jwt, db);
+  const controller = new AuthController(jwt, db, new BusinessService(db), new RbacService(db));
   const username = `spec-admin-${Date.now()}`;
   const password = 'spec-password-123';
 

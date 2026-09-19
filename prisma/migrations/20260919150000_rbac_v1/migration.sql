@@ -81,3 +81,39 @@ CREATE TABLE "RbacState" (
 -- 7) 角色可见菜单（两层模型第一层，2026-09-19 道哥拍板 A）：key 清单，
 --    模板角色菜单由启动同步灌注（menus IS NULL 时按模板补齐）
 ALTER TABLE "AdminRole" ADD COLUMN "menus" JSONB;
+
+-- 8) 蛋词体系对齐（2026-09-19 拍板 B）：菜单+按钮权限合一棵树（AdminMenu），
+--    角色-菜单一体勾选（AdminRoleMenu）。权限真源从 AdminPermission 切到
+--    AdminMenu.perms（URL 模式）；旧表保留数据退役，可回滚。
+CREATE TABLE "AdminMenu" (
+    "id" TEXT NOT NULL,
+    "code" TEXT NOT NULL,
+    "parentId" TEXT,
+    "name" TEXT NOT NULL,
+    "type" INTEGER NOT NULL DEFAULT 0,
+    "perms" TEXT NOT NULL DEFAULT '',
+    "path" TEXT NOT NULL DEFAULT '',
+    "viewPath" TEXT NOT NULL DEFAULT '',
+    "icon" TEXT NOT NULL DEFAULT '',
+    "orderNum" INTEGER NOT NULL DEFAULT 0,
+    "isShow" BOOLEAN NOT NULL DEFAULT true,
+    "status" TEXT NOT NULL DEFAULT 'active',
+    "builtin" BOOLEAN NOT NULL DEFAULT true,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+    CONSTRAINT "AdminMenu_pkey" PRIMARY KEY ("id")
+);
+CREATE UNIQUE INDEX "AdminMenu_code_key" ON "AdminMenu"("code");
+CREATE INDEX "AdminMenu_parentId_orderNum_idx" ON "AdminMenu"("parentId", "orderNum");
+
+CREATE TABLE "AdminRoleMenu" (
+    "id" TEXT NOT NULL,
+    "roleId" TEXT NOT NULL,
+    "menuId" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "AdminRoleMenu_pkey" PRIMARY KEY ("id")
+);
+CREATE UNIQUE INDEX "AdminRoleMenu_roleId_menuId_key" ON "AdminRoleMenu"("roleId", "menuId");
+CREATE INDEX "AdminRoleMenu_menuId_idx" ON "AdminRoleMenu"("menuId");
+ALTER TABLE "AdminRoleMenu" ADD CONSTRAINT "AdminRoleMenu_roleId_fkey" FOREIGN KEY ("roleId") REFERENCES "AdminRole"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "AdminRoleMenu" ADD CONSTRAINT "AdminRoleMenu_menuId_fkey" FOREIGN KEY ("menuId") REFERENCES "AdminMenu"("id") ON DELETE CASCADE ON UPDATE CASCADE;

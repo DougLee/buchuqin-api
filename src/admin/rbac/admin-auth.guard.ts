@@ -9,6 +9,7 @@ import type { Request } from 'express';
 import { JwtAuthGuard, type AuthRequest } from '../../auth/jwt-auth.guard';
 import { PrismaService } from '../../database/prisma.service';
 import { RbacService, type RbacContext } from './rbac.service';
+import { ADMIN_URL_WHITELIST } from './registry';
 
 export interface RbacRequest extends Request {
   user: AuthRequest['user'];
@@ -16,11 +17,24 @@ export interface RbacRequest extends Request {
   rbac?: RbacContext;
 }
 
+/** 全局前缀（main.ts setGlobalPrefix）——判权模式以 /admin 为根，先剥掉 */
+const GLOBAL_PREFIX = '/api/v1';
+
+/** 归一化请求路径：剥全局前缀与尾部斜杠（/admin/x/ 与 /admin/x 同权） */
+export function normalizeAdminPath(path: string): string {
+  const stripped = path.startsWith(GLOBAL_PREFIX)
+    ? path.slice(GLOBAL_PREFIX.length)
+    : path;
+  return stripped.replace(/\/+$/, '') || '/';
+}
+
 /**
- * 后台鉴权守卫（RBAC V1，2026-09-19）：替换 admin 控制器上的裸 JwtAuthGuard。
+ * 后台鉴权守卫（蛋词体系版，2026-09-19 拍板 B）：替换控制器内权限码判权。
  * 链路：JWT 验签 → AdminAccount 实时加载（不信任 token 里的 role claim）→
- * 状态/会话版本校验（停用/改密/撤权后旧 token 即刻失效）→ 有效权限装载。
- * 授权读取失败默认拒绝（异常上抛，绝不回退宽松权限）。
+ * 状态/会话版本校验（停用/改密/撤权后旧 token 即刻失效）→ 有效权限装载 →
+ * **URL 判权（默认拒绝）**：rbac.allow(ctx, method, path) 按菜单 perms 模式
+ * （'METHOD /admin/x/:seg'）匹配；白名单端点（rbac/me、rbac/menus、
+ * rbac/permmenu）登录即可读。授权读取失败默认拒绝（异常上抛，绝不回退宽松权限）。
  */
 @Injectable()
 export class AdminAuthGuard implements CanActivate {
@@ -47,7 +61,14 @@ export class AdminAuthGuard implements CanActivate {
     if (tokenSv !== account.sessionVersion)
       throw new UnauthorizedException('登录已失效，请重新登录');
     // 4) 有效权限装载（DB 异常 → 拒绝）
-    request.rbac = await this.rbac.getEffective(account);
+    const ctx = await this.rbac.getEffective(account);
+    request.rbac = ctx;
+    // 5) URL 判权（蛋词同款文案；白名单精确 method+path 放行，默认拒绝）
+    const method = request.method.toUpperCase();
+    const path = normalizeAdminPath(request.path);
+    if (ADMIN_URL_WHITELIST.has(`${method} ${path}`)) return true;
+    if (!this.rbac.allow(ctx, method, path))
+      throw new ForbiddenException('所在用户组暂无权限');
     return true;
   }
 }

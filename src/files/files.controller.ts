@@ -144,7 +144,8 @@ export class FilesController {
       if (tokenSv !== account.sessionVersion)
         throw new ForbiddenException('登录已失效，请重新登录');
       const ctx = await this.rbac.getEffective(account);
-      if (!this.rbac.has(ctx, 'recruit.idcard.write'))
+      // 蛋词体系：URL 模式判定（recruit.idcard.write 节点的按钮模式）
+      if (!this.rbac.allow(ctx, 'POST', '/admin/recruit-applications/:id/idcard'))
         throw new ForbiddenException('无身份证资料上传权限');
     }
 

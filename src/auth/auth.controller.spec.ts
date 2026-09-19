@@ -1,6 +1,8 @@
 import { HttpException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../database/prisma.service';
+import { BusinessService } from '../business/business.service';
+import { RbacService } from '../admin/rbac/rbac.service';
 import { AuthController } from './auth.controller';
 import type { AuthRequest } from './jwt-auth.guard';
 
@@ -10,6 +12,8 @@ describe('auth wechat-login env gate (IK8W5H)', () => {
   const controller = new AuthController(
     new JwtService({ secret: 'test-secret' }),
     db,
+    new BusinessService(db),
+    new RbacService(db),
   );
   // 双小程序凭证下「未配置」须三对全清（IK8W5Q），只清旧单对会被 WX_APPID_USER 兜住
   const WX_ENV_KEYS = [
