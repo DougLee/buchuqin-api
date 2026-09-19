@@ -76,18 +76,19 @@ export class BusinessController {
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
   ) {
-    return ok(
-      paginate(
-        await this.service.listProducts(
-        req.user.campusId,
-        category,
-        keyword,
-        req.user.id,
-      ),
-        page,
-        pageSize,
-      ),
+    const items = await this.service.listProducts(
+      req.user.campusId,
+      category,
+      keyword,
+      req.user.id,
     );
+    // 2026-09-19 生产实测：C 端商品目录为全量消费设计（分类页完整流分组/搜索
+    // 平铺），未显式翻页时返回全量信封——走 paginate 会吃 DEFAULT_PAGE_SIZE=20
+    // 把大校区目录截断（湖工大 267 在售只回 20，冰镇特饮 123 只剩 4）。
+    if (!page && !pageSize) {
+      return ok({ items, page: 1, pageSize: items.length, total: items.length });
+    }
+    return ok(paginate(items, page, pageSize));
   }
   /** 限时秒杀商品（IKBW0K）：进行中 seckill 活动带促销价，分类页特殊分类用。 */
   @Get('promotions/seckill')
