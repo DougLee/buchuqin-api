@@ -96,6 +96,18 @@ export class BusinessController {
   async seckill(@Req() req: AuthRequest) {
     return ok(await this.service.listSeckill(req.user.campusId, req.user.id));
   }
+  /** 同款匹配（IKGZSU 跨校区分享）：外校区商品 id → 按条码找本校区在售同款。
+   *  命中返回 productView（价格/促销按本校区）；未命中 product=null，
+   *  sourceName/sourceCampusName 供前端弹窗/占位页展示来源。 */
+  @Get('products/:id/local-match')
+  async localMatch(
+    @Req() req: AuthRequest,
+    @Param('id') id: string,
+  ) {
+    return ok(
+      await this.service.localMatchProduct(id, req.user.campusId, req.user.id),
+    );
+  }
   @Get('products/:id') async product(
     @Req() req: AuthRequest,
     @Param('id') id: string,

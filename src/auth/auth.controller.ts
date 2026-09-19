@@ -60,6 +60,11 @@ class WechatLoginDto {
   @IsString()
   @IsOptional()
   appid?: string;
+  // IKGZSU 跨校区分享：分享链路落地校区——新用户首登优先采用（须为开放中
+  // 真实运营校区，非法值静默忽略走 fallback）；老用户忽略（不改已绑定校区）。
+  @IsString()
+  @IsOptional()
+  campusId?: string;
 }
 
 class PhoneDto {
@@ -338,8 +343,20 @@ export class AuthController {
       where: { openid: session.openid },
     });
     if (!user) {
+      // IKGZSU 跨校区分享：新用户首登优先采用分享链路带来的校区（body.campusId），
+      // 须为开放中真实运营校区（type=campus + status=active，排除官方库/总部仓
+      // 伪校区），非法值静默忽略；自然流量 fallback 同口径取最早真实运营校区
+      //（修复原「最早校区」会把新用户落进官方商品库伪校区的隐患）。
+      const realCampus = { type: 'campus', status: 'active' } as const;
+      const shared = body.campusId?.trim();
       const campus =
-        (await this.db.campus.findFirst({ orderBy: { createdAt: 'asc' } })) ??
+        (shared
+          ? await this.db.campus.findFirst({ where: { id: shared, ...realCampus } })
+          : null) ??
+        (await this.db.campus.findFirst({
+          where: realCampus,
+          orderBy: { createdAt: 'asc' },
+        })) ??
         null;
       try {
         user = await this.db.user.create({

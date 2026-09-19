@@ -718,6 +718,37 @@ export class BusinessService {
       await this.seckillPurchased(userId ?? '', [item.id]),
     )[0];
   }
+  /**
+   * 同款匹配（IKGZSU 跨校区分享）：外校区商品按条码找本校区在售同款。
+   * 源商品不限校区/状态（外校区分享链接的商品对本校区用户即「查无此货」）；
+   * 本校区命中条件与 C 端目录口径一致（on-sale + 非 hidden 分类）。
+   */
+  async localMatchProduct(id: string, campusId: string, userId?: string) {
+    const src = await this.db.product.findFirst({
+      where: { id },
+      include: { campus: { select: { name: true } } },
+    });
+    if (!src) return { product: null, sourceName: '', sourceCampusName: '' };
+    const sourceCampusName = (src.campus as { name?: string })?.name ?? '';
+    const local = src.barcode
+      ? await this.db.product.findFirst({
+          where: {
+            campusId,
+            barcode: src.barcode,
+            status: 'on-sale',
+            category: { hidden: false },
+          },
+        })
+      : null;
+    if (!local)
+      return { product: null, sourceName: src.name, sourceCampusName };
+    const promo = (await this.promotionMap([local.id])).get(local.id);
+    const product = this.attachSeckillLimit(
+      [this.productView(local, true, promo)],
+      await this.seckillPurchased(userId ?? '', [local.id]),
+    )[0];
+    return { product, sourceName: src.name, sourceCampusName };
+  }
   async cart(userId: string) {
     const [rows, user] = await Promise.all([
       this.db.cartItem.findMany({
