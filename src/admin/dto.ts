@@ -528,6 +528,10 @@ export class UpdateCampusDto {
   /** 楼长月度底薪（IKDOIU，分）：0 = 无底薪（纯提成+调整）。 */
   @IsOptional() @Type(() => Number) @IsInt() @Min(0)
   buildingManagerBaseSalary?: number;
+  /** 客服电话（IKHMF1 校区自定义）：座机/400/手机号，3-20 位数字与- */
+  @IsOptional()
+  @Matches(/^[0-9-]{3,20}$/, { message: '客服电话格式不正确' })
+  servicePhone?: string;
 }
 
 /** 校区打印机绑定（IKBW0Q）：SN 在机身底部标签/自检页。

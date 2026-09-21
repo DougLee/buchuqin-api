@@ -34,6 +34,9 @@ model Campus {
   // 楼长月度底薪（IKDOIU 道哥）：单位分，0 = 无底薪（纯提成+调整）——
   // 取代 settlements 硬编码 50000，校区维度自主配置
   buildingManagerBaseSalary Int          @default(0)
+  // 客服电话（IKHMF1 道哥 2026-09-21）：校区自定义，小程序我的/详情/订单
+  // 拨号展示；默认 4008002026 兜底（换号改默认值即全量更新）
+  servicePhone         String            @default("4008002026")
   createdAt            DateTime          @default(now())
   users                User[]
   products             Product[]

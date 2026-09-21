@@ -4731,6 +4731,8 @@ export class AdminService {
         ...(body.buildingManagerBaseSalary != null
           ? { buildingManagerBaseSalary: body.buildingManagerBaseSalary }
           : {}),
+        // IKHMF1：客服电话（校区自定义，小程序拨号展示）
+        ...(body.servicePhone != null ? { servicePhone: body.servicePhone } : {}),
         ...(body.deliveryFeeInstant != null
           ? { deliveryFeeInstant: body.deliveryFeeInstant }
           : {}),
@@ -6158,6 +6160,8 @@ export class AdminService {
           closeEnd: true,
           manualClosed: true,
           buildingManagerBaseSalary: true,
+          // IKHMF1 客服电话：校区自定义，聚合页档案 Tab 编辑
+          servicePhone: true,
         },
       }),
       this.db.deliverySlot.findMany({
