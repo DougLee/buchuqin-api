@@ -3495,6 +3495,25 @@ export class AdminService {
     });
     return Object.fromEntries(groups.map((g) => [g.status, g._count._all]));
   }
+  /**
+   * 新订单水位线（IKHFWV 30s 轮询）：今日（上海时区）已支付累计数 + 最新一单摘要。
+   * 累计口径（paidAt ≥ 今日0点 count）不随状态流转回落——增量即新单，防漏报。
+   */
+  async newOrderWatch(campusId: string) {
+    const start = new Date();
+    start.setUTCHours(16, 0, 0, 0); // 上海 00:00 = UTC 16:00（前一日）
+    if (start.getTime() > Date.now()) start.setTime(start.getTime() - 86400_000);
+    const where = { paidAt: { gte: start }, ...(campusId ? { campusId } : {}) };
+    const [count, latest] = await Promise.all([
+      this.db.order.count({ where }),
+      this.db.order.findFirst({
+        where,
+        orderBy: { paidAt: 'desc' },
+        select: { id: true, orderNo: true, payableAmount: true },
+      }),
+    ]);
+    return { todayPaid: count, latest };
+  }
   async order(id: string, campusId: string) {
     const x = await this.db.order.findFirst({
       where: { id, ...(campusId ? { campusId } : {}) },

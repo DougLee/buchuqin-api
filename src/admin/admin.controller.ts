@@ -974,6 +974,16 @@ export class AdminController {
     this.authorize(req, 'orders');
     return ok(await this.service.orderStatusCounts(this.campusScope(req, campus)));
   }
+  /** 新订单水位线（IKHFWV）：今日已支付累计数+最新单摘要——前端 30s 轮询提醒 */
+  @Get('orders/new-order-watch')
+  @ApiOperation({ summary: '新订单水位线（30s 轮询用；累计口径防漏报）' })
+  async newOrderWatch(
+    @Req() req: AuthRequest,
+    @Query('campus') campus?: string,
+  ) {
+    this.authorize(req, 'orders');
+    return ok(await this.service.newOrderWatch(await this.campusScope(req, campus)));
+  }
   @Get('orders/:id') async order(
     @Req() req: AuthRequest,
     @Param('id') id: string,
