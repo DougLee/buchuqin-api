@@ -245,7 +245,7 @@ describe('hq role & cross-campus views (IKAJSL)', () => {
         },
         'spec-hq',
       ),
-    ).rejects.toThrow('所属校区不存在');
+    ).rejects.toThrow('校区不存在');
     const badRoleAcc = await service.createAccount(
       { username: `${tag}-bad-role`, password: 'whatever-123' },
       'spec-hq',

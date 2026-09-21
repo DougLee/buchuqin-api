@@ -26,7 +26,7 @@ import { HQ_CAMPUS_ID, OFFICIAL_CAMPUS_ID } from '../common/campus';
 import { filterByKeyword, paginate } from '../common/pagination';
 import { AdminService } from './admin.service';
 import { AdminAuthGuard } from './rbac/admin-auth.guard';
-import { RbacService } from './rbac/rbac.service';
+import { RbacService, matchUrl } from './rbac/rbac.service';
 import type { RbacContext } from './rbac/rbac.service';
 import {
   AdjustStockDto,
@@ -87,7 +87,7 @@ import {
 // RBAC 蛋词体系（2026-09-19 拍板 B）：AdminAuthGuard = JWT 验签 + AdminAccount
 // 实时校验（状态/会话版本）+ 有效权限装载（request.rbac）+ **URL 判权**——
 // method+path 与角色菜单 perms 模式（'METHOD /admin/x/:seg'）匹配，默认拒绝；
-// 白名单（rbac/me、rbac/menus、rbac/permmenu）登录即可读。控制器不再按权限码
+// 白名单（rbac/me、rbac/permmenu）登录即可读。控制器不再按权限码
 // 判权；仅字段级分权（改价/身份证补录）在端点内用 requireUrl 复检。
 @UseGuards(AdminAuthGuard)
 @Controller('admin')
@@ -134,7 +134,7 @@ export class AdminController {
     if (!target) throw new BadRequestException('未指定校区');
     if (!(await this.rbac.knownCampusIds()).has(target))
       throw new BadRequestException('校区不存在');
-    if (!ctx.platform && target !== ctx.campusId && !ctx.campuses.includes(target))
+    if (!ctx.platform && target !== ctx.campusId)
       throw new ForbiddenException('未授权在该校区操作');
     return target;
   }
@@ -247,7 +247,7 @@ export class AdminController {
   @Get('categories')
   @ApiOperation({ summary: '商品类别列表（全局字典，带每类商品数）' })
   async categories(@Req() req: AuthRequest) {
-    return ok(await this.service.categories());
+    return ok(await this.service.categories(this.ctx(req).platform ? undefined : this.ctx(req).campusId));
   }
   @Post('categories') async createCategory(
     @Req() req: AuthRequest,
@@ -357,10 +357,11 @@ export class AdminController {
     // 全量断链审计（2026-09-05）：前端搜索框一直发 keyword，但此处漏接漏传
     // paginate，秒杀页搜索为死控件（其余列表端点均有）
     @Query('keyword') keyword?: string,
+    @Query('categoryId') categoryId?: string,
   ) {
     return ok(
       paginate(
-        await this.service.promotions(req.user.campusId, state),
+        await this.service.promotions(req.user.campusId, state, categoryId),
         page,
         pageSize,
         keyword,
@@ -480,8 +481,17 @@ export class AdminController {
     // guard 已按 PATCH /admin/products/:id 模式放行（官方库=official.write /
     // 本校区=products.write）；字段级分权复检：本校区视角夹带价格字段须另持
     // products.price 模式（PATCH /admin/products/:id/price，蛋词拆分端点同源）
+    if (body.stock !== undefined) {
+      this.requireUrl(req, 'POST', '/admin/inventory/stocktake');
+      const ctx = this.ctx(req);
+      if (!ctx.super && this.productCampus(req, view) !== ctx.campusId &&
+          !matchUrl(ctx.platformPatterns ?? [], 'POST', '/admin/inventory/stocktake'))
+        throw new ForbiddenException('无该校区库存调整权限');
+    }
     const officialUpdate = this.productCampus(req, view) === OFFICIAL_CAMPUS_ID;
     if (!officialUpdate) {
+      if (body.status !== undefined)
+        this.requireUrl(req, 'POST', '/admin/products/batch-status');
       const PRICE_FIELDS = ['price', 'originalPrice', 'costPrice', 'wholesalePrice'];
       const touchingPrice = PRICE_FIELDS.some(
         (f) => (body as Record<string, unknown>)[f] !== undefined,
@@ -956,6 +966,15 @@ export class AdminController {
   ) {
     return ok(await this.service.orderStatusCounts(await this.campusScope(req, campus)));
   }
+  /** 新订单水位线（IKHFWV）：今日已支付累计数+最新单摘要——前端 30s 轮询提醒 */
+  @Get('orders/new-order-watch')
+  @ApiOperation({ summary: '新订单水位线（30s 轮询用；累计口径防漏报）' })
+  async newOrderWatch(
+    @Req() req: AuthRequest,
+    @Query('campus') campus?: string,
+  ) {
+    return ok(await this.service.newOrderWatch(await this.campusScope(req, campus)));
+  }
   @Get('orders/:id') async order(
     @Req() req: AuthRequest,
     @Param('id') id: string,
@@ -1283,7 +1302,7 @@ export class AdminController {
     if (body.campusId !== undefined)
       body.campusId = await this.assertCampusAllowed(req, body.campusId);
     return ok(
-      await this.service.updateStaff(id, body, req.user.id),
+      await this.service.updateStaff(id, body, req.user.id, this.ctx(req).platform ? undefined : this.ctx(req).campusId),
     );
   }
   @Delete('staff/:id') async deleteStaff(
@@ -1291,7 +1310,7 @@ export class AdminController {
     @Param('id') id: string,
   ) {
     return ok(
-      await this.service.deleteStaff(id, req.user.id),
+      await this.service.deleteStaff(id, req.user.id, this.ctx(req).platform ? undefined : this.ctx(req).campusId),
       '员工已删除',
     );
   }
@@ -1554,7 +1573,7 @@ export class AdminController {
     @Req() req: AuthRequest,
     @Query('keyword') keyword?: string,
   ) {
-    return ok(filterByKeyword(await this.service.campuses(), keyword));
+    return ok(filterByKeyword(await this.service.campuses(this.ctx(req).platform ? undefined : this.ctx(req).campusId), keyword));
   }
   /* ---------- 校区本体管理（IKAJSL）：新校区接入 ---------- */
   @Post('campuses')
@@ -1677,13 +1696,9 @@ export class AdminController {
     summary: '新建后台账号（含初始授权 grants=[{roleCode,scope,campusId}]）',
   })
   async createAccount(@Req() req: AuthRequest, @Body() body: CreateAccountDto) {
-    const created = await this.service.createAccount(body, req.user.id);
-    if (body.grants?.length)
-      await this.rbac.setAccountRoles(
-        { id: req.user.id, username: this.ctx(req).username },
-        created.id,
-        body.grants,
-      );
+    const created = await this.rbac.createAccount(
+      { id: req.user.id, username: this.ctx(req).username }, body,
+    );
     return ok(created, '账号已创建');
   }
   @Patch('accounts/:id')
@@ -1696,35 +1711,20 @@ export class AdminController {
     @Body() body: UpdateAccountDto,
   ) {
     const actor = { id: req.user.id, username: this.ctx(req).username };
-    let after: { id: string; username: string; nickname?: string; status?: string } | null = null;
-    if (body.nickname !== undefined || body.password !== undefined) {
-      after = await this.service.updateAccount(id, { nickname: body.nickname }, req.user.id);
-    }
-    if (body.password) {
-      await this.rbac.resetAccountPassword(actor, id, body.password);
-      after = { ...(after ?? { id, username: '' }), id };
-    }
-    if (body.status) {
-      await this.rbac.setAccountStatus(actor, id, body.status);
-    }
-    if (body.grants) {
-      await this.rbac.setAccountRoles(actor, id, body.grants);
-    }
-    if (!after && !body.status && !body.grants)
-      throw new BadRequestException('没有可更新的字段');
+    await this.rbac.updateAccount(actor, id, body);
     return ok({ id }, '账号已更新');
   }
   @Delete('accounts/:id')
   @ApiOperation({ summary: '删除后台账号；不可删自己/最后一个有效超管' })
   async deleteAccount(@Req() req: AuthRequest, @Param('id') id: string) {
     return ok(
-      await this.service.deleteAccount(id, req.user.id),
+      await this.rbac.deleteAccount({ id: req.user.id, username: this.ctx(req).username }, id),
       '账号已删除',
     );
   }
 
   /* ---------- RBAC（蛋词体系 2026-09-19）：permmenu / 菜单管理 / 角色管理 / 审计 ----------
-   * rbac/me、rbac/menus、rbac/permmenu 为守卫白名单（登录即可读）；
+   * rbac/me、rbac/permmenu 为守卫白名单（登录即可读）；
    * 其余端点判权=URL 模式（registry rbac-roles/accounts/rbac-audit 等节点）。 */
   @Get('rbac/me')
   @ApiOperation({
@@ -1750,6 +1750,9 @@ export class AdminController {
     if (!account) throw new ForbiddenException('账号不存在');
     return ok(await this.rbac.buildMeResponse(account));
   }
+  @Get('rbac/catalog')
+  rbacCatalog() { return ok(this.rbac.catalog()); }
+
   @Get('rbac/permissions')
   @ApiOperation({ summary: '权限目录（type=2 按钮行：code/name/perms 模式，只读）' })
   async rbacPermissions(@Req() req: AuthRequest) {
@@ -1758,7 +1761,7 @@ export class AdminController {
   @Get('rbac/menus')
   @ApiOperation({
     summary: '菜单树目录（扁平行：code/parentId/id/name/type/perms/path/icon/orderNum/isShow）',
-    description: '角色勾选页与侧栏名称渲染共用（名称以库为准，改菜单名不发前端版）。守卫白名单：登录即可读。',
+    description: '超级管理员配置角色和菜单时读取；导航读取 permmenu。',
   })
   async rbacMenus() {
     return ok(await this.rbac.listMenus());
@@ -1778,7 +1781,7 @@ export class AdminController {
   }
   @Patch('rbac/menus/:id')
   @ApiOperation({
-    summary: '改菜单节点：builtin 行仅表现字段（name/icon/orderNum/isShow）；自建行结构字段可改',
+    summary: '修改菜单节点的结构、注册视图、接口权限与显示配置',
   })
   async rbacUpdateMenu(
     @Req() req: AuthRequest,

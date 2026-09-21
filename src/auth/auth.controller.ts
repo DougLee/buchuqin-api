@@ -12,6 +12,7 @@ import {
   Patch,
   Post,
   Req,
+  Query,
   UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
@@ -136,7 +137,7 @@ export class AuthController {
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @ApiOperation({ summary: '管理后台账号密码登录（AdminAccount + bcrypt）' })
   async adminLogin(@Body() body: AdminLoginDto) {
-    const account = await this.db.adminAccount.findUnique({
+    let account = await this.db.adminAccount.findUnique({
       where: { username: body.username?.trim() ?? '' },
     });
     // 账号不存在与密码错误同文案同状态码，防枚举。
@@ -148,6 +149,20 @@ export class AuthController {
     // RBAC V1：停用账号登录双拒（旧 token 也会被 Guard 拦）
     if (account.status === 'disabled')
       throw new UnauthorizedException('账号已停用，请联系超级管理员');
+    // Optional single-session policy: a successful login revokes older sessions.
+    // Match the verified hash and active status again so a concurrent reset/disable cannot be bypassed.
+    if (process.env.ADMIN_SINGLE_SESSION === 'true') {
+      try {
+        account = await this.db.adminAccount.update({
+          where: { id: account.id, passwordHash: account.passwordHash, status: 'active' },
+          data: { sessionVersion: { increment: 1 } },
+        });
+      } catch (error) {
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025')
+          throw new UnauthorizedException('账号状态已改变，请重新登录');
+        throw error;
+      }
+    }
     const claims: AuthUser = {
       id: account.id,
       campusId: account.campusId,
@@ -182,6 +197,7 @@ export class AuthController {
       where: { id: req.user.id },
     });
     if (!account) throw new BadRequestException('该账号类型不支持修改密码');
+    this.rbac.assertSession(account, req.user.sv);
     if (!(await compare(body.oldPassword ?? '', account.passwordHash)))
       throw new UnauthorizedException('原密码不正确');
     // RBAC V1：改密即 bump 会话版本——本账号全部旧 token（含当前）即刻失效，需重新登录
@@ -218,10 +234,12 @@ export class AuthController {
   @ApiBearerAuth()
   async profile(@Req() req: AuthRequest) {
     if (req.user.role === 'user') {
-      const user = await this.db.user.findUniqueOrThrow({
+      // 陈旧/无效 token（用户已删）给 401 而非 500（线上曾因旧 token 刷屏 P2025）
+      const user = await this.db.user.findUnique({
         where: { id: req.user.id },
         include: { addresses: true },
       });
+      if (!user) throw new UnauthorizedException('登录已失效，请重新登录');
       return ok({
         ...req.user,
         nickname: user.nickname,
@@ -465,14 +483,18 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: '我的可运营校区列表（后台账号，RBAC 授权集）' })
-  async adminCampuses(@Req() req: AuthRequest) {
+  async adminCampuses(@Req() req: AuthRequest, @Query('purpose') purpose?: string) {
     const account = await this.db.adminAccount.findUnique({
       where: { id: req.user.id },
     });
     if (!account) return ok([]);
+    this.rbac.assertSession(account, req.user.sv);
     const ctx = await this.rbac.getEffective(account);
-    if (!ctx.super && !ctx.campuses.length) return ok([]);
-    const ids = ctx.super
+    // Filter options expose only campus labels, not management counts/configuration.
+    // Platform accounts can filter all campuses without becoming campus-switch accounts.
+    const allCampuses = ctx.super || (purpose === 'filter' && ctx.platform);
+    if (!allCampuses && !ctx.campuses.length) return ok([]);
+    const ids = allCampuses
       ? undefined
       : { in: ctx.campuses };
     const campuses = await this.db.campus.findMany({
@@ -500,8 +522,7 @@ export class AuthController {
     });
     if (!account)
       throw new ForbiddenException('该账号不支持切换校区');
-    if (account.status === 'disabled')
-      throw new UnauthorizedException('账号已停用');
+    this.rbac.assertSession(account, req.user.sv);
     const ctx = await this.rbac.getEffective(account);
     const campusId = body.campusId.trim();
     const campus = await this.db.campus.findFirst({

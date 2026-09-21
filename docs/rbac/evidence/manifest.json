@@ -1,0 +1,122 @@
+[
+  {
+    "file": "audit-isolation-full.log",
+    "sha256": "dcefbdc91dd4d8c0a8572f1843d004e93d5a0ee4268a961b7a057097bb3fcab8",
+    "bytes": 962
+  },
+  {
+    "file": "audit-isolation-tsc.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "bytes": 0
+  },
+  {
+    "file": "main-compat-build.log",
+    "sha256": "29383ba5b8a260b79bdbef7f2940c3707dc7ff0f1e49918f1461aea121df24aa",
+    "bytes": 3288
+  },
+  {
+    "file": "handoff-session.log",
+    "sha256": "e91bf89785778ac05d66ab32a33731d0310d5d3ee38b46e9e4847897e446204b",
+    "bytes": 3077
+  },
+  {
+    "file": "final-fresh-diff.log",
+    "sha256": "d7c9882dbd1f2db597fa5f079208fe2bc1b9117ee2a4933970f9f481f4f818a1",
+    "bytes": 251
+  },
+  {
+    "file": "final-upgrade-diff.log",
+    "sha256": "d7c9882dbd1f2db597fa5f079208fe2bc1b9117ee2a4933970f9f481f4f818a1",
+    "bytes": 251
+  },
+  {
+    "file": "final-fresh-deploy.log",
+    "sha256": "e44330b3fbf7af0c112cb753e0468480d187ef3be59065d55018fb0c7f918550",
+    "bytes": 696
+  },
+  {
+    "file": "final-upgrade-deploy.log",
+    "sha256": "098d35d65848f9f4ce18838e155e23294dc899c3f6efc20d7d22d5fa8a018752",
+    "bytes": 694
+  },
+  {
+    "file": "dynamic-menu.png",
+    "sha256": "4cd163fa94c698ecc143fadcdef74aceb873b259ab66e191ca7f5224ac345295",
+    "bytes": 107573
+  },
+  {
+    "file": "campus-b-denied.png",
+    "sha256": "dd5a89e94166ab754e0eb290b6bf6cda2d250abcc7e57612ceca74474febdb66",
+    "bytes": 62676
+  },
+  {
+    "file": "role-half-visible.png",
+    "sha256": "cea5ab2105418c338e86fb68e5e41014f3c4753fc6bc8ce14056a78f01f8da0b",
+    "bytes": 57137
+  },
+  {
+    "file": "revoked-page.png",
+    "sha256": "748aa3e26595adde9679c2021a06108fdfd9f3dadf2c29008adf8fd2ad204bc0",
+    "bytes": 41027
+  },
+  {
+    "file": "iframe.png",
+    "sha256": "fde99b46ec79b8de7dae8f166ee135b933f421ac98b452bcfab4cebde8faa727",
+    "bytes": 53074
+  },
+  {
+    "file": "missing-component.png",
+    "sha256": "f5b70f0219517ebc8ab8b2395abafc83ea383cbe5d6febe7f8c0a12f0965a240",
+    "bytes": 56774
+  },
+  {
+    "file": "confirm-only.png",
+    "sha256": "b401f7a6e68da9d38eb62eb01e47b749a90dda93df9a117f643e2c25bc0245e1",
+    "bytes": 77715
+  },
+  {
+    "file": "pay-only.png",
+    "sha256": "64e1685cf2ce8611ef62ba18f5f93355a92ed665869ed87b2c596623a29adcdf",
+    "bytes": 84379
+  },
+  {
+    "file": "inbound-only.png",
+    "sha256": "38cb38a1ce4d3ca465e6ef221b478c4897df25cccbd37803d4a63da01daeeb09",
+    "bytes": 81128
+  },
+  {
+    "file": "restock-readonly.png",
+    "sha256": "91702517a715591b5d0161168db7d04ccfc9cd224cb3fe66ae6278ea538fe9cf",
+    "bytes": 97294
+  },
+  {
+    "file": "purchase-readonly.png",
+    "sha256": "5c94c7dd56297f68956ff598c8ca6ebe32d3d68a901d3e1bfeb7e8fe2e7ee4a1",
+    "bytes": 100371
+  },
+  {
+    "file": "featured-readonly.png",
+    "sha256": "7adb85bc53784800a9545d4c0946f8c428f6f2d44db0b6130f339f243e4c6c7e",
+    "bytes": 70472
+  },
+  {
+    "file": "restock-edit-only.png",
+    "sha256": "1bae698d1b0bb93789473f1075f7f21dbe472d883c1d9c4b5e66ff6afde9a5ad",
+    "bytes": 74243
+  },
+  {
+    "file": "purchase-close-only.png",
+    "sha256": "964b64e09f7db22d6cdb3b03cf1a27eaa07288d3fcb0f82e956739dada991658",
+    "bytes": 90270
+  },
+  {
+    "file": "featured-save-only.png",
+    "sha256": "5b3bc49b873345d6649af6928696be1bd66eda717ebe34d4a835ba033ce90dfd",
+    "bytes": 77742
+  },
+  {
+    "file": "permission-picker.png",
+    "sha256": "240da23c40243b609d37e7777a6b8509a60f19dccca85554886dbbb34a6bd7cd",
+    "bytes": 104547
+  }
+]

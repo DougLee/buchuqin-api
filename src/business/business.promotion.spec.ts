@@ -107,11 +107,14 @@ describe('Promotion engine (ADR-0006)', () => {
   });
 
   it('uses promo price everywhere once active (list/detail/cart) with base price as strikethrough', async () => {
+    // IKHL6Y 秒杀双渠道：正常渠道（目录/详情/购物车原价行）不吃秒杀价——
+    // 改用 clearance 验证「活动价全渠道」语义；秒杀价全渠道行为已由
+    // seckill-limit.spec 的双渠道用例接管
     await db.promotion.create({
       data: {
         id: PROMO_ACTIVE,
         productId: PRODUCT,
-        type: 'seckill',
+        type: 'clearance',
         price: 350,
         startsAt: new Date(Date.now() - 60_000),
         endsAt: new Date(Date.now() + 3600_000),
@@ -124,7 +127,7 @@ describe('Promotion engine (ADR-0006)', () => {
     for (const view of [list.find((p: any) => p.id === PRODUCT), detail]) {
       expect(view.price).toBe(350);
       expect(view.originalPrice).toBe(500);
-      expect((view as any).promotion.type).toBe('seckill');
+      expect((view as any).promotion.type).toBe('clearance');
       expect((view as any).promotion.price).toBe(350);
     }
     await db.cartItem.create({

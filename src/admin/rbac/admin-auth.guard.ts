@@ -8,7 +8,8 @@ import {
 import type { Request } from 'express';
 import { JwtAuthGuard, type AuthRequest } from '../../auth/jwt-auth.guard';
 import { PrismaService } from '../../database/prisma.service';
-import { RbacService, type RbacContext } from './rbac.service';
+import { RbacService, matchUrl, type RbacContext } from './rbac.service';
+import { isSuperOnlyOperation } from './access-policy';
 import { ADMIN_URL_WHITELIST } from './registry';
 
 export interface RbacRequest extends Request {
@@ -33,7 +34,7 @@ export function normalizeAdminPath(path: string): string {
  * 链路：JWT 验签 → AdminAccount 实时加载（不信任 token 里的 role claim）→
  * 状态/会话版本校验（停用/改密/撤权后旧 token 即刻失效）→ 有效权限装载 →
  * **URL 判权（默认拒绝）**：rbac.allow(ctx, method, path) 按菜单 perms 模式
- * （'METHOD /admin/x/:seg'）匹配；白名单端点（rbac/me、rbac/menus、
+ * （'METHOD /admin/x/:seg'）匹配；白名单端点（rbac/me、
  * rbac/permmenu）登录即可读。授权读取失败默认拒绝（异常上抛，绝不回退宽松权限）。
  */
 @Injectable()
@@ -55,17 +56,22 @@ export class AdminAuthGuard implements CanActivate {
     if (!account)
       throw new ForbiddenException('该账号无后台访问权限');
     // 3) 状态 + 会话版本（旧 token 缺 sv 视为 0；bump 后即失效）
-    if (account.status === 'disabled')
-      throw new UnauthorizedException('账号已停用，请联系超级管理员');
-    const tokenSv = (request.user as { sv?: number }).sv ?? 0;
-    if (tokenSv !== account.sessionVersion)
-      throw new UnauthorizedException('登录已失效，请重新登录');
+    this.rbac.assertSession(account, request.user.sv);
+    // Business services must use the same current campus as permission calculation.
+    // Otherwise a token issued before switching campuses could combine old data with new rights.
+    request.user.campusId = account.campusId;
     // 4) 有效权限装载（DB 异常 → 拒绝）
     const ctx = await this.rbac.getEffective(account);
-    request.rbac = ctx;
     // 5) URL 判权（蛋词同款文案；白名单精确 method+path 放行，默认拒绝）
     const method = request.method.toUpperCase();
     const path = normalizeAdminPath(request.path);
+    // A platform grant for one capability must not widen a campus grant for another.
+    request.rbac = {
+      ...ctx,
+      platform: ctx.super || matchUrl(ctx.platformPatterns ?? [], method, path),
+    };
+    if (!ctx.super && isSuperOnlyOperation(method, path))
+      throw new ForbiddenException('仅超级管理员可以配置权限');
     if (ADMIN_URL_WHITELIST.has(`${method} ${path}`)) return true;
     if (!this.rbac.allow(ctx, method, path))
       throw new ForbiddenException('所在用户组暂无权限');

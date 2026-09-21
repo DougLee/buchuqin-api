@@ -2,6 +2,7 @@ import { Type } from 'class-transformer';
 import {
   ArrayMinSize,
   IsArray,
+  IsBoolean,
   IsIn,
   IsInt,
   IsOptional,
@@ -14,6 +15,9 @@ import {
 export class CartItemDto {
   @IsString() productId!: string;
   @IsInt() @Min(0) quantity!: number;
+  // IKHL6Y 秒杀双渠道：行身份——秒杀专区加购传 true（秒杀行，限购 1）；
+  // 正常入口缺省 false（原价行，不限购）。秒杀价跟活动窗走，窗外回落原价
+  @IsOptional() @IsBoolean() asSeckill?: boolean;
 }
 export class UpdateCartDto {
   @IsArray()
@@ -62,6 +66,8 @@ export class UpdateAddressDto {
 }
 export class CartQuantityDto {
   @IsInt() @Min(0) quantity!: number;
+  // IKHL6Y 秒杀双渠道：加购入口身份——秒杀专区传 true，缺省原价行
+  @IsOptional() @IsBoolean() asSeckill?: boolean;
 }
 export class AddCartItemDto extends CartQuantityDto {
   @IsString() productId!: string;

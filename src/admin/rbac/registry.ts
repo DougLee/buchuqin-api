@@ -34,7 +34,7 @@ export const MENU_NODES: MenuNodeDef[] = [
   /* ---------- 目录：运营中心 ---------- */
   { code: 'g.ops', name: '运营中心', type: 0, order: 1 },
   { code: 'dashboard', name: '经营总览', type: 1, parent: 'g.ops', path: '/', icon: 'dashboard', order: 1, perms: ['GET /admin/dashboard'] },
-  { code: 'orders', name: '订单配送', type: 1, parent: 'g.ops', path: '/orders', icon: 'orders', order: 2, perms: ['GET /admin/orders', 'GET /admin/orders/status-counts', 'GET /admin/orders/:id'] },
+  { code: 'orders', name: '订单配送', type: 1, parent: 'g.ops', path: '/orders', icon: 'orders', order: 2, perms: ['GET /admin/orders', 'GET /admin/orders/status-counts', 'GET /admin/orders/new-order-watch', 'GET /admin/orders/:id'] },
   { code: 'orders.write', name: '订单操作', type: 2, parent: 'orders', order: 1, perms: ['POST /admin/orders/:id/actions/:action', 'POST /admin/orders/:id/status', 'POST /admin/orders/:id/print-receipt'], remark: '改状态/出库/补打小票' },
   { code: 'inventory.outbound', name: '订单出库', type: 2, parent: 'orders', order: 2, perms: ['POST /admin/orders/:id/actions/outbound'], remark: '拣货出库（仓储角色对订单只读但可出库）' },
   { code: 'after-sales', name: '售后退款', type: 1, parent: 'g.ops', path: '/after-sales', icon: 'after', order: 3, perms: ['GET /admin/after-sales'] },
@@ -117,8 +117,9 @@ export const MENU_NODES: MenuNodeDef[] = [
   { code: 'g.sys', name: '系统', type: 0, order: 7 },
   { code: 'accounts', name: '账号管理', type: 1, parent: 'g.sys', path: '/accounts', icon: 'accounts', order: 1, perms: ['GET /admin/accounts', 'GET /admin/rbac/accounts/:id/preview'] },
   { code: 'rbac.accounts.write', name: '账号管理操作', type: 2, parent: 'accounts', order: 1, perms: ['POST /admin/accounts', 'PATCH /admin/accounts/:id', 'DELETE /admin/accounts/:id'] },
-  { code: 'rbac-roles', name: '角色管理', type: 1, parent: 'g.sys', path: '/rbac-roles', icon: 'accounts', order: 2, perms: ['GET /admin/rbac/roles', 'GET /admin/rbac/menus', 'GET /admin/rbac/permissions'] },
+  { code: 'rbac-roles', name: '角色管理', type: 1, parent: 'g.sys', path: '/rbac-roles', icon: 'accounts', order: 2, perms: ['GET /admin/rbac/roles', 'GET /admin/rbac/menus', 'GET /admin/rbac/permissions', 'GET /admin/rbac/catalog'] },
   { code: 'rbac.roles.write', name: '角色管理操作', type: 2, parent: 'rbac-roles', order: 1, perms: ['POST /admin/rbac/roles', 'PATCH /admin/rbac/roles/:id', 'DELETE /admin/rbac/roles/:id'] },
+  { code: 'rbac-menus', name: '菜单管理', type: 1, parent: 'g.sys', path: '/rbac-menus', icon: 'accounts', order: 3, perms: ['GET /admin/rbac/menus', 'GET /admin/rbac/catalog'] },
   { code: 'rbac.menus.write', name: '菜单管理', type: 2, parent: 'rbac-roles', order: 2, perms: ['POST /admin/rbac/menus', 'PATCH /admin/rbac/menus/:id', 'DELETE /admin/rbac/menus/:id'] },
   { code: 'rbac-permissions', name: '权限目录', type: 1, parent: 'g.sys', path: '/rbac-permissions', icon: 'accounts', order: 3, perms: ['GET /admin/rbac/permissions'] },
   { code: 'rbac-audit', name: '权限审计', type: 1, parent: 'g.sys', path: '/rbac-audit', icon: 'audit', order: 4, perms: ['GET /admin/rbac/audit'] },
@@ -148,7 +149,6 @@ export const SUPER_ROLE_CODE = 'super-admin';
  */
 export const ADMIN_URL_WHITELIST: ReadonlySet<string> = new Set([
   'GET /admin/rbac/me',
-  'GET /admin/rbac/menus',
   'GET /admin/rbac/permmenu',
 ]);
 

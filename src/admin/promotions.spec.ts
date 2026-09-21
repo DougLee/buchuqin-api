@@ -65,9 +65,13 @@ describe('Admin promotions CRUD (IKAHFF)', () => {
       CAMPUS,
     );
     expect(promo.status).toBe('active');
+    // IKHL6Y 秒杀双渠道：秒杀价只在秒杀专区生效，详情（正常渠道）保持原价
     const detail = await business.product(PRODUCT, CAMPUS);
-    expect(detail.price).toBe(500);
-    expect((detail as any).promotion.id).toBe(promo.id);
+    expect(detail.price).toBe(800);
+    expect((detail as any).promotion).toBeUndefined();
+    const seckillList = (await business.listSeckill(CAMPUS)) as any[];
+    const inSecs = seckillList.find((p) => p.id === PRODUCT);
+    expect(inSecs.price).toBe(500);
   });
 
   it('rejects overlapping windows and above-base prices', async () => {

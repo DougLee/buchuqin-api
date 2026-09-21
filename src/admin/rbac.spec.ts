@@ -242,10 +242,9 @@ describe('admin RBAC 蛋词体系（角色×URL 模式对账）', () => {
 });
 
 describe('守卫白名单与模式覆盖自检（漏配即红）', () => {
-  it('白名单恰为三个登录可读端点', () => {
+  it('白名单仅包含当前账号权限读取端点', () => {
     expect([...ADMIN_URL_WHITELIST].sort()).toEqual([
       'GET /admin/rbac/me',
-      'GET /admin/rbac/menus',
       'GET /admin/rbac/permmenu',
     ]);
   });

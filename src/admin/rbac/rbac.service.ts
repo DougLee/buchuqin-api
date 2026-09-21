@@ -4,12 +4,16 @@ import {
   Injectable,
   Logger,
   OnModuleInit,
+  ServiceUnavailableException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { Prisma, AdminAccount } from '@prisma/client';
 import { hash } from 'bcryptjs';
+import type { CreateAccountDto, UpdateAccountDto } from '../dto';
 import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../../database/prisma.service';
-import { MENU_NODES, ROLE_TEMPLATES, SUPER_ROLE_CODE, LEGACY_ROLE_MAP } from './registry';
+import { isSuperOnlyOperation, PLATFORM_PATTERNS } from './access-policy';
+import { ALL_PERM_PATTERNS, MENU_NODES, ROLE_TEMPLATES, SUPER_ROLE_CODE, LEGACY_ROLE_MAP } from './registry';
 
 /**
  * RBAC 服务（蛋词体系对齐版，2026-09-19 拍板 B）：
@@ -29,6 +33,8 @@ export interface RbacContext {
   campuses: string[];
   /** URL 模式串（"METHOD /admin/…"）并集 */
   patterns: Set<string>;
+  /** Only patterns granted by platform-scoped roles; prevents mixed-scope escalation. */
+  platformPatterns?: Set<string>;
   /** 可见菜单节点 code（目录+菜单行，非按钮） */
   menuCodes: Set<string>;
 }
@@ -77,21 +83,22 @@ export class RbacService implements OnModuleInit {
       await this.syncRegistry();
     } catch (e) {
       this.logger.error(`RBAC registry sync failed: ${String(e)}`);
+      throw e;
     }
   }
 
   /**
    * 幂等启动同步：
-   * 1) MENU_NODES 按 code upsert——结构字段（parentId/type/perms/path）以代码为准，
-   *    表现字段（name/icon/orderNum/isShow）后台可改不覆盖；
+   * 1) MENU_NODES 按 code 首次登记，已有节点的结构/权限/显示配置不覆盖；
    * 2) 内置超管；模板角色首灌 role_menu（seeded 标记）；
-   * 3) 存量角色迁移：无 role_menu 行的角色，旧 role_permissions(权限码)+role.menus(菜单key)
+   * 3) 存量角色迁移：未迁移且无 role_menu 行的角色，旧 role_permissions(权限码)+role.menus(菜单key)
    *    → role_menu（按 code 找行）；
    * 4) 旧静态角色账号 → AdminAccountRole（同首版逻辑）。
    */
   async syncRegistry(): Promise<void> {
     let changed = false;
     await this.db.$transaction(async (tx) => {
+      await this.lockSuperGuard(tx);
       await tx.rbacState.upsert({
         where: { id: 'global' },
         update: {},
@@ -117,24 +124,6 @@ export class RbacService implements OnModuleInit {
               },
             });
             changed = true;
-          } else {
-            // 结构字段以代码为准；表现字段（name/icon/orderNum/isShow）尊重后台修改
-            const permsJoined = (node.perms ?? []).join(',');
-            if (
-              existing.type !== node.type ||
-              existing.perms !== permsJoined ||
-              existing.path !== (node.path ?? '') ||
-              existing.parentId !== parentId
-            ) {
-              await tx.adminMenu.update({
-                where: { id: existing.id },
-                data: {
-                  type: node.type, perms: permsJoined,
-                  path: node.path ?? '', parentId,
-                },
-              });
-              changed = true;
-            }
           }
         }
       }
@@ -158,10 +147,10 @@ export class RbacService implements OnModuleInit {
       for (const t of ROLE_TEMPLATES) {
         const role = await tx.adminRole.upsert({
           where: { code: t.code },
-          update: { name: t.name, remark: t.remark },
+          update: {},
           create: { code: t.code, name: t.name, remark: t.remark, seeded: false },
         });
-        if (role.seeded) continue;
+        if (role.seeded || role.menusMigrated) continue;
         await tx.adminRoleMenu.createMany({
           data: t.menuCodes
             .map((c) => codeToId.get(c))
@@ -174,7 +163,7 @@ export class RbacService implements OnModuleInit {
       }
       // 4) 存量角色迁移：无 role_menu 行的角色（首版权限体系/两层菜单体系 → 菜单树）
       const staleRoles = await tx.adminRole.findMany({
-        where: { builtin: false, adminRoleMenus: { none: {} } },
+        where: { builtin: false, menusMigrated: false, adminRoleMenus: { none: {} } },
         include: {
           permissions: { include: { permission: { select: { code: true } } } },
         },
@@ -196,9 +185,10 @@ export class RbacService implements OnModuleInit {
           this.logger.log(`角色 ${role.code} 已迁移到菜单树（${menuIds.length} 节点）`);
         }
       }
+      await tx.adminRole.updateMany({ where: { menusMigrated: false }, data: { menusMigrated: true } });
       // 5) 旧账号迁移（同首版：零绑定 + 旧五角色 → 模板授权）
       const legacyAccounts = await tx.adminAccount.findMany({
-        where: { rbacRoles: { none: {} }, role: { in: Object.keys(LEGACY_ROLE_MAP) } },
+        where: { rbacMigrated: false, rbacRoles: { none: {} }, role: { in: Object.keys(LEGACY_ROLE_MAP) } },
         include: { accesses: { select: { campusId: true } } },
       });
       const campusIds = new Set((await tx.campus.findMany({ select: { id: true } })).map((c) => c.id));
@@ -222,6 +212,7 @@ export class RbacService implements OnModuleInit {
         }
         changed = true;
       }
+      await tx.adminAccount.updateMany({ where: { rbacMigrated: false }, data: { rbacMigrated: true } });
       if (changed) await this.bumpVersion(tx);
     });
     if (changed) this.cache.clear();
@@ -239,16 +230,14 @@ export class RbacService implements OnModuleInit {
 
   private async currentVersion(): Promise<number> {
     const s = await this.db.rbacState.findUnique({ where: { id: 'global' } });
-    return s?.version ?? 0;
+    if (!s) throw new ServiceUnavailableException('权限状态不可用，请稍后重试');
+    return s.version;
   }
 
-  private campusSetCache: { ids: Set<string>; expiresAt: number } | null = null;
   async knownCampusIds(): Promise<Set<string>> {
-    if (this.campusSetCache && this.campusSetCache.expiresAt > Date.now())
-      return this.campusSetCache.ids;
-    const ids = new Set((await this.db.campus.findMany({ select: { id: true } })).map((c) => c.id));
-    this.campusSetCache = { ids, expiresAt: Date.now() + 15_000 };
-    return ids;
+    // Campus creation does not alter RbacState; read current membership so another
+    // instance immediately recognizes newly-created targets for platform grants.
+    return new Set((await this.db.campus.findMany({ select: { id: true } })).map(c => c.id));
   }
 
   /* ==================== 有效权限读取 ==================== */
@@ -257,6 +246,12 @@ export class RbacService implements OnModuleInit {
    * 账号在上下文校区的有效授权：patterns=平台级全部菜单行 perms ∪ 校区级（=上下文）
    * 菜单行 perms；menuCodes=目录/菜单行 code 并集。授权读取失败默认拒绝。
    */
+  assertSession(account: AdminAccount, tokenSv?: number): void {
+    if (account.status !== 'active') throw new UnauthorizedException('账号已停用');
+    if ((tokenSv ?? 0) !== account.sessionVersion)
+      throw new UnauthorizedException('登录已失效，请重新登录');
+  }
+
   async getEffective(account: AdminAccount): Promise<RbacContext> {
     const version = await this.currentVersion();
     const key = `${account.id}|${account.sessionVersion}|${version}|${account.campusId}`;
@@ -268,19 +263,22 @@ export class RbacService implements OnModuleInit {
       include: { role: true },
     });
     const roleIds: string[] = [];
+    const platformRoleIds: string[] = [];
     let platform = false;
     let superAdmin = false;
     const campusGrantIds = new Set<string>();
     for (const g of grants) {
       if (g.role.status !== 'active') continue;
-      if (g.role.code === SUPER_ROLE_CODE) {
+      if (g.role.code === SUPER_ROLE_CODE && g.scope === 'platform') {
         platform = true;
         superAdmin = true;
         continue;
       }
+      if (g.role.code === SUPER_ROLE_CODE) continue; // Invalid legacy campus-super binding is never global.
       if (g.scope === 'platform') {
         platform = true;
         roleIds.push(g.roleId);
+        platformRoleIds.push(g.roleId);
       } else if (g.campusId) {
         campusGrantIds.add(g.campusId);
         // 校区级角色仅在上下文校区生效（=account.campusId；切换校区换绑定后重算）
@@ -293,13 +291,17 @@ export class RbacService implements OnModuleInit {
             status: 'active',
             roleMenus: { some: { roleId: { in: roleIds } } },
           },
+          include: { roleMenus: { where: { roleId: { in: platformRoleIds } } } },
         })
       : [];
     const patterns = new Set<string>();
+    const platformPatterns = new Set<string>();
     const menuCodes = new Set<string>();
     for (const rm of menus) {
-      for (const p of rm.perms.split(',').map((s) => s.trim()).filter(Boolean))
+      for (const p of rm.perms.split(',').map((s) => s.trim()).filter(Boolean)) {
         patterns.add(p);
+        if (rm.roleMenus.length) platformPatterns.add(p);
+      }
       if (rm.type !== 2) menuCodes.add(rm.code);
     }
     const ctx: RbacContext = {
@@ -311,6 +313,7 @@ export class RbacService implements OnModuleInit {
       super: superAdmin,
       campuses: [...campusGrantIds],
       patterns,
+      platformPatterns,
       menuCodes,
     };
     this.cache.set(key, { ctx, expiresAt: Date.now() + RbacService.TTL_MS });
@@ -320,6 +323,9 @@ export class RbacService implements OnModuleInit {
   /** URL 判权（超管通配；蛋词模式核心） */
   allow(ctx: RbacContext, method: string, path: string): boolean {
     if (ctx.super) return true;
+    if (isSuperOnlyOperation(method, path)) return false;
+    if (matchUrl(PLATFORM_PATTERNS, method, path))
+      return matchUrl(ctx.platformPatterns ?? [], method, path);
     return matchUrl(ctx.patterns, method, path);
   }
 
@@ -335,22 +341,31 @@ export class RbacService implements OnModuleInit {
     // 菜单行：超管=全部 type!=2；否则角色菜单并集。parentId 输出 code 便于前端组树。
     const rows = ctx.super
       ? await this.db.adminMenu.findMany({
-          where: { type: { not: 2 }, status: 'active', isShow: true },
+          where: { type: { not: 2 }, status: 'active' },
           orderBy: [{ orderNum: 'asc' }],
         })
       : ctx.menuCodes.size
         ? await this.db.adminMenu.findMany({
-            where: { code: { in: [...ctx.menuCodes] }, status: 'active', isShow: true },
+            where: { code: { in: [...ctx.menuCodes] }, status: 'active' },
             orderBy: [{ orderNum: 'asc' }],
           })
         : [];
-    const codeId = new Map(rows.map((m) => [m.id, m.code]));
-    const allForParent = await this.db.adminMenu.findMany({
-      where: { type: { not: 2 }, status: 'active' },
-      select: { id: true, code: true },
-    });
-    const parentCode = new Map(allForParent.map((m) => [m.id, m.code]));
-    void codeId;
+    const allRows = await this.db.adminMenu.findMany({ where: { type: { not: 2 }, status: 'active' } });
+    const byId = new Map(allRows.map(m => [m.id, m]));
+    const authorizedIds = new Set(rows.filter(m => m.type === 1).map(m => m.id));
+    const expanded = new Map(rows.map(m => [m.id, m]));
+    for (const row of rows) {
+      let parent = row.parentId;
+      const seen = new Set<string>();
+      while (parent && !seen.has(parent)) {
+        seen.add(parent);
+        const ancestor = byId.get(parent);
+        if (!ancestor) break;
+        expanded.set(ancestor.id, ancestor);
+        parent = ancestor.parentId;
+      }
+    }
+    const parentCode = new Map(allRows.map(m => [m.id, m.code]));
     return {
       account: {
         id: account.id, username: account.username, nickname: account.nickname,
@@ -364,11 +379,15 @@ export class RbacService implements OnModuleInit {
         scope: g.scope, campusId: g.campusId,
         status: g.role.status, builtin: g.role.builtin,
       })),
-      perms: ctx.super ? ['*'] : [...ctx.patterns].sort(),
-      menus: rows.map((m) => ({
+      perms: ctx.super ? ['*'] : [...ctx.patterns].filter(pattern => {
+        const space = pattern.indexOf(' ');
+        return this.allow(ctx, pattern.slice(0, space), pattern.slice(space + 1));
+      }).sort(),
+      menus: [...expanded.values()].sort((a, b) => a.orderNum - b.orderNum || a.code.localeCompare(b.code)).map((m) => ({
         id: m.id, code: m.code, parentId: m.parentId ? (parentCode.get(m.parentId) ?? null) : null,
         name: m.name, type: m.type, path: m.path, viewPath: m.viewPath,
         icon: m.icon, orderNum: m.orderNum, isShow: m.isShow,
+        keepAlive: m.keepAlive, authorized: authorizedIds.has(m.id),
       })),
       switchableCampuses: await this.switchableCampuses(ctx),
       rbacVersion: await this.currentVersion(),
@@ -411,6 +430,7 @@ export class RbacService implements OnModuleInit {
       });
     } catch (e) {
       this.logger.warn(`敏感访问审计写入失败 ${action}/${entityId}: ${String(e)}`);
+      throw new ServiceUnavailableException('审计服务暂不可用，请稍后重试');
     }
   }
 
@@ -437,17 +457,35 @@ export class RbacService implements OnModuleInit {
     accountId: string,
     grants: { roleCode: string; scope: 'platform' | 'campus'; campusId?: string | null }[],
   ) {
-    const before = await this.db.adminAccountRole.findMany({
-      where: { accountId },
-      include: { role: { select: { code: true } } },
-    });
     await this.db.$transaction(async (tx) => {
       await this.lockSuperGuard(tx);
+      await this.replaceAccountGrants(tx, actor, accountId, grants);
+    });
+    this.cache.clear();
+    return grants;
+  }
+
+  private async replaceAccountGrants(
+    tx: Prisma.TransactionClient,
+    actor: { username: string },
+    accountId: string,
+    grants: { roleCode: string; scope: 'platform' | 'campus'; campusId?: string | null }[],
+  ) {
+      const before = await tx.adminAccountRole.findMany({
+        where: { accountId }, include: { role: { select: { code: true } } },
+      });
       const account = await tx.adminAccount.findUnique({ where: { id: accountId } });
       if (!account) throw new BadRequestException('账号不存在');
+      const grantKeys = grants.map(g => `${g.roleCode}:${g.scope}:${g.campusId ?? ''}`);
+      if (new Set(grantKeys).size !== grants.length)
+        throw new BadRequestException('存在重复角色与校区授权');
       for (const g of grants) {
         if (g.scope !== 'platform' && g.scope !== 'campus')
           throw new BadRequestException('授权范围只允许 platform/campus');
+        if (g.roleCode === SUPER_ROLE_CODE && g.scope !== 'platform')
+          throw new BadRequestException('超级管理员只能授予平台范围');
+        if (g.scope === 'platform' && g.campusId)
+          throw new BadRequestException('平台范围不能指定校区');
         if (g.scope === 'campus' && !g.campusId)
           throw new BadRequestException('校区级授权必须指定校区');
         const role = await tx.adminRole.findUnique({ where: { code: g.roleCode } });
@@ -460,7 +498,7 @@ export class RbacService implements OnModuleInit {
       const isSuperAccount = before.some(
         (b) => b.role.code === SUPER_ROLE_CODE && b.scope === 'platform',
       );
-      if (isSuperAccount) {
+      if (isSuperAccount && account.status === 'active') {
         const keepsSuper = grants.some((g) => g.roleCode === SUPER_ROLE_CODE && g.scope === 'platform');
         if (!keepsSuper) {
           const others = await this.countActiveSupers(tx);
@@ -483,7 +521,7 @@ export class RbacService implements OnModuleInit {
       }
       await tx.adminAccount.update({
         where: { id: accountId },
-        data: { sessionVersion: { increment: 1 } },
+        data: { sessionVersion: { increment: 1 }, rbacMigrated: true },
       });
       await this.bumpVersion(tx);
       await this.audit(tx, {
@@ -492,9 +530,7 @@ export class RbacService implements OnModuleInit {
         before: before.map((b) => ({ role: b.role.code, scope: b.scope, campusId: b.campusId })),
         after: grants,
       });
-    });
-    this.cache.clear();
-    return grants;
+
   }
 
   /* ==================== 账号状态/改密 ==================== */
@@ -504,6 +540,16 @@ export class RbacService implements OnModuleInit {
   ) {
     const r = await this.db.$transaction(async (tx) => {
       await this.lockSuperGuard(tx);
+      return this.changeAccountStatus(tx, actor, accountId, status);
+    });
+    this.cache.clear();
+    return r;
+  }
+
+  private async changeAccountStatus(
+    tx: Prisma.TransactionClient, actor: { username: string },
+    accountId: string, status: 'active' | 'disabled',
+  ) {
       const account = await tx.adminAccount.findUnique({ where: { id: accountId } });
       if (!account) throw new BadRequestException('账号不存在');
       if (account.status === status) return { id: accountId, status };
@@ -528,9 +574,78 @@ export class RbacService implements OnModuleInit {
         before: { status: account.status }, after: { status },
       });
       return { id: accountId, status };
+  }
+
+  /** Account fields, grants and audit commit together; all super changes share one lock. */
+  async createAccount(actor: { id: string; username: string }, input: CreateAccountDto) {
+    const passwordHash = await hash(input.password, 10);
+    const account = await this.db.$transaction(async tx => {
+      await this.lockSuperGuard(tx);
+      if (await tx.adminAccount.findUnique({ where: { username: input.username } }))
+        throw new BadRequestException('用户名已存在');
+      const campusId = input.grants?.find(g => g.scope === 'campus')?.campusId ?? '';
+      const created = await tx.adminAccount.create({ data: {
+        username: input.username, nickname: input.nickname ?? '', passwordHash,
+        role: 'rbac', campusId, rbacMigrated: true,
+      } });
+      await this.replaceAccountGrants(tx, actor, created.id, input.grants ?? []);
+      await this.audit(tx, {
+        operator: actor.username, action: 'rbac.account.create', entityType: 'admin-account',
+        entityId: created.id, campusId, after: { username: input.username, nickname: created.nickname },
+      });
+      return { id: created.id, username: created.username, campusId };
     });
     this.cache.clear();
-    return r;
+    return account;
+  }
+
+  async updateAccount(actor: { id: string; username: string }, accountId: string, input: UpdateAccountDto) {
+    if (input.nickname === undefined && !input.password && !input.status && !input.grants)
+      throw new BadRequestException('没有可更新的字段');
+    const passwordHash = input.password ? await hash(input.password, 10) : undefined;
+    const account = await this.db.$transaction(async tx => {
+      await this.lockSuperGuard(tx);
+      const before = await tx.adminAccount.findUnique({ where: { id: accountId } });
+      if (!before) throw new BadRequestException('账号不存在');
+      if (input.grants) await this.replaceAccountGrants(tx, actor, accountId, input.grants);
+      if (input.status) await this.changeAccountStatus(tx, actor, accountId, input.status);
+      const updated = await tx.adminAccount.update({ where: { id: accountId }, data: {
+        ...(input.nickname !== undefined ? { nickname: input.nickname } : {}),
+        ...(passwordHash ? { passwordHash, sessionVersion: { increment: 1 } } : {}),
+      }, select: { id: true, username: true, nickname: true, status: true, role: true } });
+      if (input.nickname !== undefined || passwordHash) await this.audit(tx, {
+        operator: actor.username, action: 'rbac.account.update', entityType: 'admin-account',
+        entityId: accountId, campusId: before.campusId,
+        before: { nickname: before.nickname },
+        after: { nickname: updated.nickname, passwordReset: !!passwordHash },
+      });
+      return updated;
+    });
+    this.cache.clear();
+    return account;
+  }
+
+  async deleteAccount(actor: { id: string; username: string }, accountId: string) {
+    if (actor.id === accountId) throw new BadRequestException('不能删除当前登录账号');
+    await this.db.$transaction(async tx => {
+      await this.lockSuperGuard(tx);
+      const account = await tx.adminAccount.findUnique({ where: { id: accountId } });
+      if (!account) throw new BadRequestException('账号不存在');
+      const isSuper = await tx.adminAccountRole.count({ where: {
+        accountId, scope: 'platform', role: { code: SUPER_ROLE_CODE, status: 'active' },
+      } });
+      if (isSuper && account.status === 'active' && await this.countActiveSupers(tx) <= 1)
+        throw new ForbiddenException('必须保留至少一个有效的超级管理员');
+      await tx.adminAccount.delete({ where: { id: accountId } });
+      await this.bumpVersion(tx);
+      await this.audit(tx, {
+        operator: actor.username, action: 'rbac.account.delete', entityType: 'admin-account',
+        entityId: accountId, campusId: account.campusId,
+        before: { username: account.username, nickname: account.nickname },
+      });
+    });
+    this.cache.clear();
+    return { id: accountId, deleted: true };
   }
 
   /** 重置密码（超管操作）：bump 会话版本，该账号全部旧 token 失效。 */
@@ -575,6 +690,26 @@ export class RbacService implements OnModuleInit {
 
   /* ==================== 菜单管理（自建节点；端点判权=rbac.menus.write 模式） ==================== */
 
+  catalog() {
+    return {
+      views: MENU_NODES.filter(n => n.type === 1).map(n => ({ key: n.code, name: n.name })),
+      permissions: ALL_PERM_PATTERNS.map(pattern => ({
+        pattern,
+        name: MENU_NODES.filter(n => n.perms?.includes(pattern)).map(n => n.name).join(' / '),
+      })),
+    };
+  }
+
+  private validateView(type: number, path: string, view: string) {
+    if (type !== 1) return;
+    if (!/^\/(?:[a-zA-Z0-9_-]+\/?)*$/.test(path) || ['/login', '/access-denied'].includes(path))
+      throw new BadRequestException('菜单路由必须为站内路径，且不能覆盖登录或无权限页');
+    const internal = MENU_NODES.some(n => n.type === 1 && n.code === view);
+    let external = false;
+    try { external = new URL(view).protocol === 'https:'; } catch { /* internal key */ }
+    if (!internal && !external) throw new BadRequestException('请选择已登记页面或填写 HTTPS 外链');
+  }
+
   private static readonly PERM_PATTERN_RE =
     /^(GET|POST|PATCH|PUT|DELETE) \/admin\/\S+$/;
 
@@ -586,7 +721,9 @@ export class RbacService implements OnModuleInit {
       throw new BadRequestException(
         `perms 模式非法（须为 "METHOD /admin/…"）: ${bad.join(',')}`,
       );
-    return perms.join(',');
+    const unknown = perms.filter(p => !ALL_PERM_PATTERNS.includes(p));
+    if (unknown.length) throw new BadRequestException('请选择已登记的接口权限');
+    return [...new Set(perms)].join(',');
   }
 
   /** 建自建节点（builtin=false；code 自动生成 custom-*，不与代码登记冲突） */
@@ -596,6 +733,10 @@ export class RbacService implements OnModuleInit {
       name: string;
       type: number;
       parentCode?: string;
+      parentId?: string | null;
+      viewPath?: string;
+      keepAlive?: boolean;
+      isShow?: boolean;
       perms?: string[];
       path?: string;
       icon?: string;
@@ -607,11 +748,15 @@ export class RbacService implements OnModuleInit {
     if (!input.name?.trim()) throw new BadRequestException('菜单名称不能为空');
     const perms = this.validatePerms(input.perms);
     const code = `custom-${randomUUID().slice(0, 8)}`;
+    this.validateView(input.type, input.path ?? '', input.viewPath ?? '');
     const created = await this.db.$transaction(async (tx) => {
+      await this.lockSuperGuard(tx);
+      if (input.type === 1 && await tx.adminMenu.findFirst({ where: { type: 1, path: input.path } }))
+        throw new BadRequestException('该菜单路由已存在');
       let parentId: string | null = null;
-      if (input.parentCode) {
+      if (input.parentCode || input.parentId) {
         const parent = await tx.adminMenu.findUnique({
-          where: { code: input.parentCode },
+          where: input.parentId ? { id: input.parentId } : { code: input.parentCode },
         });
         if (!parent)
           throw new BadRequestException(`父节点不存在: ${input.parentCode}`);
@@ -627,7 +772,9 @@ export class RbacService implements OnModuleInit {
           parentId,
           perms: perms ?? '',
           path: input.path ?? '',
-          viewPath: input.type === 1 ? code : '',
+          viewPath: input.viewPath ?? '',
+          keepAlive: input.keepAlive ?? false,
+          isShow: input.isShow ?? true,
           icon: input.icon ?? '',
           orderNum: input.orderNum ?? 0,
           builtin: false,
@@ -661,23 +808,24 @@ export class RbacService implements OnModuleInit {
       perms?: string[];
       path?: string;
       parentId?: string | null;
+      viewPath?: string;
+      keepAlive?: boolean;
     },
   ) {
     if (input.type !== undefined && ![0, 1, 2].includes(input.type))
       throw new BadRequestException('type 只允许 0 目录 / 1 菜单 / 2 按钮');
     const perms = this.validatePerms(input.perms);
-    const structural =
-      input.type !== undefined ||
-      input.perms !== undefined ||
-      input.path !== undefined ||
-      input.parentId !== undefined;
     const updated = await this.db.$transaction(async (tx) => {
+      await this.lockSuperGuard(tx);
       const menu = await tx.adminMenu.findUnique({ where: { id } });
       if (!menu) throw new BadRequestException('菜单节点不存在');
-      if (menu.builtin && structural)
-        throw new ForbiddenException(
-          '内置菜单节点的结构字段（type/perms/path/parentId）不可修改，仅可调整名称/图标/排序/显隐',
-        );
+      const type = input.type ?? menu.type;
+      this.validateView(type, input.path ?? menu.path, input.viewPath ?? menu.viewPath);
+      if (type === 2 && await tx.adminMenu.count({ where: { parentId: id } }))
+        throw new BadRequestException('含子节点的目录或菜单不能改为按钮');
+      if (type === 1 && await tx.adminMenu.findFirst({ where: {
+        id: { not: id }, type: 1, path: input.path ?? menu.path,
+      } })) throw new BadRequestException('该菜单路由已存在');
       let parentId: string | null | undefined;
       if (input.parentId !== undefined) {
         if (!input.parentId) {
@@ -705,6 +853,8 @@ export class RbacService implements OnModuleInit {
       const row = await tx.adminMenu.update({
         where: { id },
         data: {
+          ...(input.viewPath !== undefined ? { viewPath: input.viewPath } : {}),
+          ...(input.keepAlive !== undefined ? { keepAlive: input.keepAlive } : {}),
           ...(input.name !== undefined ? { name: input.name.trim() } : {}),
           ...(input.icon !== undefined ? { icon: input.icon } : {}),
           ...(input.orderNum !== undefined ? { orderNum: input.orderNum } : {}),
@@ -797,7 +947,7 @@ export class RbacService implements OnModuleInit {
       if (exists) throw new BadRequestException('角色编码已存在');
       const menus = await this.assertMenuCodes(tx, [...new Set(input.menuCodes)]);
       const role = await tx.adminRole.create({
-        data: { code, name: input.name.trim(), remark: input.remark ?? '', seeded: true },
+        data: { code, name: input.name.trim(), remark: input.remark ?? '', seeded: true, menusMigrated: true },
       });
       if (menus.length) {
         const ids = (
@@ -843,6 +993,7 @@ export class RbacService implements OnModuleInit {
       await tx.adminRole.update({
         where: { id: roleId },
         data: {
+          menusMigrated: true,
           ...(input.name ? { name: input.name.trim() } : {}),
           ...(input.remark !== undefined ? { remark: input.remark } : {}),
           ...(input.status ? { status: input.status } : {}),
@@ -871,15 +1022,16 @@ export class RbacService implements OnModuleInit {
   }
 
   async deleteRole(actor: { username: string }, roleId: string) {
-    const role = await this.db.adminRole.findUnique({
-      where: { id: roleId },
-      include: { _count: { select: { accounts: true } } },
-    });
-    if (!role) throw new BadRequestException('角色不存在');
-    if (role.builtin) throw new ForbiddenException('内置超级管理员不可删除');
-    if (role._count.accounts > 0)
-      throw new BadRequestException(`仍有 ${role._count.accounts} 条账号授权引用该角色，先撤权再删除`);
     await this.db.$transaction(async (tx) => {
+      await this.lockSuperGuard(tx);
+      const role = await tx.adminRole.findUnique({
+        where: { id: roleId }, include: { _count: { select: { accounts: true } } },
+      });
+      if (!role) throw new BadRequestException('角色不存在');
+      if (role.builtin) throw new ForbiddenException('内置超级管理员不可删除');
+      if (role._count.accounts > 0)
+        throw new BadRequestException(`仍有 ${role._count.accounts} 条账号授权引用该角色，先撤权再删除`);
+      await tx.adminRoleMenu.deleteMany({ where: { roleId } });
       await tx.adminRole.delete({ where: { id: roleId } });
       await this.bumpVersion(tx);
       await this.audit(tx, {

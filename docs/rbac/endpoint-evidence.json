@@ -1,0 +1,3444 @@
+{
+  "interpretation": "Static pointers to tests; latest execution result is recorded in implementation-status.md. Direct calls can test allow, deny, invalid input or lifecycle; inspect assertions. This index excludes dynamic super-route scan and does not prove isolation for every route. Domain calls do not exercise HTTP guard. Source-only rows require explicit review.",
+  "counts": {
+    "endpoints": 139,
+    "withDirectHttpCall": 94,
+    "domainOnly": 28,
+    "sourceReviewOnly": 17
+  },
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/admin/accounts",
+      "scope": "platform-only: global resource or explicit target campus",
+      "controller": "src/admin/admin.controller.ts:1675",
+      "service": [
+        {
+          "name": "accounts",
+          "source": "src/admin/admin.service.ts:5280"
+        }
+      ],
+      "directHttpTestCalls": [],
+      "domainServiceTestCalls": [
+        {
+          "source": "src/admin/accounts.spec.ts:185",
+          "test": "列表不泄露 passwordHash"
+        },
+        {
+          "source": "src/admin/admin-campus-access.spec.ts:84",
+          "test": "建号带多校区授权：授权行落库，列表回显 grants"
+        },
+        {
+          "source": "src/admin/hq-multicampus.spec.ts:287",
+          "test": "账号管理（IKBFJ4→RBAC V1）：建号+授权分离；登录闭环与跨校区列表"
+        },
+        {
+          "source": "src/admin/hq-multicampus.spec.ts:292",
+          "test": "账号管理（IKBFJ4→RBAC V1）：建号+授权分离；登录闭环与跨校区列表"
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/admin/accounts",
+      "scope": "super-only: global permission configuration/account administration",
+      "controller": "src/admin/admin.controller.ts:1694",
+      "service": [],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac.integration.spec.ts:667",
+          "test": "账号创建/资料/密码/状态/授权失败全部回滚，角色删除清理关联"
+        },
+        {
+          "source": "src/admin/rbac.integration.spec.ts:672",
+          "test": "账号创建/资料/密码/状态/授权失败全部回滚，角色删除清理关联"
+        }
+      ],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "DELETE",
+      "path": "/admin/accounts/:id",
+      "scope": "super-only: global permission configuration/account administration",
+      "controller": "src/admin/admin.controller.ts:1717",
+      "service": [],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac.integration.spec.ts:655",
+          "test": "超管保护：唯一超管不可自摘授权/自停/自删"
+        }
+      ],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "PATCH",
+      "path": "/admin/accounts/:id",
+      "scope": "super-only: global permission configuration/account administration",
+      "controller": "src/admin/admin.controller.ts:1704",
+      "service": [],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac.integration.spec.ts:647",
+          "test": "超管保护：唯一超管不可自摘授权/自停/自删"
+        },
+        {
+          "source": "src/admin/rbac.integration.spec.ts:651",
+          "test": "超管保护：唯一超管不可自摘授权/自停/自删"
+        },
+        {
+          "source": "src/admin/rbac.integration.spec.ts:680",
+          "test": "账号创建/资料/密码/状态/授权失败全部回滚，角色删除清理关联"
+        },
+        {
+          "source": "src/admin/rbac.integration.spec.ts:818",
+          "test": "普通角色即使勾选管理接口也不能修改角色、菜单或账号授权"
+        }
+      ],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "GET",
+      "path": "/admin/after-sales",
+      "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+      "controller": "src/admin/admin.controller.ts:1470",
+      "service": [
+        {
+          "name": "afterSales",
+          "source": "src/admin/admin.service.ts:4422"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:124",
+          "test": "list endpoints and new-order watermark ignore foreign campus query and exclude real B records"
+        }
+      ],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "GET",
+      "path": "/admin/audit-logs",
+      "scope": "campusScope: current campus; matching platform grant permits aggregate or validated campus query",
+      "controller": "src/admin/admin.controller.ts:1654",
+      "service": [
+        {
+          "name": "auditLogs",
+          "source": "src/admin/admin.service.ts:5247"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:170",
+          "test": "counts, audit, creation and recruitment transitions preserve campus scope"
+        }
+      ],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "GET",
+      "path": "/admin/banners",
+      "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+      "controller": "src/admin/admin.controller.ts:286",
+      "service": [
+        {
+          "name": "banners",
+          "source": "src/admin/admin.service.ts:819"
+        }
+      ],
+      "directHttpTestCalls": [],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "POST",
+      "path": "/admin/banners",
+      "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+      "controller": "src/admin/admin.controller.ts:310",
+      "service": [
+        {
+          "name": "createBanner",
+          "source": "src/admin/admin.service.ts:841"
+        }
+      ],
+      "directHttpTestCalls": [],
+      "domainServiceTestCalls": [
+        {
+          "source": "src/admin/hq-multicampus.spec.ts:183",
+          "test": "Banner 校区自管（IKBW0A）：校区建即落本校区且仅本校可见，hq 投放通道关闭"
+        },
+        {
+          "source": "src/admin/hq-multicampus.spec.ts:190",
+          "test": "Banner 校区自管（IKBW0A）：校区建即落本校区且仅本校可见，hq 投放通道关闭"
+        }
+      ]
+    },
+    {
+      "method": "DELETE",
+      "path": "/admin/banners/:id",
+      "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+      "controller": "src/admin/admin.controller.ts:337",
+      "service": [
+        {
+          "name": "deleteBanner",
+          "source": "src/admin/admin.service.ts:934"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:247",
+          "test": "banner and promotion ID ownership and nested product ownership"
+        }
+      ],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "PATCH",
+      "path": "/admin/banners/:id",
+      "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+      "controller": "src/admin/admin.controller.ts:323",
+      "service": [
+        {
+          "name": "updateBanner",
+          "source": "src/admin/admin.service.ts:886"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:245",
+          "test": "banner and promotion ID ownership and nested product ownership"
+        },
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:246",
+          "test": "banner and promotion ID ownership and nested product ownership"
+        }
+      ],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "GET",
+      "path": "/admin/battle-map/buildings/:buildingId",
+      "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+      "controller": "src/admin/admin.controller.ts:832",
+      "service": [
+        {
+          "name": "battleMapBuilding",
+          "source": "src/admin/admin.service.ts:3161"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:225",
+          "test": "nested rooms and building targets cannot cross campus or mismatch their parent"
+        }
+      ],
+      "domainServiceTestCalls": [
+        {
+          "source": "src/admin/battle-map.spec.ts:166",
+          "test": "整栋地图：三色判定+楼层汇总+覆盖率"
+        },
+        {
+          "source": "src/admin/battle-map.spec.ts:192",
+          "test": "防串校区：楼栋不属于当前校区 → 404"
+        },
+        {
+          "source": "src/admin/battle-map.spec.ts:195",
+          "test": "防串校区：楼栋不属于当前校区 → 404"
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/admin/battle-map/rooms/:roomId",
+      "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+      "controller": "src/admin/admin.controller.ts:841",
+      "service": [
+        {
+          "name": "battleMapRoom",
+          "source": "src/admin/admin.service.ts:3241"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:226",
+          "test": "nested rooms and building targets cannot cross campus or mismatch their parent"
+        }
+      ],
+      "domainServiceTestCalls": [
+        {
+          "source": "src/admin/battle-map.spec.ts:201",
+          "test": "寝室详情：用户统计+高频标签（近 30 天 ≥3）+手机号脱敏"
+        },
+        {
+          "source": "src/admin/battle-map.spec.ts:212",
+          "test": "寝室详情：用户统计+高频标签（近 30 天 ≥3）+手机号脱敏"
+        },
+        {
+          "source": "src/admin/battle-map.spec.ts:217",
+          "test": "寝室详情：用户统计+高频标签（近 30 天 ≥3）+手机号脱敏"
+        },
+        {
+          "source": "src/admin/battle-map.spec.ts:225",
+          "test": "格子不存在 → 404"
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/admin/buildings",
+      "scope": "campusScope: current campus; matching platform grant permits aggregate or validated campus query",
+      "controller": "src/admin/admin.controller.ts:1340",
+      "service": [
+        {
+          "name": "buildings",
+          "source": "src/admin/admin.service.ts:4150"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac.integration.spec.ts:146",
+          "test": "不同校区角色不串用：B 校区上下文只剩财务，商品域被拒；越权校区参数被忽略"
+        },
+        {
+          "source": "src/admin/rbac.integration.spec.ts:893",
+          "test": "校区切换后旧 token 的数据校区与当前权限校区保持一致"
+        }
+      ],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "POST",
+      "path": "/admin/buildings",
+      "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+      "controller": "src/admin/admin.controller.ts:1363",
+      "service": [
+        {
+          "name": "createBuilding",
+          "source": "src/admin/admin.service.ts:4169"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:144",
+          "test": "delivery configuration and building mutations remain in A despite body/query campus overrides"
+        }
+      ],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "DELETE",
+      "path": "/admin/buildings/:id",
+      "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+      "controller": "src/admin/admin.controller.ts:1386",
+      "service": [
+        {
+          "name": "deleteBuilding",
+          "source": "src/admin/admin.service.ts:4220"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:143",
+          "test": "delivery configuration and building mutations remain in A despite body/query campus overrides"
+        }
+      ],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "PATCH",
+      "path": "/admin/buildings/:id",
+      "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+      "controller": "src/admin/admin.controller.ts:1372",
+      "service": [
+        {
+          "name": "updateBuilding",
+          "source": "src/admin/admin.service.ts:4198"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:142",
+          "test": "delivery configuration and building mutations remain in A despite body/query campus overrides"
+        }
+      ],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "GET",
+      "path": "/admin/buildings/:id/rooms",
+      "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+      "controller": "src/admin/admin.controller.ts:1395",
+      "service": [
+        {
+          "name": "rooms",
+          "source": "src/admin/admin.service.ts:4245"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:221",
+          "test": "nested rooms and building targets cannot cross campus or mismatch their parent"
+        },
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:222",
+          "test": "nested rooms and building targets cannot cross campus or mismatch their parent"
+        }
+      ],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "POST",
+      "path": "/admin/buildings/:id/rooms",
+      "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+      "controller": "src/admin/admin.controller.ts:1408",
+      "service": [
+        {
+          "name": "createRoom",
+          "source": "src/admin/admin.service.ts:4261"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:223",
+          "test": "nested rooms and building targets cannot cross campus or mismatch their parent"
+        }
+      ],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "DELETE",
+      "path": "/admin/buildings/:id/rooms/:roomId",
+      "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+      "controller": "src/admin/admin.controller.ts:1418",
+      "service": [
+        {
+          "name": "deleteRoom",
+          "source": "src/admin/admin.service.ts:4302"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:224",
+          "test": "nested rooms and building targets cannot cross campus or mismatch their parent"
+        }
+      ],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "POST",
+      "path": "/admin/buildings/:id/rooms/import",
+      "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+      "controller": "src/admin/admin.controller.ts:1446",
+      "service": [
+        {
+          "name": "importRooms",
+          "source": "src/admin/admin.service.ts:4353"
+        }
+      ],
+      "directHttpTestCalls": [],
+      "domainServiceTestCalls": [
+        {
+          "source": "src/admin/rooms-finance-marketing.spec.ts:140",
+          "test": "imports rooms from xlsx, skips duplicates on re-import, rejects bad files"
+        },
+        {
+          "source": "src/admin/rooms-finance-marketing.spec.ts:146",
+          "test": "imports rooms from xlsx, skips duplicates on re-import, rejects bad files"
+        },
+        {
+          "source": "src/admin/rooms-finance-marketing.spec.ts:152",
+          "test": "imports rooms from xlsx, skips duplicates on re-import, rejects bad files"
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/admin/buildings/:id/rooms/template",
+      "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+      "controller": "src/admin/admin.controller.ts:1429",
+      "service": [
+        {
+          "name": "roomTemplate",
+          "source": "src/admin/admin.service.ts:4328"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:283",
+          "test": "locations, commissions and dispatch validate both record ownership and nested staff/building IDs"
+        },
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:284",
+          "test": "locations, commissions and dispatch validate both record ownership and nested staff/building IDs"
+        }
+      ],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "GET",
+      "path": "/admin/campuses",
+      "scope": "campusScope: current campus; matching platform grant permits aggregate or validated campus query",
+      "controller": "src/admin/admin.controller.ts:1572",
+      "service": [
+        {
+          "name": "campuses",
+          "source": "src/admin/admin.service.ts:4656"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:385",
+          "test": "new campus stays outside explicit A/B grants; an explicit platform grant includes it without reassigning"
+        },
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:390",
+          "test": "new campus stays outside explicit A/B grants; an explicit platform grant includes it without reassigning"
+        },
+        {
+          "source": "src/admin/rbac.integration.spec.ts:366",
+          "test": "校区列表只返回当前操作校区；全局账号/权限预览/授权审计不能由校区角色获得"
+        },
+        {
+          "source": "src/admin/rbac.integration.spec.ts:375",
+          "test": "校区列表只返回当前操作校区；全局账号/权限预览/授权审计不能由校区角色获得"
+        }
+      ],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "POST",
+      "path": "/admin/campuses",
+      "scope": "platform-only: global resource or explicit target campus",
+      "controller": "src/admin/admin.controller.ts:1579",
+      "service": [
+        {
+          "name": "createCampus",
+          "source": "src/admin/admin.service.ts:4676"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac.integration.spec.ts:838",
+          "test": "平台只读角色不能把校区角色的平台操作扩权，超级管理员不能绑定校区范围"
+        }
+      ],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "PATCH",
+      "path": "/admin/campuses/:id",
+      "scope": "platform-only: global resource or explicit target campus",
+      "controller": "src/admin/admin.controller.ts:1585",
+      "service": [
+        {
+          "name": "updateCampus",
+          "source": "src/admin/admin.service.ts:4710"
+        }
+      ],
+      "directHttpTestCalls": [],
+      "domainServiceTestCalls": [
+        {
+          "source": "src/admin/hq-campus.spec.ts:60",
+          "test": "总部仓不可停用（中转链路依赖）"
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/admin/categories",
+      "scope": "shared: global category dictionary; capability required for mutations",
+      "controller": "src/admin/admin.controller.ts:247",
+      "service": [
+        {
+          "name": "categories",
+          "source": "src/admin/admin.service.ts:722"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:288",
+          "test": "shared category names remain global but product counts stay in the current campus"
+        }
+      ],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "POST",
+      "path": "/admin/categories",
+      "scope": "shared: global category dictionary; capability required for mutations",
+      "controller": "src/admin/admin.controller.ts:252",
+      "service": [
+        {
+          "name": "createCategory",
+          "source": "src/admin/admin.service.ts:732"
+        }
+      ],
+      "directHttpTestCalls": [],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "DELETE",
+      "path": "/admin/categories/:id",
+      "scope": "shared: global category dictionary; capability required for mutations",
+      "controller": "src/admin/admin.controller.ts:275",
+      "service": [
+        {
+          "name": "deleteCategory",
+          "source": "src/admin/admin.service.ts:795"
+        }
+      ],
+      "directHttpTestCalls": [],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "PATCH",
+      "path": "/admin/categories/:id",
+      "scope": "shared: global category dictionary; capability required for mutations",
+      "controller": "src/admin/admin.controller.ts:261",
+      "service": [
+        {
+          "name": "updateCategory",
+          "source": "src/admin/admin.service.ts:760"
+        }
+      ],
+      "directHttpTestCalls": [],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "GET",
+      "path": "/admin/commission-rules",
+      "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+      "controller": "src/admin/admin.controller.ts:1489",
+      "service": [
+        {
+          "name": "commissionRules",
+          "source": "src/admin/admin.service.ts:4430"
+        }
+      ],
+      "directHttpTestCalls": [],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "POST",
+      "path": "/admin/commission-rules",
+      "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+      "controller": "src/admin/admin.controller.ts:1506",
+      "service": [
+        {
+          "name": "createCommissionRule",
+          "source": "src/admin/admin.service.ts:4444"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:271",
+          "test": "locations, commissions and dispatch validate both record ownership and nested staff/building IDs"
+        }
+      ],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "PATCH",
+      "path": "/admin/commission-rules/:id",
+      "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+      "controller": "src/admin/admin.controller.ts:1519",
+      "service": [
+        {
+          "name": "updateCommissionRule",
+          "source": "src/admin/admin.service.ts:4488"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:272",
+          "test": "locations, commissions and dispatch validate both record ownership and nested staff/building IDs"
+        }
+      ],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "GET",
+      "path": "/admin/coupons",
+      "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+      "controller": "src/admin/admin.controller.ts:1597",
+      "service": [
+        {
+          "name": "coupons",
+          "source": "src/admin/admin.service.ts:4883"
+        }
+      ],
+      "directHttpTestCalls": [],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "POST",
+      "path": "/admin/coupons",
+      "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+      "controller": "src/admin/admin.controller.ts:1616",
+      "service": [
+        {
+          "name": "createCoupon",
+          "source": "src/admin/admin.service.ts:4895"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:181",
+          "test": "counts, audit, creation and recruitment transitions preserve campus scope"
+        }
+      ],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "DELETE",
+      "path": "/admin/coupons/:id",
+      "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+      "controller": "src/admin/admin.controller.ts:1635",
+      "service": [
+        {
+          "name": "deleteCoupon",
+          "source": "src/admin/admin.service.ts:4956"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:240",
+          "test": "coupon issuance checks both coupon ownership and every explicit recipient before issuing any coupon"
+        }
+      ],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "PATCH",
+      "path": "/admin/coupons/:id",
+      "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+      "controller": "src/admin/admin.controller.ts:1625",
+      "service": [
+        {
+          "name": "updateCoupon",
+          "source": "src/admin/admin.service.ts:4980"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:239",
+          "test": "coupon issuance checks both coupon ownership and every explicit recipient before issuing any coupon"
+        }
+      ],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "POST",
+      "path": "/admin/coupons/:id/issue",
+      "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+      "controller": "src/admin/admin.controller.ts:1644",
+      "service": [
+        {
+          "name": "issueCoupon",
+          "source": "src/admin/admin.service.ts:5043"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:233",
+          "test": "coupon issuance checks both coupon ownership and every explicit recipient before issuing any coupon"
+        },
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:234",
+          "test": "coupon issuance checks both coupon ownership and every explicit recipient before issuing any coupon"
+        },
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:236",
+          "test": "coupon issuance checks both coupon ownership and every explicit recipient before issuing any coupon"
+        }
+      ],
+      "domainServiceTestCalls": [
+        {
+          "source": "src/admin/rooms-finance-marketing.spec.ts:244",
+          "test": "targets coupons by building/floor and by phone, idempotent per user"
+        },
+        {
+          "source": "src/admin/rooms-finance-marketing.spec.ts:254",
+          "test": "targets coupons by building/floor and by phone, idempotent per user"
+        },
+        {
+          "source": "src/admin/rooms-finance-marketing.spec.ts:265",
+          "test": "targets coupons by building/floor and by phone, idempotent per user"
+        },
+        {
+          "source": "src/admin/rooms-finance-marketing.spec.ts:275",
+          "test": "targets coupons by building/floor and by phone, idempotent per user"
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/admin/dashboard",
+      "scope": "campusScope: current campus; matching platform grant permits aggregate or validated campus query",
+      "controller": "src/admin/admin.controller.ts:162",
+      "service": [
+        {
+          "name": "dashboard",
+          "source": "src/admin/admin.service.ts:187"
+        }
+      ],
+      "directHttpTestCalls": [],
+      "domainServiceTestCalls": [
+        {
+          "source": "src/admin/admin.service.spec.ts:20",
+          "test": "aggregates persisted operational data"
+        },
+        {
+          "source": "src/admin/hq-multicampus.spec.ts:129",
+          "test": "hq dashboard：跨校区汇总含两校区，B 校今日支付计入"
+        },
+        {
+          "source": "src/admin/hq-multicampus.spec.ts:141",
+          "test": "hq dashboard：跨校区汇总含两校区，B 校今日支付计入"
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/admin/delivery-config",
+      "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+      "controller": "src/admin/admin.controller.ts:1317",
+      "service": [
+        {
+          "name": "deliveryConfig",
+          "source": "src/admin/admin.service.ts:4096"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:139",
+          "test": "delivery configuration and building mutations remain in A despite body/query campus overrides"
+        }
+      ],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "PATCH",
+      "path": "/admin/delivery-config",
+      "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+      "controller": "src/admin/admin.controller.ts:1325",
+      "service": [
+        {
+          "name": "updateDeliveryConfig",
+          "source": "src/admin/admin.service.ts:4110"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:137",
+          "test": "delivery configuration and building mutations remain in A despite body/query campus overrides"
+        }
+      ],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "GET",
+      "path": "/admin/dispatch-invitations",
+      "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+      "controller": "src/admin/admin.controller.ts:1241",
+      "service": [
+        {
+          "name": "dispatchInvitations",
+          "source": "src/admin/admin.service.ts:4784"
+        }
+      ],
+      "directHttpTestCalls": [],
+      "domainServiceTestCalls": [
+        {
+          "source": "src/admin/dispatch.spec.ts:242",
+          "test": "dispatch invitation creation validates target and building"
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/admin/dispatch-invitations",
+      "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+      "controller": "src/admin/admin.controller.ts:1260",
+      "service": [
+        {
+          "name": "createDispatchInvitation",
+          "source": "src/admin/admin.service.ts:4806"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:276",
+          "test": "locations, commissions and dispatch validate both record ownership and nested staff/building IDs"
+        },
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:278",
+          "test": "locations, commissions and dispatch validate both record ownership and nested staff/building IDs"
+        },
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:279",
+          "test": "locations, commissions and dispatch validate both record ownership and nested staff/building IDs"
+        }
+      ],
+      "domainServiceTestCalls": [
+        {
+          "source": "src/admin/dispatch.spec.ts:149",
+          "test": "dispatch invitation creation validates target and building"
+        },
+        {
+          "source": "src/admin/dispatch.spec.ts:162",
+          "test": "dispatch invitation creation validates target and building"
+        },
+        {
+          "source": "src/admin/dispatch.spec.ts:175",
+          "test": "dispatch invitation creation validates target and building"
+        },
+        {
+          "source": "src/admin/dispatch.spec.ts:206",
+          "test": "dispatch invitation creation validates target and building"
+        },
+        {
+          "source": "src/admin/dispatch.spec.ts:218",
+          "test": "dispatch invitation creation validates target and building"
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/admin/dispatch-invitations/:id/cancel",
+      "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+      "controller": "src/admin/admin.controller.ts:1273",
+      "service": [
+        {
+          "name": "cancelDispatchInvitation",
+          "source": "src/admin/admin.service.ts:4854"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:273",
+          "test": "locations, commissions and dispatch validate both record ownership and nested staff/building IDs"
+        }
+      ],
+      "domainServiceTestCalls": [
+        {
+          "source": "src/admin/dispatch.spec.ts:235",
+          "test": "dispatch invitation creation validates target and building"
+        },
+        {
+          "source": "src/admin/dispatch.spec.ts:239",
+          "test": "dispatch invitation creation validates target and building"
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/admin/featured",
+      "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+      "controller": "src/admin/admin.controller.ts:372",
+      "service": [
+        {
+          "name": "featured",
+          "source": "src/admin/admin.service.ts:683"
+        }
+      ],
+      "directHttpTestCalls": [],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "PUT",
+      "path": "/admin/featured",
+      "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+      "controller": "src/admin/admin.controller.ts:377",
+      "service": [
+        {
+          "name": "saveFeatured",
+          "source": "src/admin/admin.service.ts:700"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:213",
+          "test": "batch products and featured lists strip B targets; foreign stock and detail writes reject"
+        }
+      ],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "GET",
+      "path": "/admin/inventory",
+      "scope": "campusScope: current campus; matching platform grant permits aggregate or validated campus query",
+      "controller": "src/admin/admin.controller.ts:575",
+      "service": [
+        {
+          "name": "inventory",
+          "source": "src/admin/admin.service.ts:1519"
+        }
+      ],
+      "directHttpTestCalls": [],
+      "domainServiceTestCalls": [
+        {
+          "source": "src/admin/hq-campus.spec.ts:53",
+          "test": "总部仓库存可经 campusId 聚焦（仓储页复用）"
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/admin/inventory/adjust",
+      "scope": "campusScope: current campus; matching platform grant permits aggregate or validated campus query",
+      "controller": "src/admin/admin.controller.ts:901",
+      "service": [
+        {
+          "name": "adjustStock",
+          "source": "src/admin/admin.service.ts:1563"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:210",
+          "test": "batch products and featured lists strip B targets; foreign stock and detail writes reject"
+        }
+      ],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "POST",
+      "path": "/admin/inventory/stock-in",
+      "scope": "platform-only: global resource or explicit target campus",
+      "controller": "src/admin/admin.controller.ts:602",
+      "service": [
+        {
+          "name": "stockIn",
+          "source": "src/admin/admin.service.ts:1531"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac.integration.spec.ts:221",
+          "test": "隐藏按钮直调 API 仍被拒（guard URL 模式）：warehouse 无财务/招募/手机号明文/直入"
+        }
+      ],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "POST",
+      "path": "/admin/inventory/stocktake",
+      "scope": "campusScope: current campus; matching platform grant permits aggregate or validated campus query",
+      "controller": "src/admin/admin.controller.ts:616",
+      "service": [
+        {
+          "name": "stocktake",
+          "source": "src/admin/admin.service.ts:1607"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:209",
+          "test": "batch products and featured lists strip B targets; foreign stock and detail writes reject"
+        }
+      ],
+      "domainServiceTestCalls": [
+        {
+          "source": "src/admin/rooms-finance-marketing.spec.ts:158",
+          "test": "stocktake calibrates to counted qty (actual-number semantics)"
+        },
+        {
+          "source": "src/admin/rooms-finance-marketing.spec.ts:173",
+          "test": "stocktake calibrates to counted qty (actual-number semantics)"
+        },
+        {
+          "source": "src/admin/rooms-finance-marketing.spec.ts:182",
+          "test": "stocktake calibrates to counted qty (actual-number semantics)"
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/admin/inventory/txns",
+      "scope": "campusScope: current campus; matching platform grant permits aggregate or validated campus query",
+      "controller": "src/admin/admin.controller.ts:914",
+      "service": [
+        {
+          "name": "inventoryTxns",
+          "source": "src/admin/admin.service.ts:3373"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:127",
+          "test": "list endpoints and new-order watermark ignore foreign campus query and exclude real B records"
+        }
+      ],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "GET",
+      "path": "/admin/leave-requests",
+      "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+      "controller": "src/admin/admin.controller.ts:1222",
+      "service": [
+        {
+          "name": "leaveRequests",
+          "source": "src/admin/admin.service.ts:4757"
+        }
+      ],
+      "directHttpTestCalls": [],
+      "domainServiceTestCalls": [
+        {
+          "source": "src/admin/dispatch.spec.ts:137",
+          "test": "leave-requests listing carries the manager and building info"
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/admin/locations",
+      "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+      "controller": "src/admin/admin.controller.ts:1168",
+      "service": [
+        {
+          "name": "locations",
+          "source": "src/admin/admin.service.ts:3783"
+        }
+      ],
+      "directHttpTestCalls": [],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "POST",
+      "path": "/admin/locations",
+      "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+      "controller": "src/admin/admin.controller.ts:1171",
+      "service": [
+        {
+          "name": "createLocation",
+          "source": "src/admin/admin.service.ts:3789"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:184",
+          "test": "counts, audit, creation and recruitment transitions preserve campus scope"
+        }
+      ],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "DELETE",
+      "path": "/admin/locations/:id",
+      "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+      "controller": "src/admin/admin.controller.ts:1197",
+      "service": [
+        {
+          "name": "deleteLocation",
+          "source": "src/admin/admin.service.ts:3842"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:270",
+          "test": "locations, commissions and dispatch validate both record ownership and nested staff/building IDs"
+        }
+      ],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "PATCH",
+      "path": "/admin/locations/:id",
+      "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+      "controller": "src/admin/admin.controller.ts:1181",
+      "service": [
+        {
+          "name": "updateLocation",
+          "source": "src/admin/admin.service.ts:3813"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:269",
+          "test": "locations, commissions and dispatch validate both record ownership and nested staff/building IDs"
+        }
+      ],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "GET",
+      "path": "/admin/marketing/map",
+      "scope": "campusScope: current campus; matching platform grant permits aggregate or validated campus query",
+      "controller": "src/admin/admin.controller.ts:388",
+      "service": [
+        {
+          "name": "marketingMap",
+          "source": "src/admin/admin.service.ts:5160"
+        }
+      ],
+      "directHttpTestCalls": [],
+      "domainServiceTestCalls": [
+        {
+          "source": "src/admin/rooms-finance-marketing.spec.ts:216",
+          "test": "aggregates marketing map with zero-fill for ordered and idle rooms"
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/admin/orders",
+      "scope": "campusScope: current campus; matching platform grant permits aggregate or validated campus query",
+      "controller": "src/admin/admin.controller.ts:933",
+      "service": [
+        {
+          "name": "orders",
+          "source": "src/admin/admin.service.ts:3401"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac.integration.spec.ts:138",
+          "test": "同校区多角色并集正确：ops@A 订单写 + finance@A 结算同时在 A 生效"
+        },
+        {
+          "source": "src/admin/rbac.integration.spec.ts:168",
+          "test": "撤销一个角色后其余授权仍有效（旧 token 因会话版本失效，重登后余权可用）"
+        }
+      ],
+      "domainServiceTestCalls": [
+        {
+          "source": "src/admin/hq-multicampus.spec.ts:145",
+          "test": "hq 订单视角：空校区=全校区含 B 校；校区视角互相隔离"
+        },
+        {
+          "source": "src/admin/hq-multicampus.spec.ts:151",
+          "test": "hq 订单视角：空校区=全校区含 B 校；校区视角互相隔离"
+        },
+        {
+          "source": "src/admin/orders-status.spec.ts:85",
+          "test": "merges comma-separated statuses (配送中 Tab = 3 个原始状态)"
+        },
+        {
+          "source": "src/admin/orders-status.spec.ts:94",
+          "test": "keeps single-status and all compatible with the old dropdown"
+        },
+        {
+          "source": "src/admin/orders-status.spec.ts:97",
+          "test": "keeps single-status and all compatible with the old dropdown"
+        },
+        {
+          "source": "src/admin/orders-status.spec.ts:98",
+          "test": "keeps single-status and all compatible with the old dropdown"
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/admin/orders/:id",
+      "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+      "controller": "src/admin/admin.controller.ts:978",
+      "service": [
+        {
+          "name": "order",
+          "source": "src/admin/admin.service.ts:3534"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:130",
+          "test": "list endpoints and new-order watermark ignore foreign campus query and exclude real B records"
+        },
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:193",
+          "test": "order IDs and printers: own detail succeeds, foreign detail/status/actions/print reject before external call"
+        },
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:194",
+          "test": "order IDs and printers: own detail succeeds, foreign detail/status/actions/print reject before external call"
+        }
+      ],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "POST",
+      "path": "/admin/orders/:id/actions/:action",
+      "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+      "controller": "src/admin/admin.controller.ts:984",
+      "service": [
+        {
+          "name": "orderAction",
+          "source": "src/admin/admin.service.ts:3541"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:196",
+          "test": "order IDs and printers: own detail succeeds, foreign detail/status/actions/print reject before external call"
+        }
+      ],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "POST",
+      "path": "/admin/orders/:id/print-receipt",
+      "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+      "controller": "src/admin/admin.controller.ts:1017",
+      "service": [
+        {
+          "name": "reprintReceipt",
+          "source": "src/admin/admin.service.ts:3578"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:197",
+          "test": "order IDs and printers: own detail succeeds, foreign detail/status/actions/print reject before external call"
+        }
+      ],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "POST",
+      "path": "/admin/orders/:id/status",
+      "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+      "controller": "src/admin/admin.controller.ts:1000",
+      "service": [
+        {
+          "name": "updateOrderStatus",
+          "source": "src/admin/admin.service.ts:3746"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:195",
+          "test": "order IDs and printers: own detail succeeds, foreign detail/status/actions/print reject before external call"
+        }
+      ],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "GET",
+      "path": "/admin/orders/new-order-watch",
+      "scope": "campusScope: current campus; matching platform grant permits aggregate or validated campus query",
+      "controller": "src/admin/admin.controller.ts:970",
+      "service": [
+        {
+          "name": "newOrderWatch",
+          "source": "src/admin/admin.service.ts:3519"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:130",
+          "test": "list endpoints and new-order watermark ignore foreign campus query and exclude real B records"
+        }
+      ],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "GET",
+      "path": "/admin/orders/status-counts",
+      "scope": "campusScope: current campus; matching platform grant permits aggregate or validated campus query",
+      "controller": "src/admin/admin.controller.ts:961",
+      "service": [
+        {
+          "name": "orderStatusCounts",
+          "source": "src/admin/admin.service.ts:3507"
+        }
+      ],
+      "directHttpTestCalls": [],
+      "domainServiceTestCalls": [
+        {
+          "source": "src/admin/hq-multicampus.spec.ts:153",
+          "test": "hq 订单视角：空校区=全校区含 B 校；校区视角互相隔离"
+        },
+        {
+          "source": "src/admin/hq-multicampus.spec.ts:157",
+          "test": "hq 订单视角：空校区=全校区含 B 校；校区视角互相隔离"
+        },
+        {
+          "source": "src/admin/orders-status.spec.ts:102",
+          "test": "counts per raw status within campus only"
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/admin/printers",
+      "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+      "controller": "src/admin/admin.controller.ts:1028",
+      "service": [
+        {
+          "name": "printers",
+          "source": "src/admin/admin.service.ts:3642"
+        }
+      ],
+      "directHttpTestCalls": [],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "POST",
+      "path": "/admin/printers",
+      "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+      "controller": "src/admin/admin.controller.ts:1033",
+      "service": [
+        {
+          "name": "bindPrinter",
+          "source": "src/admin/admin.service.ts:3656"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:186",
+          "test": "counts, audit, creation and recruitment transitions preserve campus scope"
+        }
+      ],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "DELETE",
+      "path": "/admin/printers/:id",
+      "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+      "controller": "src/admin/admin.controller.ts:1044",
+      "service": [
+        {
+          "name": "unbindPrinter",
+          "source": "src/admin/admin.service.ts:3703"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:199",
+          "test": "order IDs and printers: own detail succeeds, foreign detail/status/actions/print reject before external call"
+        }
+      ],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "POST",
+      "path": "/admin/printers/:id/test-print",
+      "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+      "controller": "src/admin/admin.controller.ts:1052",
+      "service": [
+        {
+          "name": "testPrintPrinter",
+          "source": "src/admin/admin.service.ts:3720"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:198",
+          "test": "order IDs and printers: own detail succeeds, foreign detail/status/actions/print reject before external call"
+        }
+      ],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "GET",
+      "path": "/admin/products",
+      "scope": "productCampus: current campus; operation platform grant permits official view; field capabilities independently checked",
+      "controller": "src/admin/admin.controller.ts:177",
+      "service": [
+        {
+          "name": "products",
+          "source": "src/admin/admin.service.ts:595"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:353",
+          "test": "two independent RBAC caches observe role removal/disable; state read failure or missing state never uses stale allow"
+        },
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:363",
+          "test": "two independent RBAC caches observe role removal/disable; state read failure or missing state never uses stale allow"
+        },
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:368",
+          "test": "two independent RBAC caches observe role removal/disable; state read failure or missing state never uses stale allow"
+        },
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:370",
+          "test": "two independent RBAC caches observe role removal/disable; state read failure or missing state never uses stale allow"
+        },
+        {
+          "source": "src/admin/rbac.integration.spec.ts:157",
+          "test": "不同校区角色不串用：B 校区上下文只剩财务，商品域被拒；越权校区参数被忽略"
+        }
+      ],
+      "domainServiceTestCalls": [
+        {
+          "source": "src/admin/admin.service.spec.ts:28",
+          "test": "aggregates persisted operational data"
+        },
+        {
+          "source": "src/admin/admin.service.spec.ts:41",
+          "test": "wraps list endpoints in the unified pagination envelope (IK8W5X)"
+        },
+        {
+          "source": "src/admin/official-library.spec.ts:90",
+          "test": "hq 在官方库建档（campus-official），同码可与校区商品并存"
+        },
+        {
+          "source": "src/admin/official-library.spec.ts:160",
+          "test": "官方库改动亮「上游已更新」；pull-upstream 同步资料不动本地三权"
+        },
+        {
+          "source": "src/admin/official-library.spec.ts:183",
+          "test": "官方库改动亮「上游已更新」；pull-upstream 同步资料不动本地三权"
+        },
+        {
+          "source": "src/admin/official-library.spec.ts:265",
+          "test": "校区隔离不变：官方库行不进任一校区商品列表与用户端"
+        },
+        {
+          "source": "src/admin/official-library.spec.ts:270",
+          "test": "校区隔离不变：官方库行不进任一校区商品列表与用户端"
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/admin/products",
+      "scope": "productCampus: current campus; operation platform grant permits official view; field capabilities independently checked",
+      "controller": "src/admin/admin.controller.ts:459",
+      "service": [
+        {
+          "name": "createProduct",
+          "source": "src/admin/admin.service.ts:1205"
+        }
+      ],
+      "directHttpTestCalls": [],
+      "domainServiceTestCalls": [
+        {
+          "source": "src/admin/official-library.spec.ts:55",
+          "test": "hq 在官方库建档（campus-official），同码可与校区商品并存"
+        },
+        {
+          "source": "src/admin/official-library.spec.ts:195",
+          "test": "条码撞本校区自建商品：导入跳过并说明原因"
+        },
+        {
+          "source": "src/admin/official-library.spec.ts:303",
+          "test": "官方库行不可被当校区改档：updateProduct 按校区过滤天然隔离"
+        },
+        {
+          "source": "src/admin/official-library.spec.ts:324",
+          "test": "空条码建档落 null，同校区多个无码商品并存且不误报重复"
+        },
+        {
+          "source": "src/admin/official-library.spec.ts:338",
+          "test": "空条码建档落 null，同校区多个无码商品并存且不误报重复"
+        },
+        {
+          "source": "src/admin/official-library.spec.ts:356",
+          "test": "单位属性：官方维护 → 导入复制 → 校区同步行剥离、自建行可改"
+        }
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/admin/products/:id",
+      "scope": "productCampus: current campus; operation platform grant permits official view; field capabilities independently checked",
+      "controller": "src/admin/admin.controller.ts:475",
+      "service": [
+        {
+          "name": "updateProduct",
+          "source": "src/admin/admin.service.ts:1271"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:208",
+          "test": "batch products and featured lists strip B targets; foreign stock and detail writes reject"
+        },
+        {
+          "source": "src/admin/rbac.integration.spec.ts:304",
+          "test": "改价分权：仅 products.write 的角色夹带改价 403；补 products.price 后合并端点与拆分端点都通"
+        },
+        {
+          "source": "src/admin/rbac.integration.spec.ts:306",
+          "test": "改价分权：仅 products.write 的角色夹带改价 403；补 products.price 后合并端点与拆分端点都通"
+        },
+        {
+          "source": "src/admin/rbac.integration.spec.ts:310",
+          "test": "改价分权：仅 products.write 的角色夹带改价 403；补 products.price 后合并端点与拆分端点都通"
+        },
+        {
+          "source": "src/admin/rbac.integration.spec.ts:312",
+          "test": "改价分权：仅 products.write 的角色夹带改价 403；补 products.price 后合并端点与拆分端点都通"
+        },
+        {
+          "source": "src/admin/rbac.integration.spec.ts:320",
+          "test": "改价分权：仅 products.write 的角色夹带改价 403；补 products.price 后合并端点与拆分端点都通"
+        },
+        {
+          "source": "src/admin/rbac.integration.spec.ts:325",
+          "test": "改价分权：仅 products.write 的角色夹带改价 403；补 products.price 后合并端点与拆分端点都通"
+        },
+        {
+          "source": "src/admin/rbac.integration.spec.ts:345",
+          "test": "改价分权：仅 products.write 的角色夹带改价 403；补 products.price 后合并端点与拆分端点都通"
+        }
+      ],
+      "domainServiceTestCalls": [
+        {
+          "source": "src/admin/admin.service.spec.ts:55",
+          "test": "updateProduct edits profile fields and rejects invalid ones"
+        },
+        {
+          "source": "src/admin/admin.service.spec.ts:71",
+          "test": "updateProduct edits profile fields and rejects invalid ones"
+        },
+        {
+          "source": "src/admin/admin.service.spec.ts:79",
+          "test": "updateProduct edits profile fields and rejects invalid ones"
+        },
+        {
+          "source": "src/admin/admin.service.spec.ts:88",
+          "test": "updateProduct edits profile fields and rejects invalid ones"
+        },
+        {
+          "source": "src/admin/admin.service.spec.ts:102",
+          "test": "product description round-trips, detail-only in user views"
+        },
+        {
+          "source": "src/admin/admin.service.spec.ts:116",
+          "test": "product description round-trips, detail-only in user views"
+        },
+        {
+          "source": "src/admin/official-library.spec.ts:99",
+          "test": "hq 在官方库建档（campus-official），同码可与校区商品并存"
+        },
+        {
+          "source": "src/admin/official-library.spec.ts:110",
+          "test": "校区导入官方商品：资料落地、下架零库存、重复导入跳过"
+        },
+        {
+          "source": "src/admin/official-library.spec.ts:153",
+          "test": "官方库改动亮「上游已更新」；pull-upstream 同步资料不动本地三权"
+        },
+        {
+          "source": "src/admin/official-library.spec.ts:209",
+          "test": "条码撞本校区自建商品：导入跳过并说明原因"
+        },
+        {
+          "source": "src/admin/official-library.spec.ts:286",
+          "test": "官方库行不可被当校区改档：updateProduct 按校区过滤天然隔离"
+        },
+        {
+          "source": "src/admin/official-library.spec.ts:294",
+          "test": "官方库行不可被当校区改档：updateProduct 按校区过滤天然隔离"
+        },
+        {
+          "source": "src/admin/official-library.spec.ts:373",
+          "test": "单位属性：官方维护 → 导入复制 → 校区同步行剥离、自建行可改"
+        },
+        {
+          "source": "src/admin/official-library.spec.ts:393",
+          "test": "单位属性：官方维护 → 导入复制 → 校区同步行剥离、自建行可改"
+        },
+        {
+          "source": "src/admin/official-library.spec.ts:421",
+          "test": "单位属性：官方维护 → 导入复制 → 校区同步行剥离、自建行可改"
+        }
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/admin/products/:id/price",
+      "scope": "productCampus: current campus; operation platform grant permits official view; field capabilities independently checked",
+      "controller": "src/admin/admin.controller.ts:513",
+      "service": [
+        {
+          "name": "updateProduct",
+          "source": "src/admin/admin.service.ts:1271"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac.integration.spec.ts:308",
+          "test": "改价分权：仅 products.write 的角色夹带改价 403；补 products.price 后合并端点与拆分端点都通"
+        },
+        {
+          "source": "src/admin/rbac.integration.spec.ts:322",
+          "test": "改价分权：仅 products.write 的角色夹带改价 403；补 products.price 后合并端点与拆分端点都通"
+        },
+        {
+          "source": "src/admin/rbac.integration.spec.ts:349",
+          "test": "改价分权：仅 products.write 的角色夹带改价 403；补 products.price 后合并端点与拆分端点都通"
+        }
+      ],
+      "domainServiceTestCalls": [
+        {
+          "source": "src/admin/admin.service.spec.ts:55",
+          "test": "updateProduct edits profile fields and rejects invalid ones"
+        },
+        {
+          "source": "src/admin/admin.service.spec.ts:71",
+          "test": "updateProduct edits profile fields and rejects invalid ones"
+        },
+        {
+          "source": "src/admin/admin.service.spec.ts:79",
+          "test": "updateProduct edits profile fields and rejects invalid ones"
+        },
+        {
+          "source": "src/admin/admin.service.spec.ts:88",
+          "test": "updateProduct edits profile fields and rejects invalid ones"
+        },
+        {
+          "source": "src/admin/admin.service.spec.ts:102",
+          "test": "product description round-trips, detail-only in user views"
+        },
+        {
+          "source": "src/admin/admin.service.spec.ts:116",
+          "test": "product description round-trips, detail-only in user views"
+        },
+        {
+          "source": "src/admin/official-library.spec.ts:99",
+          "test": "hq 在官方库建档（campus-official），同码可与校区商品并存"
+        },
+        {
+          "source": "src/admin/official-library.spec.ts:110",
+          "test": "校区导入官方商品：资料落地、下架零库存、重复导入跳过"
+        },
+        {
+          "source": "src/admin/official-library.spec.ts:153",
+          "test": "官方库改动亮「上游已更新」；pull-upstream 同步资料不动本地三权"
+        },
+        {
+          "source": "src/admin/official-library.spec.ts:209",
+          "test": "条码撞本校区自建商品：导入跳过并说明原因"
+        },
+        {
+          "source": "src/admin/official-library.spec.ts:286",
+          "test": "官方库行不可被当校区改档：updateProduct 按校区过滤天然隔离"
+        },
+        {
+          "source": "src/admin/official-library.spec.ts:294",
+          "test": "官方库行不可被当校区改档：updateProduct 按校区过滤天然隔离"
+        },
+        {
+          "source": "src/admin/official-library.spec.ts:373",
+          "test": "单位属性：官方维护 → 导入复制 → 校区同步行剥离、自建行可改"
+        },
+        {
+          "source": "src/admin/official-library.spec.ts:393",
+          "test": "单位属性：官方维护 → 导入复制 → 校区同步行剥离、自建行可改"
+        },
+        {
+          "source": "src/admin/official-library.spec.ts:421",
+          "test": "单位属性：官方维护 → 导入复制 → 校区同步行剥离、自建行可改"
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/admin/products/:id/pull-upstream",
+      "scope": "productCampus: current campus; operation platform grant permits official view; field capabilities independently checked",
+      "controller": "src/admin/admin.controller.ts:563",
+      "service": [
+        {
+          "name": "pullUpstream",
+          "source": "src/admin/admin.service.ts:1474"
+        }
+      ],
+      "directHttpTestCalls": [],
+      "domainServiceTestCalls": [
+        {
+          "source": "src/admin/official-library.spec.ts:172",
+          "test": "官方库改动亮「上游已更新」；pull-upstream 同步资料不动本地三权"
+        },
+        {
+          "source": "src/admin/official-library.spec.ts:190",
+          "test": "官方库改动亮「上游已更新」；pull-upstream 同步资料不动本地三权"
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/admin/products/barcode/lookup",
+      "scope": "productCampus: current campus; operation platform grant permits official view; field capabilities independently checked",
+      "controller": "src/admin/admin.controller.ts:426",
+      "service": [
+        {
+          "name": "lookupBarcode",
+          "source": "src/admin/admin.service.ts:1104"
+        }
+      ],
+      "directHttpTestCalls": [],
+      "domainServiceTestCalls": [
+        {
+          "source": "src/admin/official-library.spec.ts:243",
+          "test": "条码查询：本校区优先，未录入时命中官方库（IKAJSO 导入入口）"
+        },
+        {
+          "source": "src/admin/official-library.spec.ts:250",
+          "test": "条码查询：本校区优先，未录入时命中官方库（IKAJSO 导入入口）"
+        },
+        {
+          "source": "src/admin/official-library.spec.ts:256",
+          "test": "条码查询：本校区优先，未录入时命中官方库（IKAJSO 导入入口）"
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/admin/products/batch-status",
+      "scope": "productCampus: current campus; operation platform grant permits official view; field capabilities independently checked",
+      "controller": "src/admin/admin.controller.ts:440",
+      "service": [
+        {
+          "name": "batchUpdateProductStatus",
+          "source": "src/admin/admin.service.ts:1340"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:211",
+          "test": "batch products and featured lists strip B targets; foreign stock and detail writes reject"
+        },
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:216",
+          "test": "batch products and featured lists strip B targets; foreign stock and detail writes reject"
+        }
+      ],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "POST",
+      "path": "/admin/products/import",
+      "scope": "productCampus: current campus; operation platform grant permits official view; field capabilities independently checked",
+      "controller": "src/admin/admin.controller.ts:540",
+      "service": [
+        {
+          "name": "importProducts",
+          "source": "src/admin/admin.service.ts:1368"
+        }
+      ],
+      "directHttpTestCalls": [],
+      "domainServiceTestCalls": [
+        {
+          "source": "src/admin/official-library.spec.ts:116",
+          "test": "校区导入官方商品：资料落地、下架零库存、重复导入跳过"
+        },
+        {
+          "source": "src/admin/official-library.spec.ts:134",
+          "test": "校区导入官方商品：资料落地、下架零库存、重复导入跳过"
+        },
+        {
+          "source": "src/admin/official-library.spec.ts:142",
+          "test": "校区导入官方商品：资料落地、下架零库存、重复导入跳过"
+        },
+        {
+          "source": "src/admin/official-library.spec.ts:233",
+          "test": "条码撞本校区自建商品：导入跳过并说明原因"
+        },
+        {
+          "source": "src/admin/official-library.spec.ts:380",
+          "test": "单位属性：官方维护 → 导入复制 → 校区同步行剥离、自建行可改"
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/admin/products/official-library",
+      "scope": "shared: official catalog; excludes private campus product rows",
+      "controller": "src/admin/admin.controller.ts:220",
+      "service": [
+        {
+          "name": "products",
+          "source": "src/admin/admin.service.ts:595"
+        }
+      ],
+      "directHttpTestCalls": [],
+      "domainServiceTestCalls": [
+        {
+          "source": "src/admin/admin.service.spec.ts:28",
+          "test": "aggregates persisted operational data"
+        },
+        {
+          "source": "src/admin/admin.service.spec.ts:41",
+          "test": "wraps list endpoints in the unified pagination envelope (IK8W5X)"
+        },
+        {
+          "source": "src/admin/official-library.spec.ts:90",
+          "test": "hq 在官方库建档（campus-official），同码可与校区商品并存"
+        },
+        {
+          "source": "src/admin/official-library.spec.ts:160",
+          "test": "官方库改动亮「上游已更新」；pull-upstream 同步资料不动本地三权"
+        },
+        {
+          "source": "src/admin/official-library.spec.ts:183",
+          "test": "官方库改动亮「上游已更新」；pull-upstream 同步资料不动本地三权"
+        },
+        {
+          "source": "src/admin/official-library.spec.ts:265",
+          "test": "校区隔离不变：官方库行不进任一校区商品列表与用户端"
+        },
+        {
+          "source": "src/admin/official-library.spec.ts:270",
+          "test": "校区隔离不变：官方库行不进任一校区商品列表与用户端"
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/admin/products/status-counts",
+      "scope": "productCampus: current campus; operation platform grant permits official view; field capabilities independently checked",
+      "controller": "src/admin/admin.controller.ts:208",
+      "service": [
+        {
+          "name": "productStatusCounts",
+          "source": "src/admin/admin.service.ts:670"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:174",
+          "test": "counts, audit, creation and recruitment transitions preserve campus scope"
+        }
+      ],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "GET",
+      "path": "/admin/promotions",
+      "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+      "controller": "src/admin/admin.controller.ts:347",
+      "service": [
+        {
+          "name": "promotions",
+          "source": "src/admin/admin.service.ts:954"
+        }
+      ],
+      "directHttpTestCalls": [],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "POST",
+      "path": "/admin/promotions",
+      "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+      "controller": "src/admin/admin.controller.ts:408",
+      "service": [
+        {
+          "name": "createPromotion",
+          "source": "src/admin/admin.service.ts:1012"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:249",
+          "test": "banner and promotion ID ownership and nested product ownership"
+        }
+      ],
+      "domainServiceTestCalls": [
+        {
+          "source": "src/admin/promotions.spec.ts:56",
+          "test": "creates a promotion that the C-end sees as the effective price"
+        },
+        {
+          "source": "src/admin/promotions.spec.ts:79",
+          "test": "rejects overlapping windows and above-base prices"
+        },
+        {
+          "source": "src/admin/promotions.spec.ts:92",
+          "test": "rejects overlapping windows and above-base prices"
+        }
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/admin/promotions/:id",
+      "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+      "controller": "src/admin/admin.controller.ts:417",
+      "service": [
+        {
+          "name": "updatePromotion",
+          "source": "src/admin/admin.service.ts:1051"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:248",
+          "test": "banner and promotion ID ownership and nested product ownership"
+        }
+      ],
+      "domainServiceTestCalls": [
+        {
+          "source": "src/admin/promotions.spec.ts:110",
+          "test": "disables instantly (read-time fallback) and locks ended promotions"
+        },
+        {
+          "source": "src/admin/promotions.spec.ts:131",
+          "test": "disables instantly (read-time fallback) and locks ended promotions"
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/admin/purchase/orders",
+      "scope": "platform-only: global resource or explicit target campus",
+      "controller": "src/admin/admin.controller.ts:850",
+      "service": [
+        {
+          "name": "purchaseOrders",
+          "source": "src/admin/admin.service.ts:2330"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac.integration.spec.ts:768",
+          "test": "未知菜单节点：建角色 400；平台域按钮校区级角色不可达（finance 角色无采购）"
+        }
+      ],
+      "domainServiceTestCalls": [
+        {
+          "source": "src/admin/purchase.spec.ts:236",
+          "test": "补收齐 → completed；金额=单价×数量；批次 grossEstimate 聚合正确"
+        },
+        {
+          "source": "src/admin/purchase.spec.ts:263",
+          "test": "关闭禁验收、重开可继续；关闭单不再拦新单生成（补采）"
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/admin/purchase/orders/:id",
+      "scope": "platform-only: global resource or explicit target campus",
+      "controller": "src/admin/admin.controller.ts:854",
+      "service": [
+        {
+          "name": "purchaseOrderDetail",
+          "source": "src/admin/admin.service.ts:2381"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:322",
+          "test": "restock details/receipt reject foreign records and batch aggregates do not leak global purchasing"
+        }
+      ],
+      "domainServiceTestCalls": [
+        {
+          "source": "src/admin/purchase.spec.ts:165",
+          "test": "一键聚合生成：A 7 件/B 3 件，未关闭时再生成被拦"
+        },
+        {
+          "source": "src/admin/purchase.spec.ts:201",
+          "test": "快捷全收部分到货：收 A 4 件（坏 1）→ partial、库存 4×24、坏品出库 −24"
+        },
+        {
+          "source": "src/admin/purchase.spec.ts:273",
+          "test": "关闭禁验收、重开可继续；关闭单不再拦新单生成（补采）"
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/admin/purchase/orders/:id/close",
+      "scope": "platform-only: global resource or explicit target campus",
+      "controller": "src/admin/admin.controller.ts:882",
+      "service": [
+        {
+          "name": "closePurchaseOrder",
+          "source": "src/admin/admin.service.ts:2647"
+        }
+      ],
+      "directHttpTestCalls": [],
+      "domainServiceTestCalls": [
+        {
+          "source": "src/admin/purchase.spec.ts:253",
+          "test": "关闭禁验收、重开可继续；关闭单不再拦新单生成（补采）"
+        },
+        {
+          "source": "src/admin/purchase.spec.ts:266",
+          "test": "关闭禁验收、重开可继续；关闭单不再拦新单生成（补采）"
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/admin/purchase/orders/:id/receive",
+      "scope": "platform-only: global resource or explicit target campus",
+      "controller": "src/admin/admin.controller.ts:872",
+      "service": [
+        {
+          "name": "receivePurchaseOrder",
+          "source": "src/admin/admin.service.ts:2517"
+        }
+      ],
+      "directHttpTestCalls": [],
+      "domainServiceTestCalls": [
+        {
+          "source": "src/admin/purchase.spec.ts:183",
+          "test": "快捷全收部分到货：收 A 4 件（坏 1）→ partial、库存 4×24、坏品出库 −24"
+        },
+        {
+          "source": "src/admin/purchase.spec.ts:210",
+          "test": "禁超收与坏品越界：欠收 3 件收 4 拒、坏 2>到货 1 拒"
+        },
+        {
+          "source": "src/admin/purchase.spec.ts:217",
+          "test": "禁超收与坏品越界：欠收 3 件收 4 拒、坏 2>到货 1 拒"
+        },
+        {
+          "source": "src/admin/purchase.spec.ts:226",
+          "test": "补收齐 → completed；金额=单价×数量；批次 grossEstimate 聚合正确"
+        },
+        {
+          "source": "src/admin/purchase.spec.ts:255",
+          "test": "关闭禁验收、重开可继续；关闭单不再拦新单生成（补采）"
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/admin/purchase/orders/:id/reopen",
+      "scope": "platform-only: global resource or explicit target campus",
+      "controller": "src/admin/admin.controller.ts:892",
+      "service": [
+        {
+          "name": "reopenPurchaseOrder",
+          "source": "src/admin/admin.service.ts:2676"
+        }
+      ],
+      "directHttpTestCalls": [],
+      "domainServiceTestCalls": [
+        {
+          "source": "src/admin/purchase.spec.ts:262",
+          "test": "关闭禁验收、重开可继续；关闭单不再拦新单生成（补采）"
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/admin/rbac/accounts/:id/preview",
+      "scope": "platform-only: global resource or explicit target campus",
+      "controller": "src/admin/admin.controller.ts:1868",
+      "service": [],
+      "directHttpTestCalls": [],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "GET",
+      "path": "/admin/rbac/audit",
+      "scope": "platform-only: global resource or explicit target campus",
+      "controller": "src/admin/admin.controller.ts:1855",
+      "service": [],
+      "directHttpTestCalls": [],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "GET",
+      "path": "/admin/rbac/catalog",
+      "scope": "super-only: global permission configuration/account administration",
+      "controller": "src/admin/admin.controller.ts:1753",
+      "service": [],
+      "directHttpTestCalls": [],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "GET",
+      "path": "/admin/rbac/me",
+      "scope": "self: current account effective permissions; no other account data",
+      "controller": "src/admin/admin.controller.ts:1729",
+      "service": [
+        {
+          "name": "findAccount",
+          "source": "src/admin/admin.service.ts:5276"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac.integration.spec.ts:231",
+          "test": "白名单：账号可读取自己的权限，完整菜单目录仅超管可读"
+        }
+      ],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "GET",
+      "path": "/admin/rbac/menus",
+      "scope": "super-only: global permission configuration/account administration",
+      "controller": "src/admin/admin.controller.ts:1761",
+      "service": [],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac.integration.spec.ts:232",
+          "test": "白名单：账号可读取自己的权限，完整菜单目录仅超管可读"
+        },
+        {
+          "source": "src/admin/rbac.integration.spec.ts:588",
+          "test": "菜单管理：自建节点建改删；配置重启不覆盖，非法结构拒绝、内置节点不可删；role_menu 引用级联清"
+        },
+        {
+          "source": "src/admin/rbac.integration.spec.ts:817",
+          "test": "普通角色即使勾选管理接口也不能修改角色、菜单或账号授权"
+        }
+      ],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "POST",
+      "path": "/admin/rbac/menus",
+      "scope": "super-only: global permission configuration/account administration",
+      "controller": "src/admin/admin.controller.ts:1770",
+      "service": [],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac.integration.spec.ts:566",
+          "test": "菜单管理：自建节点建改删；配置重启不覆盖，非法结构拒绝、内置节点不可删；role_menu 引用级联清"
+        },
+        {
+          "source": "src/admin/rbac.integration.spec.ts:572",
+          "test": "菜单管理：自建节点建改删；配置重启不覆盖，非法结构拒绝、内置节点不可删；role_menu 引用级联清"
+        },
+        {
+          "source": "src/admin/rbac.integration.spec.ts:578",
+          "test": "菜单管理：自建节点建改删；配置重启不覆盖，非法结构拒绝、内置节点不可删；role_menu 引用级联清"
+        }
+      ],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "DELETE",
+      "path": "/admin/rbac/menus/:id",
+      "scope": "super-only: global permission configuration/account administration",
+      "controller": "src/admin/admin.controller.ts:1798",
+      "service": [],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac.integration.spec.ts:603",
+          "test": "菜单管理：自建节点建改删；配置重启不覆盖，非法结构拒绝、内置节点不可删；role_menu 引用级联清"
+        },
+        {
+          "source": "src/admin/rbac.integration.spec.ts:616",
+          "test": "菜单管理：自建节点建改删；配置重启不覆盖，非法结构拒绝、内置节点不可删；role_menu 引用级联清"
+        }
+      ],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "PATCH",
+      "path": "/admin/rbac/menus/:id",
+      "scope": "super-only: global permission configuration/account administration",
+      "controller": "src/admin/admin.controller.ts:1782",
+      "service": [],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac.integration.spec.ts:583",
+          "test": "菜单管理：自建节点建改删；配置重启不覆盖，非法结构拒绝、内置节点不可删；role_menu 引用级联清"
+        },
+        {
+          "source": "src/admin/rbac.integration.spec.ts:591",
+          "test": "菜单管理：自建节点建改删；配置重启不覆盖，非法结构拒绝、内置节点不可删；role_menu 引用级联清"
+        },
+        {
+          "source": "src/admin/rbac.integration.spec.ts:594",
+          "test": "菜单管理：自建节点建改删；配置重启不覆盖，非法结构拒绝、内置节点不可删；role_menu 引用级联清"
+        },
+        {
+          "source": "src/admin/rbac.integration.spec.ts:597",
+          "test": "菜单管理：自建节点建改删；配置重启不覆盖，非法结构拒绝、内置节点不可删；role_menu 引用级联清"
+        },
+        {
+          "source": "src/admin/rbac.integration.spec.ts:600",
+          "test": "菜单管理：自建节点建改删；配置重启不覆盖，非法结构拒绝、内置节点不可删；role_menu 引用级联清"
+        }
+      ],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "GET",
+      "path": "/admin/rbac/permissions",
+      "scope": "super-only: global permission configuration/account administration",
+      "controller": "src/admin/admin.controller.ts:1756",
+      "service": [],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac.integration.spec.ts:237",
+          "test": "白名单：账号可读取自己的权限，完整菜单目录仅超管可读"
+        }
+      ],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "GET",
+      "path": "/admin/rbac/permmenu",
+      "scope": "self: current account effective permissions; no other account data",
+      "controller": "src/admin/admin.controller.ts:1742",
+      "service": [
+        {
+          "name": "findAccount",
+          "source": "src/admin/admin.service.ts:5276"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac.integration.spec.ts:233",
+          "test": "白名单：账号可读取自己的权限，完整菜单目录仅超管可读"
+        },
+        {
+          "source": "src/admin/rbac.integration.spec.ts:241",
+          "test": "permmenu 契约：超管 menus 全量目录+菜单；校区角色=角色菜单并集且不含未勾板块"
+        },
+        {
+          "source": "src/admin/rbac.integration.spec.ts:256",
+          "test": "permmenu 契约：超管 menus 全量目录+菜单；校区角色=角色菜单并集且不含未勾板块"
+        }
+      ],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "GET",
+      "path": "/admin/rbac/roles",
+      "scope": "super-only: global permission configuration/account administration",
+      "controller": "src/admin/admin.controller.ts:1808",
+      "service": [],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac.integration.spec.ts:236",
+          "test": "白名单：账号可读取自己的权限，完整菜单目录仅超管可读"
+        },
+        {
+          "source": "src/admin/rbac.integration.spec.ts:269",
+          "test": "角色管理契约：GET roles 返回 menuCodes；建角色按 menuCodes 勾选"
+        },
+        {
+          "source": "src/admin/rbac.integration.spec.ts:611",
+          "test": "菜单管理：自建节点建改删；配置重启不覆盖，非法结构拒绝、内置节点不可删；role_menu 引用级联清"
+        },
+        {
+          "source": "src/admin/rbac.integration.spec.ts:619",
+          "test": "菜单管理：自建节点建改删；配置重启不覆盖，非法结构拒绝、内置节点不可删；role_menu 引用级联清"
+        }
+      ],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "POST",
+      "path": "/admin/rbac/roles",
+      "scope": "super-only: global permission configuration/account administration",
+      "controller": "src/admin/admin.controller.ts:1825",
+      "service": [],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac.integration.spec.ts:761",
+          "test": "未知菜单节点：建角色 400；平台域按钮校区级角色不可达（finance 角色无采购）"
+        },
+        {
+          "source": "src/admin/rbac.integration.spec.ts:815",
+          "test": "普通角色即使勾选管理接口也不能修改角色、菜单或账号授权"
+        }
+      ],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "DELETE",
+      "path": "/admin/rbac/roles/:id",
+      "scope": "super-only: global permission configuration/account administration",
+      "controller": "src/admin/admin.controller.ts:1849",
+      "service": [],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac.integration.spec.ts:690",
+          "test": "账号创建/资料/密码/状态/授权失败全部回滚，角色删除清理关联"
+        }
+      ],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "PATCH",
+      "path": "/admin/rbac/roles/:id",
+      "scope": "super-only: global permission configuration/account administration",
+      "controller": "src/admin/admin.controller.ts:1839",
+      "service": [],
+      "directHttpTestCalls": [],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "GET",
+      "path": "/admin/recruit-applications",
+      "scope": "campusScope: current campus; matching platform grant permits aggregate or validated campus query",
+      "controller": "src/admin/admin.controller.ts:1875",
+      "service": [
+        {
+          "name": "recruitApplications",
+          "source": "src/admin/admin.service.ts:5735"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac.integration.spec.ts:219",
+          "test": "隐藏按钮直调 API 仍被拒（guard URL 模式）：warehouse 无财务/招募/手机号明文/直入"
+        },
+        {
+          "source": "src/admin/rbac.integration.spec.ts:444",
+          "test": "招募分权：仅备注角色可写备注不能动证件；idcard 拆分端点按按钮模式把关；运营全权可读证件且落审计"
+        }
+      ],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "PATCH",
+      "path": "/admin/recruit-applications/:id",
+      "scope": "campusScope: current campus; matching platform grant permits aggregate or validated campus query",
+      "controller": "src/admin/admin.controller.ts:1914",
+      "service": [
+        {
+          "name": "updateRecruitApplication",
+          "source": "src/admin/admin.service.ts:5819"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:260",
+          "test": "sensitive recruitment/user reads and finance writes reject real B records"
+        },
+        {
+          "source": "src/admin/rbac.integration.spec.ts:449",
+          "test": "招募分权：仅备注角色可写备注不能动证件；idcard 拆分端点按按钮模式把关；运营全权可读证件且落审计"
+        },
+        {
+          "source": "src/admin/rbac.integration.spec.ts:460",
+          "test": "招募分权：仅备注角色可写备注不能动证件；idcard 拆分端点按按钮模式把关；运营全权可读证件且落审计"
+        }
+      ],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "POST",
+      "path": "/admin/recruit-applications/:id/approve",
+      "scope": "campusScope: current campus; matching platform grant permits aggregate or validated campus query",
+      "controller": "src/admin/admin.controller.ts:2017",
+      "service": [
+        {
+          "name": "recruitApprove",
+          "source": "src/admin/admin.service.ts:5931"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac.integration.spec.ts:477",
+          "test": "招募分权：仅备注角色可写备注不能动证件；idcard 拆分端点按按钮模式把关；运营全权可读证件且落审计"
+        }
+      ],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "GET",
+      "path": "/admin/recruit-applications/:id/idcard",
+      "scope": "campusScope: current campus; matching platform grant permits aggregate or validated campus query",
+      "controller": "src/admin/admin.controller.ts:1969",
+      "service": [
+        {
+          "name": "recruitIdcard",
+          "source": "src/admin/admin.service.ts:5789"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:259",
+          "test": "sensitive recruitment/user reads and finance writes reject real B records"
+        },
+        {
+          "source": "src/admin/rbac.integration.spec.ts:471",
+          "test": "招募分权：仅备注角色可写备注不能动证件；idcard 拆分端点按按钮模式把关；运营全权可读证件且落审计"
+        },
+        {
+          "source": "src/admin/rbac.integration.spec.ts:483",
+          "test": "招募分权：仅备注角色可写备注不能动证件；idcard 拆分端点按按钮模式把关；运营全权可读证件且落审计"
+        },
+        {
+          "source": "src/admin/rbac.integration.spec.ts:505",
+          "test": "招募分权：仅备注角色可写备注不能动证件；idcard 拆分端点按按钮模式把关；运营全权可读证件且落审计"
+        }
+      ],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "POST",
+      "path": "/admin/recruit-applications/:id/idcard",
+      "scope": "campusScope: current campus; matching platform grant permits aggregate or validated campus query",
+      "controller": "src/admin/admin.controller.ts:1943",
+      "service": [
+        {
+          "name": "updateRecruitApplication",
+          "source": "src/admin/admin.service.ts:5819"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:261",
+          "test": "sensitive recruitment/user reads and finance writes reject real B records"
+        },
+        {
+          "source": "src/admin/rbac.integration.spec.ts:465",
+          "test": "招募分权：仅备注角色可写备注不能动证件；idcard 拆分端点按按钮模式把关；运营全权可读证件且落审计"
+        },
+        {
+          "source": "src/admin/rbac.integration.spec.ts:514",
+          "test": "招募分权：仅备注角色可写备注不能动证件；idcard 拆分端点按按钮模式把关；运营全权可读证件且落审计"
+        }
+      ],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "POST",
+      "path": "/admin/recruit-applications/:id/reject",
+      "scope": "campusScope: current campus; matching platform grant permits aggregate or validated campus query",
+      "controller": "src/admin/admin.controller.ts:2000",
+      "service": [
+        {
+          "name": "recruitReject",
+          "source": "src/admin/admin.service.ts:5887"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac.integration.spec.ts:479",
+          "test": "招募分权：仅备注角色可写备注不能动证件；idcard 拆分端点按按钮模式把关；运营全权可读证件且落审计"
+        }
+      ],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "POST",
+      "path": "/admin/recruit-applications/:id/transition",
+      "scope": "campusScope: current campus; matching platform grant permits aggregate or validated campus query",
+      "controller": "src/admin/admin.controller.ts:1988",
+      "service": [
+        {
+          "name": "recruitTransition",
+          "source": "src/admin/admin.service.ts:5857"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:178",
+          "test": "counts, audit, creation and recruitment transitions preserve campus scope"
+        },
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:179",
+          "test": "counts, audit, creation and recruitment transitions preserve campus scope"
+        }
+      ],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "GET",
+      "path": "/admin/recruit-applications/status-counts",
+      "scope": "campusScope: current campus; matching platform grant permits aggregate or validated campus query",
+      "controller": "src/admin/admin.controller.ts:1902",
+      "service": [
+        {
+          "name": "recruitStatusCounts",
+          "source": "src/admin/admin.service.ts:5809"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:176",
+          "test": "counts, audit, creation and recruitment transitions preserve campus scope"
+        }
+      ],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "GET",
+      "path": "/admin/reports/campus-daily",
+      "scope": "campusScope: current campus; matching platform grant permits aggregate or validated campus query",
+      "controller": "src/admin/admin.controller.ts:805",
+      "service": [
+        {
+          "name": "campusDailyReport",
+          "source": "src/admin/admin.service.ts:3030"
+        }
+      ],
+      "directHttpTestCalls": [],
+      "domainServiceTestCalls": [
+        {
+          "source": "src/admin/campus-report.spec.ts:164",
+          "test": "hq 全部校区：昨日只计 completed，快照成本+无快照按 0"
+        },
+        {
+          "source": "src/admin/campus-report.spec.ts:188",
+          "test": "hq 按校区筛选：只看该校区"
+        },
+        {
+          "source": "src/admin/campus-report.spec.ts:198",
+          "test": "楼栋筛选：按 address.buildingId，缺楼栋的订单剔除"
+        },
+        {
+          "source": "src/admin/campus-report.spec.ts:208",
+          "test": "校区角色：锁本校区，campusId 参数不生效"
+        },
+        {
+          "source": "src/admin/campus-report.spec.ts:219",
+          "test": "日期窗：前日日报只含前日 completed 订单"
+        },
+        {
+          "source": "src/admin/campus-report.spec.ts:229",
+          "test": "日期范围不合法时拦截"
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/admin/reports/hq-daily",
+      "scope": "platform-only: global resource or explicit target campus",
+      "controller": "src/admin/admin.controller.ts:783",
+      "service": [
+        {
+          "name": "hqDailyReport",
+          "source": "src/admin/admin.service.ts:2940"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:393",
+          "test": "new campus stays outside explicit A/B grants; an explicit platform grant includes it without reassigning"
+        }
+      ],
+      "domainServiceTestCalls": [
+        {
+          "source": "src/admin/shipment.spec.ts:288",
+          "test": "总部日报：receivedAt 落日×校区聚合，与发货单毛利同源；校区筛选可用"
+        },
+        {
+          "source": "src/admin/shipment.spec.ts:296",
+          "test": "总部日报：receivedAt 落日×校区聚合，与发货单毛利同源；校区筛选可用"
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/admin/restock/batches",
+      "scope": "shared batch metadata; embedded orders/counts current campus unless matching platform grant",
+      "controller": "src/admin/admin.controller.ts:632",
+      "service": [
+        {
+          "name": "restockBatches",
+          "source": "src/admin/admin.service.ts:1709"
+        }
+      ],
+      "directHttpTestCalls": [],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "POST",
+      "path": "/admin/restock/batches",
+      "scope": "platform-only: global resource or explicit target campus",
+      "controller": "src/admin/admin.controller.ts:637",
+      "service": [
+        {
+          "name": "createRestockBatch",
+          "source": "src/admin/admin.service.ts:1741"
+        }
+      ],
+      "directHttpTestCalls": [],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "PUT",
+      "path": "/admin/restock/batches/:batchId/order",
+      "scope": "current campus order/receipt; batch shared; nested product/receipt validation in service",
+      "controller": "src/admin/admin.controller.ts:671",
+      "service": [
+        {
+          "name": "saveRestockOrder",
+          "source": "src/admin/admin.service.ts:1990"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:325",
+          "test": "restock details/receipt reject foreign records and batch aggregates do not leak global purchasing"
+        }
+      ],
+      "domainServiceTestCalls": [
+        {
+          "source": "src/admin/restock.spec.ts:134",
+          "test": "窗口外不可订：未开始与已结束批次都拒绝保存"
+        },
+        {
+          "source": "src/admin/restock.spec.ts:142",
+          "test": "窗口外不可订：未开始与已结束批次都拒绝保存"
+        },
+        {
+          "source": "src/admin/restock.spec.ts:246",
+          "test": "关闭批次后拒新订（关窗幂等）"
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/admin/restock/batches/:batchId/order/submit",
+      "scope": "current campus order/receipt; batch shared; nested product/receipt validation in service",
+      "controller": "src/admin/admin.controller.ts:684",
+      "service": [
+        {
+          "name": "submitRestockOrder",
+          "source": "src/admin/admin.service.ts:2095"
+        }
+      ],
+      "directHttpTestCalls": [],
+      "domainServiceTestCalls": [
+        {
+          "source": "src/admin/restock.spec.ts:167",
+          "test": "提交 → 确认锁总部仓 120（5 件 × 24 听）"
+        },
+        {
+          "source": "src/admin/restock.spec.ts:228",
+          "test": "撤回与驳回重提：状态机全环"
+        },
+        {
+          "source": "src/admin/restock.spec.ts:236",
+          "test": "撤回与驳回重提：状态机全环"
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/admin/restock/batches/:batchId/order/withdraw",
+      "scope": "current campus order/receipt; batch shared; nested product/receipt validation in service",
+      "controller": "src/admin/admin.controller.ts:696",
+      "service": [
+        {
+          "name": "withdrawRestockOrder",
+          "source": "src/admin/admin.service.ts:2131"
+        }
+      ],
+      "directHttpTestCalls": [],
+      "domainServiceTestCalls": [
+        {
+          "source": "src/admin/restock.spec.ts:226",
+          "test": "撤回与驳回重提：状态机全环"
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/admin/restock/batches/:batchId/purchase-order",
+      "scope": "platform-only: global resource or explicit target campus",
+      "controller": "src/admin/admin.controller.ts:861",
+      "service": [
+        {
+          "name": "createPurchaseOrder",
+          "source": "src/admin/admin.service.ts:2434"
+        }
+      ],
+      "directHttpTestCalls": [],
+      "domainServiceTestCalls": [
+        {
+          "source": "src/admin/purchase.spec.ts:153",
+          "test": "一键聚合生成：A 7 件/B 3 件，未关闭时再生成被拦"
+        },
+        {
+          "source": "src/admin/purchase.spec.ts:174",
+          "test": "一键聚合生成：A 7 件/B 3 件，未关闭时再生成被拦"
+        },
+        {
+          "source": "src/admin/purchase.spec.ts:267",
+          "test": "关闭禁验收、重开可继续；关闭单不再拦新单生成（补采）"
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/admin/restock/batches/:id",
+      "scope": "shared batch metadata; embedded orders/counts current campus unless matching platform grant",
+      "controller": "src/admin/admin.controller.ts:658",
+      "service": [
+        {
+          "name": "restockBatchDetail",
+          "source": "src/admin/admin.service.ts:1823"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:309",
+          "test": "restock details/receipt reject foreign records and batch aggregates do not leak global purchasing"
+        }
+      ],
+      "domainServiceTestCalls": [
+        {
+          "source": "src/admin/purchase.spec.ts:246",
+          "test": "补收齐 → completed；金额=单价×数量；批次 grossEstimate 聚合正确"
+        },
+        {
+          "source": "src/admin/restock.spec.ts:262",
+          "test": "列表与详情：校区只看本校区，总部看全校区；商品=在售全集"
+        }
+      ]
+    },
+    {
+      "method": "PATCH",
+      "path": "/admin/restock/batches/:id",
+      "scope": "platform-only: global resource or explicit target campus",
+      "controller": "src/admin/admin.controller.ts:644",
+      "service": [
+        {
+          "name": "updateRestockBatch",
+          "source": "src/admin/admin.service.ts:1773"
+        }
+      ],
+      "directHttpTestCalls": [],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "POST",
+      "path": "/admin/restock/batches/:id/close",
+      "scope": "platform-only: global resource or explicit target campus",
+      "controller": "src/admin/admin.controller.ts:651",
+      "service": [
+        {
+          "name": "closeRestockBatch",
+          "source": "src/admin/admin.service.ts:1802"
+        }
+      ],
+      "directHttpTestCalls": [],
+      "domainServiceTestCalls": [
+        {
+          "source": "src/admin/restock.spec.ts:241",
+          "test": "关闭批次后拒新订（关窗幂等）"
+        },
+        {
+          "source": "src/admin/restock.spec.ts:243",
+          "test": "关闭批次后拒新订（关窗幂等）"
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/admin/restock/orders",
+      "scope": "orders/shipment: current campus unless matching platform grant",
+      "controller": "src/admin/admin.controller.ts:708",
+      "service": [
+        {
+          "name": "restockOrders",
+          "source": "src/admin/admin.service.ts:1894"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:313",
+          "test": "restock details/receipt reject foreign records and batch aggregates do not leak global purchasing"
+        }
+      ],
+      "domainServiceTestCalls": [
+        {
+          "source": "src/admin/restock.spec.ts:256",
+          "test": "列表与详情：校区只看本校区，总部看全校区；商品=在售全集"
+        },
+        {
+          "source": "src/admin/restock.spec.ts:258",
+          "test": "列表与详情：校区只看本校区，总部看全校区；商品=在售全集"
+        },
+        {
+          "source": "src/admin/restock.spec.ts:260",
+          "test": "列表与详情：校区只看本校区，总部看全校区；商品=在售全集"
+        },
+        {
+          "source": "src/admin/shipment.spec.ts:229",
+          "test": "发货：锁转实扣双降、成本快照采购价优先、restock-out 流水、状态 shipped"
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/admin/restock/orders/:id",
+      "scope": "orders/shipment: current campus unless matching platform grant",
+      "controller": "src/admin/admin.controller.ts:720",
+      "service": [
+        {
+          "name": "restockOrderDetail",
+          "source": "src/admin/admin.service.ts:1939"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:315",
+          "test": "restock details/receipt reject foreign records and batch aggregates do not leak global purchasing"
+        },
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:317",
+          "test": "restock details/receipt reject foreign records and batch aggregates do not leak global purchasing"
+        }
+      ],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "POST",
+      "path": "/admin/restock/orders/:id/audit",
+      "scope": "platform-only: global resource or explicit target campus",
+      "controller": "src/admin/admin.controller.ts:733",
+      "service": [
+        {
+          "name": "auditRestockOrder",
+          "source": "src/admin/admin.service.ts:2156"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:320",
+          "test": "restock details/receipt reject foreign records and batch aggregates do not leak global purchasing"
+        }
+      ],
+      "domainServiceTestCalls": [
+        {
+          "source": "src/admin/restock.spec.ts:168",
+          "test": "提交 → 确认锁总部仓 120（5 件 × 24 听）"
+        },
+        {
+          "source": "src/admin/restock.spec.ts:180",
+          "test": "确认后：重复确认被拦，校区改单被拦（提交后锁定）"
+        },
+        {
+          "source": "src/admin/restock.spec.ts:187",
+          "test": "总部仓不足/未铺货阻断确认（信息含明细）"
+        },
+        {
+          "source": "src/admin/restock.spec.ts:194",
+          "test": "总部仓不足/未铺货阻断确认（信息含明细）"
+        },
+        {
+          "source": "src/admin/restock.spec.ts:203",
+          "test": "总部仓不足/未铺货阻断确认（信息含明细）"
+        },
+        {
+          "source": "src/admin/restock.spec.ts:212",
+          "test": "撤销确认释放锁定：lockedStock 回 0、状态回已提交"
+        },
+        {
+          "source": "src/admin/restock.spec.ts:215",
+          "test": "撤销确认释放锁定：lockedStock 回 0、状态回已提交"
+        },
+        {
+          "source": "src/admin/restock.spec.ts:229",
+          "test": "撤回与驳回重提：状态机全环"
+        },
+        {
+          "source": "src/admin/shipment.spec.ts:314",
+          "test": "状态机拦截：shipped 禁撤销确认、received 禁再发/禁再确认、confirmed 门槛"
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/admin/restock/orders/:id/receipt",
+      "scope": "current campus order/receipt; batch shared; nested product/receipt validation in service",
+      "controller": "src/admin/admin.controller.ts:760",
+      "service": [
+        {
+          "name": "confirmRestockReceipt",
+          "source": "src/admin/admin.service.ts:2821"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:319",
+          "test": "restock details/receipt reject foreign records and batch aggregates do not leak global purchasing"
+        },
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:330",
+          "test": "restock details/receipt reject foreign records and batch aggregates do not leak global purchasing"
+        }
+      ],
+      "domainServiceTestCalls": [
+        {
+          "source": "src/admin/shipment.spec.ts:256",
+          "test": "确认到货：已有行入账+自动建档 off-sale+restock-in 流水+received 终态"
+        },
+        {
+          "source": "src/admin/shipment.spec.ts:258",
+          "test": "确认到货：已有行入账+自动建档 off-sale+restock-in 流水+received 终态"
+        },
+        {
+          "source": "src/admin/shipment.spec.ts:269",
+          "test": "确认到货：已有行入账+自动建档 off-sale+restock-in 流水+received 终态"
+        },
+        {
+          "source": "src/admin/shipment.spec.ts:310",
+          "test": "状态机拦截：shipped 禁撤销确认、received 禁再发/禁再确认、confirmed 门槛"
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/admin/restock/orders/:id/ship",
+      "scope": "platform-only: global resource or explicit target campus",
+      "controller": "src/admin/admin.controller.ts:751",
+      "service": [
+        {
+          "name": "shipRestockOrder",
+          "source": "src/admin/admin.service.ts:2701"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:321",
+          "test": "restock details/receipt reject foreign records and batch aggregates do not leak global purchasing"
+        }
+      ],
+      "domainServiceTestCalls": [
+        {
+          "source": "src/admin/shipment.spec.ts:211",
+          "test": "发货：锁转实扣双降、成本快照采购价优先、restock-out 流水、状态 shipped"
+        },
+        {
+          "source": "src/admin/shipment.spec.ts:236",
+          "test": "库存不足拦截报缺货数量；恢复后可发货，B 行成本回退 costPrice"
+        },
+        {
+          "source": "src/admin/shipment.spec.ts:239",
+          "test": "库存不足拦截报缺货数量；恢复后可发货，B 行成本回退 costPrice"
+        },
+        {
+          "source": "src/admin/shipment.spec.ts:249",
+          "test": "库存不足拦截报缺货数量；恢复后可发货，B 行成本回退 costPrice"
+        },
+        {
+          "source": "src/admin/shipment.spec.ts:306",
+          "test": "状态机拦截：shipped 禁撤销确认、received 禁再发/禁再确认、confirmed 门槛"
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/admin/restock/orders/:id/shipment",
+      "scope": "orders/shipment: current campus unless matching platform grant",
+      "controller": "src/admin/admin.controller.ts:769",
+      "service": [
+        {
+          "name": "restockShipmentDetail",
+          "source": "src/admin/admin.service.ts:3307"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:316",
+          "test": "restock details/receipt reject foreign records and batch aggregates do not leak global purchasing"
+        },
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:318",
+          "test": "restock details/receipt reject foreign records and batch aggregates do not leak global purchasing"
+        }
+      ],
+      "domainServiceTestCalls": [
+        {
+          "source": "src/admin/shipment.spec.ts:219",
+          "test": "发货：锁转实扣双降、成本快照采购价优先、restock-out 流水、状态 shipped"
+        },
+        {
+          "source": "src/admin/shipment.spec.ts:240",
+          "test": "库存不足拦截报缺货数量；恢复后可发货，B 行成本回退 costPrice"
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/admin/settlements",
+      "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+      "controller": "src/admin/admin.controller.ts:1534",
+      "service": [
+        {
+          "name": "settlements",
+          "source": "src/admin/admin.service.ts:4526"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac.integration.spec.ts:140",
+          "test": "同校区多角色并集正确：ops@A 订单写 + finance@A 结算同时在 A 生效"
+        },
+        {
+          "source": "src/admin/rbac.integration.spec.ts:154",
+          "test": "不同校区角色不串用：B 校区上下文只剩财务，商品域被拒；越权校区参数被忽略"
+        },
+        {
+          "source": "src/admin/rbac.integration.spec.ts:171",
+          "test": "撤销一个角色后其余授权仍有效（旧 token 因会话版本失效，重登后余权可用）"
+        },
+        {
+          "source": "src/admin/rbac.integration.spec.ts:178",
+          "test": "撤销一个角色后其余授权仍有效（旧 token 因会话版本失效，重登后余权可用）"
+        },
+        {
+          "source": "src/admin/rbac.integration.spec.ts:218",
+          "test": "隐藏按钮直调 API 仍被拒（guard URL 模式）：warehouse 无财务/招募/手机号明文/直入"
+        },
+        {
+          "source": "src/admin/rbac.integration.spec.ts:223",
+          "test": "隐藏按钮直调 API 仍被拒（guard URL 模式）：warehouse 无财务/招募/手机号明文/直入"
+        }
+      ],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "POST",
+      "path": "/admin/settlements/:id/confirm",
+      "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+      "controller": "src/admin/admin.controller.ts:1554",
+      "service": [
+        {
+          "name": "confirmSettlement",
+          "source": "src/admin/admin.service.ts:4604"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:262",
+          "test": "sensitive recruitment/user reads and finance writes reject real B records"
+        },
+        {
+          "source": "src/admin/rbac.integration.spec.ts:173",
+          "test": "撤销一个角色后其余授权仍有效（旧 token 因会话版本失效，重登后余权可用）"
+        }
+      ],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "POST",
+      "path": "/admin/settlements/:id/pay",
+      "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+      "controller": "src/admin/admin.controller.ts:1563",
+      "service": [
+        {
+          "name": "paySettlement",
+          "source": "src/admin/admin.service.ts:4625"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:263",
+          "test": "sensitive recruitment/user reads and finance writes reject real B records"
+        }
+      ],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "GET",
+      "path": "/admin/staff",
+      "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+      "controller": "src/admin/admin.controller.ts:1202",
+      "service": [
+        {
+          "name": "staff",
+          "source": "src/admin/admin.service.ts:3867"
+        }
+      ],
+      "directHttpTestCalls": [],
+      "domainServiceTestCalls": [
+        {
+          "source": "src/admin/admin.service.spec.ts:29",
+          "test": "aggregates persisted operational data"
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/admin/staff",
+      "scope": "staff: source current campus plus destination check; matching platform grant permits cross-campus",
+      "controller": "src/admin/admin.controller.ts:1286",
+      "service": [
+        {
+          "name": "createStaff",
+          "source": "src/admin/admin.service.ts:3899"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac.integration.spec.ts:382",
+          "test": "越权目标校区：校区级账号把员工建到未授权校区被拒"
+        }
+      ],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "DELETE",
+      "path": "/admin/staff/:id",
+      "scope": "staff: source current campus plus destination check; matching platform grant permits cross-campus",
+      "controller": "src/admin/admin.controller.ts:1308",
+      "service": [
+        {
+          "name": "deleteStaff",
+          "source": "src/admin/admin.service.ts:4074"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac.integration.spec.ts:408",
+          "test": "员工按 ID 修改/删除必须检查来源校区，不能把 B 员工拉到 A 绕过校验"
+        }
+      ],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "PATCH",
+      "path": "/admin/staff/:id",
+      "scope": "staff: source current campus plus destination check; matching platform grant permits cross-campus",
+      "controller": "src/admin/admin.controller.ts:1297",
+      "service": [
+        {
+          "name": "updateStaff",
+          "source": "src/admin/admin.service.ts:3973"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac.integration.spec.ts:406",
+          "test": "员工按 ID 修改/删除必须检查来源校区，不能把 B 员工拉到 A 绕过校验"
+        },
+        {
+          "source": "src/admin/rbac.integration.spec.ts:407",
+          "test": "员工按 ID 修改/删除必须检查来源校区，不能把 B 员工拉到 A 绕过校验"
+        },
+        {
+          "source": "src/admin/rbac.integration.spec.ts:411",
+          "test": "员工按 ID 修改/删除必须检查来源校区，不能把 B 员工拉到 A 绕过校验"
+        }
+      ],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "GET",
+      "path": "/admin/users",
+      "scope": "campusScope: current campus; matching platform grant permits aggregate or validated campus query",
+      "controller": "src/admin/admin.controller.ts:1092",
+      "service": [
+        {
+          "name": "users",
+          "source": "src/admin/admin.service.ts:5533"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:392",
+          "test": "new campus stays outside explicit A/B grants; an explicit platform grant includes it without reassigning"
+        }
+      ],
+      "domainServiceTestCalls": [
+        {
+          "source": "src/admin/hq-multicampus.spec.ts:166",
+          "test": "hq 用户视角：空校区列表含 B 校用户，A 校视角不可见"
+        },
+        {
+          "source": "src/admin/hq-multicampus.spec.ts:172",
+          "test": "hq 用户视角：空校区列表含 B 校用户，A 校视角不可见"
+        },
+        {
+          "source": "src/admin/wechat-groups-users.spec.ts:173",
+          "test": "aggregates order count and spend for users (IKAJSW)"
+        },
+        {
+          "source": "src/admin/wechat-groups-users.spec.ts:188",
+          "test": "aggregates order count and spend for users (IKAJSW)"
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/admin/users/:id/orders",
+      "scope": "campusScope: current campus; matching platform grant permits aggregate or validated campus query",
+      "controller": "src/admin/admin.controller.ts:1070",
+      "service": [
+        {
+          "name": "userOrders",
+          "source": "src/admin/admin.service.ts:5679"
+        }
+      ],
+      "directHttpTestCalls": [],
+      "domainServiceTestCalls": [
+        {
+          "source": "src/admin/wechat-groups-users.spec.ts:195",
+          "test": "aggregates order count and spend for users (IKAJSW)"
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/admin/users/:id/phone",
+      "scope": "campusScope: current campus; matching platform grant permits aggregate or validated campus query",
+      "controller": "src/admin/admin.controller.ts:1078",
+      "service": [
+        {
+          "name": "revealUserPhone",
+          "source": "src/admin/admin.service.ts:5697"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:257",
+          "test": "sensitive recruitment/user reads and finance writes reject real B records"
+        },
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:258",
+          "test": "sensitive recruitment/user reads and finance writes reject real B records"
+        },
+        {
+          "source": "src/admin/rbac.integration.spec.ts:220",
+          "test": "隐藏按钮直调 API 仍被拒（guard URL 模式）：warehouse 无财务/招募/手机号明文/直入"
+        },
+        {
+          "source": "src/admin/rbac.integration.spec.ts:491",
+          "test": "招募分权：仅备注角色可写备注不能动证件；idcard 拆分端点按按钮模式把关；运营全权可读证件且落审计"
+        },
+        {
+          "source": "src/admin/rbac.integration.spec.ts:496",
+          "test": "招募分权：仅备注角色可写备注不能动证件；idcard 拆分端点按按钮模式把关；运营全权可读证件且落审计"
+        }
+      ],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "GET",
+      "path": "/admin/users/stats",
+      "scope": "campusScope: current campus; matching platform grant permits aggregate or validated campus query",
+      "controller": "src/admin/admin.controller.ts:1062",
+      "service": [
+        {
+          "name": "userStats",
+          "source": "src/admin/admin.service.ts:5640"
+        }
+      ],
+      "directHttpTestCalls": [],
+      "domainServiceTestCalls": [
+        {
+          "source": "src/admin/wechat-groups-users.spec.ts:199",
+          "test": "aggregates order count and spend for users (IKAJSW)"
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/admin/wechat-groups",
+      "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+      "controller": "src/admin/admin.controller.ts:1118",
+      "service": [
+        {
+          "name": "wechatGroups",
+          "source": "src/admin/admin.service.ts:5346"
+        }
+      ],
+      "directHttpTestCalls": [],
+      "domainServiceTestCalls": [
+        {
+          "source": "src/admin/wechat-groups-users.spec.ts:129",
+          "test": "upserts school-level and building-level group codes (IKAJSY)"
+        },
+        {
+          "source": "src/admin/wechat-groups-users.spec.ts:143",
+          "test": "upserts school-level and building-level group codes (IKAJSY)"
+        }
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/admin/wechat-groups",
+      "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+      "controller": "src/admin/admin.controller.ts:1123",
+      "service": [
+        {
+          "name": "upsertWechatGroup",
+          "source": "src/admin/admin.service.ts:5367"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:227",
+          "test": "nested rooms and building targets cannot cross campus or mismatch their parent"
+        }
+      ],
+      "domainServiceTestCalls": [
+        {
+          "source": "src/admin/wechat-groups-users.spec.ts:109",
+          "test": "upserts school-level and building-level group codes (IKAJSY)"
+        },
+        {
+          "source": "src/admin/wechat-groups-users.spec.ts:115",
+          "test": "upserts school-level and building-level group codes (IKAJSY)"
+        },
+        {
+          "source": "src/admin/wechat-groups-users.spec.ts:122",
+          "test": "upserts school-level and building-level group codes (IKAJSY)"
+        },
+        {
+          "source": "src/admin/wechat-groups-users.spec.ts:136",
+          "test": "upserts school-level and building-level group codes (IKAJSY)"
+        },
+        {
+          "source": "src/admin/wechat-groups-users.spec.ts:147",
+          "test": "falls back building → campus → null for user side (IKAJSZ)"
+        },
+        {
+          "source": "src/admin/wechat-groups-users.spec.ts:160",
+          "test": "falls back building → campus → null for user side (IKAJSZ)"
+        }
+      ]
+    },
+    {
+      "method": "DELETE",
+      "path": "/admin/wechat-groups/:id",
+      "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+      "controller": "src/admin/admin.controller.ts:1156",
+      "service": [
+        {
+          "name": "deleteWechatGroup",
+          "source": "src/admin/admin.service.ts:5396"
+        }
+      ],
+      "directHttpTestCalls": [],
+      "domainServiceTestCalls": [
+        {
+          "source": "src/admin/wechat-groups-users.spec.ts:142",
+          "test": "upserts school-level and building-level group codes (IKAJSY)"
+        },
+        {
+          "source": "src/admin/wechat-groups-users.spec.ts:169",
+          "test": "falls back building → campus → null for user side (IKAJSZ)"
+        }
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/admin/wheel",
+      "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+      "controller": "src/admin/admin.controller.ts:1140",
+      "service": [
+        {
+          "name": "wheel",
+          "source": "src/admin/admin.service.ts:5417"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:161",
+          "test": "wheel rejects a foreign coupon before saving and own config cannot overwrite B"
+        }
+      ],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "PUT",
+      "path": "/admin/wheel",
+      "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+      "controller": "src/admin/admin.controller.ts:1145",
+      "service": [
+        {
+          "name": "upsertWheel",
+          "source": "src/admin/admin.service.ts:5453"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:156",
+          "test": "wheel rejects a foreign coupon before saving and own config cannot overwrite B"
+        },
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:160",
+          "test": "wheel rejects a foreign coupon before saving and own config cannot overwrite B"
+        }
+      ],
+      "domainServiceTestCalls": []
+    }
+  ]
+}

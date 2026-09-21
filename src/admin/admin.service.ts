@@ -1,13 +1,14 @@
+import { RbacService } from './rbac/rbac.service';
 import {
   BadRequestException,
   ForbiddenException,
   Injectable,
   NotFoundException,
   Optional,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import ExcelJS from 'exceljs';
-import { hash } from 'bcryptjs';
 import { PrismaService } from '../database/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PrinterService } from '../printer/printer.service';
@@ -76,6 +77,7 @@ export class AdminService {
     @Optional() private readonly push?: NotificationsService,
     // 小票打印（IKBT6N）：可选注入——补打端点用；测试不传时报「未配置」。
     @Optional() private readonly printer?: PrinterService,
+    private readonly rbac: RbacService = new RbacService(db),
   ) {}
   private num(x: unknown) {
     return Number(x);
@@ -347,6 +349,7 @@ export class AdminService {
           '履约完成率：全量有效单中 delivered+completed 占比（送达即完成，确认收货为终态）',
         onTimeRate:
           '准时率：送达时间（送达凭证时间，历史单取 timeline 末节点）与支付时间同日（当日达口径）；estimatedArrival 为展示文案不可机读，结构化后切换真实 SLA',
+        exceptions: '状态为异常的未结订单（不限当日）',
         timeout: `履约超时：支付后超过 ${AdminService.FULFILLMENT_TIMEOUT_MS / 60000} 分钟未送达（未送达单按当前时刻计）`,
         waitingHandover:
           'status=waiting-handover（骑手到楼下等待楼长交接，IK93GQ 拆分后的独立状态）',
@@ -716,10 +719,10 @@ export class AdminService {
     ]);
     return { count: valid.length };
   }
-  async categories() {
+  async categories(campusId?: string) {
     const rows = await this.db.category.findMany({
       orderBy: [{ sort: 'asc' }, { name: 'asc' }],
-      include: { _count: { select: { products: true } } },
+      include: { _count: { select: { products: campusId !== undefined ? { where: { campusId } } : true } } },
     });
     return rows.map(({ _count, ...row }) => ({
       ...row,
@@ -948,7 +951,7 @@ export class AdminService {
    *  无删除（留审计），已结束不可改。 */
   /** IKB5PA：state 过滤（live/upcoming/ended/disabled，按时间窗读时判定），
    *  不传 = 全部。口径与前台 promoState 一致。 */
-  async promotions(campusId: string, state?: string) {
+  async promotions(campusId: string, state?: string, categoryId?: string) {
     const xs = await this.db.promotion.findMany({
       where: { product: { campusId } },
       orderBy: { createdAt: 'desc' },
@@ -960,13 +963,25 @@ export class AdminService {
             image: true,
             price: true,
             status: true,
+            categoryId: true,
           },
         },
       },
     });
-    if (!state) return xs;
+    // 搜索修复（2026-09-21 道哥反馈「秒杀搜索框搜不出」）：keywordHaystack 只
+    // 展开第一层字段，商品名在 product.name 第二层恒不命中——平铺 productName
+    // 进第一层（精准修，不动全局搜索深度）
+    let rows = xs.map((x) => ({
+      ...x,
+      productName: x.product?.name ?? '',
+      // 类别筛选（2026-09-21 道哥）：与商品库分类筛选同款 categoryId 参数，
+      // 平铺进第一层供 paginate keyword 与前端下拉消费
+      categoryId: x.product?.categoryId ?? '',
+    }));
+    if (categoryId) rows = rows.filter((x) => x.categoryId === categoryId);
+    if (!state) return rows;
     const now = Date.now();
-    return xs.filter((x) => {
+    return rows.filter((x) => {
       if (x.status === 'disabled') return state === 'disabled';
       if (new Date(x.startsAt).getTime() > now) return state === 'upcoming';
       if (new Date(x.endsAt).getTime() <= now) return state === 'ended';
@@ -1296,6 +1311,19 @@ export class AdminService {
     if (data.unitsPerCase != null && data.unitsPerCase < 1)
       throw new BadRequestException('每件含量不能小于 1');
     const after = await this.db.product.update({ where: { id }, data });
+    // 进货价自动下发（2026-09-19 道哥定版「统一用校区价格」）：官方库调进货价
+    // → 全部同步行的快照即时跟随（此前是导入时快照，总部调价后校区不自动跟，
+    // 促销弹窗与官方库出现两个进货价）。自建行（无来源）不受影响。
+    if (
+      campusId === OFFICIAL_CAMPUS_ID &&
+      body.costPrice !== undefined &&
+      body.costPrice !== before.costPrice
+    ) {
+      await this.db.product.updateMany({
+        where: { sourceProductId: id },
+        data: { costPrice: body.costPrice },
+      });
+    }
     await this.audit(
       operator,
       'product.update',
@@ -1822,14 +1850,14 @@ export class AdminService {
       (sum, i) => sum + i.cases * i.unitsPerCase * (priceById.get(i.productId) ?? 0),
       0,
     );
-    const pos = await this.db.purchaseOrder.findMany({
+    const pos = hqScope ? await this.db.purchaseOrder.findMany({
       where: { batchId: id },
       select: {
         id: true,
         closedAt: true,
         items: { select: { receivedCases: true, unitCost: true, unitsPerCase: true } },
       },
-    });
+    }) : [];
     // IKFOPR 按听报价：已收金额=件数×听数×每听单价
     const purchaseReceivedTotal = pos.reduce(
       (sum, po) =>
@@ -1841,8 +1869,8 @@ export class AdminService {
       ...this.restockBatchView(batch),
       items,
       wholesaleTotal,
-      purchaseReceivedTotal,
-      grossEstimate: wholesaleTotal - purchaseReceivedTotal,
+      // 采购和毛利是平台财务数据，校区只能读取自己的订货金额。
+      ...(hqScope ? { purchaseReceivedTotal, grossEstimate: wholesaleTotal - purchaseReceivedTotal } : {}),
       orders: orders.map((o) => ({
         id: o.id,
         campusId: o.campusId,
@@ -3484,6 +3512,25 @@ export class AdminService {
     });
     return Object.fromEntries(groups.map((g) => [g.status, g._count._all]));
   }
+  /**
+   * 新订单水位线（IKHFWV 30s 轮询）：今日（上海时区）已支付累计数 + 最新一单摘要。
+   * 累计口径（paidAt ≥ 今日0点 count）不随状态流转回落——增量即新单，防漏报。
+   */
+  async newOrderWatch(campusId: string) {
+    const start = new Date();
+    start.setUTCHours(16, 0, 0, 0); // 上海 00:00 = UTC 16:00（前一日）
+    if (start.getTime() > Date.now()) start.setTime(start.getTime() - 86400_000);
+    const where = { paidAt: { gte: start }, ...(campusId ? { campusId } : {}) };
+    const [count, latest] = await Promise.all([
+      this.db.order.count({ where }),
+      this.db.order.findFirst({
+        where,
+        orderBy: { paidAt: 'desc' },
+        select: { id: true, orderNo: true, payableAmount: true },
+      }),
+    ]);
+    return { todayPaid: count, latest };
+  }
   async order(id: string, campusId: string) {
     const x = await this.db.order.findFirst({
       where: { id, ...(campusId ? { campusId } : {}) },
@@ -3553,6 +3600,8 @@ export class AdminService {
       id: order.id,
       orderNo: order.orderNo,
       campusId: order.campusId,
+      // IKHFDZ：带出已有序号→printOrderReceipt 复用（补打同单同号）
+      dailySeq: order.dailySeq,
       warehouseName: campus?.warehouseName ?? '',
       deliveryMode: order.deliveryMode,
       deliverySlot: order.deliverySlot,
@@ -3691,8 +3740,8 @@ export class AdminService {
     return { printed: true, sn: row.sn };
   }
   /**
-   * 手动改订单状态（IKA0UT）：测试与上线初期兜底。仅接受 12 态白名单，
-   * statusText 用标准文案，原因写入审计日志（after.reason）留痕。
+   * 手动改订单状态（IKA0UT）：运营兜底工具（异常处理/客服纠偏）。仅接受
+   * 12 态白名单，statusText 用标准文案，原因写入审计日志（after.reason）留痕。
    */
   async updateOrderStatus(
     id: string,
@@ -3921,10 +3970,9 @@ export class AdminService {
     );
     return staff;
   }
-  async updateStaff(id: string, body: UpdateStaffDto, operator: string) {
-    // IKGVOO：改派支持——员工按 id 全局定位（改派后 campusId 变化，
-    // 不能再用登录账号校区过滤，否则改派过一次的员工永远查不到）
-    const before = await this.db.staff.findFirst({ where: { id } });
+  async updateStaff(id: string, body: UpdateStaffDto, operator: string, campusId?: string) {
+    // Source and destination are independent checks: campus grants may only edit current-campus staff.
+    const before = await this.db.staff.findFirst({ where: { id, ...(campusId !== undefined ? { campusId } : {}) } });
     if (!before || before.status === 'deleted')
       throw new NotFoundException('员工不存在');
     if (
@@ -4011,7 +4059,7 @@ export class AdminService {
               ? '全职配送员'
               : '兼职配送员';
     }
-    const after = await this.db.staff.update({ where: { id }, data });
+    const after = await this.db.staff.update({ where: { id, campusId: before.campusId }, data });
     await this.audit(
       operator,
       'staff.update',
@@ -4023,13 +4071,13 @@ export class AdminService {
     );
     return after;
   }
-  async deleteStaff(id: string, operator: string) {
-    // IKGVOO：按 id 全局定位（改派过校区的员工也要能删）
-    const before = await this.db.staff.findFirst({ where: { id } });
+  async deleteStaff(id: string, operator: string, campusId?: string) {
+    // Only a matching platform grant may omit the source campus filter.
+    const before = await this.db.staff.findFirst({ where: { id, ...(campusId !== undefined ? { campusId } : {}) } });
     if (!before || before.status === 'deleted')
       throw new NotFoundException('员工不存在');
     const after = await this.db.staff.update({
-      where: { id },
+      where: { id, campusId: before.campusId },
       data: { status: 'deleted' },
     });
     await this.audit(
@@ -4605,10 +4653,10 @@ export class AdminService {
     );
     return paid;
   }
-  async campuses() {
+  async campuses(campusId?: string) {
     // status=official 是官方商品库伪校区（IKAJSM），不出现在校区列表
     const xs = await this.db.campus.findMany({
-      where: { status: { not: 'official' } },
+      where: { status: { not: 'official' }, ...(campusId !== undefined ? { id: campusId } : {}) },
       orderBy: { createdAt: 'asc' },
     });
     return Promise.all(
@@ -5198,12 +5246,25 @@ export class AdminService {
   /** IKB5P8：审计列表同样人话化——附操作人昵称/中文动作/中文对象，原始代码只留 entityId 备查。 */
   async auditLogs(campusId: string) {
     const rows = await this.db.auditLog.findMany({
-      where: campusId ? { campusId } : {},
+      // Permission snapshots may contain grants in other campuses. They belong only
+      // to the separately authorized, platform-only RBAC audit endpoint.
+      where: { ...(campusId ? { campusId } : {}), NOT: { action: { startsWith: 'rbac.' } } },
       orderBy: { createdAt: 'desc' },
     });
     const names = await this.operatorNames(rows.map((x) => x.operator));
+    const safeRecruitSnapshot = (value: Prisma.JsonValue | null) => {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+      const { staffRemark, idCardImages, idCardNo, ...rest } = value;
+      return { ...rest,
+        ...(staffRemark !== undefined ? { hasStaffRemark: Boolean(staffRemark) } : {}),
+        ...(typeof idCardNo === 'string' ? { idCardNo: maskIdCard(idCardNo) } : {}),
+      };
+    };
     return rows.map((x) => ({
       ...x,
+      ...(x.entityType === 'recruitingApplication' ? {
+        before: safeRecruitSnapshot(x.before), after: safeRecruitSnapshot(x.after),
+      } : {}),
       operatorName: names.get(x.operator) ?? '系统',
       actionText: AdminService.AUDIT_ACTION_TEXTS[x.action] ?? '后台操作',
       entityText: AdminService.AUDIT_ENTITY_TEXTS[x.entityType] ?? '后台数据',
@@ -5270,103 +5331,15 @@ export class AdminService {
       ],
     }));
   }
-  /** RBAC V1 建号：只建账号本体；授权（角色×范围）由 controller 调
-   *  RbacService.setAccountRoles 落库（同一请求内完成，权限校验在 RBAC 层）。
-   *  role 字段写 'rbac' 标记（非旧五角色，杜绝启动迁移误接管）；campusId
-   *  取首个校区级授权校区作初始上下文，纯平台级授权为空串。 */
-  async createAccount(body: CreateAccountDto, operator: string) {
-    const duplicate = await this.db.adminAccount.findUnique({
-      where: { username: body.username },
-    });
-    if (duplicate) throw new BadRequestException('用户名已存在');
-    const firstCampusGrant = body.grants?.find(
-      (g) => g.scope === 'campus' && g.campusId,
-    );
-    const campusId = firstCampusGrant?.campusId ?? '';
-    if (campusId) {
-      const campus = await this.db.campus.findUnique({
-        where: { id: campusId },
-      });
-      if (!campus) throw new BadRequestException('所属校区不存在');
-    }
-    const account = await this.db.adminAccount.create({
-      data: {
-        username: body.username,
-        passwordHash: await hash(body.password, 10),
-        nickname: body.nickname ?? '',
-        role: 'rbac',
-        campusId,
-      },
-    });
-    await this.audit(
-      operator,
-      'account.create',
-      'admin-account',
-      account.id,
-      null,
-      { username: account.username, campusId: account.campusId },
-      campusId,
-    );
-    return { id: account.id, username: account.username, campusId };
+  /** Account profile and permissions share an atomic RBAC transaction. */
+  createAccount(body: CreateAccountDto, operator: string) {
+    return this.rbac.createAccount({ id: operator, username: operator }, body);
   }
-  /** RBAC V1 改号：只管昵称；密码重置/停启用/授权重设走各自专用通道。 */
-  async updateAccount(
-    id: string,
-    body: { nickname?: string },
-    operator: string,
-  ) {
-    const before = await this.db.adminAccount.findUnique({ where: { id } });
-    if (!before) throw new NotFoundException('账号不存在');
-    const after = await this.db.adminAccount.update({
-      where: { id },
-      data: { ...(body.nickname != null ? { nickname: body.nickname } : {}) },
-      select: { id: true, username: true, nickname: true, status: true, role: true },
-    });
-    await this.audit(
-      operator,
-      'account.update',
-      'admin-account',
-      id,
-      { nickname: before.nickname },
-      { nickname: after.nickname },
-      before.campusId,
-    );
-    return after;
+  updateAccount(id: string, body: { nickname?: string }, operator: string) {
+    return this.rbac.updateAccount({ id: operator, username: operator }, id, body);
   }
-  /** RBAC V1 删号：不可删自己；删平台级超管须保留至少一个有效超管。 */
-  async deleteAccount(id: string, operator: string) {
-    const before = await this.db.adminAccount.findUnique({
-      where: { id },
-      include: { rbacRoles: { include: { role: { select: { code: true } } } } },
-    });
-    if (!before) throw new NotFoundException('账号不存在');
-    if (id === operator) throw new BadRequestException('不能删除当前登录账号');
-    const isSuper = before.rbacRoles.some(
-      (g) => g.scope === 'platform' && g.role.code === 'super-admin',
-    );
-    if (isSuper) {
-      const others = await this.db.adminAccountRole.count({
-        where: {
-          scope: 'platform',
-          role: { code: 'super-admin', status: 'active' },
-          account: { status: 'active' },
-          accountId: { not: id },
-        },
-      });
-      if (others < 1)
-        throw new ForbiddenException('必须保留至少一个有效的超级管理员');
-    }
-    await this.db.adminAccount.delete({ where: { id } });
-    await this.audit(
-      operator,
-      'rbac.account.delete',
-      'admin-account',
-      id,
-      { username: before.username, role: before.role },
-      null,
-      before.campusId,
-    );
-    return { id, deleted: true };
+  deleteAccount(id: string, operator: string) {
+    return this.rbac.deleteAccount({ id: operator, username: operator }, id);
   }
   /* ---------- 微信群二维码（IKAJSY）：楼栋群 + 校级大群，轻量 upsert ---------- */
   /** 群码列表：校级大群排最前，其余按楼栋名；buildingName 供前端直接展示。 */
@@ -5735,6 +5708,7 @@ export class AdminService {
       null,
       { revealed: true },
       user.campusId,
+      true,
     );
     return { id: user.id, phone: user.phone };
   }
@@ -5872,8 +5846,8 @@ export class AdminService {
       'recruitingApplication',
       id,
       // RBAC V1：审计不留身份证明文（掩码保尾 2 位供核对）
-      { idCardNo: maskIdCard(found.idCardNo), staffRemark: found.staffRemark },
-      { idCardNo: maskIdCard(updated.idCardNo), staffRemark: updated.staffRemark },
+      { idCardNo: maskIdCard(found.idCardNo), hasStaffRemark: Boolean(found.staffRemark) },
+      { idCardNo: maskIdCard(updated.idCardNo), hasStaffRemark: Boolean(updated.staffRemark) },
       found.campusId,
     );
     return updated;
@@ -6025,6 +5999,7 @@ export class AdminService {
     before: unknown,
     after: unknown,
     campusId: string,
+    required = false,
   ) {
     try {
       await this.db.auditLog.create({
@@ -6039,6 +6014,7 @@ export class AdminService {
         },
       });
     } catch (error) {
+      if (required) throw new ServiceUnavailableException('审计服务暂不可用，请稍后重试');
       console.warn(
         `[audit] 审计写入失败（不影响业务操作）: ${action} ${entityType}/${entityId}`,
         error instanceof Error ? error.message : error,

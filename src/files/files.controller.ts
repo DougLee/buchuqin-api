@@ -57,14 +57,17 @@ const monthlyFolder = () => {
 // 缺省 uploads/（按月归档）放运营素材；其余值拒绝，防任意前缀落桶。
 // RBAC V1（2026-09-19）：app/idcard=身份证照片私有目录——private ACL +
 // recruit.idcard.write 门控，读取走签名 URL（cos-presign.ts），不复用公开图。
-const FOLDERS = new Set([
-  'uploads',
-  'app',
-  'app/product',
-  'app/category',
-  'app/wechat-group',
-  'app/idcard',
-]);
+// Uploading is a prerequisite of the corresponding write action, not a new global capability.
+const PUBLIC_UPLOAD_PERMISSIONS: Record<string, string[]> = {
+  app: ['POST /admin/banners', 'PATCH /admin/banners/:id'],
+  'app/banner-detail': ['POST /admin/banners', 'PATCH /admin/banners/:id'],
+  'app/product': ['POST /admin/products', 'PATCH /admin/products/:id'],
+  'app/category': ['POST /admin/categories', 'PATCH /admin/categories/:id'],
+  'app/wechat-group': ['POST /admin/wechat-groups'],
+  'app/wheel': ['PUT /admin/wheel'],
+};
+PUBLIC_UPLOAD_PERMISSIONS.uploads = [...new Set(Object.values(PUBLIC_UPLOAD_PERMISSIONS).flat())];
+const FOLDERS = new Set([...Object.keys(PUBLIC_UPLOAD_PERMISSIONS), 'app/idcard']);
 const PRIVATE_FOLDERS = new Set(['app/idcard']);
 
 const putToCos = (
@@ -125,29 +128,32 @@ export class FilesController {
     @UploadedFile() file?: Express.Multer.File,
   ) {
     if (!file) throw new BadRequestException('请上传文件');
-    if (!COS_BUCKET || !COS_REGION)
-      throw new BadRequestException('文件存储未配置，请检查 COS 环境变量');
     const target = folder ?? 'uploads';
     if (!FOLDERS.has(target))
       throw new BadRequestException(
         `不支持的目录：${target}（可选 ${[...FOLDERS].join(' / ')}）`,
       );
 
-    // RBAC V1：私有目录（身份证照片）须为在职后台账号且持 recruit.idcard.write
-    if (PRIVATE_FOLDERS.has(target)) {
-      const account = await this.db.adminAccount.findUnique({
-        where: { id: req.user.id },
-      });
-      if (!account || account.status !== 'active')
-        throw new ForbiddenException('该目录仅后台账号可用');
-      const tokenSv = (req.user as { sv?: number }).sv ?? 0;
-      if (tokenSv !== account.sessionVersion)
-        throw new ForbiddenException('登录已失效，请重新登录');
+    // Admin session revocation applies to public uploads as well as private documents.
+    const account = await this.db.adminAccount.findUnique({ where: { id: req.user.id } });
+    if (account) this.rbac.assertSession(account, req.user.sv);
+    else if (!['user', 'building-manager', 'intern-building-manager', 'fulltime-rider', 'parttime-rider'].includes(req.user.role))
+      throw new ForbiddenException('该后台账号已不可用');
+
+    if (account) {
       const ctx = await this.rbac.getEffective(account);
-      // 蛋词体系：URL 模式判定（recruit.idcard.write 节点的按钮模式）
-      if (!this.rbac.allow(ctx, 'POST', '/admin/recruit-applications/:id/idcard'))
-        throw new ForbiddenException('无身份证资料上传权限');
+      const required = PRIVATE_FOLDERS.has(target)
+        ? ['POST /admin/recruit-applications/:id/idcard']
+        : PUBLIC_UPLOAD_PERMISSIONS[target];
+      if (!required.some(pattern => {
+        const separator = pattern.indexOf(' ');
+        return this.rbac.allow(ctx, pattern.slice(0, separator), pattern.slice(separator + 1));
+      })) throw new ForbiddenException('无该类图片的上传权限');
+    } else if (PRIVATE_FOLDERS.has(target)) {
+      throw new ForbiddenException('该目录仅后台账号可用');
     }
+    if (!COS_BUCKET || !COS_REGION)
+      throw new BadRequestException('文件存储未配置，请检查 COS 环境变量');
 
     const ext = extname(file.originalname || '').toLowerCase();
     const safeExt = /^\.[a-z0-9]{1,5}$/.test(ext) ? ext : '.jpg';

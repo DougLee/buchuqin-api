@@ -151,8 +151,9 @@ describe('admin account management (IK9KWO)', () => {
       superAdminId,
     );
     ids.push(account.id);
+    const row = await db.adminAccount.findUniqueOrThrow({ where: { id: account.id } });
     const req = {
-      user: { id: account.id, campusId: CAMPUS, role: 'rbac' as const },
+      user: { sv: row.sessionVersion, id: account.id, campusId: CAMPUS, role: 'rbac' as const },
     };
     await expect(
       auth.changePassword(req as never, {
@@ -177,7 +178,7 @@ describe('admin account management (IK9KWO)', () => {
       where: { entityType: 'admin-account', entityId: { in: ids } },
     });
     expect(logs.length).toBeGreaterThanOrEqual(3);
-    expect(logs.map((x) => x.action)).toContain('account.create');
+    expect(logs.map((x) => x.action)).toContain('rbac.account.create');
   });
 
   it('列表不泄露 passwordHash', async () => {

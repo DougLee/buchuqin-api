@@ -106,6 +106,10 @@ export class CreateAdminMenuDto {
   @IsString() @MinLength(1) @MaxLength(30) name!: string;
   @IsIn([0, 1, 2]) type!: number;
   @IsOptional() @IsString() parentCode?: string;
+  @IsOptional() @IsString() parentId?: string | null;
+  @IsOptional() @IsString() @MaxLength(240) viewPath?: string;
+  @IsOptional() @IsBoolean() keepAlive?: boolean;
+  @IsOptional() @IsBoolean() isShow?: boolean;
   /** URL 模式串（"METHOD /admin/…"），按钮行通常必填、目录行留空。 */
   @IsOptional() @IsArray() @IsString({ each: true }) perms?: string[];
   @IsOptional() @IsString() @MaxLength(120) path?: string;
@@ -114,6 +118,8 @@ export class CreateAdminMenuDto {
 }
 /** 改菜单：builtin 行仅表现字段生效（结构字段 service 层拒绝）；自建行全可改。 */
 export class UpdateAdminMenuDto {
+  @IsOptional() @IsString() @MaxLength(240) viewPath?: string;
+  @IsOptional() @IsBoolean() keepAlive?: boolean;
   @IsOptional() @IsString() @MinLength(1) @MaxLength(30) name?: string;
   @IsOptional() @IsString() @MaxLength(40) icon?: string;
   @IsOptional() @Type(() => Number) @IsInt() orderNum?: number;

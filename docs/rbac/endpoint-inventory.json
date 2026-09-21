@@ -1,0 +1,2163 @@
+[
+  {
+    "method": "GET",
+    "path": "/admin/accounts",
+    "nodes": [
+      "accounts"
+    ],
+    "scope": "platform-only: global resource or explicit target campus",
+    "controller": "src/admin/admin.controller.ts:1675",
+    "service": [
+      {
+        "name": "accounts",
+        "source": "src/admin/admin.service.ts:5280"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/accounts",
+    "nodes": [
+      "rbac.accounts.write"
+    ],
+    "scope": "super-only: global permission configuration/account administration",
+    "controller": "src/admin/admin.controller.ts:1694",
+    "service": [],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "DELETE",
+    "path": "/admin/accounts/:id",
+    "nodes": [
+      "rbac.accounts.write"
+    ],
+    "scope": "super-only: global permission configuration/account administration",
+    "controller": "src/admin/admin.controller.ts:1717",
+    "service": [],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "PATCH",
+    "path": "/admin/accounts/:id",
+    "nodes": [
+      "rbac.accounts.write"
+    ],
+    "scope": "super-only: global permission configuration/account administration",
+    "controller": "src/admin/admin.controller.ts:1704",
+    "service": [],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/after-sales",
+    "nodes": [
+      "after-sales"
+    ],
+    "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+    "controller": "src/admin/admin.controller.ts:1470",
+    "service": [
+      {
+        "name": "afterSales",
+        "source": "src/admin/admin.service.ts:4422"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/audit-logs",
+    "nodes": [
+      "audit"
+    ],
+    "scope": "campusScope: current campus; matching platform grant permits aggregate or validated campus query",
+    "controller": "src/admin/admin.controller.ts:1654",
+    "service": [
+      {
+        "name": "auditLogs",
+        "source": "src/admin/admin.service.ts:5247"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/banners",
+    "nodes": [
+      "banners",
+      "pay-ads"
+    ],
+    "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+    "controller": "src/admin/admin.controller.ts:286",
+    "service": [
+      {
+        "name": "banners",
+        "source": "src/admin/admin.service.ts:819"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/banners",
+    "nodes": [
+      "banners.write"
+    ],
+    "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+    "controller": "src/admin/admin.controller.ts:310",
+    "service": [
+      {
+        "name": "createBanner",
+        "source": "src/admin/admin.service.ts:841"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "DELETE",
+    "path": "/admin/banners/:id",
+    "nodes": [
+      "banners.write"
+    ],
+    "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+    "controller": "src/admin/admin.controller.ts:337",
+    "service": [
+      {
+        "name": "deleteBanner",
+        "source": "src/admin/admin.service.ts:934"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "PATCH",
+    "path": "/admin/banners/:id",
+    "nodes": [
+      "banners.write"
+    ],
+    "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+    "controller": "src/admin/admin.controller.ts:323",
+    "service": [
+      {
+        "name": "updateBanner",
+        "source": "src/admin/admin.service.ts:886"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/battle-map/buildings/:buildingId",
+    "nodes": [
+      "battle-map"
+    ],
+    "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+    "controller": "src/admin/admin.controller.ts:832",
+    "service": [
+      {
+        "name": "battleMapBuilding",
+        "source": "src/admin/admin.service.ts:3161"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/battle-map/rooms/:roomId",
+    "nodes": [
+      "battle-map"
+    ],
+    "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+    "controller": "src/admin/admin.controller.ts:841",
+    "service": [
+      {
+        "name": "battleMapRoom",
+        "source": "src/admin/admin.service.ts:3241"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/buildings",
+    "nodes": [
+      "buildings"
+    ],
+    "scope": "campusScope: current campus; matching platform grant permits aggregate or validated campus query",
+    "controller": "src/admin/admin.controller.ts:1340",
+    "service": [
+      {
+        "name": "buildings",
+        "source": "src/admin/admin.service.ts:4150"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/buildings",
+    "nodes": [
+      "buildings.write"
+    ],
+    "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+    "controller": "src/admin/admin.controller.ts:1363",
+    "service": [
+      {
+        "name": "createBuilding",
+        "source": "src/admin/admin.service.ts:4169"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "DELETE",
+    "path": "/admin/buildings/:id",
+    "nodes": [
+      "buildings.write"
+    ],
+    "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+    "controller": "src/admin/admin.controller.ts:1386",
+    "service": [
+      {
+        "name": "deleteBuilding",
+        "source": "src/admin/admin.service.ts:4220"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "PATCH",
+    "path": "/admin/buildings/:id",
+    "nodes": [
+      "buildings.write"
+    ],
+    "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+    "controller": "src/admin/admin.controller.ts:1372",
+    "service": [
+      {
+        "name": "updateBuilding",
+        "source": "src/admin/admin.service.ts:4198"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/buildings/:id/rooms",
+    "nodes": [
+      "buildings"
+    ],
+    "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+    "controller": "src/admin/admin.controller.ts:1395",
+    "service": [
+      {
+        "name": "rooms",
+        "source": "src/admin/admin.service.ts:4245"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/buildings/:id/rooms",
+    "nodes": [
+      "buildings.write"
+    ],
+    "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+    "controller": "src/admin/admin.controller.ts:1408",
+    "service": [
+      {
+        "name": "createRoom",
+        "source": "src/admin/admin.service.ts:4261"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "DELETE",
+    "path": "/admin/buildings/:id/rooms/:roomId",
+    "nodes": [
+      "buildings.write"
+    ],
+    "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+    "controller": "src/admin/admin.controller.ts:1418",
+    "service": [
+      {
+        "name": "deleteRoom",
+        "source": "src/admin/admin.service.ts:4302"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/buildings/:id/rooms/import",
+    "nodes": [
+      "buildings.write"
+    ],
+    "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+    "controller": "src/admin/admin.controller.ts:1446",
+    "service": [
+      {
+        "name": "importRooms",
+        "source": "src/admin/admin.service.ts:4353"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/buildings/:id/rooms/template",
+    "nodes": [
+      "buildings.write"
+    ],
+    "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+    "controller": "src/admin/admin.controller.ts:1429",
+    "service": [
+      {
+        "name": "roomTemplate",
+        "source": "src/admin/admin.service.ts:4328"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/campuses",
+    "nodes": [
+      "campuses"
+    ],
+    "scope": "campusScope: current campus; matching platform grant permits aggregate or validated campus query",
+    "controller": "src/admin/admin.controller.ts:1572",
+    "service": [
+      {
+        "name": "campuses",
+        "source": "src/admin/admin.service.ts:4656"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/campuses",
+    "nodes": [
+      "campuses.manage"
+    ],
+    "scope": "platform-only: global resource or explicit target campus",
+    "controller": "src/admin/admin.controller.ts:1579",
+    "service": [
+      {
+        "name": "createCampus",
+        "source": "src/admin/admin.service.ts:4676"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "PATCH",
+    "path": "/admin/campuses/:id",
+    "nodes": [
+      "campuses.manage"
+    ],
+    "scope": "platform-only: global resource or explicit target campus",
+    "controller": "src/admin/admin.controller.ts:1585",
+    "service": [
+      {
+        "name": "updateCampus",
+        "source": "src/admin/admin.service.ts:4710"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/categories",
+    "nodes": [
+      "categories"
+    ],
+    "scope": "shared: global category dictionary; capability required for mutations",
+    "controller": "src/admin/admin.controller.ts:247",
+    "service": [
+      {
+        "name": "categories",
+        "source": "src/admin/admin.service.ts:722"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/categories",
+    "nodes": [
+      "categories.write"
+    ],
+    "scope": "shared: global category dictionary; capability required for mutations",
+    "controller": "src/admin/admin.controller.ts:252",
+    "service": [
+      {
+        "name": "createCategory",
+        "source": "src/admin/admin.service.ts:732"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "DELETE",
+    "path": "/admin/categories/:id",
+    "nodes": [
+      "categories.write"
+    ],
+    "scope": "shared: global category dictionary; capability required for mutations",
+    "controller": "src/admin/admin.controller.ts:275",
+    "service": [
+      {
+        "name": "deleteCategory",
+        "source": "src/admin/admin.service.ts:795"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "PATCH",
+    "path": "/admin/categories/:id",
+    "nodes": [
+      "categories.write"
+    ],
+    "scope": "shared: global category dictionary; capability required for mutations",
+    "controller": "src/admin/admin.controller.ts:261",
+    "service": [
+      {
+        "name": "updateCategory",
+        "source": "src/admin/admin.service.ts:760"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/commission-rules",
+    "nodes": [
+      "rules"
+    ],
+    "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+    "controller": "src/admin/admin.controller.ts:1489",
+    "service": [
+      {
+        "name": "commissionRules",
+        "source": "src/admin/admin.service.ts:4430"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/commission-rules",
+    "nodes": [
+      "finance.rules.write"
+    ],
+    "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+    "controller": "src/admin/admin.controller.ts:1506",
+    "service": [
+      {
+        "name": "createCommissionRule",
+        "source": "src/admin/admin.service.ts:4444"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "PATCH",
+    "path": "/admin/commission-rules/:id",
+    "nodes": [
+      "finance.rules.write"
+    ],
+    "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+    "controller": "src/admin/admin.controller.ts:1519",
+    "service": [
+      {
+        "name": "updateCommissionRule",
+        "source": "src/admin/admin.service.ts:4488"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/coupons",
+    "nodes": [
+      "coupons"
+    ],
+    "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+    "controller": "src/admin/admin.controller.ts:1597",
+    "service": [
+      {
+        "name": "coupons",
+        "source": "src/admin/admin.service.ts:4883"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/coupons",
+    "nodes": [
+      "marketing.write"
+    ],
+    "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+    "controller": "src/admin/admin.controller.ts:1616",
+    "service": [
+      {
+        "name": "createCoupon",
+        "source": "src/admin/admin.service.ts:4895"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "DELETE",
+    "path": "/admin/coupons/:id",
+    "nodes": [
+      "marketing.write"
+    ],
+    "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+    "controller": "src/admin/admin.controller.ts:1635",
+    "service": [
+      {
+        "name": "deleteCoupon",
+        "source": "src/admin/admin.service.ts:4956"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "PATCH",
+    "path": "/admin/coupons/:id",
+    "nodes": [
+      "marketing.write"
+    ],
+    "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+    "controller": "src/admin/admin.controller.ts:1625",
+    "service": [
+      {
+        "name": "updateCoupon",
+        "source": "src/admin/admin.service.ts:4980"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/coupons/:id/issue",
+    "nodes": [
+      "marketing.write"
+    ],
+    "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+    "controller": "src/admin/admin.controller.ts:1644",
+    "service": [
+      {
+        "name": "issueCoupon",
+        "source": "src/admin/admin.service.ts:5043"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/dashboard",
+    "nodes": [
+      "dashboard"
+    ],
+    "scope": "campusScope: current campus; matching platform grant permits aggregate or validated campus query",
+    "controller": "src/admin/admin.controller.ts:162",
+    "service": [
+      {
+        "name": "dashboard",
+        "source": "src/admin/admin.service.ts:187"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/delivery-config",
+    "nodes": [
+      "campuses"
+    ],
+    "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+    "controller": "src/admin/admin.controller.ts:1317",
+    "service": [
+      {
+        "name": "deliveryConfig",
+        "source": "src/admin/admin.service.ts:4096"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "PATCH",
+    "path": "/admin/delivery-config",
+    "nodes": [
+      "campuses.config.write"
+    ],
+    "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+    "controller": "src/admin/admin.controller.ts:1325",
+    "service": [
+      {
+        "name": "updateDeliveryConfig",
+        "source": "src/admin/admin.service.ts:4110"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/dispatch-invitations",
+    "nodes": [
+      "staff",
+      "dispatch"
+    ],
+    "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+    "controller": "src/admin/admin.controller.ts:1241",
+    "service": [
+      {
+        "name": "dispatchInvitations",
+        "source": "src/admin/admin.service.ts:4784"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/dispatch-invitations",
+    "nodes": [
+      "staff.write",
+      "dispatch.write"
+    ],
+    "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+    "controller": "src/admin/admin.controller.ts:1260",
+    "service": [
+      {
+        "name": "createDispatchInvitation",
+        "source": "src/admin/admin.service.ts:4806"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/dispatch-invitations/:id/cancel",
+    "nodes": [
+      "staff.write",
+      "dispatch.write"
+    ],
+    "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+    "controller": "src/admin/admin.controller.ts:1273",
+    "service": [
+      {
+        "name": "cancelDispatchInvitation",
+        "source": "src/admin/admin.service.ts:4854"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/featured",
+    "nodes": [
+      "featured"
+    ],
+    "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+    "controller": "src/admin/admin.controller.ts:372",
+    "service": [
+      {
+        "name": "featured",
+        "source": "src/admin/admin.service.ts:683"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "PUT",
+    "path": "/admin/featured",
+    "nodes": [
+      "featured.write"
+    ],
+    "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+    "controller": "src/admin/admin.controller.ts:377",
+    "service": [
+      {
+        "name": "saveFeatured",
+        "source": "src/admin/admin.service.ts:700"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/inventory",
+    "nodes": [
+      "inventory"
+    ],
+    "scope": "campusScope: current campus; matching platform grant permits aggregate or validated campus query",
+    "controller": "src/admin/admin.controller.ts:575",
+    "service": [
+      {
+        "name": "inventory",
+        "source": "src/admin/admin.service.ts:1519"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/inventory/adjust",
+    "nodes": [
+      "inventory.adjust"
+    ],
+    "scope": "campusScope: current campus; matching platform grant permits aggregate or validated campus query",
+    "controller": "src/admin/admin.controller.ts:901",
+    "service": [
+      {
+        "name": "adjustStock",
+        "source": "src/admin/admin.service.ts:1563"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/inventory/stock-in",
+    "nodes": [
+      "inventory.inbound"
+    ],
+    "scope": "platform-only: global resource or explicit target campus",
+    "controller": "src/admin/admin.controller.ts:602",
+    "service": [
+      {
+        "name": "stockIn",
+        "source": "src/admin/admin.service.ts:1531"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/inventory/stocktake",
+    "nodes": [
+      "inventory.adjust"
+    ],
+    "scope": "campusScope: current campus; matching platform grant permits aggregate or validated campus query",
+    "controller": "src/admin/admin.controller.ts:616",
+    "service": [
+      {
+        "name": "stocktake",
+        "source": "src/admin/admin.service.ts:1607"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/inventory/txns",
+    "nodes": [
+      "inventory-txns"
+    ],
+    "scope": "campusScope: current campus; matching platform grant permits aggregate or validated campus query",
+    "controller": "src/admin/admin.controller.ts:914",
+    "service": [
+      {
+        "name": "inventoryTxns",
+        "source": "src/admin/admin.service.ts:3373"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/leave-requests",
+    "nodes": [
+      "staff",
+      "dispatch"
+    ],
+    "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+    "controller": "src/admin/admin.controller.ts:1222",
+    "service": [
+      {
+        "name": "leaveRequests",
+        "source": "src/admin/admin.service.ts:4757"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/locations",
+    "nodes": [
+      "locations"
+    ],
+    "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+    "controller": "src/admin/admin.controller.ts:1168",
+    "service": [
+      {
+        "name": "locations",
+        "source": "src/admin/admin.service.ts:3783"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/locations",
+    "nodes": [
+      "locations.write"
+    ],
+    "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+    "controller": "src/admin/admin.controller.ts:1171",
+    "service": [
+      {
+        "name": "createLocation",
+        "source": "src/admin/admin.service.ts:3789"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "DELETE",
+    "path": "/admin/locations/:id",
+    "nodes": [
+      "locations.write"
+    ],
+    "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+    "controller": "src/admin/admin.controller.ts:1197",
+    "service": [
+      {
+        "name": "deleteLocation",
+        "source": "src/admin/admin.service.ts:3842"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "PATCH",
+    "path": "/admin/locations/:id",
+    "nodes": [
+      "locations.write"
+    ],
+    "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+    "controller": "src/admin/admin.controller.ts:1181",
+    "service": [
+      {
+        "name": "updateLocation",
+        "source": "src/admin/admin.service.ts:3813"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/marketing/map",
+    "nodes": [
+      "battle-map"
+    ],
+    "scope": "campusScope: current campus; matching platform grant permits aggregate or validated campus query",
+    "controller": "src/admin/admin.controller.ts:388",
+    "service": [
+      {
+        "name": "marketingMap",
+        "source": "src/admin/admin.service.ts:5160"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/orders",
+    "nodes": [
+      "orders",
+      "warehouse-orders"
+    ],
+    "scope": "campusScope: current campus; matching platform grant permits aggregate or validated campus query",
+    "controller": "src/admin/admin.controller.ts:933",
+    "service": [
+      {
+        "name": "orders",
+        "source": "src/admin/admin.service.ts:3401"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/orders/:id",
+    "nodes": [
+      "orders"
+    ],
+    "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+    "controller": "src/admin/admin.controller.ts:978",
+    "service": [
+      {
+        "name": "order",
+        "source": "src/admin/admin.service.ts:3534"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/orders/:id/actions/:action",
+    "nodes": [
+      "orders.write"
+    ],
+    "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+    "controller": "src/admin/admin.controller.ts:984",
+    "service": [
+      {
+        "name": "orderAction",
+        "source": "src/admin/admin.service.ts:3541"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/orders/:id/print-receipt",
+    "nodes": [
+      "orders.write"
+    ],
+    "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+    "controller": "src/admin/admin.controller.ts:1017",
+    "service": [
+      {
+        "name": "reprintReceipt",
+        "source": "src/admin/admin.service.ts:3578"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/orders/:id/status",
+    "nodes": [
+      "orders.write"
+    ],
+    "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+    "controller": "src/admin/admin.controller.ts:1000",
+    "service": [
+      {
+        "name": "updateOrderStatus",
+        "source": "src/admin/admin.service.ts:3746"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/orders/new-order-watch",
+    "nodes": [
+      "orders"
+    ],
+    "scope": "campusScope: current campus; matching platform grant permits aggregate or validated campus query",
+    "controller": "src/admin/admin.controller.ts:970",
+    "service": [
+      {
+        "name": "newOrderWatch",
+        "source": "src/admin/admin.service.ts:3519"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/orders/status-counts",
+    "nodes": [
+      "orders",
+      "warehouse-orders"
+    ],
+    "scope": "campusScope: current campus; matching platform grant permits aggregate or validated campus query",
+    "controller": "src/admin/admin.controller.ts:961",
+    "service": [
+      {
+        "name": "orderStatusCounts",
+        "source": "src/admin/admin.service.ts:3507"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/printers",
+    "nodes": [
+      "printers"
+    ],
+    "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+    "controller": "src/admin/admin.controller.ts:1028",
+    "service": [
+      {
+        "name": "printers",
+        "source": "src/admin/admin.service.ts:3642"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/printers",
+    "nodes": [
+      "printers.write"
+    ],
+    "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+    "controller": "src/admin/admin.controller.ts:1033",
+    "service": [
+      {
+        "name": "bindPrinter",
+        "source": "src/admin/admin.service.ts:3656"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "DELETE",
+    "path": "/admin/printers/:id",
+    "nodes": [
+      "printers.write"
+    ],
+    "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+    "controller": "src/admin/admin.controller.ts:1044",
+    "service": [
+      {
+        "name": "unbindPrinter",
+        "source": "src/admin/admin.service.ts:3703"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/printers/:id/test-print",
+    "nodes": [
+      "printers.write"
+    ],
+    "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+    "controller": "src/admin/admin.controller.ts:1052",
+    "service": [
+      {
+        "name": "testPrintPrinter",
+        "source": "src/admin/admin.service.ts:3720"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/products",
+    "nodes": [
+      "official-products",
+      "products"
+    ],
+    "scope": "productCampus: current campus; operation platform grant permits official view; field capabilities independently checked",
+    "controller": "src/admin/admin.controller.ts:177",
+    "service": [
+      {
+        "name": "products",
+        "source": "src/admin/admin.service.ts:595"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/products",
+    "nodes": [
+      "products.official.write",
+      "products.write"
+    ],
+    "scope": "productCampus: current campus; operation platform grant permits official view; field capabilities independently checked",
+    "controller": "src/admin/admin.controller.ts:459",
+    "service": [
+      {
+        "name": "createProduct",
+        "source": "src/admin/admin.service.ts:1205"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "PATCH",
+    "path": "/admin/products/:id",
+    "nodes": [
+      "products.official.write",
+      "products.write"
+    ],
+    "scope": "productCampus: current campus; operation platform grant permits official view; field capabilities independently checked",
+    "controller": "src/admin/admin.controller.ts:475",
+    "service": [
+      {
+        "name": "updateProduct",
+        "source": "src/admin/admin.service.ts:1271"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "PATCH",
+    "path": "/admin/products/:id/price",
+    "nodes": [
+      "products.price"
+    ],
+    "scope": "productCampus: current campus; operation platform grant permits official view; field capabilities independently checked",
+    "controller": "src/admin/admin.controller.ts:513",
+    "service": [
+      {
+        "name": "updateProduct",
+        "source": "src/admin/admin.service.ts:1271"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/products/:id/pull-upstream",
+    "nodes": [
+      "products.official.write"
+    ],
+    "scope": "productCampus: current campus; operation platform grant permits official view; field capabilities independently checked",
+    "controller": "src/admin/admin.controller.ts:563",
+    "service": [
+      {
+        "name": "pullUpstream",
+        "source": "src/admin/admin.service.ts:1474"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/products/barcode/lookup",
+    "nodes": [
+      "products"
+    ],
+    "scope": "productCampus: current campus; operation platform grant permits official view; field capabilities independently checked",
+    "controller": "src/admin/admin.controller.ts:426",
+    "service": [
+      {
+        "name": "lookupBarcode",
+        "source": "src/admin/admin.service.ts:1104"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/products/batch-status",
+    "nodes": [
+      "products.official.write",
+      "products.status"
+    ],
+    "scope": "productCampus: current campus; operation platform grant permits official view; field capabilities independently checked",
+    "controller": "src/admin/admin.controller.ts:440",
+    "service": [
+      {
+        "name": "batchUpdateProductStatus",
+        "source": "src/admin/admin.service.ts:1340"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/products/import",
+    "nodes": [
+      "products.write"
+    ],
+    "scope": "productCampus: current campus; operation platform grant permits official view; field capabilities independently checked",
+    "controller": "src/admin/admin.controller.ts:540",
+    "service": [
+      {
+        "name": "importProducts",
+        "source": "src/admin/admin.service.ts:1368"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/products/official-library",
+    "nodes": [
+      "official-products"
+    ],
+    "scope": "shared: official catalog; excludes private campus product rows",
+    "controller": "src/admin/admin.controller.ts:220",
+    "service": [
+      {
+        "name": "products",
+        "source": "src/admin/admin.service.ts:595"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/products/status-counts",
+    "nodes": [
+      "official-products",
+      "products"
+    ],
+    "scope": "productCampus: current campus; operation platform grant permits official view; field capabilities independently checked",
+    "controller": "src/admin/admin.controller.ts:208",
+    "service": [
+      {
+        "name": "productStatusCounts",
+        "source": "src/admin/admin.service.ts:670"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/promotions",
+    "nodes": [
+      "promotions"
+    ],
+    "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+    "controller": "src/admin/admin.controller.ts:347",
+    "service": [
+      {
+        "name": "promotions",
+        "source": "src/admin/admin.service.ts:954"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/promotions",
+    "nodes": [
+      "promotions.write"
+    ],
+    "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+    "controller": "src/admin/admin.controller.ts:408",
+    "service": [
+      {
+        "name": "createPromotion",
+        "source": "src/admin/admin.service.ts:1012"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "PATCH",
+    "path": "/admin/promotions/:id",
+    "nodes": [
+      "promotions.write"
+    ],
+    "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+    "controller": "src/admin/admin.controller.ts:417",
+    "service": [
+      {
+        "name": "updatePromotion",
+        "source": "src/admin/admin.service.ts:1051"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/purchase/orders",
+    "nodes": [
+      "purchase"
+    ],
+    "scope": "platform-only: global resource or explicit target campus",
+    "controller": "src/admin/admin.controller.ts:850",
+    "service": [
+      {
+        "name": "purchaseOrders",
+        "source": "src/admin/admin.service.ts:2330"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/purchase/orders/:id",
+    "nodes": [
+      "purchase"
+    ],
+    "scope": "platform-only: global resource or explicit target campus",
+    "controller": "src/admin/admin.controller.ts:854",
+    "service": [
+      {
+        "name": "purchaseOrderDetail",
+        "source": "src/admin/admin.service.ts:2381"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/purchase/orders/:id/close",
+    "nodes": [
+      "purchase.write"
+    ],
+    "scope": "platform-only: global resource or explicit target campus",
+    "controller": "src/admin/admin.controller.ts:882",
+    "service": [
+      {
+        "name": "closePurchaseOrder",
+        "source": "src/admin/admin.service.ts:2647"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/purchase/orders/:id/receive",
+    "nodes": [
+      "purchase.write"
+    ],
+    "scope": "platform-only: global resource or explicit target campus",
+    "controller": "src/admin/admin.controller.ts:872",
+    "service": [
+      {
+        "name": "receivePurchaseOrder",
+        "source": "src/admin/admin.service.ts:2517"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/purchase/orders/:id/reopen",
+    "nodes": [
+      "purchase.write"
+    ],
+    "scope": "platform-only: global resource or explicit target campus",
+    "controller": "src/admin/admin.controller.ts:892",
+    "service": [
+      {
+        "name": "reopenPurchaseOrder",
+        "source": "src/admin/admin.service.ts:2676"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/rbac/accounts/:id/preview",
+    "nodes": [
+      "accounts"
+    ],
+    "scope": "platform-only: global resource or explicit target campus",
+    "controller": "src/admin/admin.controller.ts:1868",
+    "service": [],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/rbac/audit",
+    "nodes": [
+      "rbac-audit"
+    ],
+    "scope": "platform-only: global resource or explicit target campus",
+    "controller": "src/admin/admin.controller.ts:1855",
+    "service": [],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/rbac/catalog",
+    "nodes": [
+      "rbac-roles",
+      "rbac-menus"
+    ],
+    "scope": "super-only: global permission configuration/account administration",
+    "controller": "src/admin/admin.controller.ts:1753",
+    "service": [],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/rbac/me",
+    "nodes": [],
+    "scope": "self: current account effective permissions; no other account data",
+    "controller": "src/admin/admin.controller.ts:1729",
+    "service": [
+      {
+        "name": "findAccount",
+        "source": "src/admin/admin.service.ts:5276"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/rbac/menus",
+    "nodes": [
+      "rbac-roles",
+      "rbac-menus"
+    ],
+    "scope": "super-only: global permission configuration/account administration",
+    "controller": "src/admin/admin.controller.ts:1761",
+    "service": [],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/rbac/menus",
+    "nodes": [
+      "rbac.menus.write"
+    ],
+    "scope": "super-only: global permission configuration/account administration",
+    "controller": "src/admin/admin.controller.ts:1770",
+    "service": [],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "DELETE",
+    "path": "/admin/rbac/menus/:id",
+    "nodes": [
+      "rbac.menus.write"
+    ],
+    "scope": "super-only: global permission configuration/account administration",
+    "controller": "src/admin/admin.controller.ts:1798",
+    "service": [],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "PATCH",
+    "path": "/admin/rbac/menus/:id",
+    "nodes": [
+      "rbac.menus.write"
+    ],
+    "scope": "super-only: global permission configuration/account administration",
+    "controller": "src/admin/admin.controller.ts:1782",
+    "service": [],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/rbac/permissions",
+    "nodes": [
+      "rbac-roles",
+      "rbac-permissions"
+    ],
+    "scope": "super-only: global permission configuration/account administration",
+    "controller": "src/admin/admin.controller.ts:1756",
+    "service": [],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/rbac/permmenu",
+    "nodes": [],
+    "scope": "self: current account effective permissions; no other account data",
+    "controller": "src/admin/admin.controller.ts:1742",
+    "service": [
+      {
+        "name": "findAccount",
+        "source": "src/admin/admin.service.ts:5276"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/rbac/roles",
+    "nodes": [
+      "rbac-roles"
+    ],
+    "scope": "super-only: global permission configuration/account administration",
+    "controller": "src/admin/admin.controller.ts:1808",
+    "service": [],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/rbac/roles",
+    "nodes": [
+      "rbac.roles.write"
+    ],
+    "scope": "super-only: global permission configuration/account administration",
+    "controller": "src/admin/admin.controller.ts:1825",
+    "service": [],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "DELETE",
+    "path": "/admin/rbac/roles/:id",
+    "nodes": [
+      "rbac.roles.write"
+    ],
+    "scope": "super-only: global permission configuration/account administration",
+    "controller": "src/admin/admin.controller.ts:1849",
+    "service": [],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "PATCH",
+    "path": "/admin/rbac/roles/:id",
+    "nodes": [
+      "rbac.roles.write"
+    ],
+    "scope": "super-only: global permission configuration/account administration",
+    "controller": "src/admin/admin.controller.ts:1839",
+    "service": [],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/recruit-applications",
+    "nodes": [
+      "recruit"
+    ],
+    "scope": "campusScope: current campus; matching platform grant permits aggregate or validated campus query",
+    "controller": "src/admin/admin.controller.ts:1875",
+    "service": [
+      {
+        "name": "recruitApplications",
+        "source": "src/admin/admin.service.ts:5735"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "PATCH",
+    "path": "/admin/recruit-applications/:id",
+    "nodes": [
+      "recruit.note"
+    ],
+    "scope": "campusScope: current campus; matching platform grant permits aggregate or validated campus query",
+    "controller": "src/admin/admin.controller.ts:1914",
+    "service": [
+      {
+        "name": "updateRecruitApplication",
+        "source": "src/admin/admin.service.ts:5819"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/recruit-applications/:id/approve",
+    "nodes": [
+      "recruit.approve"
+    ],
+    "scope": "campusScope: current campus; matching platform grant permits aggregate or validated campus query",
+    "controller": "src/admin/admin.controller.ts:2017",
+    "service": [
+      {
+        "name": "recruitApprove",
+        "source": "src/admin/admin.service.ts:5931"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/recruit-applications/:id/idcard",
+    "nodes": [
+      "recruit.idcard.read"
+    ],
+    "scope": "campusScope: current campus; matching platform grant permits aggregate or validated campus query",
+    "controller": "src/admin/admin.controller.ts:1969",
+    "service": [
+      {
+        "name": "recruitIdcard",
+        "source": "src/admin/admin.service.ts:5789"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/recruit-applications/:id/idcard",
+    "nodes": [
+      "recruit.idcard.write"
+    ],
+    "scope": "campusScope: current campus; matching platform grant permits aggregate or validated campus query",
+    "controller": "src/admin/admin.controller.ts:1943",
+    "service": [
+      {
+        "name": "updateRecruitApplication",
+        "source": "src/admin/admin.service.ts:5819"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/recruit-applications/:id/reject",
+    "nodes": [
+      "recruit.reject"
+    ],
+    "scope": "campusScope: current campus; matching platform grant permits aggregate or validated campus query",
+    "controller": "src/admin/admin.controller.ts:2000",
+    "service": [
+      {
+        "name": "recruitReject",
+        "source": "src/admin/admin.service.ts:5887"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/recruit-applications/:id/transition",
+    "nodes": [
+      "recruit.interview"
+    ],
+    "scope": "campusScope: current campus; matching platform grant permits aggregate or validated campus query",
+    "controller": "src/admin/admin.controller.ts:1988",
+    "service": [
+      {
+        "name": "recruitTransition",
+        "source": "src/admin/admin.service.ts:5857"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/recruit-applications/status-counts",
+    "nodes": [
+      "recruit"
+    ],
+    "scope": "campusScope: current campus; matching platform grant permits aggregate or validated campus query",
+    "controller": "src/admin/admin.controller.ts:1902",
+    "service": [
+      {
+        "name": "recruitStatusCounts",
+        "source": "src/admin/admin.service.ts:5809"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/reports/campus-daily",
+    "nodes": [
+      "campus-report"
+    ],
+    "scope": "campusScope: current campus; matching platform grant permits aggregate or validated campus query",
+    "controller": "src/admin/admin.controller.ts:805",
+    "service": [
+      {
+        "name": "campusDailyReport",
+        "source": "src/admin/admin.service.ts:3030"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/reports/hq-daily",
+    "nodes": [
+      "campus-report",
+      "purchase"
+    ],
+    "scope": "platform-only: global resource or explicit target campus",
+    "controller": "src/admin/admin.controller.ts:783",
+    "service": [
+      {
+        "name": "hqDailyReport",
+        "source": "src/admin/admin.service.ts:2940"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/restock/batches",
+    "nodes": [
+      "restock"
+    ],
+    "scope": "shared batch metadata; embedded orders/counts current campus unless matching platform grant",
+    "controller": "src/admin/admin.controller.ts:632",
+    "service": [
+      {
+        "name": "restockBatches",
+        "source": "src/admin/admin.service.ts:1709"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/restock/batches",
+    "nodes": [
+      "restock.manage"
+    ],
+    "scope": "platform-only: global resource or explicit target campus",
+    "controller": "src/admin/admin.controller.ts:637",
+    "service": [
+      {
+        "name": "createRestockBatch",
+        "source": "src/admin/admin.service.ts:1741"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "PUT",
+    "path": "/admin/restock/batches/:batchId/order",
+    "nodes": [
+      "restock.order"
+    ],
+    "scope": "current campus order/receipt; batch shared; nested product/receipt validation in service",
+    "controller": "src/admin/admin.controller.ts:671",
+    "service": [
+      {
+        "name": "saveRestockOrder",
+        "source": "src/admin/admin.service.ts:1990"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/restock/batches/:batchId/order/submit",
+    "nodes": [
+      "restock.order"
+    ],
+    "scope": "current campus order/receipt; batch shared; nested product/receipt validation in service",
+    "controller": "src/admin/admin.controller.ts:684",
+    "service": [
+      {
+        "name": "submitRestockOrder",
+        "source": "src/admin/admin.service.ts:2095"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/restock/batches/:batchId/order/withdraw",
+    "nodes": [
+      "restock.order"
+    ],
+    "scope": "current campus order/receipt; batch shared; nested product/receipt validation in service",
+    "controller": "src/admin/admin.controller.ts:696",
+    "service": [
+      {
+        "name": "withdrawRestockOrder",
+        "source": "src/admin/admin.service.ts:2131"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/restock/batches/:batchId/purchase-order",
+    "nodes": [
+      "purchase.write"
+    ],
+    "scope": "platform-only: global resource or explicit target campus",
+    "controller": "src/admin/admin.controller.ts:861",
+    "service": [
+      {
+        "name": "createPurchaseOrder",
+        "source": "src/admin/admin.service.ts:2434"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/restock/batches/:id",
+    "nodes": [
+      "restock"
+    ],
+    "scope": "shared batch metadata; embedded orders/counts current campus unless matching platform grant",
+    "controller": "src/admin/admin.controller.ts:658",
+    "service": [
+      {
+        "name": "restockBatchDetail",
+        "source": "src/admin/admin.service.ts:1823"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "PATCH",
+    "path": "/admin/restock/batches/:id",
+    "nodes": [
+      "restock.manage"
+    ],
+    "scope": "platform-only: global resource or explicit target campus",
+    "controller": "src/admin/admin.controller.ts:644",
+    "service": [
+      {
+        "name": "updateRestockBatch",
+        "source": "src/admin/admin.service.ts:1773"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/restock/batches/:id/close",
+    "nodes": [
+      "restock.manage"
+    ],
+    "scope": "platform-only: global resource or explicit target campus",
+    "controller": "src/admin/admin.controller.ts:651",
+    "service": [
+      {
+        "name": "closeRestockBatch",
+        "source": "src/admin/admin.service.ts:1802"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/restock/orders",
+    "nodes": [
+      "restock"
+    ],
+    "scope": "orders/shipment: current campus unless matching platform grant",
+    "controller": "src/admin/admin.controller.ts:708",
+    "service": [
+      {
+        "name": "restockOrders",
+        "source": "src/admin/admin.service.ts:1894"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/restock/orders/:id",
+    "nodes": [
+      "restock"
+    ],
+    "scope": "orders/shipment: current campus unless matching platform grant",
+    "controller": "src/admin/admin.controller.ts:720",
+    "service": [
+      {
+        "name": "restockOrderDetail",
+        "source": "src/admin/admin.service.ts:1939"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/restock/orders/:id/audit",
+    "nodes": [
+      "restock.manage"
+    ],
+    "scope": "platform-only: global resource or explicit target campus",
+    "controller": "src/admin/admin.controller.ts:733",
+    "service": [
+      {
+        "name": "auditRestockOrder",
+        "source": "src/admin/admin.service.ts:2156"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/restock/orders/:id/receipt",
+    "nodes": [
+      "restock.order"
+    ],
+    "scope": "current campus order/receipt; batch shared; nested product/receipt validation in service",
+    "controller": "src/admin/admin.controller.ts:760",
+    "service": [
+      {
+        "name": "confirmRestockReceipt",
+        "source": "src/admin/admin.service.ts:2821"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/restock/orders/:id/ship",
+    "nodes": [
+      "restock.manage"
+    ],
+    "scope": "platform-only: global resource or explicit target campus",
+    "controller": "src/admin/admin.controller.ts:751",
+    "service": [
+      {
+        "name": "shipRestockOrder",
+        "source": "src/admin/admin.service.ts:2701"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/restock/orders/:id/shipment",
+    "nodes": [
+      "restock"
+    ],
+    "scope": "orders/shipment: current campus unless matching platform grant",
+    "controller": "src/admin/admin.controller.ts:769",
+    "service": [
+      {
+        "name": "restockShipmentDetail",
+        "source": "src/admin/admin.service.ts:3307"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/settlements",
+    "nodes": [
+      "finance"
+    ],
+    "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+    "controller": "src/admin/admin.controller.ts:1534",
+    "service": [
+      {
+        "name": "settlements",
+        "source": "src/admin/admin.service.ts:4526"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/settlements/:id/confirm",
+    "nodes": [
+      "finance.confirm"
+    ],
+    "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+    "controller": "src/admin/admin.controller.ts:1554",
+    "service": [
+      {
+        "name": "confirmSettlement",
+        "source": "src/admin/admin.service.ts:4604"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/settlements/:id/pay",
+    "nodes": [
+      "finance.pay"
+    ],
+    "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+    "controller": "src/admin/admin.controller.ts:1563",
+    "service": [
+      {
+        "name": "paySettlement",
+        "source": "src/admin/admin.service.ts:4625"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/staff",
+    "nodes": [
+      "staff"
+    ],
+    "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+    "controller": "src/admin/admin.controller.ts:1202",
+    "service": [
+      {
+        "name": "staff",
+        "source": "src/admin/admin.service.ts:3867"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/staff",
+    "nodes": [
+      "staff.write"
+    ],
+    "scope": "staff: source current campus plus destination check; matching platform grant permits cross-campus",
+    "controller": "src/admin/admin.controller.ts:1286",
+    "service": [
+      {
+        "name": "createStaff",
+        "source": "src/admin/admin.service.ts:3899"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "DELETE",
+    "path": "/admin/staff/:id",
+    "nodes": [
+      "staff.write"
+    ],
+    "scope": "staff: source current campus plus destination check; matching platform grant permits cross-campus",
+    "controller": "src/admin/admin.controller.ts:1308",
+    "service": [
+      {
+        "name": "deleteStaff",
+        "source": "src/admin/admin.service.ts:4074"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "PATCH",
+    "path": "/admin/staff/:id",
+    "nodes": [
+      "staff.write"
+    ],
+    "scope": "staff: source current campus plus destination check; matching platform grant permits cross-campus",
+    "controller": "src/admin/admin.controller.ts:1297",
+    "service": [
+      {
+        "name": "updateStaff",
+        "source": "src/admin/admin.service.ts:3973"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/users",
+    "nodes": [
+      "users"
+    ],
+    "scope": "campusScope: current campus; matching platform grant permits aggregate or validated campus query",
+    "controller": "src/admin/admin.controller.ts:1092",
+    "service": [
+      {
+        "name": "users",
+        "source": "src/admin/admin.service.ts:5533"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/users/:id/orders",
+    "nodes": [
+      "users"
+    ],
+    "scope": "campusScope: current campus; matching platform grant permits aggregate or validated campus query",
+    "controller": "src/admin/admin.controller.ts:1070",
+    "service": [
+      {
+        "name": "userOrders",
+        "source": "src/admin/admin.service.ts:5679"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/users/:id/phone",
+    "nodes": [
+      "users.phone.reveal"
+    ],
+    "scope": "campusScope: current campus; matching platform grant permits aggregate or validated campus query",
+    "controller": "src/admin/admin.controller.ts:1078",
+    "service": [
+      {
+        "name": "revealUserPhone",
+        "source": "src/admin/admin.service.ts:5697"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/users/stats",
+    "nodes": [
+      "users"
+    ],
+    "scope": "campusScope: current campus; matching platform grant permits aggregate or validated campus query",
+    "controller": "src/admin/admin.controller.ts:1062",
+    "service": [
+      {
+        "name": "userStats",
+        "source": "src/admin/admin.service.ts:5640"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/wechat-groups",
+    "nodes": [
+      "wechat-groups"
+    ],
+    "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+    "controller": "src/admin/admin.controller.ts:1118",
+    "service": [
+      {
+        "name": "wechatGroups",
+        "source": "src/admin/admin.service.ts:5346"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/wechat-groups",
+    "nodes": [
+      "wechat-groups.write"
+    ],
+    "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+    "controller": "src/admin/admin.controller.ts:1123",
+    "service": [
+      {
+        "name": "upsertWechatGroup",
+        "source": "src/admin/admin.service.ts:5367"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "DELETE",
+    "path": "/admin/wechat-groups/:id",
+    "nodes": [
+      "wechat-groups.write"
+    ],
+    "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+    "controller": "src/admin/admin.controller.ts:1156",
+    "service": [
+      {
+        "name": "deleteWechatGroup",
+        "source": "src/admin/admin.service.ts:5396"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/wheel",
+    "nodes": [
+      "wheel"
+    ],
+    "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+    "controller": "src/admin/admin.controller.ts:1140",
+    "service": [
+      {
+        "name": "wheel",
+        "source": "src/admin/admin.service.ts:5417"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  },
+  {
+    "method": "PUT",
+    "path": "/admin/wheel",
+    "nodes": [
+      "wheel.write"
+    ],
+    "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
+    "controller": "src/admin/admin.controller.ts:1145",
+    "service": [
+      {
+        "name": "upsertWheel",
+        "source": "src/admin/admin.service.ts:5453"
+      }
+    ],
+    "verification": "Source review pointers only; valid-target isolation evidence is tracked separately in data-scope-matrix.md"
+  }
+]

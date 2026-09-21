@@ -210,16 +210,21 @@ describe('admin campus access (IKB3KG)', () => {
     await rbac.setAccountRoles(actor, hqAccount.id, [
       { roleCode: 'hq-director', scope: 'platform' },
     ]);
+    const hqRow = await db.adminAccount.findUniqueOrThrow({ where: { id: hqAccount.id } });
     await expect(
       auth.selectAdminCampus(
-        { user: { id: hqAccount.id, campusId: '', role: 'rbac' } } as never,
+        { user: { sv: hqRow.sessionVersion, id: hqAccount.id, campusId: '', role: 'rbac' } } as never,
         { campusId: campusBId },
       ),
     ).rejects.toThrow(ForbiddenException);
     // 可切校区列表为空（纯平台级=跨校区视角）
     const campuses = (await auth.adminCampuses({
-      user: { id: hqAccount.id, campusId: '', role: 'rbac' },
+      user: { sv: hqRow.sessionVersion, id: hqAccount.id, campusId: '', role: 'rbac' },
     } as never)) as unknown as { data: unknown[] };
     expect(campuses.data).toEqual([]);
+    const filters = await auth.adminCampuses({
+      user: { sv: hqRow.sessionVersion, id: hqAccount.id, campusId: '', role: 'rbac' },
+    } as never, 'filter');
+    expect(filters.data.map(c => c.id)).toContain(campusBId);
   });
 });

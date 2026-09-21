@@ -36,6 +36,9 @@ export interface ReceiptOrderContext {
   id: string;
   orderNo: string;
   campusId: string;
+  /** 当日分拣序号（IKHFDZ）：printOrderReceipt 取号后回填——补打路径调用方
+   *  带出已有序号则复用（同单同号）。 */
+  dailySeq?: number | null;
   /** 票头仓库名（Campus.warehouseName，调用方带出）。 */
   warehouseName?: string;
   deliveryMode: string;
@@ -191,6 +194,23 @@ export class PrinterService {
     copies = 1,
     gapSeconds = 0,
   ): Promise<void> {
+    // IKHFDZ 当日分拣序号：无号先取（每校区每自然日从 1，INSERT ON CONFLICT
+    // 原子自增防并发重号）；有号复用（补打同单同号）。打印失败号已消耗即留空洞（定版）。
+    if (order.dailySeq == null) {
+      const date = shanghaiDateKey(new Date());
+      const rows: { seq: number }[] = await this.db.$queryRaw`
+        INSERT INTO "CampusDailySeq" ("id", "campusId", "date", "seq")
+        VALUES (${`seq-${order.campusId}-${date}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`}, ${order.campusId}, ${date}, 1)
+        ON CONFLICT ("campusId", "date") DO UPDATE SET "seq" = "CampusDailySeq"."seq" + 1
+        RETURNING "seq"`;
+      order.dailySeq = rows[0]?.seq ?? null;
+      if (order.dailySeq != null) {
+        await this.db.order.update({
+          where: { id: order.id },
+          data: { dailySeq: order.dailySeq },
+        }).catch(() => undefined); // 回写失败不阻塞出票（票面已带号）
+      }
+    }
     const n = Math.min(Math.max(1, Math.floor(copies)), COPY_LABELS.length);
     const parts =
       n <= 1
@@ -295,7 +315,9 @@ export class PrinterService {
   buildReceipt(order: ReceiptOrderContext, copyLabel?: string): string {
     const address = order.address ?? {};
     const lines: string[] = [];
-    // 票头：仓库名大字 + 平台名（+ 联名）
+    // 票头：当日分拣序号大字（IKHFDZ，仅商家联/单联——分拣锚点）+ 仓库名大字 + 平台名（+ 联名）
+    if (order.dailySeq != null && (!copyLabel || copyLabel === '商家联'))
+      lines.push(TAG.center(TAG.big(`单号 ${order.dailySeq}`)));
     lines.push(TAG.center(TAG.big(order.warehouseName || '不出寝食社')));
     lines.push(TAG.center('校园寝售 · 极速到寝'));
     if (copyLabel) lines.push(TAG.center(TAG.bold(`— ${copyLabel} —`)));
@@ -321,8 +343,14 @@ export class PrinterService {
     for (const line of order.items ?? []) {
       const name = line.product?.name ?? '未知商品';
       const price = line.product?.price;
+      // IKHFDZ 排版二轮（道哥真机反馈）：品名居左可折行，「x数量 ￥价格」
+      // 贴右侧与品名最后一行同行（经典超市票布局）；最后一行放不下右段时
+      // 名再折让位——名/量/价三要素仍全保全
       lines.push(
-        itemLine(`${name} x${line.quantity}`, price == null ? '' : yuan(price)),
+        ...itemLineWrap(
+          name,
+          `x${line.quantity}${price == null ? '' : ' ' + yuan(price)}`,
+        ),
       );
       const loc = [line.product?.location, line.product?.locationCode]
         .filter(Boolean)
@@ -352,6 +380,49 @@ function charWidth(ch: string): number {
   return /[⺀-鿿豈-﫿！-｠　-〿]/.test(ch)
     ? 2
     : 1;
+}
+/** 上海时区自然日 YYYY-MM-DD（IKHFDZ 发号日界：与票面时区口径一致） */
+function shanghaiDateKey(d: Date): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(d);
+}
+/** 左右布局+左段折行（IKHFDZ 排版二轮）：品名按整行折，最后一行为右段让位
+ *  再折（右段=「x数量 ￥价格」），二者同行拼出超市票商品行 */
+function itemLineWrap(left: string, right: string): string[] {
+  const rightW = textWidth(right);
+  const avail = LINE_WIDTH - 1 - rightW;
+  const segs = wrapText(left, LINE_WIDTH);
+  while (segs.length && textWidth(segs[segs.length - 1]) > Math.max(1, avail)) {
+    const last = segs.pop()!;
+    segs.push(...wrapText(last, Math.max(1, avail)));
+  }
+  const last = segs[segs.length - 1] ?? '';
+  const pad = Math.max(1, LINE_WIDTH - 1 - textWidth(last) - rightW);
+  segs[segs.length - 1] = last + ' '.repeat(pad) + right;
+  return segs;
+}
+/** 品名折行（IKHFDZ 同批）：按 textWidth（中文 2 列/ASCII 1 列）逐字累计切行 */
+function wrapText(s: string, width: number): string[] {
+  const out: string[] = [];
+  let cur = '';
+  let w = 0;
+  for (const ch of s) {
+    const cw = textWidth(ch);
+    if (w + cw > width) {
+      out.push(cur);
+      cur = ch;
+      w = cw;
+    } else {
+      cur += ch;
+      w += cw;
+    }
+  }
+  if (cur) out.push(cur);
+  return out.length ? out : [''];
 }
 function textWidth(s: string): number {
   return [...s].reduce((n, ch) => n + charWidth(ch), 0);

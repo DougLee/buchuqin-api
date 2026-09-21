@@ -1,0 +1,1 @@
+ALTER TABLE "AdminMenu" ADD COLUMN "keepAlive" BOOLEAN NOT NULL DEFAULT false;

@@ -50,6 +50,21 @@ model Campus {
 }
 
 /**
+ * 校区日打印计数（IKHFDZ 当日分拣序号）：每校区每自然日一行，seq 原子自增取号
+ * （INSERT ON CONFLICT DO UPDATE RETURNING）——Order.dailySeq 的发号器。
+ */
+model CampusDailySeq {
+  id        String   @id @default(cuid())
+  campusId  String
+  /// 上海时区自然日 YYYY-MM-DD（票面时区口径一致）
+  date      String
+  seq       Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@unique([campusId, date])
+}
+
+/**
  * 微信群二维码（IKAJSY）：buildingId 空串=校级大群；每楼栋至多一群 + 每校至多一大群。
  */
 model WechatGroup {
@@ -129,6 +144,8 @@ model AdminAccount {
   status       String              @default("active")
   /// 会话版本：改密/停用 bump 进 JWT；Guard 比对不一致即 401（旧 token 缺省视为 0）
   sessionVersion Int               @default(0)
+  /// Explicit migration marker; zero grants can mean deliberate revocation.
+  rbacMigrated Boolean              @default(false)
   createdAt    DateTime            @default(now())
   updatedAt    DateTime            @updatedAt
   accesses     AdminCampusAccess[]
@@ -149,6 +166,8 @@ model AdminRole {
   builtin     Boolean              @default(false)
   /// 迁移模板角色首灌标记：false=尚未灌注初始权限（启动同步负责灌注）；true 后不再自动重置
   seeded      Boolean              @default(false)
+  /// Legacy role-menu conversion runs once, including deliberately empty roles.
+  menusMigrated Boolean            @default(false)
   /// 已退役：两层模型时期的菜单 key 清单（真源已切 AdminRoleMenu，保留列供回滚）
   menus       Json?
   createdAt   DateTime             @default(now())
@@ -188,7 +207,7 @@ model AdminRolePermission {
 }
 
 /// 账号-角色绑定（含生效范围）：scope=platform 平台级（覆盖全校区）| campus 指定校区。
-/// 权限永远经角色获得，不做账号直授权。同一账号同一角色至多一条绑定（服务层以重设语义维护）。
+/// 权限永远经角色获得，不做账号直授权。同一账号同一角色可按不同校区绑定（服务层按角色×范围×校区去重）。
 model AdminAccountRole {
   id        String       @id @default(cuid())
   account   AdminAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
@@ -218,8 +237,8 @@ model RbacState {
 
 /// 系统菜单（对齐蛋词 base_sys_menu）：type 0 目录/1 菜单/2 按钮；perms=URL 模式
 /// （"METHOD /admin/xxx/:seg" 逗号串）。code 为代码登记锚点：启动幂等 upsert——
-/// 结构字段（type/parent/perms/path）以代码为准；表现字段（name/icon/orderNum/isShow）
-/// 后台可改不被覆盖。parentId 为裸串不建外键（菜单树生命周期独立于关联行）。
+/// 代码仅登记缺失节点；后台保存的结构、接口权限和显示配置均不被启动同步覆盖。
+/// parentId 为裸串不建外键（菜单树生命周期独立于关联行）。
 model AdminMenu {
   id        String   @id @default(cuid())
   code      String   @unique
@@ -233,6 +252,7 @@ model AdminMenu {
   path      String   @default("")
   /// 菜单：前端组件标识（组件映射表键，动态注册用）
   viewPath  String   @default("")
+  keepAlive Boolean @default(false)
   icon      String   @default("")
   orderNum  Int      @default(0)
   isShow    Boolean  @default(true)
@@ -256,6 +276,7 @@ model AdminRoleMenu {
   createdAt DateTime  @default(now())
 
   @@unique([roleId, menuId])
+  @@index([menuId])
 }
 
 /**
@@ -270,6 +291,7 @@ model AdminCampusAccess {
   createdAt DateTime     @default(now())
 
   @@unique([accountId, campusId])
+  @@index([accountId])
 }
 
 model User {
@@ -366,7 +388,7 @@ model Product {
   /**
    * 资料更新时间（IKAJSO）：官方库改动判断上游是否落后的依据
    */
-  updatedAt       DateTime       @updatedAt
+  updatedAt       DateTime       @default(now()) @updatedAt
   cartItems       CartItem[]
   inventoryTxns   InventoryTxn[]
   promotions      Promotion[]
@@ -514,6 +536,7 @@ model RestockShipmentItem {
   wholesalePerCase Int
 
   @@unique([shipmentId, productId])
+  @@index([productId])
 }
 
 /// 订货行：按批发单位（件）计；unitsPerCase 落快照防官方库改含量后换算漂移
@@ -665,6 +688,9 @@ model CartItem {
   productId String
   product   Product @relation(fields: [productId], references: [id])
   quantity  Int
+  // IKHL6Y 秒杀双渠道：行身份（true=按秒杀价购买，限购1+一单一秒杀只数它；
+  // false=正常渠道原价行，不限购）。秒杀价跟活动窗走，窗外回落原价。
+  asSeckill Boolean @default(false)
 
   @@unique([userId, productId])
 }
@@ -720,6 +746,9 @@ model Order {
   user              User         @relation(fields: [userId], references: [id])
   campusId          String
   campus            Campus       @relation(fields: [campusId], references: [id])
+  /// 当日分拣序号（IKHFDZ）：出库打印时取号（每校区每日从 1），补打复用；
+  /// null=未打印/功能上线前历史单。商家联票头大字展示，便于仓内分拣。
+  dailySeq          Int?
   status            String
   statusText        String
   createdAt         DateTime     @default(now())

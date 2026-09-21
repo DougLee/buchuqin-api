@@ -40,6 +40,7 @@ function ctxFromTemplate(
     super: false,
     campuses: platform ? [] : [campusId],
     patterns,
+    platformPatterns: platform ? new Set(patterns) : new Set(),
     menuCodes,
   };
 }
