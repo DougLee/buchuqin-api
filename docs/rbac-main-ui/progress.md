@@ -1,6 +1,6 @@
 # Main merge + RBAC UI goal — 2026-09-21
 
-Status: active; prior docs/rbac acceptance describes the PRE-MERGE deliverable, not this goal's completion.
+Status: completed locally; final results are in acceptance.md. Entries below retain their chronological, pre-completion meaning.
 
 Authorized: necessary local preservation/merge commits; no push, merge back to main, production deployment/data changes. No subagents requested.
 
@@ -63,3 +63,5 @@ Prior docs/rbac/evidence/*.log exist on disk but .gitignore excluded log files f
 - Permissions directory corrected to actual catalog contract; mobile topbar fixed. Five RBAC screens, dialogs, mixed/read-only campus settings, notice create/delete and business reads verified in browser.
 - Both ledger rehearsal databases deploy3 new migrations and diff empty. Evidence and limitations recorded in acceptance.md.
 - Local merge commits next; no remote push or production changes.
+
+Local merge commits completed: API257a567, Adminfae594c. Both main ancestry checks passed and worktrees clean before this final documentation commit. No push/deploy.

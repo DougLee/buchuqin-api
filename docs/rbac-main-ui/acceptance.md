@@ -9,6 +9,8 @@
 | API | bffd8d90d5dee7f086e1b06baa6d9cfab8cc3b71 | f02b589 |
 | Admin | 23609ac8e0596ff66bf0f19c115cc93d3dab5122 | a68637d |
 
+本地合并提交：API `257a5673b255015453538360752e10e6163d96cb`；Admin `fae594c460d1bafc9dd3ac8c57a081e88820e90b`。均已验证对应 main 是 HEAD 的祖先，合并后工作区干净。
+
 两边目标分支均为 feature/rbac-v1，采用 merge，保留双方历史。主线输入在开始时 fetch 后固定。
 
 - 导航、路由及会话冲突保留数据库动态菜单和按 HTTP 操作判权；新校区配置页加入组件登记。
