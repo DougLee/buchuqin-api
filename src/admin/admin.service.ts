@@ -962,9 +962,13 @@ export class AdminService {
         },
       },
     });
-    if (!state) return xs;
+    // 搜索修复（2026-09-21 道哥反馈「秒杀搜索框搜不出」）：keywordHaystack 只
+    // 展开第一层字段，商品名在 product.name 第二层恒不命中——平铺 productName
+    // 进第一层（精准修，不动全局搜索深度）
+    const rows = xs.map((x) => ({ ...x, productName: x.product?.name ?? '' }));
+    if (!state) return rows;
     const now = Date.now();
-    return xs.filter((x) => {
+    return rows.filter((x) => {
       if (x.status === 'disabled') return state === 'disabled';
       if (new Date(x.startsAt).getTime() > now) return state === 'upcoming';
       if (new Date(x.endsAt).getTime() <= now) return state === 'ended';
