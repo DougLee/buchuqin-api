@@ -624,3 +624,30 @@ export class ClosePurchaseOrderDto {
 export class ShipRestockOrderDto {
   @IsOptional() @IsString() @MaxLength(100) note?: string;
 }
+
+/* ---------- IKHM1O/IKHM1P 校区配置聚合页：送达时段 + 公告 ---------- */
+
+/** 送达时段管理（IKHM1O 补窟窿：原无后台入口，只能改库）。 */
+export class CreateSlotDto {
+  @IsString() campusId!: string;
+  @IsString() @MinLength(2) @MaxLength(20) label!: string;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(0) capacity?: number;
+}
+export class UpdateSlotDto {
+  @IsOptional() @IsString() @MinLength(2) @MaxLength(20) label?: string;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(0) capacity?: number;
+  @IsOptional() @IsBoolean() available?: boolean;
+}
+/** 小程序公告（IKHM1P）：校区多条 + 生效窗 + 启停。 */
+export class CreateNoticeDto {
+  @IsString() campusId!: string;
+  @IsString() @MinLength(2) @MaxLength(200) content!: string;
+  @IsString() startsAt!: string;
+  @IsString() endsAt!: string;
+}
+export class UpdateNoticeDto {
+  @IsOptional() @IsString() @MinLength(2) @MaxLength(200) content?: string;
+  @IsOptional() @IsString() startsAt?: string;
+  @IsOptional() @IsString() endsAt?: string;
+  @IsOptional() @IsIn(['active', 'disabled']) status?: 'active' | 'disabled';
+}

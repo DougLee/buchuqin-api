@@ -53,6 +53,10 @@ import type {
   UpdateCouponDto,
   UpdateDeliveryConfigDto,
   UpdateLocationDto,
+  CreateSlotDto,
+  UpdateSlotDto,
+  CreateNoticeDto,
+  UpdateNoticeDto,
   UpdateOrderStatusDto,
   UpdateStaffDto,
 } from './dto';
@@ -6130,5 +6134,154 @@ export class AdminService {
         error instanceof Error ? error.message : error,
       );
     }
+  }
+
+  /* ---------- IKHM1O 校区配置聚合页：一次拉全该校区全部配置 ---------- */
+
+  /** 聚合读（campuses 读权限）：档案+配送营业+底薪（campus 行）+ 送达时段 + 公告。 */
+  async campusConfig(campusId: string) {
+    const [campus, slots, notices] = await Promise.all([
+      this.db.campus.findFirstOrThrow({
+        where: { id: campusId },
+        select: {
+          id: true,
+          name: true,
+          shortName: true,
+          warehouseName: true,
+          address: true,
+          status: true,
+          type: true,
+          deliveryFeeInstant: true,
+          deliveryFeeScheduled: true,
+          deliveryThreshold: true,
+          closeStart: true,
+          closeEnd: true,
+          manualClosed: true,
+          buildingManagerBaseSalary: true,
+        },
+      }),
+      this.db.deliverySlot.findMany({
+        where: { campusId },
+        orderBy: { label: 'asc' },
+      }),
+      this.db.notice.findMany({
+        where: { campusId },
+        orderBy: { createdAt: 'asc' },
+      }),
+    ]);
+    return { campus, slots, notices };
+  }
+
+  /* ---------- 送达时段管理（IKHM1O 补窟窿：原无后台入口） ---------- */
+
+  async createSlot(
+    body: CreateSlotDto,
+    operator: string,
+    scope: string,
+  ) {
+    const campusId = scope || body.campusId;
+    const slot = await this.db.deliverySlot.create({
+      data: {
+        campusId,
+        label: body.label,
+        capacity: body.capacity ?? 100,
+      },
+    });
+    await this.audit(operator, 'slot.create', 'delivery-slot', slot.id, null, slot, campusId);
+    return slot;
+  }
+  async updateSlot(
+    id: string,
+    body: UpdateSlotDto,
+    operator: string,
+    scope: string,
+  ) {
+    const before = await this.db.deliverySlot.findFirstOrThrow({
+      where: { id, ...(scope ? { campusId: scope } : {}) },
+    });
+    const after = await this.db.deliverySlot.update({
+      where: { id },
+      data: {
+        ...(body.label != null ? { label: body.label } : {}),
+        ...(body.capacity != null ? { capacity: body.capacity } : {}),
+        ...(body.available != null ? { available: body.available } : {}),
+      },
+    });
+    await this.audit(operator, 'slot.update', 'delivery-slot', id, before, after, before.campusId);
+    return after;
+  }
+  async deleteSlot(id: string, operator: string, scope: string) {
+    const before = await this.db.deliverySlot.findFirstOrThrow({
+      where: { id, ...(scope ? { campusId: scope } : {}) },
+    });
+    await this.db.deliverySlot.delete({ where: { id } });
+    await this.audit(operator, 'slot.delete', 'delivery-slot', id, before, null, before.campusId);
+    return { id, deleted: true };
+  }
+
+  /* ---------- 公告（IKHM1P）：校区多条 + 生效窗 + 启停 ---------- */
+
+  async notices(campusId: string) {
+    return this.db.notice.findMany({
+      where: { campusId },
+      orderBy: { createdAt: 'asc' },
+    });
+  }
+  async createNotice(
+    body: CreateNoticeDto,
+    operator: string,
+    scope: string,
+  ) {
+    const campusId = scope || body.campusId;
+    const startsAt = new Date(body.startsAt);
+    const endsAt = new Date(body.endsAt);
+    if (Number.isNaN(startsAt.getTime()) || Number.isNaN(endsAt.getTime()))
+      throw new BadRequestException('时间格式不正确');
+    if (endsAt <= startsAt)
+      throw new BadRequestException('结束时间必须晚于开始时间');
+    const notice = await this.db.notice.create({
+      data: { campusId, content: body.content, startsAt, endsAt },
+    });
+    await this.audit(operator, 'notice.create', 'notice', notice.id, null, notice, campusId);
+    return notice;
+  }
+  async updateNotice(
+    id: string,
+    body: UpdateNoticeDto,
+    operator: string,
+    scope: string,
+  ) {
+    const before = await this.db.notice.findFirstOrThrow({
+      where: { id, ...(scope ? { campusId: scope } : {}) },
+    });
+    const startsAt = body.startsAt ? new Date(body.startsAt) : undefined;
+    const endsAt = body.endsAt ? new Date(body.endsAt) : undefined;
+    if (startsAt && Number.isNaN(startsAt.getTime()))
+      throw new BadRequestException('开始时间格式不正确');
+    if (endsAt && Number.isNaN(endsAt.getTime()))
+      throw new BadRequestException('结束时间格式不正确');
+    const nextStart = startsAt ?? before.startsAt;
+    const nextEnd = endsAt ?? before.endsAt;
+    if (nextEnd <= nextStart)
+      throw new BadRequestException('结束时间必须晚于开始时间');
+    const after = await this.db.notice.update({
+      where: { id },
+      data: {
+        ...(body.content != null ? { content: body.content } : {}),
+        ...(startsAt ? { startsAt } : {}),
+        ...(endsAt ? { endsAt } : {}),
+        ...(body.status ? { status: body.status } : {}),
+      },
+    });
+    await this.audit(operator, 'notice.update', 'notice', id, before, after, before.campusId);
+    return after;
+  }
+  async deleteNotice(id: string, operator: string, scope: string) {
+    const before = await this.db.notice.findFirstOrThrow({
+      where: { id, ...(scope ? { campusId: scope } : {}) },
+    });
+    await this.db.notice.delete({ where: { id } });
+    await this.audit(operator, 'notice.delete', 'notice', id, before, null, before.campusId);
+    return { id, deleted: true };
   }
 }

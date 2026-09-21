@@ -643,10 +643,23 @@ export class BusinessService {
       now,
       true,
     );
+    // IKHM1P 公告：生效窗内+启用的按创建时间正序拼接「｜」，
+    // 无公告返回空串（C 端整条隐藏）
+    const noticeRows = await this.db.notice.findMany({
+      where: {
+        campusId,
+        status: 'active',
+        startsAt: { lte: now },
+        endsAt: { gt: now },
+      },
+      orderBy: { createdAt: 'asc' },
+      select: { content: true },
+    });
     return {
       campus,
       banners,
       categories,
+      notice: noticeRows.map((x) => x.content).join('｜'),
       hotProducts: products.map((p) =>
         this.productView(p, false, promoMap.get(p.id)),
       ),

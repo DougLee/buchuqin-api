@@ -47,6 +47,7 @@ model Campus {
   purchaseRequests     PurchaseRequest[]
   recruitApplications  RecruitingApplication[]
   restockOrders        RestockOrder[]
+  notices              Notice[]
 }
 
 /**
@@ -909,4 +910,20 @@ model LotteryDraw {
 
   @@unique([userId, drawDate])
   @@index([userId, createdAt])
+}
+
+/** 小程序公告（IKHM1P 道哥 2026-09-21）：校区自定义多条，生效窗+启停；
+ *  C 端按创建时间正序拼接「｜」跑马灯滚动展示。 */
+model Notice {
+  id        String   @id @default(cuid())
+  campusId  String
+  campus    Campus   @relation(fields: [campusId], references: [id])
+  content   String
+  startsAt  DateTime
+  endsAt    DateTime
+  status    String   @default("active")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([campusId, status])
 }
