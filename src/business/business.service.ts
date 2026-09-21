@@ -1499,6 +1499,8 @@ export class BusinessService {
     id: string;
     orderNo: string;
     campusId: string;
+    /** IKHFDZ：支付时恒为 null（首打即取号）——类型对齐 Order 行 */
+    dailySeq?: number | null;
     deliveryMode: string;
     deliverySlot?: string | null;
     estimatedArrival?: string | null;
@@ -1532,6 +1534,8 @@ export class BusinessService {
         id: order.id,
         orderNo: order.orderNo,
         campusId: order.campusId,
+        // IKHFDZ：带出已有序号→printOrderReceipt 复用（重打同单同号）
+        dailySeq: order.dailySeq,
         warehouseName: campus?.warehouseName ?? '',
         deliveryMode: order.deliveryMode,
         deliverySlot: order.deliverySlot,

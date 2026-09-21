@@ -2,9 +2,15 @@ import { PrinterService, ReceiptOrderContext } from './printer.service';
 
 /** 小票打印（IKBT6N）：sign 算法与 58mm 票面构建；网络调用用 stub 不真实外发。 */
 describe('PrinterService (IKBT6N)', () => {
-  const service = new PrinterService();
+  // IKHFDZ：printOrderReceipt 取号需 db（raw 发号+order 回写）——单测 stub
+  const dbStub = {
+    $queryRaw: async () => [{ seq: 7 }],
+    order: { update: async () => ({}) },
+  } as never;
+  const service = new PrinterService(dbStub);
   const order: ReceiptOrderContext = {
     id: 'order-1',
+    dailySeq: 7,
     orderNo: 'BCQ20260828TEST01',
     campusId: 'campus-hbut',
     warehouseName: '湖工大校园仓',
@@ -56,14 +62,21 @@ describe('PrinterService (IKBT6N)', () => {
       expect(content).not.toContain('13800001234');
     });
 
-    it('商品行含数量与单价（快照价转元、去尾零）', () => {
-      expect(content).toContain('农夫山泉 550ml x2');
+    it('商品行折行：名独立行（超宽折行不截断）、x数量￥单价并排一行', () => {
+      // IKHFDZ 同批定版：名与量价分离，三要素全保全
+      expect(content).toContain('农夫山泉 550ml');
+      expect(content).toContain('x2');
       expect(content).toContain('￥2');
-      // 超长品名被截断且不破坏行结构（换行仍在）
-      const longLine = content
+      // 超长品名不再截断：折行后每行都在 32 列内且内容完整
+      const nameLines = content
         .split('\n')
-        .find((l) => l.includes('特别长的一个商品名称'));
-      expect(longLine).toBeTruthy();
+        .filter((l) => l.includes('特别长的一个商品名称') || l.trim().startsWith('要'));
+      expect(nameLines.length).toBeGreaterThanOrEqual(1);
+      const truncated = content.split('\n').find((l) => l.endsWith('…'));
+      expect(truncated).toBeUndefined();
+    });
+    it('票头含当日分拣序号大字（商家联口径，IKHFDZ）', () => {
+      expect(content).toContain('单号 7');
     });
 
     it('库位行【】括号强调、常规字号（2026-09-05 道哥定版）', () => {

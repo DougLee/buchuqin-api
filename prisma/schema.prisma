@@ -50,6 +50,21 @@ model Campus {
 }
 
 /**
+ * 校区日打印计数（IKHFDZ 当日分拣序号）：每校区每自然日一行，seq 原子自增取号
+ * （INSERT ON CONFLICT DO UPDATE RETURNING）——Order.dailySeq 的发号器。
+ */
+model CampusDailySeq {
+  id        String   @id @default(cuid())
+  campusId  String
+  /// 上海时区自然日 YYYY-MM-DD（票面时区口径一致）
+  date      String
+  seq       Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@unique([campusId, date])
+}
+
+/**
  * 微信群二维码（IKAJSY）：buildingId 空串=校级大群；每楼栋至多一群 + 每校至多一大群。
  */
 model WechatGroup {
@@ -590,6 +605,9 @@ model Order {
   user              User         @relation(fields: [userId], references: [id])
   campusId          String
   campus            Campus       @relation(fields: [campusId], references: [id])
+  /// 当日分拣序号（IKHFDZ）：出库打印时取号（每校区每日从 1），补打复用；
+  /// null=未打印/功能上线前历史单。商家联票头大字展示，便于仓内分拣。
+  dailySeq          Int?
   status            String
   statusText        String
   createdAt         DateTime     @default(now())

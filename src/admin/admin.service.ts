@@ -3564,6 +3564,8 @@ export class AdminService {
       id: order.id,
       orderNo: order.orderNo,
       campusId: order.campusId,
+      // IKHFDZ：带出已有序号→printOrderReceipt 复用（补打同单同号）
+      dailySeq: order.dailySeq,
       warehouseName: campus?.warehouseName ?? '',
       deliveryMode: order.deliveryMode,
       deliverySlot: order.deliverySlot,
