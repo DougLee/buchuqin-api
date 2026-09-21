@@ -550,6 +550,9 @@ model CartItem {
   productId String
   product   Product @relation(fields: [productId], references: [id])
   quantity  Int
+  // IKHL6Y 秒杀双渠道：行身份（true=按秒杀价购买，限购1+一单一秒杀只数它；
+  // false=正常渠道原价行，不限购）。秒杀价跟活动窗走，窗外回落原价。
+  asSeckill Boolean @default(false)
 
   @@unique([userId, productId])
 }

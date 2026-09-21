@@ -134,6 +134,8 @@ export class BusinessController {
         req.user.id,
         dto.productId,
         (current?.quantity ?? 0) + dto.quantity,
+        // IKHL6Y：秒杀专区入口传 true（秒杀行）；同商品跨身份由 service 拦截
+        dto.asSeckill ?? current?.asSeckill ?? false,
       ),
     );
   }
@@ -142,7 +144,14 @@ export class BusinessController {
     @Param('productId') id: string,
     @Body() dto: CartQuantityDto,
   ) {
-    return ok(await this.service.setCartItem(req.user.id, id, dto.quantity));
+    return ok(
+      await this.service.setCartItem(
+        req.user.id,
+        id,
+        dto.quantity,
+        dto.asSeckill,
+      ),
+    );
   }
   @Delete('cart/items/:productId') async deleteCartItem(
     @Req() req: AuthRequest,
