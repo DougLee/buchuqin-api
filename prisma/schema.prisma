@@ -37,6 +37,9 @@ model Campus {
   // 客服电话（IKHMF1 道哥 2026-09-21）：校区自定义，小程序我的/详情/订单
   // 拨号展示；默认 4008002026 兜底（换号改默认值即全量更新）
   servicePhone         String            @default("4008002026")
+  // 无楼长提示（IKHMKR 道哥 2026-09-21）：结算/下单时楼栋无在职楼长的弹窗
+  // 提示，校区自定义；空=回落默认文案（防误清空丢提示）
+  noManagerTip         String            @default("")
   createdAt            DateTime          @default(now())
   users                User[]
   products             Product[]

@@ -4127,6 +4127,10 @@ export class AdminService {
         ...(body.manualClosed === undefined || body.manualClosed === null
           ? {}
           : { manualClosed: body.manualClosed }),
+        // IKHMKR：无楼长提示（校区自定义，可选不传不动）
+        ...(body.noManagerTip != null
+          ? { noManagerTip: body.noManagerTip }
+          : {}),
       },
       select: {
         deliveryFeeInstant: true,
@@ -4135,6 +4139,7 @@ export class AdminService {
         closeStart: true,
         closeEnd: true,
         manualClosed: true,
+        noManagerTip: true,
       },
     });
     await this.audit(
@@ -4733,6 +4738,10 @@ export class AdminService {
           : {}),
         // IKHMF1：客服电话（校区自定义，小程序拨号展示）
         ...(body.servicePhone != null ? { servicePhone: body.servicePhone } : {}),
+        // IKHMKR：无楼长提示（校区自定义，空串=回落默认文案）
+        ...(body.noManagerTip != null
+          ? { noManagerTip: body.noManagerTip }
+          : {}),
         ...(body.deliveryFeeInstant != null
           ? { deliveryFeeInstant: body.deliveryFeeInstant }
           : {}),
@@ -6162,6 +6171,8 @@ export class AdminService {
           buildingManagerBaseSalary: true,
           // IKHMF1 客服电话：校区自定义，聚合页档案 Tab 编辑
           servicePhone: true,
+          // IKHMKR 无楼长提示：校区自定义，聚合页配送 Tab 编辑
+          noManagerTip: true,
         },
       }),
       this.db.deliverySlot.findMany({

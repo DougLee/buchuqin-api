@@ -223,6 +223,9 @@ export class UpdateDeliveryConfigDto {
   @Matches(/^([01]\d|2[0-3]):[0-5]\d$/, { message: '打烊结束时间须为 HH:mm' })
   closeEnd?: string;
   @IsOptional() @IsBoolean() manualClosed?: boolean;
+  /** 无楼长提示（IKHMKR 校区自定义）：空串=回落默认文案；≤60 字 */
+  @IsOptional() @IsString() @MaxLength(60, { message: '提示文案最多 60 字' })
+  noManagerTip?: string;
 }
 export class CreateCouponDto {
   @IsString() @MaxLength(40) name!: string;
@@ -532,6 +535,9 @@ export class UpdateCampusDto {
   @IsOptional()
   @Matches(/^[0-9-]{3,20}$/, { message: '客服电话格式不正确' })
   servicePhone?: string;
+  /** 无楼长提示（IKHMKR 校区自定义）：空串=回落默认文案；≤60 字（弹窗一行） */
+  @IsOptional() @IsString() @MaxLength(60, { message: '提示文案最多 60 字' })
+  noManagerTip?: string;
 }
 
 /** 校区打印机绑定（IKBW0Q）：SN 在机身底部标签/自检页。

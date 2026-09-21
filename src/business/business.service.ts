@@ -1092,8 +1092,12 @@ export class BusinessService {
   /** 楼长缺失提示（IKGN4W）：地址楼栋无任何在职楼长（正式/实习，未删除
    *  口径与楼栋管理页一致）时返回提示文案；结算预览与下单响应共用，
    *  纯预期管理，不影响履约/结算。 */
+  /** IKHMKR：无楼长默认提示——校区自定义文案（noManagerTip）为空时的兜底 */
+  static readonly DEFAULT_NO_MANAGER_TIP =
+    '本楼栋正在招募楼长，暂时需要您到寝室楼下取货，感谢理解～';
   private async managerTipFor(address: {
     buildingId?: string | null;
+    campusId?: string | null;
   }): Promise<string | undefined> {
     if (!address.buildingId) return undefined;
     const manager = await this.db.staff.findFirst({
@@ -1104,9 +1108,17 @@ export class BusinessService {
       },
       select: { id: true },
     });
-    return manager
-      ? undefined
-      : '本楼栋正在招募楼长，暂时需要您到寝室楼下取货，感谢理解～';
+    if (manager) return undefined;
+    // IKHMKR 校区自定义：空串回落默认文案（防误清空丢提示）
+    const campus = address.campusId
+      ? await this.db.campus.findUnique({
+          where: { id: address.campusId },
+          select: { noManagerTip: true },
+        })
+      : null;
+    return (
+      campus?.noManagerTip || BusinessService.DEFAULT_NO_MANAGER_TIP
+    );
   }
   async checkout(userId: string, campusId: string, dto: CreateOrderDto) {
     const { cart, address } = await this.validateQuote(userId, campusId, dto);
