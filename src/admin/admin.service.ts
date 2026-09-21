@@ -345,6 +345,7 @@ export class AdminService {
           '履约完成率：全量有效单中 delivered+completed 占比（送达即完成，确认收货为终态）',
         onTimeRate:
           '准时率：送达时间（送达凭证时间，历史单取 timeline 末节点）与支付时间同日（当日达口径）；estimatedArrival 为展示文案不可机读，结构化后切换真实 SLA',
+        exceptions: '状态为异常的未结订单（不限当日）',
         timeout: `履约超时：支付后超过 ${AdminService.FULFILLMENT_TIMEOUT_MS / 60000} 分钟未送达（未送达单按当前时刻计）`,
         waitingHandover:
           'status=waiting-handover（骑手到楼下等待楼长交接，IK93GQ 拆分后的独立状态）',
