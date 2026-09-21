@@ -343,11 +343,14 @@ export class PrinterService {
     for (const line of order.items ?? []) {
       const name = line.product?.name ?? '未知商品';
       const price = line.product?.price;
-      // IKHFDZ 同批拍板：品名独立行超宽自动折行（中文 2 列/ASCII 1 列），
-      // 「x数量 ￥价格」并排一行——名/量/价三要素全保全（原名+数量拼接截断丢量）
-      wrapText(name, LINE_WIDTH).forEach((l) => lines.push(l));
+      // IKHFDZ 排版二轮（道哥真机反馈）：品名居左可折行，「x数量 ￥价格」
+      // 贴右侧与品名最后一行同行（经典超市票布局）；最后一行放不下右段时
+      // 名再折让位——名/量/价三要素仍全保全
       lines.push(
-        itemLine(`x${line.quantity}`, price == null ? '' : yuan(price)),
+        ...itemLineWrap(
+          name,
+          `x${line.quantity}${price == null ? '' : ' ' + yuan(price)}`,
+        ),
       );
       const loc = [line.product?.location, line.product?.locationCode]
         .filter(Boolean)
@@ -386,6 +389,21 @@ function shanghaiDateKey(d: Date): string {
     month: '2-digit',
     day: '2-digit',
   }).format(d);
+}
+/** 左右布局+左段折行（IKHFDZ 排版二轮）：品名按整行折，最后一行为右段让位
+ *  再折（右段=「x数量 ￥价格」），二者同行拼出超市票商品行 */
+function itemLineWrap(left: string, right: string): string[] {
+  const rightW = textWidth(right);
+  const avail = LINE_WIDTH - 1 - rightW;
+  const segs = wrapText(left, LINE_WIDTH);
+  while (segs.length && textWidth(segs[segs.length - 1]) > Math.max(1, avail)) {
+    const last = segs.pop()!;
+    segs.push(...wrapText(last, Math.max(1, avail)));
+  }
+  const last = segs[segs.length - 1] ?? '';
+  const pad = Math.max(1, LINE_WIDTH - 1 - textWidth(last) - rightW);
+  segs[segs.length - 1] = last + ' '.repeat(pad) + right;
+  return segs;
 }
 /** 品名折行（IKHFDZ 同批）：按 textWidth（中文 2 列/ASCII 1 列）逐字累计切行 */
 function wrapText(s: string, width: number): string[] {

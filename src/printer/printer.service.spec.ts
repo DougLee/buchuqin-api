@@ -62,18 +62,14 @@ describe('PrinterService (IKBT6N)', () => {
       expect(content).not.toContain('13800001234');
     });
 
-    it('商品行折行：名独立行（超宽折行不截断）、x数量￥单价并排一行', () => {
-      // IKHFDZ 同批定版：名与量价分离，三要素全保全
+    it('商品行：名居左可折行，x数量￥单价与名最后一行同行靠右（道哥真机反馈排版）', () => {
       expect(content).toContain('农夫山泉 550ml');
-      expect(content).toContain('x2');
-      expect(content).toContain('￥2');
-      // 超长品名不再截断：折行后每行都在 32 列内且内容完整
-      const nameLines = content
-        .split('\n')
-        .filter((l) => l.includes('特别长的一个商品名称') || l.trim().startsWith('要'));
-      expect(nameLines.length).toBeGreaterThanOrEqual(1);
-      const truncated = content.split('\n').find((l) => l.endsWith('…'));
-      expect(truncated).toBeUndefined();
+      // 短名一行：名与 x2￥2 同行（左右布局）
+      const shortLine = content.split('\n').find((l) => l.includes('农夫山泉'));
+      expect(shortLine).toContain('x2');
+      expect(shortLine).toContain('￥2');
+      // 超长品名不截断（无 … 尾）
+      expect(content.split('\n').find((l) => l.endsWith('…'))).toBeUndefined();
     });
     it('票头含当日分拣序号大字（商家联口径，IKHFDZ）', () => {
       expect(content).toContain('单号 7');
