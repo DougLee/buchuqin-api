@@ -3728,8 +3728,8 @@ export class AdminService {
     return { printed: true, sn: row.sn };
   }
   /**
-   * 手动改订单状态（IKA0UT）：测试与上线初期兜底。仅接受 12 态白名单，
-   * statusText 用标准文案，原因写入审计日志（after.reason）留痕。
+   * 手动改订单状态（IKA0UT）：运营兜底工具（异常处理/客服纠偏）。仅接受
+   * 12 态白名单，statusText 用标准文案，原因写入审计日志（after.reason）留痕。
    */
   async updateOrderStatus(
     id: string,

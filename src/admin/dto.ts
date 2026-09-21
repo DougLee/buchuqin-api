@@ -475,7 +475,7 @@ export class UpdateLocationDto {
   @IsOptional() @IsString() @MaxLength(100) note?: string;
   @IsOptional() @Type(() => Number) @IsInt() sort?: number;
 }
-/** 手动改订单状态（IKA0UT）：测试/上线初期兜底，原因进审计日志。 */
+/** 手动改订单状态（IKA0UT）：运营兜底工具，原因必填进审计日志。 */
 export class UpdateOrderStatusDto {
   @IsString() status!: string;
   @IsOptional() @IsString() @MaxLength(200) reason?: string;
