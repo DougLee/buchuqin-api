@@ -372,6 +372,7 @@ export class RbacService implements OnModuleInit {
         status: account.status, campusId: account.campusId,
       },
       platform: ctx.platform,
+      platformPerms: [...(ctx.platformPatterns ?? [])].sort(),
       super: ctx.super,
       contextCampusId: account.campusId,
       roles: grants.map((g) => ({

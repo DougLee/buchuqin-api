@@ -1,3 +1,5 @@
+> 合并后更新（2026-09-21）：当前清单146条，最新40套/287项通过。新增校区配置/时段/公告及浏览器验收见 ../rbac-main-ui/acceptance.md；下文139条/285项为前一目标的历史口径。
+
 # 接口与数据范围验收矩阵
 
 状态：本地验收完成；最终证据见 README.md 和 completion-audit.md。`endpoint-inventory.json` 已覆盖当前 AdminController 的 139 条路由，记录 HTTP 方法、权限节点、范围策略、控制器和业务方法行号。运行 `pnpm exec ts-node scripts/rbac-endpoint-inventory.ts` 重新生成；新增但未分类的路由会报错。代码索引不是有效目标越权测试，不能把“超管请求没有返回 403”当作数据隔离通过。

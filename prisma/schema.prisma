@@ -34,6 +34,12 @@ model Campus {
   // 楼长月度底薪（IKDOIU 道哥）：单位分，0 = 无底薪（纯提成+调整）——
   // 取代 settlements 硬编码 50000，校区维度自主配置
   buildingManagerBaseSalary Int          @default(0)
+  // 客服电话（IKHMF1 道哥 2026-09-21）：校区自定义，小程序我的/详情/订单
+  // 拨号展示；默认 4008002026 兜底（换号改默认值即全量更新）
+  servicePhone         String            @default("4008002026")
+  // 无楼长提示（IKHMKR 道哥 2026-09-21）：结算/下单时楼栋无在职楼长的弹窗
+  // 提示，校区自定义；空=回落默认文案（防误清空丢提示）
+  noManagerTip         String            @default("")
   createdAt            DateTime          @default(now())
   users                User[]
   products             Product[]
@@ -47,6 +53,7 @@ model Campus {
   purchaseRequests     PurchaseRequest[]
   recruitApplications  RecruitingApplication[]
   restockOrders        RestockOrder[]
+  notices              Notice[]
 }
 
 /**
@@ -63,6 +70,12 @@ model CampusDailySeq {
 
   @@unique([campusId, date])
 }
+
+/**
+ * 校区日打印计数（IKHFDZ 当日分拣序号）：每校区每自然日一行，seq 原子自增取号
+ * （INSERT ON CONFLICT DO UPDATE RETURNING）——Order.dailySeq 的发号器。
+ */
+
 
 /**
  * 微信群二维码（IKAJSY）：buildingId 空串=校级大群；每楼栋至多一群 + 每校至多一大群。
@@ -1047,4 +1060,20 @@ model LotteryDraw {
 
   @@unique([userId, drawDate])
   @@index([userId, createdAt])
+}
+
+/** 小程序公告（IKHM1P 道哥 2026-09-21）：校区自定义多条，生效窗+启停；
+ *  C 端按创建时间正序拼接「｜」跑马灯滚动展示。 */
+model Notice {
+  id        String   @id @default(cuid())
+  campusId  String
+  campus    Campus   @relation(fields: [campusId], references: [id])
+  content   String
+  startsAt  DateTime
+  endsAt    DateTime
+  status    String   @default("active")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([campusId, status])
 }

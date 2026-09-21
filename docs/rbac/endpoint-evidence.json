@@ -1,8 +1,8 @@
 {
   "interpretation": "Static pointers to tests; latest execution result is recorded in implementation-status.md. Direct calls can test allow, deny, invalid input or lifecycle; inspect assertions. This index excludes dynamic super-route scan and does not prove isolation for every route. Domain calls do not exercise HTTP guard. Source-only rows require explicit review.",
   "counts": {
-    "endpoints": 139,
-    "withDirectHttpCall": 94,
+    "endpoints": 146,
+    "withDirectHttpCall": 101,
     "domainOnly": 28,
     "sourceReviewOnly": 17
   },
@@ -11,11 +11,11 @@
       "method": "GET",
       "path": "/admin/accounts",
       "scope": "platform-only: global resource or explicit target campus",
-      "controller": "src/admin/admin.controller.ts:1675",
+      "controller": "src/admin/admin.controller.ts:1760",
       "service": [
         {
           "name": "accounts",
-          "source": "src/admin/admin.service.ts:5280"
+          "source": "src/admin/admin.service.ts:5295"
         }
       ],
       "directHttpTestCalls": [],
@@ -42,7 +42,7 @@
       "method": "POST",
       "path": "/admin/accounts",
       "scope": "super-only: global permission configuration/account administration",
-      "controller": "src/admin/admin.controller.ts:1694",
+      "controller": "src/admin/admin.controller.ts:1779",
       "service": [],
       "directHttpTestCalls": [
         {
@@ -60,7 +60,7 @@
       "method": "DELETE",
       "path": "/admin/accounts/:id",
       "scope": "super-only: global permission configuration/account administration",
-      "controller": "src/admin/admin.controller.ts:1717",
+      "controller": "src/admin/admin.controller.ts:1802",
       "service": [],
       "directHttpTestCalls": [
         {
@@ -74,7 +74,7 @@
       "method": "PATCH",
       "path": "/admin/accounts/:id",
       "scope": "super-only: global permission configuration/account administration",
-      "controller": "src/admin/admin.controller.ts:1704",
+      "controller": "src/admin/admin.controller.ts:1789",
       "service": [],
       "directHttpTestCalls": [
         {
@@ -100,16 +100,16 @@
       "method": "GET",
       "path": "/admin/after-sales",
       "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
-      "controller": "src/admin/admin.controller.ts:1470",
+      "controller": "src/admin/admin.controller.ts:1475",
       "service": [
         {
           "name": "afterSales",
-          "source": "src/admin/admin.service.ts:4422"
+          "source": "src/admin/admin.service.ts:4431"
         }
       ],
       "directHttpTestCalls": [
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:124",
+          "source": "src/admin/rbac-scope.integration.spec.ts:130",
           "test": "list endpoints and new-order watermark ignore foreign campus query and exclude real B records"
         }
       ],
@@ -119,16 +119,16 @@
       "method": "GET",
       "path": "/admin/audit-logs",
       "scope": "campusScope: current campus; matching platform grant permits aggregate or validated campus query",
-      "controller": "src/admin/admin.controller.ts:1654",
+      "controller": "src/admin/admin.controller.ts:1739",
       "service": [
         {
           "name": "auditLogs",
-          "source": "src/admin/admin.service.ts:5247"
+          "source": "src/admin/admin.service.ts:5262"
         }
       ],
       "directHttpTestCalls": [
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:170",
+          "source": "src/admin/rbac-scope.integration.spec.ts:176",
           "test": "counts, audit, creation and recruitment transitions preserve campus scope"
         }
       ],
@@ -138,11 +138,11 @@
       "method": "GET",
       "path": "/admin/banners",
       "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
-      "controller": "src/admin/admin.controller.ts:286",
+      "controller": "src/admin/admin.controller.ts:290",
       "service": [
         {
           "name": "banners",
-          "source": "src/admin/admin.service.ts:819"
+          "source": "src/admin/admin.service.ts:823"
         }
       ],
       "directHttpTestCalls": [],
@@ -152,11 +152,11 @@
       "method": "POST",
       "path": "/admin/banners",
       "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
-      "controller": "src/admin/admin.controller.ts:310",
+      "controller": "src/admin/admin.controller.ts:314",
       "service": [
         {
           "name": "createBanner",
-          "source": "src/admin/admin.service.ts:841"
+          "source": "src/admin/admin.service.ts:845"
         }
       ],
       "directHttpTestCalls": [],
@@ -175,16 +175,16 @@
       "method": "DELETE",
       "path": "/admin/banners/:id",
       "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
-      "controller": "src/admin/admin.controller.ts:337",
+      "controller": "src/admin/admin.controller.ts:341",
       "service": [
         {
           "name": "deleteBanner",
-          "source": "src/admin/admin.service.ts:934"
+          "source": "src/admin/admin.service.ts:938"
         }
       ],
       "directHttpTestCalls": [
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:247",
+          "source": "src/admin/rbac-scope.integration.spec.ts:288",
           "test": "banner and promotion ID ownership and nested product ownership"
         }
       ],
@@ -194,20 +194,20 @@
       "method": "PATCH",
       "path": "/admin/banners/:id",
       "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
-      "controller": "src/admin/admin.controller.ts:323",
+      "controller": "src/admin/admin.controller.ts:327",
       "service": [
         {
           "name": "updateBanner",
-          "source": "src/admin/admin.service.ts:886"
+          "source": "src/admin/admin.service.ts:890"
         }
       ],
       "directHttpTestCalls": [
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:245",
+          "source": "src/admin/rbac-scope.integration.spec.ts:286",
           "test": "banner and promotion ID ownership and nested product ownership"
         },
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:246",
+          "source": "src/admin/rbac-scope.integration.spec.ts:287",
           "test": "banner and promotion ID ownership and nested product ownership"
         }
       ],
@@ -217,16 +217,16 @@
       "method": "GET",
       "path": "/admin/battle-map/buildings/:buildingId",
       "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
-      "controller": "src/admin/admin.controller.ts:832",
+      "controller": "src/admin/admin.controller.ts:836",
       "service": [
         {
           "name": "battleMapBuilding",
-          "source": "src/admin/admin.service.ts:3161"
+          "source": "src/admin/admin.service.ts:3165"
         }
       ],
       "directHttpTestCalls": [
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:225",
+          "source": "src/admin/rbac-scope.integration.spec.ts:266",
           "test": "nested rooms and building targets cannot cross campus or mismatch their parent"
         }
       ],
@@ -249,16 +249,16 @@
       "method": "GET",
       "path": "/admin/battle-map/rooms/:roomId",
       "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
-      "controller": "src/admin/admin.controller.ts:841",
+      "controller": "src/admin/admin.controller.ts:845",
       "service": [
         {
           "name": "battleMapRoom",
-          "source": "src/admin/admin.service.ts:3241"
+          "source": "src/admin/admin.service.ts:3245"
         }
       ],
       "directHttpTestCalls": [
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:226",
+          "source": "src/admin/rbac-scope.integration.spec.ts:267",
           "test": "nested rooms and building targets cannot cross campus or mismatch their parent"
         }
       ],
@@ -285,11 +285,11 @@
       "method": "GET",
       "path": "/admin/buildings",
       "scope": "campusScope: current campus; matching platform grant permits aggregate or validated campus query",
-      "controller": "src/admin/admin.controller.ts:1340",
+      "controller": "src/admin/admin.controller.ts:1345",
       "service": [
         {
           "name": "buildings",
-          "source": "src/admin/admin.service.ts:4150"
+          "source": "src/admin/admin.service.ts:4159"
         }
       ],
       "directHttpTestCalls": [
@@ -308,16 +308,16 @@
       "method": "POST",
       "path": "/admin/buildings",
       "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
-      "controller": "src/admin/admin.controller.ts:1363",
+      "controller": "src/admin/admin.controller.ts:1368",
       "service": [
         {
           "name": "createBuilding",
-          "source": "src/admin/admin.service.ts:4169"
+          "source": "src/admin/admin.service.ts:4178"
         }
       ],
       "directHttpTestCalls": [
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:144",
+          "source": "src/admin/rbac-scope.integration.spec.ts:150",
           "test": "delivery configuration and building mutations remain in A despite body/query campus overrides"
         }
       ],
@@ -327,16 +327,16 @@
       "method": "DELETE",
       "path": "/admin/buildings/:id",
       "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
-      "controller": "src/admin/admin.controller.ts:1386",
+      "controller": "src/admin/admin.controller.ts:1391",
       "service": [
         {
           "name": "deleteBuilding",
-          "source": "src/admin/admin.service.ts:4220"
+          "source": "src/admin/admin.service.ts:4229"
         }
       ],
       "directHttpTestCalls": [
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:143",
+          "source": "src/admin/rbac-scope.integration.spec.ts:149",
           "test": "delivery configuration and building mutations remain in A despite body/query campus overrides"
         }
       ],
@@ -346,16 +346,16 @@
       "method": "PATCH",
       "path": "/admin/buildings/:id",
       "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
-      "controller": "src/admin/admin.controller.ts:1372",
+      "controller": "src/admin/admin.controller.ts:1377",
       "service": [
         {
           "name": "updateBuilding",
-          "source": "src/admin/admin.service.ts:4198"
+          "source": "src/admin/admin.service.ts:4207"
         }
       ],
       "directHttpTestCalls": [
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:142",
+          "source": "src/admin/rbac-scope.integration.spec.ts:148",
           "test": "delivery configuration and building mutations remain in A despite body/query campus overrides"
         }
       ],
@@ -365,20 +365,20 @@
       "method": "GET",
       "path": "/admin/buildings/:id/rooms",
       "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
-      "controller": "src/admin/admin.controller.ts:1395",
+      "controller": "src/admin/admin.controller.ts:1400",
       "service": [
         {
           "name": "rooms",
-          "source": "src/admin/admin.service.ts:4245"
+          "source": "src/admin/admin.service.ts:4254"
         }
       ],
       "directHttpTestCalls": [
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:221",
+          "source": "src/admin/rbac-scope.integration.spec.ts:262",
           "test": "nested rooms and building targets cannot cross campus or mismatch their parent"
         },
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:222",
+          "source": "src/admin/rbac-scope.integration.spec.ts:263",
           "test": "nested rooms and building targets cannot cross campus or mismatch their parent"
         }
       ],
@@ -388,16 +388,16 @@
       "method": "POST",
       "path": "/admin/buildings/:id/rooms",
       "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
-      "controller": "src/admin/admin.controller.ts:1408",
+      "controller": "src/admin/admin.controller.ts:1413",
       "service": [
         {
           "name": "createRoom",
-          "source": "src/admin/admin.service.ts:4261"
+          "source": "src/admin/admin.service.ts:4270"
         }
       ],
       "directHttpTestCalls": [
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:223",
+          "source": "src/admin/rbac-scope.integration.spec.ts:264",
           "test": "nested rooms and building targets cannot cross campus or mismatch their parent"
         }
       ],
@@ -407,16 +407,16 @@
       "method": "DELETE",
       "path": "/admin/buildings/:id/rooms/:roomId",
       "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
-      "controller": "src/admin/admin.controller.ts:1418",
+      "controller": "src/admin/admin.controller.ts:1423",
       "service": [
         {
           "name": "deleteRoom",
-          "source": "src/admin/admin.service.ts:4302"
+          "source": "src/admin/admin.service.ts:4311"
         }
       ],
       "directHttpTestCalls": [
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:224",
+          "source": "src/admin/rbac-scope.integration.spec.ts:265",
           "test": "nested rooms and building targets cannot cross campus or mismatch their parent"
         }
       ],
@@ -426,11 +426,11 @@
       "method": "POST",
       "path": "/admin/buildings/:id/rooms/import",
       "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
-      "controller": "src/admin/admin.controller.ts:1446",
+      "controller": "src/admin/admin.controller.ts:1451",
       "service": [
         {
           "name": "importRooms",
-          "source": "src/admin/admin.service.ts:4353"
+          "source": "src/admin/admin.service.ts:4362"
         }
       ],
       "directHttpTestCalls": [],
@@ -453,21 +453,44 @@
       "method": "GET",
       "path": "/admin/buildings/:id/rooms/template",
       "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
-      "controller": "src/admin/admin.controller.ts:1429",
+      "controller": "src/admin/admin.controller.ts:1434",
       "service": [
         {
           "name": "roomTemplate",
-          "source": "src/admin/admin.service.ts:4328"
+          "source": "src/admin/admin.service.ts:4337"
         }
       ],
       "directHttpTestCalls": [
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:283",
+          "source": "src/admin/rbac-scope.integration.spec.ts:324",
           "test": "locations, commissions and dispatch validate both record ownership and nested staff/building IDs"
         },
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:284",
+          "source": "src/admin/rbac-scope.integration.spec.ts:325",
           "test": "locations, commissions and dispatch validate both record ownership and nested staff/building IDs"
+        }
+      ],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "GET",
+      "path": "/admin/campus-config",
+      "scope": "campusScope: current campus; matching operation platform grant permits selected campus or owned-record lookup",
+      "controller": "src/admin/admin.controller.ts:1605",
+      "service": [
+        {
+          "name": "campusConfig",
+          "source": "src/admin/admin.service.ts:6043"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:202",
+          "test": "merged campus config, notice and delivery-slot routes enforce A/B scope and preserve new fields"
+        },
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:220",
+          "test": "merged campus config, notice and delivery-slot routes enforce A/B scope and preserve new fields"
         }
       ],
       "domainServiceTestCalls": []
@@ -476,20 +499,20 @@
       "method": "GET",
       "path": "/admin/campuses",
       "scope": "campusScope: current campus; matching platform grant permits aggregate or validated campus query",
-      "controller": "src/admin/admin.controller.ts:1572",
+      "controller": "src/admin/admin.controller.ts:1577",
       "service": [
         {
           "name": "campuses",
-          "source": "src/admin/admin.service.ts:4656"
+          "source": "src/admin/admin.service.ts:4665"
         }
       ],
       "directHttpTestCalls": [
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:385",
+          "source": "src/admin/rbac-scope.integration.spec.ts:426",
           "test": "new campus stays outside explicit A/B grants; an explicit platform grant includes it without reassigning"
         },
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:390",
+          "source": "src/admin/rbac-scope.integration.spec.ts:431",
           "test": "new campus stays outside explicit A/B grants; an explicit platform grant includes it without reassigning"
         },
         {
@@ -507,11 +530,11 @@
       "method": "POST",
       "path": "/admin/campuses",
       "scope": "platform-only: global resource or explicit target campus",
-      "controller": "src/admin/admin.controller.ts:1579",
+      "controller": "src/admin/admin.controller.ts:1584",
       "service": [
         {
           "name": "createCampus",
-          "source": "src/admin/admin.service.ts:4676"
+          "source": "src/admin/admin.service.ts:4685"
         }
       ],
       "directHttpTestCalls": [
@@ -526,11 +549,11 @@
       "method": "PATCH",
       "path": "/admin/campuses/:id",
       "scope": "platform-only: global resource or explicit target campus",
-      "controller": "src/admin/admin.controller.ts:1585",
+      "controller": "src/admin/admin.controller.ts:1590",
       "service": [
         {
           "name": "updateCampus",
-          "source": "src/admin/admin.service.ts:4710"
+          "source": "src/admin/admin.service.ts:4719"
         }
       ],
       "directHttpTestCalls": [],
@@ -545,16 +568,16 @@
       "method": "GET",
       "path": "/admin/categories",
       "scope": "shared: global category dictionary; capability required for mutations",
-      "controller": "src/admin/admin.controller.ts:247",
+      "controller": "src/admin/admin.controller.ts:251",
       "service": [
         {
           "name": "categories",
-          "source": "src/admin/admin.service.ts:722"
+          "source": "src/admin/admin.service.ts:726"
         }
       ],
       "directHttpTestCalls": [
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:288",
+          "source": "src/admin/rbac-scope.integration.spec.ts:329",
           "test": "shared category names remain global but product counts stay in the current campus"
         }
       ],
@@ -564,11 +587,11 @@
       "method": "POST",
       "path": "/admin/categories",
       "scope": "shared: global category dictionary; capability required for mutations",
-      "controller": "src/admin/admin.controller.ts:252",
+      "controller": "src/admin/admin.controller.ts:256",
       "service": [
         {
           "name": "createCategory",
-          "source": "src/admin/admin.service.ts:732"
+          "source": "src/admin/admin.service.ts:736"
         }
       ],
       "directHttpTestCalls": [],
@@ -578,11 +601,11 @@
       "method": "DELETE",
       "path": "/admin/categories/:id",
       "scope": "shared: global category dictionary; capability required for mutations",
-      "controller": "src/admin/admin.controller.ts:275",
+      "controller": "src/admin/admin.controller.ts:279",
       "service": [
         {
           "name": "deleteCategory",
-          "source": "src/admin/admin.service.ts:795"
+          "source": "src/admin/admin.service.ts:799"
         }
       ],
       "directHttpTestCalls": [],
@@ -592,11 +615,11 @@
       "method": "PATCH",
       "path": "/admin/categories/:id",
       "scope": "shared: global category dictionary; capability required for mutations",
-      "controller": "src/admin/admin.controller.ts:261",
+      "controller": "src/admin/admin.controller.ts:265",
       "service": [
         {
           "name": "updateCategory",
-          "source": "src/admin/admin.service.ts:760"
+          "source": "src/admin/admin.service.ts:764"
         }
       ],
       "directHttpTestCalls": [],
@@ -606,11 +629,11 @@
       "method": "GET",
       "path": "/admin/commission-rules",
       "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
-      "controller": "src/admin/admin.controller.ts:1489",
+      "controller": "src/admin/admin.controller.ts:1494",
       "service": [
         {
           "name": "commissionRules",
-          "source": "src/admin/admin.service.ts:4430"
+          "source": "src/admin/admin.service.ts:4439"
         }
       ],
       "directHttpTestCalls": [],
@@ -620,16 +643,16 @@
       "method": "POST",
       "path": "/admin/commission-rules",
       "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
-      "controller": "src/admin/admin.controller.ts:1506",
+      "controller": "src/admin/admin.controller.ts:1511",
       "service": [
         {
           "name": "createCommissionRule",
-          "source": "src/admin/admin.service.ts:4444"
+          "source": "src/admin/admin.service.ts:4453"
         }
       ],
       "directHttpTestCalls": [
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:271",
+          "source": "src/admin/rbac-scope.integration.spec.ts:312",
           "test": "locations, commissions and dispatch validate both record ownership and nested staff/building IDs"
         }
       ],
@@ -639,16 +662,16 @@
       "method": "PATCH",
       "path": "/admin/commission-rules/:id",
       "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
-      "controller": "src/admin/admin.controller.ts:1519",
+      "controller": "src/admin/admin.controller.ts:1524",
       "service": [
         {
           "name": "updateCommissionRule",
-          "source": "src/admin/admin.service.ts:4488"
+          "source": "src/admin/admin.service.ts:4497"
         }
       ],
       "directHttpTestCalls": [
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:272",
+          "source": "src/admin/rbac-scope.integration.spec.ts:313",
           "test": "locations, commissions and dispatch validate both record ownership and nested staff/building IDs"
         }
       ],
@@ -658,11 +681,11 @@
       "method": "GET",
       "path": "/admin/coupons",
       "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
-      "controller": "src/admin/admin.controller.ts:1597",
+      "controller": "src/admin/admin.controller.ts:1682",
       "service": [
         {
           "name": "coupons",
-          "source": "src/admin/admin.service.ts:4883"
+          "source": "src/admin/admin.service.ts:4898"
         }
       ],
       "directHttpTestCalls": [],
@@ -672,16 +695,16 @@
       "method": "POST",
       "path": "/admin/coupons",
       "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
-      "controller": "src/admin/admin.controller.ts:1616",
+      "controller": "src/admin/admin.controller.ts:1701",
       "service": [
         {
           "name": "createCoupon",
-          "source": "src/admin/admin.service.ts:4895"
+          "source": "src/admin/admin.service.ts:4910"
         }
       ],
       "directHttpTestCalls": [
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:181",
+          "source": "src/admin/rbac-scope.integration.spec.ts:187",
           "test": "counts, audit, creation and recruitment transitions preserve campus scope"
         }
       ],
@@ -691,16 +714,16 @@
       "method": "DELETE",
       "path": "/admin/coupons/:id",
       "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
-      "controller": "src/admin/admin.controller.ts:1635",
+      "controller": "src/admin/admin.controller.ts:1720",
       "service": [
         {
           "name": "deleteCoupon",
-          "source": "src/admin/admin.service.ts:4956"
+          "source": "src/admin/admin.service.ts:4971"
         }
       ],
       "directHttpTestCalls": [
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:240",
+          "source": "src/admin/rbac-scope.integration.spec.ts:281",
           "test": "coupon issuance checks both coupon ownership and every explicit recipient before issuing any coupon"
         }
       ],
@@ -710,16 +733,16 @@
       "method": "PATCH",
       "path": "/admin/coupons/:id",
       "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
-      "controller": "src/admin/admin.controller.ts:1625",
+      "controller": "src/admin/admin.controller.ts:1710",
       "service": [
         {
           "name": "updateCoupon",
-          "source": "src/admin/admin.service.ts:4980"
+          "source": "src/admin/admin.service.ts:4995"
         }
       ],
       "directHttpTestCalls": [
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:239",
+          "source": "src/admin/rbac-scope.integration.spec.ts:280",
           "test": "coupon issuance checks both coupon ownership and every explicit recipient before issuing any coupon"
         }
       ],
@@ -729,24 +752,24 @@
       "method": "POST",
       "path": "/admin/coupons/:id/issue",
       "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
-      "controller": "src/admin/admin.controller.ts:1644",
+      "controller": "src/admin/admin.controller.ts:1729",
       "service": [
         {
           "name": "issueCoupon",
-          "source": "src/admin/admin.service.ts:5043"
+          "source": "src/admin/admin.service.ts:5058"
         }
       ],
       "directHttpTestCalls": [
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:233",
+          "source": "src/admin/rbac-scope.integration.spec.ts:274",
           "test": "coupon issuance checks both coupon ownership and every explicit recipient before issuing any coupon"
         },
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:234",
+          "source": "src/admin/rbac-scope.integration.spec.ts:275",
           "test": "coupon issuance checks both coupon ownership and every explicit recipient before issuing any coupon"
         },
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:236",
+          "source": "src/admin/rbac-scope.integration.spec.ts:277",
           "test": "coupon issuance checks both coupon ownership and every explicit recipient before issuing any coupon"
         }
       ],
@@ -773,11 +796,11 @@
       "method": "GET",
       "path": "/admin/dashboard",
       "scope": "campusScope: current campus; matching platform grant permits aggregate or validated campus query",
-      "controller": "src/admin/admin.controller.ts:162",
+      "controller": "src/admin/admin.controller.ts:166",
       "service": [
         {
           "name": "dashboard",
-          "source": "src/admin/admin.service.ts:187"
+          "source": "src/admin/admin.service.ts:191"
         }
       ],
       "directHttpTestCalls": [],
@@ -800,16 +823,16 @@
       "method": "GET",
       "path": "/admin/delivery-config",
       "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
-      "controller": "src/admin/admin.controller.ts:1317",
+      "controller": "src/admin/admin.controller.ts:1322",
       "service": [
         {
           "name": "deliveryConfig",
-          "source": "src/admin/admin.service.ts:4096"
+          "source": "src/admin/admin.service.ts:4100"
         }
       ],
       "directHttpTestCalls": [
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:139",
+          "source": "src/admin/rbac-scope.integration.spec.ts:145",
           "test": "delivery configuration and building mutations remain in A despite body/query campus overrides"
         }
       ],
@@ -819,17 +842,86 @@
       "method": "PATCH",
       "path": "/admin/delivery-config",
       "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
-      "controller": "src/admin/admin.controller.ts:1325",
+      "controller": "src/admin/admin.controller.ts:1330",
       "service": [
         {
           "name": "updateDeliveryConfig",
-          "source": "src/admin/admin.service.ts:4110"
+          "source": "src/admin/admin.service.ts:4114"
         }
       ],
       "directHttpTestCalls": [
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:137",
+          "source": "src/admin/rbac-scope.integration.spec.ts:143",
           "test": "delivery configuration and building mutations remain in A despite body/query campus overrides"
+        },
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:218",
+          "test": "merged campus config, notice and delivery-slot routes enforce A/B scope and preserve new fields"
+        }
+      ],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "POST",
+      "path": "/admin/delivery-slots",
+      "scope": "campusScope: current campus; matching operation platform grant permits selected campus or owned-record lookup",
+      "controller": "src/admin/admin.controller.ts:1618",
+      "service": [
+        {
+          "name": "createSlot",
+          "source": "src/admin/admin.service.ts:6082"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:205",
+          "test": "merged campus config, notice and delivery-slot routes enforce A/B scope and preserve new fields"
+        }
+      ],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "DELETE",
+      "path": "/admin/delivery-slots/:id",
+      "scope": "campusScope: current campus; matching operation platform grant permits selected campus or owned-record lookup",
+      "controller": "src/admin/admin.controller.ts:1640",
+      "service": [
+        {
+          "name": "deleteSlot",
+          "source": "src/admin/admin.service.ts:6119"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:208",
+          "test": "merged campus config, notice and delivery-slot routes enforce A/B scope and preserve new fields"
+        },
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:210",
+          "test": "merged campus config, notice and delivery-slot routes enforce A/B scope and preserve new fields"
+        }
+      ],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "PATCH",
+      "path": "/admin/delivery-slots/:id",
+      "scope": "campusScope: current campus; matching operation platform grant permits selected campus or owned-record lookup",
+      "controller": "src/admin/admin.controller.ts:1629",
+      "service": [
+        {
+          "name": "updateSlot",
+          "source": "src/admin/admin.service.ts:6098"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:207",
+          "test": "merged campus config, notice and delivery-slot routes enforce A/B scope and preserve new fields"
+        },
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:209",
+          "test": "merged campus config, notice and delivery-slot routes enforce A/B scope and preserve new fields"
         }
       ],
       "domainServiceTestCalls": []
@@ -838,11 +930,11 @@
       "method": "GET",
       "path": "/admin/dispatch-invitations",
       "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
-      "controller": "src/admin/admin.controller.ts:1241",
+      "controller": "src/admin/admin.controller.ts:1246",
       "service": [
         {
           "name": "dispatchInvitations",
-          "source": "src/admin/admin.service.ts:4784"
+          "source": "src/admin/admin.service.ts:4799"
         }
       ],
       "directHttpTestCalls": [],
@@ -857,24 +949,24 @@
       "method": "POST",
       "path": "/admin/dispatch-invitations",
       "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
-      "controller": "src/admin/admin.controller.ts:1260",
+      "controller": "src/admin/admin.controller.ts:1265",
       "service": [
         {
           "name": "createDispatchInvitation",
-          "source": "src/admin/admin.service.ts:4806"
+          "source": "src/admin/admin.service.ts:4821"
         }
       ],
       "directHttpTestCalls": [
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:276",
+          "source": "src/admin/rbac-scope.integration.spec.ts:317",
           "test": "locations, commissions and dispatch validate both record ownership and nested staff/building IDs"
         },
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:278",
+          "source": "src/admin/rbac-scope.integration.spec.ts:319",
           "test": "locations, commissions and dispatch validate both record ownership and nested staff/building IDs"
         },
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:279",
+          "source": "src/admin/rbac-scope.integration.spec.ts:320",
           "test": "locations, commissions and dispatch validate both record ownership and nested staff/building IDs"
         }
       ],
@@ -905,16 +997,16 @@
       "method": "POST",
       "path": "/admin/dispatch-invitations/:id/cancel",
       "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
-      "controller": "src/admin/admin.controller.ts:1273",
+      "controller": "src/admin/admin.controller.ts:1278",
       "service": [
         {
           "name": "cancelDispatchInvitation",
-          "source": "src/admin/admin.service.ts:4854"
+          "source": "src/admin/admin.service.ts:4869"
         }
       ],
       "directHttpTestCalls": [
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:273",
+          "source": "src/admin/rbac-scope.integration.spec.ts:314",
           "test": "locations, commissions and dispatch validate both record ownership and nested staff/building IDs"
         }
       ],
@@ -933,11 +1025,11 @@
       "method": "GET",
       "path": "/admin/featured",
       "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
-      "controller": "src/admin/admin.controller.ts:372",
+      "controller": "src/admin/admin.controller.ts:376",
       "service": [
         {
           "name": "featured",
-          "source": "src/admin/admin.service.ts:683"
+          "source": "src/admin/admin.service.ts:687"
         }
       ],
       "directHttpTestCalls": [],
@@ -947,16 +1039,16 @@
       "method": "PUT",
       "path": "/admin/featured",
       "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
-      "controller": "src/admin/admin.controller.ts:377",
+      "controller": "src/admin/admin.controller.ts:381",
       "service": [
         {
           "name": "saveFeatured",
-          "source": "src/admin/admin.service.ts:700"
+          "source": "src/admin/admin.service.ts:704"
         }
       ],
       "directHttpTestCalls": [
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:213",
+          "source": "src/admin/rbac-scope.integration.spec.ts:254",
           "test": "batch products and featured lists strip B targets; foreign stock and detail writes reject"
         }
       ],
@@ -966,11 +1058,11 @@
       "method": "GET",
       "path": "/admin/inventory",
       "scope": "campusScope: current campus; matching platform grant permits aggregate or validated campus query",
-      "controller": "src/admin/admin.controller.ts:575",
+      "controller": "src/admin/admin.controller.ts:579",
       "service": [
         {
           "name": "inventory",
-          "source": "src/admin/admin.service.ts:1519"
+          "source": "src/admin/admin.service.ts:1523"
         }
       ],
       "directHttpTestCalls": [],
@@ -985,16 +1077,16 @@
       "method": "POST",
       "path": "/admin/inventory/adjust",
       "scope": "campusScope: current campus; matching platform grant permits aggregate or validated campus query",
-      "controller": "src/admin/admin.controller.ts:901",
+      "controller": "src/admin/admin.controller.ts:905",
       "service": [
         {
           "name": "adjustStock",
-          "source": "src/admin/admin.service.ts:1563"
+          "source": "src/admin/admin.service.ts:1567"
         }
       ],
       "directHttpTestCalls": [
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:210",
+          "source": "src/admin/rbac-scope.integration.spec.ts:251",
           "test": "batch products and featured lists strip B targets; foreign stock and detail writes reject"
         }
       ],
@@ -1004,11 +1096,11 @@
       "method": "POST",
       "path": "/admin/inventory/stock-in",
       "scope": "platform-only: global resource or explicit target campus",
-      "controller": "src/admin/admin.controller.ts:602",
+      "controller": "src/admin/admin.controller.ts:606",
       "service": [
         {
           "name": "stockIn",
-          "source": "src/admin/admin.service.ts:1531"
+          "source": "src/admin/admin.service.ts:1535"
         }
       ],
       "directHttpTestCalls": [
@@ -1023,16 +1115,16 @@
       "method": "POST",
       "path": "/admin/inventory/stocktake",
       "scope": "campusScope: current campus; matching platform grant permits aggregate or validated campus query",
-      "controller": "src/admin/admin.controller.ts:616",
+      "controller": "src/admin/admin.controller.ts:620",
       "service": [
         {
           "name": "stocktake",
-          "source": "src/admin/admin.service.ts:1607"
+          "source": "src/admin/admin.service.ts:1611"
         }
       ],
       "directHttpTestCalls": [
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:209",
+          "source": "src/admin/rbac-scope.integration.spec.ts:250",
           "test": "batch products and featured lists strip B targets; foreign stock and detail writes reject"
         }
       ],
@@ -1055,16 +1147,16 @@
       "method": "GET",
       "path": "/admin/inventory/txns",
       "scope": "campusScope: current campus; matching platform grant permits aggregate or validated campus query",
-      "controller": "src/admin/admin.controller.ts:914",
+      "controller": "src/admin/admin.controller.ts:918",
       "service": [
         {
           "name": "inventoryTxns",
-          "source": "src/admin/admin.service.ts:3373"
+          "source": "src/admin/admin.service.ts:3377"
         }
       ],
       "directHttpTestCalls": [
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:127",
+          "source": "src/admin/rbac-scope.integration.spec.ts:133",
           "test": "list endpoints and new-order watermark ignore foreign campus query and exclude real B records"
         }
       ],
@@ -1074,11 +1166,11 @@
       "method": "GET",
       "path": "/admin/leave-requests",
       "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
-      "controller": "src/admin/admin.controller.ts:1222",
+      "controller": "src/admin/admin.controller.ts:1227",
       "service": [
         {
           "name": "leaveRequests",
-          "source": "src/admin/admin.service.ts:4757"
+          "source": "src/admin/admin.service.ts:4772"
         }
       ],
       "directHttpTestCalls": [],
@@ -1093,11 +1185,11 @@
       "method": "GET",
       "path": "/admin/locations",
       "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
-      "controller": "src/admin/admin.controller.ts:1168",
+      "controller": "src/admin/admin.controller.ts:1173",
       "service": [
         {
           "name": "locations",
-          "source": "src/admin/admin.service.ts:3783"
+          "source": "src/admin/admin.service.ts:3787"
         }
       ],
       "directHttpTestCalls": [],
@@ -1107,16 +1199,16 @@
       "method": "POST",
       "path": "/admin/locations",
       "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
-      "controller": "src/admin/admin.controller.ts:1171",
+      "controller": "src/admin/admin.controller.ts:1176",
       "service": [
         {
           "name": "createLocation",
-          "source": "src/admin/admin.service.ts:3789"
+          "source": "src/admin/admin.service.ts:3793"
         }
       ],
       "directHttpTestCalls": [
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:184",
+          "source": "src/admin/rbac-scope.integration.spec.ts:190",
           "test": "counts, audit, creation and recruitment transitions preserve campus scope"
         }
       ],
@@ -1126,16 +1218,16 @@
       "method": "DELETE",
       "path": "/admin/locations/:id",
       "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
-      "controller": "src/admin/admin.controller.ts:1197",
+      "controller": "src/admin/admin.controller.ts:1202",
       "service": [
         {
           "name": "deleteLocation",
-          "source": "src/admin/admin.service.ts:3842"
+          "source": "src/admin/admin.service.ts:3846"
         }
       ],
       "directHttpTestCalls": [
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:270",
+          "source": "src/admin/rbac-scope.integration.spec.ts:311",
           "test": "locations, commissions and dispatch validate both record ownership and nested staff/building IDs"
         }
       ],
@@ -1145,16 +1237,16 @@
       "method": "PATCH",
       "path": "/admin/locations/:id",
       "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
-      "controller": "src/admin/admin.controller.ts:1181",
+      "controller": "src/admin/admin.controller.ts:1186",
       "service": [
         {
           "name": "updateLocation",
-          "source": "src/admin/admin.service.ts:3813"
+          "source": "src/admin/admin.service.ts:3817"
         }
       ],
       "directHttpTestCalls": [
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:269",
+          "source": "src/admin/rbac-scope.integration.spec.ts:310",
           "test": "locations, commissions and dispatch validate both record ownership and nested staff/building IDs"
         }
       ],
@@ -1164,11 +1256,11 @@
       "method": "GET",
       "path": "/admin/marketing/map",
       "scope": "campusScope: current campus; matching platform grant permits aggregate or validated campus query",
-      "controller": "src/admin/admin.controller.ts:388",
+      "controller": "src/admin/admin.controller.ts:392",
       "service": [
         {
           "name": "marketingMap",
-          "source": "src/admin/admin.service.ts:5160"
+          "source": "src/admin/admin.service.ts:5175"
         }
       ],
       "directHttpTestCalls": [],
@@ -1180,14 +1272,79 @@
       ]
     },
     {
+      "method": "POST",
+      "path": "/admin/notices",
+      "scope": "campusScope: current campus; matching operation platform grant permits selected campus or owned-record lookup",
+      "controller": "src/admin/admin.controller.ts:1647",
+      "service": [
+        {
+          "name": "createNotice",
+          "source": "src/admin/admin.service.ts:6137"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:211",
+          "test": "merged campus config, notice and delivery-slot routes enforce A/B scope and preserve new fields"
+        }
+      ],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "DELETE",
+      "path": "/admin/notices/:id",
+      "scope": "campusScope: current campus; matching operation platform grant permits selected campus or owned-record lookup",
+      "controller": "src/admin/admin.controller.ts:1674",
+      "service": [
+        {
+          "name": "deleteNotice",
+          "source": "src/admin/admin.service.ts:6187"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:215",
+          "test": "merged campus config, notice and delivery-slot routes enforce A/B scope and preserve new fields"
+        },
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:217",
+          "test": "merged campus config, notice and delivery-slot routes enforce A/B scope and preserve new fields"
+        }
+      ],
+      "domainServiceTestCalls": []
+    },
+    {
+      "method": "PATCH",
+      "path": "/admin/notices/:id",
+      "scope": "campusScope: current campus; matching operation platform grant permits selected campus or owned-record lookup",
+      "controller": "src/admin/admin.controller.ts:1658",
+      "service": [
+        {
+          "name": "updateNotice",
+          "source": "src/admin/admin.service.ts:6155"
+        }
+      ],
+      "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:214",
+          "test": "merged campus config, notice and delivery-slot routes enforce A/B scope and preserve new fields"
+        },
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:216",
+          "test": "merged campus config, notice and delivery-slot routes enforce A/B scope and preserve new fields"
+        }
+      ],
+      "domainServiceTestCalls": []
+    },
+    {
       "method": "GET",
       "path": "/admin/orders",
       "scope": "campusScope: current campus; matching platform grant permits aggregate or validated campus query",
-      "controller": "src/admin/admin.controller.ts:933",
+      "controller": "src/admin/admin.controller.ts:937",
       "service": [
         {
           "name": "orders",
-          "source": "src/admin/admin.service.ts:3401"
+          "source": "src/admin/admin.service.ts:3405"
         }
       ],
       "directHttpTestCalls": [
@@ -1231,24 +1388,24 @@
       "method": "GET",
       "path": "/admin/orders/:id",
       "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
-      "controller": "src/admin/admin.controller.ts:978",
+      "controller": "src/admin/admin.controller.ts:983",
       "service": [
         {
           "name": "order",
-          "source": "src/admin/admin.service.ts:3534"
+          "source": "src/admin/admin.service.ts:3538"
         }
       ],
       "directHttpTestCalls": [
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:130",
+          "source": "src/admin/rbac-scope.integration.spec.ts:136",
           "test": "list endpoints and new-order watermark ignore foreign campus query and exclude real B records"
         },
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:193",
+          "source": "src/admin/rbac-scope.integration.spec.ts:234",
           "test": "order IDs and printers: own detail succeeds, foreign detail/status/actions/print reject before external call"
         },
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:194",
+          "source": "src/admin/rbac-scope.integration.spec.ts:235",
           "test": "order IDs and printers: own detail succeeds, foreign detail/status/actions/print reject before external call"
         }
       ],
@@ -1258,16 +1415,16 @@
       "method": "POST",
       "path": "/admin/orders/:id/actions/:action",
       "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
-      "controller": "src/admin/admin.controller.ts:984",
+      "controller": "src/admin/admin.controller.ts:989",
       "service": [
         {
           "name": "orderAction",
-          "source": "src/admin/admin.service.ts:3541"
+          "source": "src/admin/admin.service.ts:3545"
         }
       ],
       "directHttpTestCalls": [
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:196",
+          "source": "src/admin/rbac-scope.integration.spec.ts:237",
           "test": "order IDs and printers: own detail succeeds, foreign detail/status/actions/print reject before external call"
         }
       ],
@@ -1277,16 +1434,16 @@
       "method": "POST",
       "path": "/admin/orders/:id/print-receipt",
       "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
-      "controller": "src/admin/admin.controller.ts:1017",
+      "controller": "src/admin/admin.controller.ts:1022",
       "service": [
         {
           "name": "reprintReceipt",
-          "source": "src/admin/admin.service.ts:3578"
+          "source": "src/admin/admin.service.ts:3582"
         }
       ],
       "directHttpTestCalls": [
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:197",
+          "source": "src/admin/rbac-scope.integration.spec.ts:238",
           "test": "order IDs and printers: own detail succeeds, foreign detail/status/actions/print reject before external call"
         }
       ],
@@ -1296,16 +1453,16 @@
       "method": "POST",
       "path": "/admin/orders/:id/status",
       "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
-      "controller": "src/admin/admin.controller.ts:1000",
+      "controller": "src/admin/admin.controller.ts:1005",
       "service": [
         {
           "name": "updateOrderStatus",
-          "source": "src/admin/admin.service.ts:3746"
+          "source": "src/admin/admin.service.ts:3750"
         }
       ],
       "directHttpTestCalls": [
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:195",
+          "source": "src/admin/rbac-scope.integration.spec.ts:236",
           "test": "order IDs and printers: own detail succeeds, foreign detail/status/actions/print reject before external call"
         }
       ],
@@ -1315,16 +1472,16 @@
       "method": "GET",
       "path": "/admin/orders/new-order-watch",
       "scope": "campusScope: current campus; matching platform grant permits aggregate or validated campus query",
-      "controller": "src/admin/admin.controller.ts:970",
+      "controller": "src/admin/admin.controller.ts:974",
       "service": [
         {
           "name": "newOrderWatch",
-          "source": "src/admin/admin.service.ts:3519"
+          "source": "src/admin/admin.service.ts:3523"
         }
       ],
       "directHttpTestCalls": [
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:130",
+          "source": "src/admin/rbac-scope.integration.spec.ts:136",
           "test": "list endpoints and new-order watermark ignore foreign campus query and exclude real B records"
         }
       ],
@@ -1334,11 +1491,11 @@
       "method": "GET",
       "path": "/admin/orders/status-counts",
       "scope": "campusScope: current campus; matching platform grant permits aggregate or validated campus query",
-      "controller": "src/admin/admin.controller.ts:961",
+      "controller": "src/admin/admin.controller.ts:965",
       "service": [
         {
           "name": "orderStatusCounts",
-          "source": "src/admin/admin.service.ts:3507"
+          "source": "src/admin/admin.service.ts:3511"
         }
       ],
       "directHttpTestCalls": [],
@@ -1361,11 +1518,11 @@
       "method": "GET",
       "path": "/admin/printers",
       "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
-      "controller": "src/admin/admin.controller.ts:1028",
+      "controller": "src/admin/admin.controller.ts:1033",
       "service": [
         {
           "name": "printers",
-          "source": "src/admin/admin.service.ts:3642"
+          "source": "src/admin/admin.service.ts:3646"
         }
       ],
       "directHttpTestCalls": [],
@@ -1375,16 +1532,16 @@
       "method": "POST",
       "path": "/admin/printers",
       "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
-      "controller": "src/admin/admin.controller.ts:1033",
+      "controller": "src/admin/admin.controller.ts:1038",
       "service": [
         {
           "name": "bindPrinter",
-          "source": "src/admin/admin.service.ts:3656"
+          "source": "src/admin/admin.service.ts:3660"
         }
       ],
       "directHttpTestCalls": [
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:186",
+          "source": "src/admin/rbac-scope.integration.spec.ts:192",
           "test": "counts, audit, creation and recruitment transitions preserve campus scope"
         }
       ],
@@ -1394,16 +1551,16 @@
       "method": "DELETE",
       "path": "/admin/printers/:id",
       "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
-      "controller": "src/admin/admin.controller.ts:1044",
+      "controller": "src/admin/admin.controller.ts:1049",
       "service": [
         {
           "name": "unbindPrinter",
-          "source": "src/admin/admin.service.ts:3703"
+          "source": "src/admin/admin.service.ts:3707"
         }
       ],
       "directHttpTestCalls": [
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:199",
+          "source": "src/admin/rbac-scope.integration.spec.ts:240",
           "test": "order IDs and printers: own detail succeeds, foreign detail/status/actions/print reject before external call"
         }
       ],
@@ -1413,16 +1570,16 @@
       "method": "POST",
       "path": "/admin/printers/:id/test-print",
       "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
-      "controller": "src/admin/admin.controller.ts:1052",
+      "controller": "src/admin/admin.controller.ts:1057",
       "service": [
         {
           "name": "testPrintPrinter",
-          "source": "src/admin/admin.service.ts:3720"
+          "source": "src/admin/admin.service.ts:3724"
         }
       ],
       "directHttpTestCalls": [
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:198",
+          "source": "src/admin/rbac-scope.integration.spec.ts:239",
           "test": "order IDs and printers: own detail succeeds, foreign detail/status/actions/print reject before external call"
         }
       ],
@@ -1432,28 +1589,28 @@
       "method": "GET",
       "path": "/admin/products",
       "scope": "productCampus: current campus; operation platform grant permits official view; field capabilities independently checked",
-      "controller": "src/admin/admin.controller.ts:177",
+      "controller": "src/admin/admin.controller.ts:181",
       "service": [
         {
           "name": "products",
-          "source": "src/admin/admin.service.ts:595"
+          "source": "src/admin/admin.service.ts:599"
         }
       ],
       "directHttpTestCalls": [
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:353",
+          "source": "src/admin/rbac-scope.integration.spec.ts:394",
           "test": "two independent RBAC caches observe role removal/disable; state read failure or missing state never uses stale allow"
         },
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:363",
+          "source": "src/admin/rbac-scope.integration.spec.ts:404",
           "test": "two independent RBAC caches observe role removal/disable; state read failure or missing state never uses stale allow"
         },
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:368",
+          "source": "src/admin/rbac-scope.integration.spec.ts:409",
           "test": "two independent RBAC caches observe role removal/disable; state read failure or missing state never uses stale allow"
         },
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:370",
+          "source": "src/admin/rbac-scope.integration.spec.ts:411",
           "test": "two independent RBAC caches observe role removal/disable; state read failure or missing state never uses stale allow"
         },
         {
@@ -1496,11 +1653,11 @@
       "method": "POST",
       "path": "/admin/products",
       "scope": "productCampus: current campus; operation platform grant permits official view; field capabilities independently checked",
-      "controller": "src/admin/admin.controller.ts:459",
+      "controller": "src/admin/admin.controller.ts:463",
       "service": [
         {
           "name": "createProduct",
-          "source": "src/admin/admin.service.ts:1205"
+          "source": "src/admin/admin.service.ts:1209"
         }
       ],
       "directHttpTestCalls": [],
@@ -1535,16 +1692,16 @@
       "method": "PATCH",
       "path": "/admin/products/:id",
       "scope": "productCampus: current campus; operation platform grant permits official view; field capabilities independently checked",
-      "controller": "src/admin/admin.controller.ts:475",
+      "controller": "src/admin/admin.controller.ts:479",
       "service": [
         {
           "name": "updateProduct",
-          "source": "src/admin/admin.service.ts:1271"
+          "source": "src/admin/admin.service.ts:1275"
         }
       ],
       "directHttpTestCalls": [
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:208",
+          "source": "src/admin/rbac-scope.integration.spec.ts:249",
           "test": "batch products and featured lists strip B targets; foreign stock and detail writes reject"
         },
         {
@@ -1643,11 +1800,11 @@
       "method": "PATCH",
       "path": "/admin/products/:id/price",
       "scope": "productCampus: current campus; operation platform grant permits official view; field capabilities independently checked",
-      "controller": "src/admin/admin.controller.ts:513",
+      "controller": "src/admin/admin.controller.ts:517",
       "service": [
         {
           "name": "updateProduct",
-          "source": "src/admin/admin.service.ts:1271"
+          "source": "src/admin/admin.service.ts:1275"
         }
       ],
       "directHttpTestCalls": [
@@ -1731,11 +1888,11 @@
       "method": "POST",
       "path": "/admin/products/:id/pull-upstream",
       "scope": "productCampus: current campus; operation platform grant permits official view; field capabilities independently checked",
-      "controller": "src/admin/admin.controller.ts:563",
+      "controller": "src/admin/admin.controller.ts:567",
       "service": [
         {
           "name": "pullUpstream",
-          "source": "src/admin/admin.service.ts:1474"
+          "source": "src/admin/admin.service.ts:1478"
         }
       ],
       "directHttpTestCalls": [],
@@ -1754,11 +1911,11 @@
       "method": "POST",
       "path": "/admin/products/barcode/lookup",
       "scope": "productCampus: current campus; operation platform grant permits official view; field capabilities independently checked",
-      "controller": "src/admin/admin.controller.ts:426",
+      "controller": "src/admin/admin.controller.ts:430",
       "service": [
         {
           "name": "lookupBarcode",
-          "source": "src/admin/admin.service.ts:1104"
+          "source": "src/admin/admin.service.ts:1108"
         }
       ],
       "directHttpTestCalls": [],
@@ -1781,20 +1938,20 @@
       "method": "POST",
       "path": "/admin/products/batch-status",
       "scope": "productCampus: current campus; operation platform grant permits official view; field capabilities independently checked",
-      "controller": "src/admin/admin.controller.ts:440",
+      "controller": "src/admin/admin.controller.ts:444",
       "service": [
         {
           "name": "batchUpdateProductStatus",
-          "source": "src/admin/admin.service.ts:1340"
+          "source": "src/admin/admin.service.ts:1344"
         }
       ],
       "directHttpTestCalls": [
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:211",
+          "source": "src/admin/rbac-scope.integration.spec.ts:252",
           "test": "batch products and featured lists strip B targets; foreign stock and detail writes reject"
         },
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:216",
+          "source": "src/admin/rbac-scope.integration.spec.ts:257",
           "test": "batch products and featured lists strip B targets; foreign stock and detail writes reject"
         }
       ],
@@ -1804,11 +1961,11 @@
       "method": "POST",
       "path": "/admin/products/import",
       "scope": "productCampus: current campus; operation platform grant permits official view; field capabilities independently checked",
-      "controller": "src/admin/admin.controller.ts:540",
+      "controller": "src/admin/admin.controller.ts:544",
       "service": [
         {
           "name": "importProducts",
-          "source": "src/admin/admin.service.ts:1368"
+          "source": "src/admin/admin.service.ts:1372"
         }
       ],
       "directHttpTestCalls": [],
@@ -1839,11 +1996,11 @@
       "method": "GET",
       "path": "/admin/products/official-library",
       "scope": "shared: official catalog; excludes private campus product rows",
-      "controller": "src/admin/admin.controller.ts:220",
+      "controller": "src/admin/admin.controller.ts:224",
       "service": [
         {
           "name": "products",
-          "source": "src/admin/admin.service.ts:595"
+          "source": "src/admin/admin.service.ts:599"
         }
       ],
       "directHttpTestCalls": [],
@@ -1882,16 +2039,16 @@
       "method": "GET",
       "path": "/admin/products/status-counts",
       "scope": "productCampus: current campus; operation platform grant permits official view; field capabilities independently checked",
-      "controller": "src/admin/admin.controller.ts:208",
+      "controller": "src/admin/admin.controller.ts:212",
       "service": [
         {
           "name": "productStatusCounts",
-          "source": "src/admin/admin.service.ts:670"
+          "source": "src/admin/admin.service.ts:674"
         }
       ],
       "directHttpTestCalls": [
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:174",
+          "source": "src/admin/rbac-scope.integration.spec.ts:180",
           "test": "counts, audit, creation and recruitment transitions preserve campus scope"
         }
       ],
@@ -1901,11 +2058,11 @@
       "method": "GET",
       "path": "/admin/promotions",
       "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
-      "controller": "src/admin/admin.controller.ts:347",
+      "controller": "src/admin/admin.controller.ts:351",
       "service": [
         {
           "name": "promotions",
-          "source": "src/admin/admin.service.ts:954"
+          "source": "src/admin/admin.service.ts:958"
         }
       ],
       "directHttpTestCalls": [],
@@ -1915,16 +2072,16 @@
       "method": "POST",
       "path": "/admin/promotions",
       "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
-      "controller": "src/admin/admin.controller.ts:408",
+      "controller": "src/admin/admin.controller.ts:412",
       "service": [
         {
           "name": "createPromotion",
-          "source": "src/admin/admin.service.ts:1012"
+          "source": "src/admin/admin.service.ts:1016"
         }
       ],
       "directHttpTestCalls": [
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:249",
+          "source": "src/admin/rbac-scope.integration.spec.ts:290",
           "test": "banner and promotion ID ownership and nested product ownership"
         }
       ],
@@ -1947,16 +2104,16 @@
       "method": "PATCH",
       "path": "/admin/promotions/:id",
       "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
-      "controller": "src/admin/admin.controller.ts:417",
+      "controller": "src/admin/admin.controller.ts:421",
       "service": [
         {
           "name": "updatePromotion",
-          "source": "src/admin/admin.service.ts:1051"
+          "source": "src/admin/admin.service.ts:1055"
         }
       ],
       "directHttpTestCalls": [
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:248",
+          "source": "src/admin/rbac-scope.integration.spec.ts:289",
           "test": "banner and promotion ID ownership and nested product ownership"
         }
       ],
@@ -1975,11 +2132,11 @@
       "method": "GET",
       "path": "/admin/purchase/orders",
       "scope": "platform-only: global resource or explicit target campus",
-      "controller": "src/admin/admin.controller.ts:850",
+      "controller": "src/admin/admin.controller.ts:854",
       "service": [
         {
           "name": "purchaseOrders",
-          "source": "src/admin/admin.service.ts:2330"
+          "source": "src/admin/admin.service.ts:2334"
         }
       ],
       "directHttpTestCalls": [
@@ -2003,16 +2160,16 @@
       "method": "GET",
       "path": "/admin/purchase/orders/:id",
       "scope": "platform-only: global resource or explicit target campus",
-      "controller": "src/admin/admin.controller.ts:854",
+      "controller": "src/admin/admin.controller.ts:858",
       "service": [
         {
           "name": "purchaseOrderDetail",
-          "source": "src/admin/admin.service.ts:2381"
+          "source": "src/admin/admin.service.ts:2385"
         }
       ],
       "directHttpTestCalls": [
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:322",
+          "source": "src/admin/rbac-scope.integration.spec.ts:363",
           "test": "restock details/receipt reject foreign records and batch aggregates do not leak global purchasing"
         }
       ],
@@ -2035,11 +2192,11 @@
       "method": "POST",
       "path": "/admin/purchase/orders/:id/close",
       "scope": "platform-only: global resource or explicit target campus",
-      "controller": "src/admin/admin.controller.ts:882",
+      "controller": "src/admin/admin.controller.ts:886",
       "service": [
         {
           "name": "closePurchaseOrder",
-          "source": "src/admin/admin.service.ts:2647"
+          "source": "src/admin/admin.service.ts:2651"
         }
       ],
       "directHttpTestCalls": [],
@@ -2058,11 +2215,11 @@
       "method": "POST",
       "path": "/admin/purchase/orders/:id/receive",
       "scope": "platform-only: global resource or explicit target campus",
-      "controller": "src/admin/admin.controller.ts:872",
+      "controller": "src/admin/admin.controller.ts:876",
       "service": [
         {
           "name": "receivePurchaseOrder",
-          "source": "src/admin/admin.service.ts:2517"
+          "source": "src/admin/admin.service.ts:2521"
         }
       ],
       "directHttpTestCalls": [],
@@ -2093,11 +2250,11 @@
       "method": "POST",
       "path": "/admin/purchase/orders/:id/reopen",
       "scope": "platform-only: global resource or explicit target campus",
-      "controller": "src/admin/admin.controller.ts:892",
+      "controller": "src/admin/admin.controller.ts:896",
       "service": [
         {
           "name": "reopenPurchaseOrder",
-          "source": "src/admin/admin.service.ts:2676"
+          "source": "src/admin/admin.service.ts:2680"
         }
       ],
       "directHttpTestCalls": [],
@@ -2112,7 +2269,7 @@
       "method": "GET",
       "path": "/admin/rbac/accounts/:id/preview",
       "scope": "platform-only: global resource or explicit target campus",
-      "controller": "src/admin/admin.controller.ts:1868",
+      "controller": "src/admin/admin.controller.ts:1953",
       "service": [],
       "directHttpTestCalls": [],
       "domainServiceTestCalls": []
@@ -2121,7 +2278,7 @@
       "method": "GET",
       "path": "/admin/rbac/audit",
       "scope": "platform-only: global resource or explicit target campus",
-      "controller": "src/admin/admin.controller.ts:1855",
+      "controller": "src/admin/admin.controller.ts:1940",
       "service": [],
       "directHttpTestCalls": [],
       "domainServiceTestCalls": []
@@ -2130,7 +2287,7 @@
       "method": "GET",
       "path": "/admin/rbac/catalog",
       "scope": "super-only: global permission configuration/account administration",
-      "controller": "src/admin/admin.controller.ts:1753",
+      "controller": "src/admin/admin.controller.ts:1838",
       "service": [],
       "directHttpTestCalls": [],
       "domainServiceTestCalls": []
@@ -2139,11 +2296,11 @@
       "method": "GET",
       "path": "/admin/rbac/me",
       "scope": "self: current account effective permissions; no other account data",
-      "controller": "src/admin/admin.controller.ts:1729",
+      "controller": "src/admin/admin.controller.ts:1814",
       "service": [
         {
           "name": "findAccount",
-          "source": "src/admin/admin.service.ts:5276"
+          "source": "src/admin/admin.service.ts:5291"
         }
       ],
       "directHttpTestCalls": [
@@ -2158,7 +2315,7 @@
       "method": "GET",
       "path": "/admin/rbac/menus",
       "scope": "super-only: global permission configuration/account administration",
-      "controller": "src/admin/admin.controller.ts:1761",
+      "controller": "src/admin/admin.controller.ts:1846",
       "service": [],
       "directHttpTestCalls": [
         {
@@ -2180,7 +2337,7 @@
       "method": "POST",
       "path": "/admin/rbac/menus",
       "scope": "super-only: global permission configuration/account administration",
-      "controller": "src/admin/admin.controller.ts:1770",
+      "controller": "src/admin/admin.controller.ts:1855",
       "service": [],
       "directHttpTestCalls": [
         {
@@ -2202,7 +2359,7 @@
       "method": "DELETE",
       "path": "/admin/rbac/menus/:id",
       "scope": "super-only: global permission configuration/account administration",
-      "controller": "src/admin/admin.controller.ts:1798",
+      "controller": "src/admin/admin.controller.ts:1883",
       "service": [],
       "directHttpTestCalls": [
         {
@@ -2220,7 +2377,7 @@
       "method": "PATCH",
       "path": "/admin/rbac/menus/:id",
       "scope": "super-only: global permission configuration/account administration",
-      "controller": "src/admin/admin.controller.ts:1782",
+      "controller": "src/admin/admin.controller.ts:1867",
       "service": [],
       "directHttpTestCalls": [
         {
@@ -2250,7 +2407,7 @@
       "method": "GET",
       "path": "/admin/rbac/permissions",
       "scope": "super-only: global permission configuration/account administration",
-      "controller": "src/admin/admin.controller.ts:1756",
+      "controller": "src/admin/admin.controller.ts:1841",
       "service": [],
       "directHttpTestCalls": [
         {
@@ -2264,14 +2421,18 @@
       "method": "GET",
       "path": "/admin/rbac/permmenu",
       "scope": "self: current account effective permissions; no other account data",
-      "controller": "src/admin/admin.controller.ts:1742",
+      "controller": "src/admin/admin.controller.ts:1827",
       "service": [
         {
           "name": "findAccount",
-          "source": "src/admin/admin.service.ts:5276"
+          "source": "src/admin/admin.service.ts:5291"
         }
       ],
       "directHttpTestCalls": [
+        {
+          "source": "src/admin/rbac-scope.integration.spec.ts:81",
+          "test": "serializes operation-scoped platform grants as an array for browser sessions"
+        },
         {
           "source": "src/admin/rbac.integration.spec.ts:233",
           "test": "白名单：账号可读取自己的权限，完整菜单目录仅超管可读"
@@ -2291,7 +2452,7 @@
       "method": "GET",
       "path": "/admin/rbac/roles",
       "scope": "super-only: global permission configuration/account administration",
-      "controller": "src/admin/admin.controller.ts:1808",
+      "controller": "src/admin/admin.controller.ts:1893",
       "service": [],
       "directHttpTestCalls": [
         {
@@ -2317,7 +2478,7 @@
       "method": "POST",
       "path": "/admin/rbac/roles",
       "scope": "super-only: global permission configuration/account administration",
-      "controller": "src/admin/admin.controller.ts:1825",
+      "controller": "src/admin/admin.controller.ts:1910",
       "service": [],
       "directHttpTestCalls": [
         {
@@ -2335,7 +2496,7 @@
       "method": "DELETE",
       "path": "/admin/rbac/roles/:id",
       "scope": "super-only: global permission configuration/account administration",
-      "controller": "src/admin/admin.controller.ts:1849",
+      "controller": "src/admin/admin.controller.ts:1934",
       "service": [],
       "directHttpTestCalls": [
         {
@@ -2349,7 +2510,7 @@
       "method": "PATCH",
       "path": "/admin/rbac/roles/:id",
       "scope": "super-only: global permission configuration/account administration",
-      "controller": "src/admin/admin.controller.ts:1839",
+      "controller": "src/admin/admin.controller.ts:1924",
       "service": [],
       "directHttpTestCalls": [],
       "domainServiceTestCalls": []
@@ -2358,11 +2519,11 @@
       "method": "GET",
       "path": "/admin/recruit-applications",
       "scope": "campusScope: current campus; matching platform grant permits aggregate or validated campus query",
-      "controller": "src/admin/admin.controller.ts:1875",
+      "controller": "src/admin/admin.controller.ts:1960",
       "service": [
         {
           "name": "recruitApplications",
-          "source": "src/admin/admin.service.ts:5735"
+          "source": "src/admin/admin.service.ts:5750"
         }
       ],
       "directHttpTestCalls": [
@@ -2381,16 +2542,16 @@
       "method": "PATCH",
       "path": "/admin/recruit-applications/:id",
       "scope": "campusScope: current campus; matching platform grant permits aggregate or validated campus query",
-      "controller": "src/admin/admin.controller.ts:1914",
+      "controller": "src/admin/admin.controller.ts:1999",
       "service": [
         {
           "name": "updateRecruitApplication",
-          "source": "src/admin/admin.service.ts:5819"
+          "source": "src/admin/admin.service.ts:5834"
         }
       ],
       "directHttpTestCalls": [
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:260",
+          "source": "src/admin/rbac-scope.integration.spec.ts:301",
           "test": "sensitive recruitment/user reads and finance writes reject real B records"
         },
         {
@@ -2408,11 +2569,11 @@
       "method": "POST",
       "path": "/admin/recruit-applications/:id/approve",
       "scope": "campusScope: current campus; matching platform grant permits aggregate or validated campus query",
-      "controller": "src/admin/admin.controller.ts:2017",
+      "controller": "src/admin/admin.controller.ts:2102",
       "service": [
         {
           "name": "recruitApprove",
-          "source": "src/admin/admin.service.ts:5931"
+          "source": "src/admin/admin.service.ts:5946"
         }
       ],
       "directHttpTestCalls": [
@@ -2427,16 +2588,16 @@
       "method": "GET",
       "path": "/admin/recruit-applications/:id/idcard",
       "scope": "campusScope: current campus; matching platform grant permits aggregate or validated campus query",
-      "controller": "src/admin/admin.controller.ts:1969",
+      "controller": "src/admin/admin.controller.ts:2054",
       "service": [
         {
           "name": "recruitIdcard",
-          "source": "src/admin/admin.service.ts:5789"
+          "source": "src/admin/admin.service.ts:5804"
         }
       ],
       "directHttpTestCalls": [
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:259",
+          "source": "src/admin/rbac-scope.integration.spec.ts:300",
           "test": "sensitive recruitment/user reads and finance writes reject real B records"
         },
         {
@@ -2458,16 +2619,16 @@
       "method": "POST",
       "path": "/admin/recruit-applications/:id/idcard",
       "scope": "campusScope: current campus; matching platform grant permits aggregate or validated campus query",
-      "controller": "src/admin/admin.controller.ts:1943",
+      "controller": "src/admin/admin.controller.ts:2028",
       "service": [
         {
           "name": "updateRecruitApplication",
-          "source": "src/admin/admin.service.ts:5819"
+          "source": "src/admin/admin.service.ts:5834"
         }
       ],
       "directHttpTestCalls": [
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:261",
+          "source": "src/admin/rbac-scope.integration.spec.ts:302",
           "test": "sensitive recruitment/user reads and finance writes reject real B records"
         },
         {
@@ -2485,11 +2646,11 @@
       "method": "POST",
       "path": "/admin/recruit-applications/:id/reject",
       "scope": "campusScope: current campus; matching platform grant permits aggregate or validated campus query",
-      "controller": "src/admin/admin.controller.ts:2000",
+      "controller": "src/admin/admin.controller.ts:2085",
       "service": [
         {
           "name": "recruitReject",
-          "source": "src/admin/admin.service.ts:5887"
+          "source": "src/admin/admin.service.ts:5902"
         }
       ],
       "directHttpTestCalls": [
@@ -2504,20 +2665,20 @@
       "method": "POST",
       "path": "/admin/recruit-applications/:id/transition",
       "scope": "campusScope: current campus; matching platform grant permits aggregate or validated campus query",
-      "controller": "src/admin/admin.controller.ts:1988",
+      "controller": "src/admin/admin.controller.ts:2073",
       "service": [
         {
           "name": "recruitTransition",
-          "source": "src/admin/admin.service.ts:5857"
+          "source": "src/admin/admin.service.ts:5872"
         }
       ],
       "directHttpTestCalls": [
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:178",
+          "source": "src/admin/rbac-scope.integration.spec.ts:184",
           "test": "counts, audit, creation and recruitment transitions preserve campus scope"
         },
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:179",
+          "source": "src/admin/rbac-scope.integration.spec.ts:185",
           "test": "counts, audit, creation and recruitment transitions preserve campus scope"
         }
       ],
@@ -2527,16 +2688,16 @@
       "method": "GET",
       "path": "/admin/recruit-applications/status-counts",
       "scope": "campusScope: current campus; matching platform grant permits aggregate or validated campus query",
-      "controller": "src/admin/admin.controller.ts:1902",
+      "controller": "src/admin/admin.controller.ts:1987",
       "service": [
         {
           "name": "recruitStatusCounts",
-          "source": "src/admin/admin.service.ts:5809"
+          "source": "src/admin/admin.service.ts:5824"
         }
       ],
       "directHttpTestCalls": [
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:176",
+          "source": "src/admin/rbac-scope.integration.spec.ts:182",
           "test": "counts, audit, creation and recruitment transitions preserve campus scope"
         }
       ],
@@ -2546,11 +2707,11 @@
       "method": "GET",
       "path": "/admin/reports/campus-daily",
       "scope": "campusScope: current campus; matching platform grant permits aggregate or validated campus query",
-      "controller": "src/admin/admin.controller.ts:805",
+      "controller": "src/admin/admin.controller.ts:809",
       "service": [
         {
           "name": "campusDailyReport",
-          "source": "src/admin/admin.service.ts:3030"
+          "source": "src/admin/admin.service.ts:3034"
         }
       ],
       "directHttpTestCalls": [],
@@ -2585,16 +2746,16 @@
       "method": "GET",
       "path": "/admin/reports/hq-daily",
       "scope": "platform-only: global resource or explicit target campus",
-      "controller": "src/admin/admin.controller.ts:783",
+      "controller": "src/admin/admin.controller.ts:787",
       "service": [
         {
           "name": "hqDailyReport",
-          "source": "src/admin/admin.service.ts:2940"
+          "source": "src/admin/admin.service.ts:2944"
         }
       ],
       "directHttpTestCalls": [
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:393",
+          "source": "src/admin/rbac-scope.integration.spec.ts:434",
           "test": "new campus stays outside explicit A/B grants; an explicit platform grant includes it without reassigning"
         }
       ],
@@ -2613,11 +2774,11 @@
       "method": "GET",
       "path": "/admin/restock/batches",
       "scope": "shared batch metadata; embedded orders/counts current campus unless matching platform grant",
-      "controller": "src/admin/admin.controller.ts:632",
+      "controller": "src/admin/admin.controller.ts:636",
       "service": [
         {
           "name": "restockBatches",
-          "source": "src/admin/admin.service.ts:1709"
+          "source": "src/admin/admin.service.ts:1713"
         }
       ],
       "directHttpTestCalls": [],
@@ -2627,11 +2788,11 @@
       "method": "POST",
       "path": "/admin/restock/batches",
       "scope": "platform-only: global resource or explicit target campus",
-      "controller": "src/admin/admin.controller.ts:637",
+      "controller": "src/admin/admin.controller.ts:641",
       "service": [
         {
           "name": "createRestockBatch",
-          "source": "src/admin/admin.service.ts:1741"
+          "source": "src/admin/admin.service.ts:1745"
         }
       ],
       "directHttpTestCalls": [],
@@ -2641,16 +2802,16 @@
       "method": "PUT",
       "path": "/admin/restock/batches/:batchId/order",
       "scope": "current campus order/receipt; batch shared; nested product/receipt validation in service",
-      "controller": "src/admin/admin.controller.ts:671",
+      "controller": "src/admin/admin.controller.ts:675",
       "service": [
         {
           "name": "saveRestockOrder",
-          "source": "src/admin/admin.service.ts:1990"
+          "source": "src/admin/admin.service.ts:1994"
         }
       ],
       "directHttpTestCalls": [
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:325",
+          "source": "src/admin/rbac-scope.integration.spec.ts:366",
           "test": "restock details/receipt reject foreign records and batch aggregates do not leak global purchasing"
         }
       ],
@@ -2673,11 +2834,11 @@
       "method": "POST",
       "path": "/admin/restock/batches/:batchId/order/submit",
       "scope": "current campus order/receipt; batch shared; nested product/receipt validation in service",
-      "controller": "src/admin/admin.controller.ts:684",
+      "controller": "src/admin/admin.controller.ts:688",
       "service": [
         {
           "name": "submitRestockOrder",
-          "source": "src/admin/admin.service.ts:2095"
+          "source": "src/admin/admin.service.ts:2099"
         }
       ],
       "directHttpTestCalls": [],
@@ -2700,11 +2861,11 @@
       "method": "POST",
       "path": "/admin/restock/batches/:batchId/order/withdraw",
       "scope": "current campus order/receipt; batch shared; nested product/receipt validation in service",
-      "controller": "src/admin/admin.controller.ts:696",
+      "controller": "src/admin/admin.controller.ts:700",
       "service": [
         {
           "name": "withdrawRestockOrder",
-          "source": "src/admin/admin.service.ts:2131"
+          "source": "src/admin/admin.service.ts:2135"
         }
       ],
       "directHttpTestCalls": [],
@@ -2719,11 +2880,11 @@
       "method": "POST",
       "path": "/admin/restock/batches/:batchId/purchase-order",
       "scope": "platform-only: global resource or explicit target campus",
-      "controller": "src/admin/admin.controller.ts:861",
+      "controller": "src/admin/admin.controller.ts:865",
       "service": [
         {
           "name": "createPurchaseOrder",
-          "source": "src/admin/admin.service.ts:2434"
+          "source": "src/admin/admin.service.ts:2438"
         }
       ],
       "directHttpTestCalls": [],
@@ -2746,16 +2907,16 @@
       "method": "GET",
       "path": "/admin/restock/batches/:id",
       "scope": "shared batch metadata; embedded orders/counts current campus unless matching platform grant",
-      "controller": "src/admin/admin.controller.ts:658",
+      "controller": "src/admin/admin.controller.ts:662",
       "service": [
         {
           "name": "restockBatchDetail",
-          "source": "src/admin/admin.service.ts:1823"
+          "source": "src/admin/admin.service.ts:1827"
         }
       ],
       "directHttpTestCalls": [
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:309",
+          "source": "src/admin/rbac-scope.integration.spec.ts:350",
           "test": "restock details/receipt reject foreign records and batch aggregates do not leak global purchasing"
         }
       ],
@@ -2774,11 +2935,11 @@
       "method": "PATCH",
       "path": "/admin/restock/batches/:id",
       "scope": "platform-only: global resource or explicit target campus",
-      "controller": "src/admin/admin.controller.ts:644",
+      "controller": "src/admin/admin.controller.ts:648",
       "service": [
         {
           "name": "updateRestockBatch",
-          "source": "src/admin/admin.service.ts:1773"
+          "source": "src/admin/admin.service.ts:1777"
         }
       ],
       "directHttpTestCalls": [],
@@ -2788,11 +2949,11 @@
       "method": "POST",
       "path": "/admin/restock/batches/:id/close",
       "scope": "platform-only: global resource or explicit target campus",
-      "controller": "src/admin/admin.controller.ts:651",
+      "controller": "src/admin/admin.controller.ts:655",
       "service": [
         {
           "name": "closeRestockBatch",
-          "source": "src/admin/admin.service.ts:1802"
+          "source": "src/admin/admin.service.ts:1806"
         }
       ],
       "directHttpTestCalls": [],
@@ -2811,16 +2972,16 @@
       "method": "GET",
       "path": "/admin/restock/orders",
       "scope": "orders/shipment: current campus unless matching platform grant",
-      "controller": "src/admin/admin.controller.ts:708",
+      "controller": "src/admin/admin.controller.ts:712",
       "service": [
         {
           "name": "restockOrders",
-          "source": "src/admin/admin.service.ts:1894"
+          "source": "src/admin/admin.service.ts:1898"
         }
       ],
       "directHttpTestCalls": [
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:313",
+          "source": "src/admin/rbac-scope.integration.spec.ts:354",
           "test": "restock details/receipt reject foreign records and batch aggregates do not leak global purchasing"
         }
       ],
@@ -2847,20 +3008,20 @@
       "method": "GET",
       "path": "/admin/restock/orders/:id",
       "scope": "orders/shipment: current campus unless matching platform grant",
-      "controller": "src/admin/admin.controller.ts:720",
+      "controller": "src/admin/admin.controller.ts:724",
       "service": [
         {
           "name": "restockOrderDetail",
-          "source": "src/admin/admin.service.ts:1939"
+          "source": "src/admin/admin.service.ts:1943"
         }
       ],
       "directHttpTestCalls": [
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:315",
+          "source": "src/admin/rbac-scope.integration.spec.ts:356",
           "test": "restock details/receipt reject foreign records and batch aggregates do not leak global purchasing"
         },
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:317",
+          "source": "src/admin/rbac-scope.integration.spec.ts:358",
           "test": "restock details/receipt reject foreign records and batch aggregates do not leak global purchasing"
         }
       ],
@@ -2870,16 +3031,16 @@
       "method": "POST",
       "path": "/admin/restock/orders/:id/audit",
       "scope": "platform-only: global resource or explicit target campus",
-      "controller": "src/admin/admin.controller.ts:733",
+      "controller": "src/admin/admin.controller.ts:737",
       "service": [
         {
           "name": "auditRestockOrder",
-          "source": "src/admin/admin.service.ts:2156"
+          "source": "src/admin/admin.service.ts:2160"
         }
       ],
       "directHttpTestCalls": [
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:320",
+          "source": "src/admin/rbac-scope.integration.spec.ts:361",
           "test": "restock details/receipt reject foreign records and batch aggregates do not leak global purchasing"
         }
       ],
@@ -2926,20 +3087,20 @@
       "method": "POST",
       "path": "/admin/restock/orders/:id/receipt",
       "scope": "current campus order/receipt; batch shared; nested product/receipt validation in service",
-      "controller": "src/admin/admin.controller.ts:760",
+      "controller": "src/admin/admin.controller.ts:764",
       "service": [
         {
           "name": "confirmRestockReceipt",
-          "source": "src/admin/admin.service.ts:2821"
+          "source": "src/admin/admin.service.ts:2825"
         }
       ],
       "directHttpTestCalls": [
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:319",
+          "source": "src/admin/rbac-scope.integration.spec.ts:360",
           "test": "restock details/receipt reject foreign records and batch aggregates do not leak global purchasing"
         },
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:330",
+          "source": "src/admin/rbac-scope.integration.spec.ts:371",
           "test": "restock details/receipt reject foreign records and batch aggregates do not leak global purchasing"
         }
       ],
@@ -2966,16 +3127,16 @@
       "method": "POST",
       "path": "/admin/restock/orders/:id/ship",
       "scope": "platform-only: global resource or explicit target campus",
-      "controller": "src/admin/admin.controller.ts:751",
+      "controller": "src/admin/admin.controller.ts:755",
       "service": [
         {
           "name": "shipRestockOrder",
-          "source": "src/admin/admin.service.ts:2701"
+          "source": "src/admin/admin.service.ts:2705"
         }
       ],
       "directHttpTestCalls": [
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:321",
+          "source": "src/admin/rbac-scope.integration.spec.ts:362",
           "test": "restock details/receipt reject foreign records and batch aggregates do not leak global purchasing"
         }
       ],
@@ -3006,20 +3167,20 @@
       "method": "GET",
       "path": "/admin/restock/orders/:id/shipment",
       "scope": "orders/shipment: current campus unless matching platform grant",
-      "controller": "src/admin/admin.controller.ts:769",
+      "controller": "src/admin/admin.controller.ts:773",
       "service": [
         {
           "name": "restockShipmentDetail",
-          "source": "src/admin/admin.service.ts:3307"
+          "source": "src/admin/admin.service.ts:3311"
         }
       ],
       "directHttpTestCalls": [
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:316",
+          "source": "src/admin/rbac-scope.integration.spec.ts:357",
           "test": "restock details/receipt reject foreign records and batch aggregates do not leak global purchasing"
         },
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:318",
+          "source": "src/admin/rbac-scope.integration.spec.ts:359",
           "test": "restock details/receipt reject foreign records and batch aggregates do not leak global purchasing"
         }
       ],
@@ -3038,11 +3199,11 @@
       "method": "GET",
       "path": "/admin/settlements",
       "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
-      "controller": "src/admin/admin.controller.ts:1534",
+      "controller": "src/admin/admin.controller.ts:1539",
       "service": [
         {
           "name": "settlements",
-          "source": "src/admin/admin.service.ts:4526"
+          "source": "src/admin/admin.service.ts:4535"
         }
       ],
       "directHttpTestCalls": [
@@ -3077,16 +3238,16 @@
       "method": "POST",
       "path": "/admin/settlements/:id/confirm",
       "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
-      "controller": "src/admin/admin.controller.ts:1554",
+      "controller": "src/admin/admin.controller.ts:1559",
       "service": [
         {
           "name": "confirmSettlement",
-          "source": "src/admin/admin.service.ts:4604"
+          "source": "src/admin/admin.service.ts:4613"
         }
       ],
       "directHttpTestCalls": [
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:262",
+          "source": "src/admin/rbac-scope.integration.spec.ts:303",
           "test": "sensitive recruitment/user reads and finance writes reject real B records"
         },
         {
@@ -3100,16 +3261,16 @@
       "method": "POST",
       "path": "/admin/settlements/:id/pay",
       "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
-      "controller": "src/admin/admin.controller.ts:1563",
+      "controller": "src/admin/admin.controller.ts:1568",
       "service": [
         {
           "name": "paySettlement",
-          "source": "src/admin/admin.service.ts:4625"
+          "source": "src/admin/admin.service.ts:4634"
         }
       ],
       "directHttpTestCalls": [
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:263",
+          "source": "src/admin/rbac-scope.integration.spec.ts:304",
           "test": "sensitive recruitment/user reads and finance writes reject real B records"
         }
       ],
@@ -3119,11 +3280,11 @@
       "method": "GET",
       "path": "/admin/staff",
       "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
-      "controller": "src/admin/admin.controller.ts:1202",
+      "controller": "src/admin/admin.controller.ts:1207",
       "service": [
         {
           "name": "staff",
-          "source": "src/admin/admin.service.ts:3867"
+          "source": "src/admin/admin.service.ts:3871"
         }
       ],
       "directHttpTestCalls": [],
@@ -3138,11 +3299,11 @@
       "method": "POST",
       "path": "/admin/staff",
       "scope": "staff: source current campus plus destination check; matching platform grant permits cross-campus",
-      "controller": "src/admin/admin.controller.ts:1286",
+      "controller": "src/admin/admin.controller.ts:1291",
       "service": [
         {
           "name": "createStaff",
-          "source": "src/admin/admin.service.ts:3899"
+          "source": "src/admin/admin.service.ts:3903"
         }
       ],
       "directHttpTestCalls": [
@@ -3157,11 +3318,11 @@
       "method": "DELETE",
       "path": "/admin/staff/:id",
       "scope": "staff: source current campus plus destination check; matching platform grant permits cross-campus",
-      "controller": "src/admin/admin.controller.ts:1308",
+      "controller": "src/admin/admin.controller.ts:1313",
       "service": [
         {
           "name": "deleteStaff",
-          "source": "src/admin/admin.service.ts:4074"
+          "source": "src/admin/admin.service.ts:4078"
         }
       ],
       "directHttpTestCalls": [
@@ -3176,11 +3337,11 @@
       "method": "PATCH",
       "path": "/admin/staff/:id",
       "scope": "staff: source current campus plus destination check; matching platform grant permits cross-campus",
-      "controller": "src/admin/admin.controller.ts:1297",
+      "controller": "src/admin/admin.controller.ts:1302",
       "service": [
         {
           "name": "updateStaff",
-          "source": "src/admin/admin.service.ts:3973"
+          "source": "src/admin/admin.service.ts:3977"
         }
       ],
       "directHttpTestCalls": [
@@ -3203,16 +3364,16 @@
       "method": "GET",
       "path": "/admin/users",
       "scope": "campusScope: current campus; matching platform grant permits aggregate or validated campus query",
-      "controller": "src/admin/admin.controller.ts:1092",
+      "controller": "src/admin/admin.controller.ts:1097",
       "service": [
         {
           "name": "users",
-          "source": "src/admin/admin.service.ts:5533"
+          "source": "src/admin/admin.service.ts:5548"
         }
       ],
       "directHttpTestCalls": [
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:392",
+          "source": "src/admin/rbac-scope.integration.spec.ts:433",
           "test": "new campus stays outside explicit A/B grants; an explicit platform grant includes it without reassigning"
         }
       ],
@@ -3239,11 +3400,11 @@
       "method": "GET",
       "path": "/admin/users/:id/orders",
       "scope": "campusScope: current campus; matching platform grant permits aggregate or validated campus query",
-      "controller": "src/admin/admin.controller.ts:1070",
+      "controller": "src/admin/admin.controller.ts:1075",
       "service": [
         {
           "name": "userOrders",
-          "source": "src/admin/admin.service.ts:5679"
+          "source": "src/admin/admin.service.ts:5694"
         }
       ],
       "directHttpTestCalls": [],
@@ -3258,20 +3419,20 @@
       "method": "GET",
       "path": "/admin/users/:id/phone",
       "scope": "campusScope: current campus; matching platform grant permits aggregate or validated campus query",
-      "controller": "src/admin/admin.controller.ts:1078",
+      "controller": "src/admin/admin.controller.ts:1083",
       "service": [
         {
           "name": "revealUserPhone",
-          "source": "src/admin/admin.service.ts:5697"
+          "source": "src/admin/admin.service.ts:5712"
         }
       ],
       "directHttpTestCalls": [
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:257",
+          "source": "src/admin/rbac-scope.integration.spec.ts:298",
           "test": "sensitive recruitment/user reads and finance writes reject real B records"
         },
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:258",
+          "source": "src/admin/rbac-scope.integration.spec.ts:299",
           "test": "sensitive recruitment/user reads and finance writes reject real B records"
         },
         {
@@ -3293,11 +3454,11 @@
       "method": "GET",
       "path": "/admin/users/stats",
       "scope": "campusScope: current campus; matching platform grant permits aggregate or validated campus query",
-      "controller": "src/admin/admin.controller.ts:1062",
+      "controller": "src/admin/admin.controller.ts:1067",
       "service": [
         {
           "name": "userStats",
-          "source": "src/admin/admin.service.ts:5640"
+          "source": "src/admin/admin.service.ts:5655"
         }
       ],
       "directHttpTestCalls": [],
@@ -3312,11 +3473,11 @@
       "method": "GET",
       "path": "/admin/wechat-groups",
       "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
-      "controller": "src/admin/admin.controller.ts:1118",
+      "controller": "src/admin/admin.controller.ts:1123",
       "service": [
         {
           "name": "wechatGroups",
-          "source": "src/admin/admin.service.ts:5346"
+          "source": "src/admin/admin.service.ts:5361"
         }
       ],
       "directHttpTestCalls": [],
@@ -3335,16 +3496,16 @@
       "method": "POST",
       "path": "/admin/wechat-groups",
       "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
-      "controller": "src/admin/admin.controller.ts:1123",
+      "controller": "src/admin/admin.controller.ts:1128",
       "service": [
         {
           "name": "upsertWechatGroup",
-          "source": "src/admin/admin.service.ts:5367"
+          "source": "src/admin/admin.service.ts:5382"
         }
       ],
       "directHttpTestCalls": [
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:227",
+          "source": "src/admin/rbac-scope.integration.spec.ts:268",
           "test": "nested rooms and building targets cannot cross campus or mismatch their parent"
         }
       ],
@@ -3379,11 +3540,11 @@
       "method": "DELETE",
       "path": "/admin/wechat-groups/:id",
       "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
-      "controller": "src/admin/admin.controller.ts:1156",
+      "controller": "src/admin/admin.controller.ts:1161",
       "service": [
         {
           "name": "deleteWechatGroup",
-          "source": "src/admin/admin.service.ts:5396"
+          "source": "src/admin/admin.service.ts:5411"
         }
       ],
       "directHttpTestCalls": [],
@@ -3402,16 +3563,16 @@
       "method": "GET",
       "path": "/admin/wheel",
       "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
-      "controller": "src/admin/admin.controller.ts:1140",
+      "controller": "src/admin/admin.controller.ts:1145",
       "service": [
         {
           "name": "wheel",
-          "source": "src/admin/admin.service.ts:5417"
+          "source": "src/admin/admin.service.ts:5432"
         }
       ],
       "directHttpTestCalls": [
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:161",
+          "source": "src/admin/rbac-scope.integration.spec.ts:167",
           "test": "wheel rejects a foreign coupon before saving and own config cannot overwrite B"
         }
       ],
@@ -3421,20 +3582,20 @@
       "method": "PUT",
       "path": "/admin/wheel",
       "scope": "account campus context: body/query cannot override scope; service must validate target and nested IDs",
-      "controller": "src/admin/admin.controller.ts:1145",
+      "controller": "src/admin/admin.controller.ts:1150",
       "service": [
         {
           "name": "upsertWheel",
-          "source": "src/admin/admin.service.ts:5453"
+          "source": "src/admin/admin.service.ts:5468"
         }
       ],
       "directHttpTestCalls": [
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:156",
+          "source": "src/admin/rbac-scope.integration.spec.ts:162",
           "test": "wheel rejects a foreign coupon before saving and own config cannot overwrite B"
         },
         {
-          "source": "src/admin/rbac-scope.integration.spec.ts:160",
+          "source": "src/admin/rbac-scope.integration.spec.ts:166",
           "test": "wheel rejects a foreign coupon before saving and own config cannot overwrite B"
         }
       ],

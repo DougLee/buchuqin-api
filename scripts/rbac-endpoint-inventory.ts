@@ -26,6 +26,7 @@ function scope(method: string, path: string): string {
   if (isSuperOnlyOperation(method, path)) return 'super-only: global permission configuration/account administration';
   if (matchUrl(PLATFORM_PATTERNS, method, concreteRoute({method,path}).path)) return 'platform-only: global resource or explicit target campus';
   if (ADMIN_URL_WHITELIST.has(`${method} ${path}`)) return 'self: current account effective permissions; no other account data';
+  if (/^\/admin\/(campus-config|delivery-slots|notices)(\/|$)/.test(path)) return 'campusScope: current campus; matching operation platform grant permits selected campus or owned-record lookup';
   if (path.startsWith('/admin/categories')) return 'shared: global category dictionary; capability required for mutations';
   if (path === '/admin/products/official-library') return 'shared: official catalog; excludes private campus product rows';
   if (path.startsWith('/admin/products')) return 'productCampus: current campus; operation platform grant permits official view; field capabilities independently checked';

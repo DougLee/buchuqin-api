@@ -1,0 +1,117 @@
+[
+  {
+    "file": "rbac-campus-embedded.png",
+    "bytes": 122356,
+    "sha256": "e1a9b01052af98300dd29ed3bc5a2437dd056ccb43ecb0f66504b0a87404187d"
+  },
+  {
+    "file": "rbac-campus-mixed-a.png",
+    "bytes": 84461,
+    "sha256": "30929e31c3fa2c8b1e96e1814aa16886a9de1c3b4a475be08aab5f42559a3954"
+  },
+  {
+    "file": "rbac-campus-mixed-b.png",
+    "bytes": 64086,
+    "sha256": "d5a578999b81fea5b1de832c3d91b221b424179ff340c1937dbddf7c15e8a7b8"
+  },
+  {
+    "file": "rbac-campus-readonly.png",
+    "bytes": 72777,
+    "sha256": "0d9823926798c6a1de91373c86ebb8edc469eaaf22bcf30a5d2e63061f61c5e3"
+  },
+  {
+    "file": "rbac-campus-super.png",
+    "bytes": 108535,
+    "sha256": "130b491f4614815cc176377bb2c488412950509104f4d045982d4d2abb374343"
+  },
+  {
+    "file": "rbac-merge-admin-final.txt",
+    "bytes": 3427,
+    "sha256": "7749ae670eafa0f59c8be7d8dde51537a31b2250f3f8e0a699778b8f03f7f84f"
+  },
+  {
+    "file": "rbac-merge-api-build.txt",
+    "bytes": 13,
+    "sha256": "9aba080a04d36f3c5b3e64cf2e200d70a422c78297ff80bac5f5551def846538"
+  },
+  {
+    "file": "rbac-merge-api-final-tsc.txt",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "file": "rbac-merge-fresh-deploy.txt",
+    "bytes": 936,
+    "sha256": "02811d763c032d7709b18431aa7ea477080889826b562a8098b941ed971fafa3"
+  },
+  {
+    "file": "rbac-merge-fresh-diff.txt",
+    "bytes": 251,
+    "sha256": "d7c9882dbd1f2db597fa5f079208fe2bc1b9117ee2a4933970f9f481f4f818a1"
+  },
+  {
+    "file": "rbac-merge-full.txt",
+    "bytes": 980,
+    "sha256": "e46f7d78a4ee79cc5777be074fe69ac9e6ebd08be272c2719e02be8e1aaff9ae"
+  },
+  {
+    "file": "rbac-merge-migrate.txt",
+    "bytes": 934,
+    "sha256": "290137bb39d11a9818bfa1da4fc9c2f05fe545e9e46b5b49f07c1fc41133c057"
+  },
+  {
+    "file": "rbac-merge-schema-diff.txt",
+    "bytes": 251,
+    "sha256": "d7c9882dbd1f2db597fa5f079208fe2bc1b9117ee2a4933970f9f481f4f818a1"
+  },
+  {
+    "file": "rbac-merge-session-final.txt",
+    "bytes": 3299,
+    "sha256": "a76f39d333fbe6f8014673741f1b3f20d2eff1845ff7233c6fa173aef575919e"
+  },
+  {
+    "file": "rbac-ui-account-dialog.png",
+    "bytes": 164681,
+    "sha256": "7f5f5a32a2559e37e63425b6ff883ca7f1deb19df7cea3bcd9caf8a395c16519"
+  },
+  {
+    "file": "rbac-ui-accounts.png",
+    "bytes": 153274,
+    "sha256": "8165732294c28176f23e7d629cc760fa45e7cf79f3d963e1fdfa0313dbd37ecd"
+  },
+  {
+    "file": "rbac-ui-audit.png",
+    "bytes": 163193,
+    "sha256": "45e2e20cc64c974dd75836e10b0f536852838bb168b118a7dbdfba956f1dfd50"
+  },
+  {
+    "file": "rbac-ui-menu-dialog.png",
+    "bytes": 116061,
+    "sha256": "8ecb87318eb7cbe4833c79ca4fb9b23ecdfe34a5e90abc9db00333ee67df0a75"
+  },
+  {
+    "file": "rbac-ui-menus-fixed.png",
+    "bytes": 109832,
+    "sha256": "0f0dff1600ecce2c4279c4fd1690a05c1b68a850e422138f1a770559933ab250"
+  },
+  {
+    "file": "rbac-ui-mobile-final.png",
+    "bytes": 63316,
+    "sha256": "5182df3ff66254dee97096c3689497ec76cd9044307ef8e98b186408c3fe6410"
+  },
+  {
+    "file": "rbac-ui-permissions-final.png",
+    "bytes": 106653,
+    "sha256": "257f749667e0422b97f4b4a4ff0b94304132c5a111e92fd589752d54389e91ca"
+  },
+  {
+    "file": "rbac-ui-role-dialog.png",
+    "bytes": 159565,
+    "sha256": "3463483fce024e4803ee7161ca7c608916c84c62c34c5200c15308a81683dfbb"
+  },
+  {
+    "file": "rbac-ui-roles.png",
+    "bytes": 164136,
+    "sha256": "f13c414e1f297ece42c190d3081e4d4f581b480b7c6b26f92de173b4b5474097"
+  }
+]

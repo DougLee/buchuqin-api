@@ -77,6 +77,12 @@ describe('RBAC valid A/B target isolation (HTTP + PostgreSQL)', () => {
     auth = `Bearer ${app.get(JwtService).sign({ id: account.id, campusId: campusA, role: 'rbac', sv: current.sessionVersion })}`;
   });
 
+  it('serializes operation-scoped platform grants as an array for browser sessions', async () => {
+    const response = await call('get', 'rbac/permmenu').expect(200);
+    expect(response.body.data.platformPerms).toEqual([]);
+    expect(response.body.data.menus.length).toBeGreaterThan(0);
+  });
+
   afterAll(async () => {
     try {
       if (db) {
@@ -186,6 +192,41 @@ describe('RBAC valid A/B target isolation (HTTP + PostgreSQL)', () => {
     const bound = await call('post', `printers?campus=${campusB}`, { name: 'scope own', sn: prefix, campusId: campusB }).expect(201);
     expect(bound.body.data.campusId).toBe(campusA);
     expect((await db.printer.findUniqueOrThrow({ where: { id: b.device.id } })).sn).toBe(campusB);
+  });
+
+  it('merged campus config, notice and delivery-slot routes enforce A/B scope and preserve new fields', async () => {
+    const bSlot = await db.deliverySlot.create({ data: { campusId: campusB, label: 'B window', capacity: 10 } });
+    const bNotice = await db.notice.create({ data: { campusId: campusB, content: 'B private notice',
+      startsAt: new Date(), endsAt: new Date(Date.now() + 86400000) } });
+    try {
+      const read = await call('get', `campus-config?campus=${campusB}`).expect(200);
+      expect(read.body.data.campus.id).toBe(campusA);
+      expect(JSON.stringify(read.body.data)).not.toContain(bNotice.content);
+      const created = await call('post', 'delivery-slots', { campusId: campusB, label: 'A window', capacity: 12 }).expect(201);
+      expect(created.body.data.campusId).toBe(campusA);
+      await call('patch', `delivery-slots/${bSlot.id}`, { capacity: 99 }).expect(404);
+      await call('delete', `delivery-slots/${bSlot.id}`).expect(404);
+      await call('patch', `delivery-slots/${created.body.data.id}`, { available: false }).expect(200);
+      await call('delete', `delivery-slots/${created.body.data.id}`).expect(200);
+      const notice = await call('post', 'notices', { campusId: campusB, content: 'A notice',
+        startsAt: new Date().toISOString(), endsAt: new Date(Date.now() + 86400000).toISOString() }).expect(201);
+      expect(notice.body.data.campusId).toBe(campusA);
+      await call('patch', `notices/${bNotice.id}`, { content: 'foreign overwrite' }).expect(404);
+      await call('delete', `notices/${bNotice.id}`).expect(404);
+      await call('patch', `notices/${notice.body.data.id}`, { status: 'disabled' }).expect(200);
+      await call('delete', `notices/${notice.body.data.id}`).expect(200);
+      await call('patch', 'delivery-config', { deliveryFeeInstant: 321, deliveryFeeScheduled: 123,
+        deliveryThreshold: 999, noManagerTip: 'A building pickup' }).expect(200);
+      const config = await call('get', 'campus-config').expect(200);
+      expect(config.body.data.campus.noManagerTip).toBe('A building pickup');
+      expect(config.body.data.campus.servicePhone).toBe('4008002026');
+      expect((await db.campus.findUniqueOrThrow({ where: { id: campusB } })).noManagerTip).toBe('');
+      expect((await db.deliverySlot.findUniqueOrThrow({ where: { id: bSlot.id } })).capacity).toBe(10);
+      expect((await db.notice.findUniqueOrThrow({ where: { id: bNotice.id } })).content).toBe('B private notice');
+    } finally {
+      await db.notice.deleteMany({ where: { campusId: { in: campuses } } });
+      await db.deliverySlot.deleteMany({ where: { campusId: { in: campuses } } });
+    }
   });
 
   it('order IDs and printers: own detail succeeds, foreign detail/status/actions/print reject before external call', async () => {

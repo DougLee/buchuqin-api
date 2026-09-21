@@ -1,0 +1,11 @@
+[Nest] 25957  - 09/21/2026, 5:41:11 PM   DEBUG [PaymentsService] 回调验签头 serial=s 配置公钥ID=PUB_KEY_ID_01111659291720260819001921
+[Nest] 25957  - 09/21/2026, 5:41:11 PM   DEBUG [PaymentsService] 回调验签头 serial=PUB_KEY_ID_actual_from_wechat 配置公钥ID=PUB_KEY_ID_configured
+[Nest] 25957  - 09/21/2026, 5:41:11 PM   ERROR [PaymentsService] 回调验签失败 serial=PUB_KEY_ID_actual_from_wechat（配置公钥ID=PUB_KEY_ID_configured）
+[Nest] 25957  - 09/21/2026, 5:41:11 PM   ERROR [PaymentsService] 支付落账失败转异常单：order=cmub228e800xtzz11eu6jgq45 orderNo=BCQG117899836715512K9U wxTradeId=wx-tid-g1 reason=幽灵商品库存不足
+[Nest] 25957  - 09/21/2026, 5:41:11 PM   DEBUG [PrinterService] 芯烨云凭证未配置（XPYUN_USER/USERKEY/PRINTER_SN），跳过打印
+
+Test Suites: 40 passed, 40 total
+Tests:       285 passed, 285 total
+Snapshots:   0 total
+Time:        20.736 s, estimated 22 s
+Ran all test suites.

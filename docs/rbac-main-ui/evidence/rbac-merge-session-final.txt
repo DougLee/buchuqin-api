@@ -1,0 +1,107 @@
+TAP version 13
+# Subtest: session response ordering
+    # Subtest: JSON: old 401 cannot log out new account
+    ok 1 - JSON: old 401 cannot log out new account
+      ---
+      duration_ms: 12.774334
+      type: 'test'
+      ...
+    # Subtest: upload: old 401 cannot log out new account
+    ok 2 - upload: old 401 cannot log out new account
+      ---
+      duration_ms: 1.831083
+      type: 'test'
+      ...
+    # Subtest: import: old 401 cannot log out new account
+    ok 3 - import: old 401 cannot log out new account
+      ---
+      duration_ms: 1.516625
+      type: 'test'
+      ...
+    # Subtest: download: old 401 cannot log out new account
+    ok 4 - download: old 401 cannot log out new account
+      ---
+      duration_ms: 0.857291
+      type: 'test'
+      ...
+    # Subtest: old successful data cannot enter new campus even with identical token
+    ok 5 - old successful data cannot enter new campus even with identical token
+      ---
+      duration_ms: 0.730833
+      type: 'test'
+      ...
+    # Subtest: body decoding also checks session after await
+    ok 6 - body decoding also checks session after await
+      ---
+      duration_ms: 0.723792
+      type: 'test'
+      ...
+    # Subtest: current 401 clears the session
+    ok 7 - current 401 clears the session
+      ---
+      duration_ms: 0.52975
+      type: 'test'
+      ...
+    # Subtest: logout invalidates pending login
+    ok 8 - logout invalidates pending login
+      ---
+      duration_ms: 0.460333
+      type: 'test'
+      ...
+    # Subtest: latest login attempt wins even if earlier response arrives first
+    ok 9 - latest login attempt wins even if earlier response arrives first
+      ---
+      duration_ms: 0.516292
+      type: 'test'
+      ...
+    # Subtest: late campus switch cannot overwrite newly logged-in account
+    ok 10 - late campus switch cannot overwrite newly logged-in account
+      ---
+      duration_ms: 0.8655
+      type: 'test'
+      ...
+    # Subtest: older permission refresh cannot restore permissions after newer revoke
+    ok 11 - older permission refresh cannot restore permissions after newer revoke
+      ---
+      duration_ms: 0.807291
+      type: 'test'
+      ...
+    # Subtest: permission refresh cannot restore authorization after logout
+    ok 12 - permission refresh cannot restore authorization after logout
+      ---
+      duration_ms: 0.391834
+      type: 'test'
+      ...
+    # Subtest: internal links follow moved authorized menus and ignore display-only ancestors
+    ok 13 - internal links follow moved authorized menus and ignore display-only ancestors
+      ---
+      duration_ms: 0.229916
+      type: 'test'
+      ...
+    # Subtest: platform permission is operation-specific and scope-only changes clear cached pages
+    ok 14 - platform permission is operation-specific and scope-only changes clear cached pages
+      ---
+      duration_ms: 0.165625
+      type: 'test'
+      ...
+    # Subtest: permission method and segment matching stays narrow
+    ok 15 - permission method and segment matching stays narrow
+      ---
+      duration_ms: 0.128042
+      type: 'test'
+      ...
+    1..15
+ok 1 - session response ordering
+  ---
+  duration_ms: 24.501666
+  type: 'test'
+  ...
+1..1
+# tests 16
+# suites 0
+# pass 16
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 27.712041

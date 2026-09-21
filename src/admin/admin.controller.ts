@@ -71,6 +71,10 @@ import {
   RejectRecruitApplicationDto,
   UpdateBuildingDto,
   UpdateCampusDto,
+  CreateSlotDto,
+  UpdateSlotDto,
+  CreateNoticeDto,
+  UpdateNoticeDto,
   UpdatePromotionDto,
   UpdateCategoryDto,
   UpdateCommissionRuleDto,
@@ -975,6 +979,7 @@ export class AdminController {
   ) {
     return ok(await this.service.newOrderWatch(await this.campusScope(req, campus)));
   }
+
   @Get('orders/:id') async order(
     @Req() req: AuthRequest,
     @Param('id') id: string,
@@ -1594,6 +1599,86 @@ export class AdminController {
       '校区已更新',
     );
   }
+
+  /* ---------- IKHM1O/IKHM1P 校区配置聚合页：送达时段 + 公告 ---------- */
+
+  @Get('campus-config')
+  @ApiOperation({
+    summary: '校区配置聚合读（档案+配送营业+底薪+送达时段+公告，?campus= 选校区）',
+  })
+  async campusConfig(
+    @Req() req: AuthRequest,
+    @Query('campus') campus?: string,
+  ) {
+    const scope = await this.campusScope(req, campus);
+    if (!scope)
+      throw new BadRequestException('请先选定校区（?campus=）');
+    return ok(await this.service.campusConfig(scope));
+  }
+  @Post('delivery-slots')
+  @ApiOperation({ summary: '新建送达时段（IKHM1O 补后台管理入口）' })
+  async createSlot(
+    @Req() req: AuthRequest,
+    @Body() body: CreateSlotDto,
+  ) {
+    return ok(
+      await this.service.createSlot(body, req.user.id, await this.campusScope(req)),
+      '时段已创建',
+    );
+  }
+  @Patch('delivery-slots/:id')
+  async updateSlot(
+    @Req() req: AuthRequest,
+    @Param('id') id: string,
+    @Body() body: UpdateSlotDto,
+  ) {
+    return ok(
+      await this.service.updateSlot(id, body, req.user.id, await this.campusScope(req)),
+      '时段已更新',
+    );
+  }
+  @Delete('delivery-slots/:id')
+  async deleteSlot(@Req() req: AuthRequest, @Param('id') id: string) {
+    return ok(
+      await this.service.deleteSlot(id, req.user.id, await this.campusScope(req)),
+      '时段已删除',
+    );
+  }
+  @Post('notices')
+  @ApiOperation({ summary: '新建公告（IKHM1P：校区多条+生效窗）' })
+  async createNotice(
+    @Req() req: AuthRequest,
+    @Body() body: CreateNoticeDto,
+  ) {
+    return ok(
+      await this.service.createNotice(body, req.user.id, await this.campusScope(req)),
+      '公告已发布',
+    );
+  }
+  @Patch('notices/:id')
+  async updateNotice(
+    @Req() req: AuthRequest,
+    @Param('id') id: string,
+    @Body() body: UpdateNoticeDto,
+  ) {
+    return ok(
+      await this.service.updateNotice(
+        id,
+        body,
+        req.user.id,
+        await this.campusScope(req),
+      ),
+      '公告已更新',
+    );
+  }
+  @Delete('notices/:id')
+  async deleteNotice(@Req() req: AuthRequest, @Param('id') id: string) {
+    return ok(
+      await this.service.deleteNotice(id, req.user.id, await this.campusScope(req)),
+      '公告已删除',
+    );
+  }
+
   @Get('coupons')
   @ApiOperation({ summary: '优惠券列表（?page&pageSize 统一分页包裹）' })
   async coupons(

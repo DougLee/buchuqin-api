@@ -1,0 +1,2 @@
+-- IKHMF1 客服电话校区自定义：默认 4008002026 兜底
+ALTER TABLE "Campus" ADD COLUMN "servicePhone" TEXT NOT NULL DEFAULT '4008002026';

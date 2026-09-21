@@ -269,6 +269,9 @@ export class UpdateDeliveryConfigDto {
   @Matches(/^([01]\d|2[0-3]):[0-5]\d$/, { message: '打烊结束时间须为 HH:mm' })
   closeEnd?: string;
   @IsOptional() @IsBoolean() manualClosed?: boolean;
+  /** 无楼长提示（IKHMKR 校区自定义）：空串=回落默认文案；≤60 字 */
+  @IsOptional() @IsString() @MaxLength(60, { message: '提示文案最多 60 字' })
+  noManagerTip?: string;
 }
 export class CreateCouponDto {
   @IsString() @MaxLength(40) name!: string;
@@ -525,7 +528,7 @@ export class UpdateLocationDto {
   @IsOptional() @IsString() @MaxLength(100) note?: string;
   @IsOptional() @Type(() => Number) @IsInt() sort?: number;
 }
-/** 手动改订单状态（IKA0UT）：测试/上线初期兜底，原因进审计日志。 */
+/** 手动改订单状态（IKA0UT）：运营兜底工具，原因必填进审计日志。 */
 export class UpdateOrderStatusDto {
   @IsString() status!: string;
   @IsOptional() @IsString() @MaxLength(200) reason?: string;
@@ -578,6 +581,13 @@ export class UpdateCampusDto {
   /** 楼长月度底薪（IKDOIU，分）：0 = 无底薪（纯提成+调整）。 */
   @IsOptional() @Type(() => Number) @IsInt() @Min(0)
   buildingManagerBaseSalary?: number;
+  /** 客服电话（IKHMF1 校区自定义）：座机/400/手机号，3-20 位数字与- */
+  @IsOptional()
+  @Matches(/^[0-9-]{3,20}$/, { message: '客服电话格式不正确' })
+  servicePhone?: string;
+  /** 无楼长提示（IKHMKR 校区自定义）：空串=回落默认文案；≤60 字（弹窗一行） */
+  @IsOptional() @IsString() @MaxLength(60, { message: '提示文案最多 60 字' })
+  noManagerTip?: string;
 }
 
 /** 校区打印机绑定（IKBW0Q）：SN 在机身底部标签/自检页。
@@ -673,4 +683,31 @@ export class ClosePurchaseOrderDto {
 /** 分拨发货（IKFOQ2）：整单发货无数量入参，仅备注。 */
 export class ShipRestockOrderDto {
   @IsOptional() @IsString() @MaxLength(100) note?: string;
+}
+
+/* ---------- IKHM1O/IKHM1P 校区配置聚合页：送达时段 + 公告 ---------- */
+
+/** 送达时段管理（IKHM1O 补窟窿：原无后台入口，只能改库）。 */
+export class CreateSlotDto {
+  @IsString() campusId!: string;
+  @IsString() @MinLength(2) @MaxLength(20) label!: string;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(0) capacity?: number;
+}
+export class UpdateSlotDto {
+  @IsOptional() @IsString() @MinLength(2) @MaxLength(20) label?: string;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(0) capacity?: number;
+  @IsOptional() @IsBoolean() available?: boolean;
+}
+/** 小程序公告（IKHM1P）：校区多条 + 生效窗 + 启停。 */
+export class CreateNoticeDto {
+  @IsString() campusId!: string;
+  @IsString() @MinLength(2) @MaxLength(200) content!: string;
+  @IsString() startsAt!: string;
+  @IsString() endsAt!: string;
+}
+export class UpdateNoticeDto {
+  @IsOptional() @IsString() @MinLength(2) @MaxLength(200) content?: string;
+  @IsOptional() @IsString() startsAt?: string;
+  @IsOptional() @IsString() endsAt?: string;
+  @IsOptional() @IsIn(['active', 'disabled']) status?: 'active' | 'disabled';
 }
