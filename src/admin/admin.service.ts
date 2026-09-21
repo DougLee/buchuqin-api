@@ -947,7 +947,7 @@ export class AdminService {
    *  无删除（留审计），已结束不可改。 */
   /** IKB5PA：state 过滤（live/upcoming/ended/disabled，按时间窗读时判定），
    *  不传 = 全部。口径与前台 promoState 一致。 */
-  async promotions(campusId: string, state?: string) {
+  async promotions(campusId: string, state?: string, categoryId?: string) {
     const xs = await this.db.promotion.findMany({
       where: { product: { campusId } },
       orderBy: { createdAt: 'desc' },
@@ -959,6 +959,7 @@ export class AdminService {
             image: true,
             price: true,
             status: true,
+            categoryId: true,
           },
         },
       },
@@ -966,7 +967,14 @@ export class AdminService {
     // 搜索修复（2026-09-21 道哥反馈「秒杀搜索框搜不出」）：keywordHaystack 只
     // 展开第一层字段，商品名在 product.name 第二层恒不命中——平铺 productName
     // 进第一层（精准修，不动全局搜索深度）
-    const rows = xs.map((x) => ({ ...x, productName: x.product?.name ?? '' }));
+    let rows = xs.map((x) => ({
+      ...x,
+      productName: x.product?.name ?? '',
+      // 类别筛选（2026-09-21 道哥）：与商品库分类筛选同款 categoryId 参数，
+      // 平铺进第一层供 paginate keyword 与前端下拉消费
+      categoryId: x.product?.categoryId ?? '',
+    }));
+    if (categoryId) rows = rows.filter((x) => x.categoryId === categoryId);
     if (!state) return rows;
     const now = Date.now();
     return rows.filter((x) => {

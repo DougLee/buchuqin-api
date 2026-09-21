@@ -345,11 +345,13 @@ export class AdminController {
     // 全量断链审计（2026-09-05）：前端搜索框一直发 keyword，但此处漏接漏传
     // paginate，秒杀页搜索为死控件（其余列表端点均有）
     @Query('keyword') keyword?: string,
+    // 类别筛选（2026-09-21 道哥）：按商品类别过滤秒杀列表
+    @Query('categoryId') categoryId?: string,
   ) {
     this.authorize(req, 'marketing');
     return ok(
       paginate(
-        await this.service.promotions(req.user.campusId, state),
+        await this.service.promotions(req.user.campusId, state, categoryId),
         page,
         pageSize,
         keyword,
