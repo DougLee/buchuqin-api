@@ -483,8 +483,10 @@ export class RbacService implements OnModuleInit {
       for (const g of grants) {
         if (g.scope !== 'platform' && g.scope !== 'campus')
           throw new BadRequestException('授权范围只允许 platform/campus');
-        if (g.roleCode === SUPER_ROLE_CODE && g.scope !== 'platform')
-          throw new BadRequestException('超级管理员只能授予平台范围');
+        // 超级管理员为系统内置唯一身份（道哥 2026-09-22）：不走授权通道，
+        // 仅由启动同步维护在系统主账号上；角色下拉亦不显示
+        if (g.roleCode === SUPER_ROLE_CODE)
+          throw new BadRequestException('超级管理员不可授予，系统仅保留内置超级管理员账号');
         if (g.scope === 'platform' && g.campusId)
           throw new BadRequestException('平台范围不能指定校区');
         if (g.scope === 'campus' && !g.campusId)
