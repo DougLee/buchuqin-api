@@ -520,6 +520,17 @@ export class RbacService implements OnModuleInit {
           })),
         });
       }
+      // 默认校区跟随授权（IKHMKR2 道 2026-09-22）：campusId 必须落在 campus 级
+      // 授权集合内，失配（旧数据/换绑）则自动对齐首个校区级授权——
+      // 防止登录上下文落在无授权校区导致空白侧栏（lidaomin 案例）
+      const campusGrantIds = grants
+        .filter((g) => g.scope === 'campus' && g.campusId)
+        .map((g) => g.campusId!);
+      if (campusGrantIds.length && !campusGrantIds.includes(account.campusId))
+        await tx.adminAccount.update({
+          where: { id: accountId },
+          data: { campusId: campusGrantIds[0] },
+        });
       await tx.adminAccount.update({
         where: { id: accountId },
         data: { sessionVersion: { increment: 1 }, rbacMigrated: true },

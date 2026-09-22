@@ -163,9 +163,28 @@ export class AuthController {
         throw error;
       }
     }
+    // 默认校区兜底（IKHMKR2 道 2026-09-22）：RBAC 账号的所属校区必须落在
+    // campus 级授权集合内——历史脏数据失配时自动落首个授权校区并回写，
+    // 防止登录上下文无任何权限（空白侧栏/页面不可访问，lidaomin 案例）
+    let loginCampusId = account.campusId;
+    if (account.role === 'rbac') {
+      const campusGrants = await this.db.adminAccountRole.findMany({
+        where: { accountId: account.id, scope: 'campus', campusId: { not: null } },
+        orderBy: { createdAt: 'asc' },
+        select: { campusId: true },
+      });
+      const grantIds = campusGrants.map((g) => g.campusId!);
+      if (grantIds.length && !grantIds.includes(account.campusId)) {
+        loginCampusId = grantIds[0];
+        await this.db.adminAccount.update({
+          where: { id: account.id },
+          data: { campusId: loginCampusId },
+        });
+      }
+    }
     const claims: AuthUser = {
       id: account.id,
-      campusId: account.campusId,
+      campusId: loginCampusId,
       role: account.role as AuthUser['role'],
       sv: account.sessionVersion,
     };
