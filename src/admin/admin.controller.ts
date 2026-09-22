@@ -216,7 +216,7 @@ export class AdminController {
     @Query('view') view?: string,
   ) {
     return ok(
-      await this.service.productStatusCounts(this.productCampus(req, view)),
+      await this.service.productStatusCounts(this.productCampus(req, view, campus)),
     );
   }
   /** 官方库浏览（IKAJSO 导入弹窗）：校区角色只读官方库行，用于搜索+多选导入；
@@ -431,11 +431,12 @@ export class AdminController {
     @Req() req: AuthRequest,
     @Body() body: LookupBarcodeDto,
     @Query('view') view?: string,
+    @Query('campus') campus?: string,
   ) {
     return ok(
       await this.service.lookupBarcode(
         body.barcode,
-        this.productCampus(req, view),
+        this.productCampus(req, view, campus),
       ),
     );
   }
@@ -445,15 +446,16 @@ export class AdminController {
     @Req() req: AuthRequest,
     @Body() body: BatchProductStatusDto,
     @Query('view') view?: string,
+    @Query('campus') campus?: string,
   ) {
     // 官方库视角批量放行/回收=平台码；本校区视角批量上下架=products.status
-    const official = this.productCampus(req, view) === OFFICIAL_CAMPUS_ID;
+    const official = this.productCampus(req, view, campus) === OFFICIAL_CAMPUS_ID;
     return ok(
       await this.service.batchUpdateProductStatus(
         body.ids,
         body.status,
         req.user.id,
-        this.productCampus(req, view),
+        this.productCampus(req, view, campus),
       ),
       '批量操作已完成',
     );
@@ -464,14 +466,15 @@ export class AdminController {
     @Req() req: AuthRequest,
     @Body() body: CreateProductDto,
     @Query('view') view?: string,
+    @Query('campus') campus?: string,
   ) {
     // 官方库视角建档=平台码；本校区视角=products.write
-    const officialCreate = this.productCampus(req, view) === OFFICIAL_CAMPUS_ID;
+    const officialCreate = this.productCampus(req, view, campus) === OFFICIAL_CAMPUS_ID;
     return ok(
       await this.service.createProduct(
         body,
         req.user.id,
-        this.productCampus(req, view),
+        this.productCampus(req, view, campus),
       ),
       '商品已创建',
     );
@@ -481,6 +484,7 @@ export class AdminController {
     @Param('id') id: string,
     @Body() body: UpdateProductDto,
     @Query('view') view?: string,
+    @Query('campus') campus?: string,
   ) {
     // guard 已按 PATCH /admin/products/:id 模式放行（官方库=official.write /
     // 本校区=products.write）；字段级分权复检：本校区视角夹带价格字段须另持
@@ -488,11 +492,11 @@ export class AdminController {
     if (body.stock !== undefined) {
       this.requireUrl(req, 'POST', '/admin/inventory/stocktake');
       const ctx = this.ctx(req);
-      if (!ctx.super && this.productCampus(req, view) !== ctx.campusId &&
+      if (!ctx.super && this.productCampus(req, view, campus) !== ctx.campusId &&
           !matchUrl(ctx.platformPatterns ?? [], 'POST', '/admin/inventory/stocktake'))
         throw new ForbiddenException('无该校区库存调整权限');
     }
-    const officialUpdate = this.productCampus(req, view) === OFFICIAL_CAMPUS_ID;
+    const officialUpdate = this.productCampus(req, view, campus) === OFFICIAL_CAMPUS_ID;
     if (!officialUpdate) {
       if (body.status !== undefined)
         this.requireUrl(req, 'POST', '/admin/products/batch-status');
@@ -508,7 +512,7 @@ export class AdminController {
         id,
         body,
         req.user.id,
-        this.productCampus(req, view),
+        this.productCampus(req, view, campus),
       ),
     );
   }
@@ -521,6 +525,7 @@ export class AdminController {
     @Param('id') id: string,
     @Body() body: UpdateProductPriceDto,
     @Query('view') view?: string,
+    @Query('campus') campus?: string,
   ) {
     const PRICE_FIELDS = ['price', 'originalPrice', 'costPrice', 'wholesalePrice'];
     const touching = PRICE_FIELDS.some(
@@ -532,7 +537,7 @@ export class AdminController {
         id,
         body as UpdateProductDto,
         req.user.id,
-        this.productCampus(req, view),
+        this.productCampus(req, view, campus),
       ),
     );
   }
