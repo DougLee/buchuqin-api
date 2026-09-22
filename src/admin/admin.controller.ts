@@ -214,6 +214,7 @@ export class AdminController {
   async productStatusCounts(
     @Req() req: AuthRequest,
     @Query('view') view?: string,
+    @Query('campus') campus?: string,
   ) {
     return ok(
       await this.service.productStatusCounts(this.productCampus(req, view, campus)),
