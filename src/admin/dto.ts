@@ -588,6 +588,16 @@ export class UpdateCampusDto {
   /** 无楼长提示（IKHMKR 校区自定义）：空串=回落默认文案；≤60 字（弹窗一行） */
   @IsOptional() @IsString() @MaxLength(60, { message: '提示文案最多 60 字' })
   noManagerTip?: string;
+  /** 打烊窗/手动闭店（平台账号管理任意校区配送营业配置）：均可选不传不动 */
+  @IsOptional()
+  @IsString()
+  @Matches(/^([01]\d|2[0-3]):[0-5]\d$/, { message: '打烊开始时间须为 HH:mm' })
+  closeStart?: string;
+  @IsOptional()
+  @IsString()
+  @Matches(/^([01]\d|2[0-3]):[0-5]\d$/, { message: '打烊结束时间须为 HH:mm' })
+  closeEnd?: string;
+  @IsOptional() @IsBoolean() manualClosed?: boolean;
 }
 
 /** 校区打印机绑定（IKBW0Q）：SN 在机身底部标签/自检页。

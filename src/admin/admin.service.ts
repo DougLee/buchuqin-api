@@ -4745,6 +4745,12 @@ export class AdminService {
         ...(body.noManagerTip != null
           ? { noManagerTip: body.noManagerTip }
           : {}),
+        // 打烊窗/手动闭店（可选不传不动）：平台账号管理任意校区配送营业配置
+        ...(body.closeStart ? { closeStart: body.closeStart } : {}),
+        ...(body.closeEnd ? { closeEnd: body.closeEnd } : {}),
+        ...(body.manualClosed === undefined || body.manualClosed === null
+          ? {}
+          : { manualClosed: body.manualClosed }),
         ...(body.deliveryFeeInstant != null
           ? { deliveryFeeInstant: body.deliveryFeeInstant }
           : {}),
