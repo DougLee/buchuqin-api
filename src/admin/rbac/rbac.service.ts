@@ -621,6 +621,10 @@ export class RbacService implements OnModuleInit {
       await this.lockSuperGuard(tx);
       const before = await tx.adminAccount.findUnique({ where: { id: accountId } });
       if (!before) throw new BadRequestException('账号不存在');
+      // 内置超管（道哥 2026-09-22）：系统唯一身份，不可编辑
+      if (before.username === 'admin')
+        throw new BadRequestException('内置超级管理员账号不可编辑');
+      if (input.grants) await this.replaceAccountGrants(tx, actor, accountId, input.grants);
       if (input.grants) await this.replaceAccountGrants(tx, actor, accountId, input.grants);
       if (input.status) await this.changeAccountStatus(tx, actor, accountId, input.status);
       const updated = await tx.adminAccount.update({ where: { id: accountId }, data: {
@@ -645,6 +649,9 @@ export class RbacService implements OnModuleInit {
       await this.lockSuperGuard(tx);
       const account = await tx.adminAccount.findUnique({ where: { id: accountId } });
       if (!account) throw new BadRequestException('账号不存在');
+      // 内置超管（道哥 2026-09-22）：系统唯一身份，不可删除
+      if (account.username === 'admin')
+        throw new BadRequestException('内置超级管理员账号不可删除');
       const isSuper = await tx.adminAccountRole.count({ where: {
         accountId, scope: 'platform', role: { code: SUPER_ROLE_CODE, status: 'active' },
       } });
