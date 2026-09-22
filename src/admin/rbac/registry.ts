@@ -128,6 +128,10 @@ export const MENU_NODES: MenuNodeDef[] = [
   { code: 'rbac-audit', name: '权限审计', type: 1, parent: 'g.sys', path: '/rbac-audit', icon: 'audit', order: 4, perms: ['GET /admin/rbac/audit'] },
   { code: 'printers', name: '打印机', type: 1, parent: 'g.sys', path: '/printers', icon: 'printers', order: 5, perms: ['GET /admin/printers'] },
   { code: 'printers.write', name: '打印机管理', type: 2, parent: 'printers', order: 1, perms: ['POST /admin/printers', 'DELETE /admin/printers/:id', 'POST /admin/printers/:id/test-print'] },
+  /* 帮助中心/更新日志（道哥 2026-09-22）：纯前端只读页，不挂 API perms——
+     登录即可见（router 对这两个 path 白名单放行，菜单节点仅作展示） */
+  { code: 'help', name: '帮助中心', type: 1, parent: 'g.sys', path: '/help', icon: 'help', order: 6 },
+  { code: 'changelog', name: '更新日志', type: 1, parent: 'g.sys', path: '/changelog', icon: 'help', order: 7 },
 ];
 
 export const MENU_NODE_CODES = new Set(MENU_NODES.map((n) => n.code));
