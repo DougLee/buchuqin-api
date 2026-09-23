@@ -4640,7 +4640,7 @@ export class AdminService {
 
   /**
    * 退款终态落账（微信确认退款后）：订单 refunded + 按来源联动——
-   * 悔单（pre-delivery）回补库存与销量（stockRestored 防双补）；
+   * 未发货退款（pre-delivery）回补库存与销量（stockRestored 防双补）；
    * 售后（after-sale）佣金负向冲回（refundAdjust：settled→负向行、pending→翻负）。
    */
   private async finishRefund(

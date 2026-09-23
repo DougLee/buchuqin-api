@@ -1903,8 +1903,8 @@ export class BusinessService {
   }
 
   /**
-   * 悔单退款（IKHZKA）：已支付未出库（paid）可申请，人工审核通过后原路退回。
-   * 出库即不可悔单（货已离仓），引导联系客服。
+   * 未发货退款（IKHZKA）：已支付未出库（paid）可申请，人工审核通过后原路退回。
+   * 出库即不可申请（货已离仓），引导联系客服。
    */
   async applyPreDeliveryRefund(
     userId: string,

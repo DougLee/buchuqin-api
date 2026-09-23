@@ -313,7 +313,7 @@ export class BusinessController {
       '售后申请已提交',
     );
   }
-  /** 悔单退款（IKHZKA）：已支付未出库可申请，人工审核通过后原路退回。 */
+  /** 未发货退款（IKHZKA）：已支付未出库可申请，人工审核通过后原路退回。 */
   @Post('orders/:id/refund') async applyRefund(
     @Req() req: AuthRequest,
     @Param('id') id: string,

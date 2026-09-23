@@ -87,7 +87,7 @@ export class CreateAfterSalesDto {
   @IsArray() @ArrayMinSize(1) @IsString({ each: true }) images!: string[];
 }
 
-/** 悔单退款（IKHZKA）：已支付未出库可申请；原因必填（道哥 2026-09-23 改）。 */
+/** 未发货退款（IKHZKA）：已支付未出库可申请；原因必填（道哥 2026-09-23 改）。 */
 export class ApplyPreDeliveryRefundDto {
   @IsString() @MinLength(1) @MaxLength(120) reason!: string;
 }

@@ -6,7 +6,7 @@ import type { Prisma } from '@prisma/client';
 
 /**
  * 退款功能 v1 集成测试（IKHZKA）：
- * 悔单（pre-delivery）申请/金额口径/重复拦截、售后（after-sale）迁移 Refund、
+ * 未发货退款（pre-delivery）申请/金额口径/重复拦截、售后（after-sale）迁移 Refund、
  * 后台拒绝回滚与重新申请、approve 未就绪兜底。微信真实退款链路在测试环境
  * 小额真退人工验证，不在本套件内。
  */
@@ -86,7 +86,7 @@ describe('refund v1 (IKHZKA)', () => {
     await db.$disconnect();
   });
 
-  test('悔单申请：paid 单建立 pending 申请并转售后态，金额=实付−配送费', async () => {
+  test('未发货退款申请：paid 单建立 pending 申请并转售后态，金额=实付−配送费', async () => {
     const order = await makeOrder('paid');
     const refund = await business.applyPreDeliveryRefund(userId, order.id, {
       reason: '下错单了',
@@ -100,7 +100,7 @@ describe('refund v1 (IKHZKA)', () => {
     expect(after.statusText).toBe('退款审核中');
   });
 
-  test('悔单申请：重复申请被拦截', async () => {
+  test('未发货退款申请：重复申请被拦截', async () => {
     const order = await makeOrder('paid');
     await business.applyPreDeliveryRefund(userId, order.id, { reason: '测试' });
     await expect(
@@ -108,7 +108,7 @@ describe('refund v1 (IKHZKA)', () => {
     ).rejects.toThrow('已有退款申请在审核中');
   });
 
-  test('悔单申请：出库后（waiting-first-mile）不可申请', async () => {
+  test('未发货退款申请：出库后（waiting-first-mile）不可申请', async () => {
     const order = await makeOrder('waiting-first-mile');
     await expect(
       business.applyPreDeliveryRefund(userId, order.id, { reason: '测试退款' }),
