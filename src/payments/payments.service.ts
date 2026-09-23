@@ -200,14 +200,18 @@ export class PaymentsService {
     return { refundId: result.refund_id, status: result.status ?? 'PROCESSING' };
   }
 
-  /** 按商户退款单号查退款终态：SUCCESS/PROCESSING/ABNORMAL/CLOSED。 */
+  /**
+   * 按商户退款单号查退款终态：SUCCESS/PROCESSING/ABNORMAL/CLOSED。
+   * 直连商户查单**不带 query 参数**（带 mchid 微信报 400 PARAM_ERROR「未在API
+   * 文档中定义的参数」，2026-09-23 测试环境实测；mchid 从鉴权头取）。
+   */
   async queryWechatRefund(refundNo: string): Promise<{
     status: string;
     refundId?: string;
   }> {
     if (!this.configured())
       throw new HttpException('微信支付未配置', HttpStatus.NOT_IMPLEMENTED);
-    const urlPath = `/v3/refund/domestic/refunds/${refundNo}?mchid=${process.env.WX_MCH_ID}`;
+    const urlPath = `/v3/refund/domestic/refunds/${refundNo}`;
     let response: Response;
     try {
       response = await fetch(`${WX_PAY_HOST}${urlPath}`, {
@@ -222,11 +226,17 @@ export class PaymentsService {
     }
     if (response.status === 404)
       return { status: 'ABNORMAL' }; // 微信侧无此退款单（从未受理）
-    if (!response.ok)
+    if (!response.ok) {
+      // IK9SO7 教训：失败必留报文，只抛状态码无从排查
+      const detail = await response.text();
+      this.logger.error(
+        `微信查退款失败 status=${response.status} refundNo=${refundNo} body=${detail.slice(0, 300)}`,
+      );
       throw new HttpException(
         `微信查退款失败（${response.status}）`,
         HttpStatus.BAD_GATEWAY,
       );
+    }
     const result = (await response.json()) as {
       status?: string;
       refund_id?: string;
