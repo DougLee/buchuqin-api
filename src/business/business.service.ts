@@ -1921,12 +1921,16 @@ export class BusinessService {
       throw new BadRequestException(
         '订单已出库，无法申请退款，请联系客服处理',
       );
+    const reason = (dto.reason ?? '').trim();
+    if (!reason)
+      // DTO MinLength 拦不住纯空白；服务端兜底（道哥 2026-09-23：原因必填）
+      throw new BadRequestException('请填写退款原因');
     return this.upsertRefund(order, {
       source: 'pre-delivery',
       type: null,
       description: '',
       images: json([]),
-      reason: (dto.reason ?? '').slice(0, 120),
+      reason: reason.slice(0, 120),
       statusText: '退款审核中',
     });
   }

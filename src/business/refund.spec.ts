@@ -1,6 +1,7 @@
 import { PrismaService } from '../database/prisma.service';
 import { BusinessService } from './business.service';
 import { AdminService } from '../admin/admin.service';
+import type { ApplyPreDeliveryRefundDto } from './dto';
 import type { Prisma } from '@prisma/client';
 
 /**
@@ -101,17 +102,36 @@ describe('refund v1 (IKHZKA)', () => {
 
   test('悔单申请：重复申请被拦截', async () => {
     const order = await makeOrder('paid');
-    await business.applyPreDeliveryRefund(userId, order.id, {});
+    await business.applyPreDeliveryRefund(userId, order.id, { reason: '测试' });
     await expect(
-      business.applyPreDeliveryRefund(userId, order.id, {}),
+      business.applyPreDeliveryRefund(userId, order.id, { reason: '再试' }),
     ).rejects.toThrow('已有退款申请在审核中');
   });
 
   test('悔单申请：出库后（waiting-first-mile）不可申请', async () => {
     const order = await makeOrder('waiting-first-mile');
     await expect(
-      business.applyPreDeliveryRefund(userId, order.id, {}),
+      business.applyPreDeliveryRefund(userId, order.id, { reason: '测试退款' }),
     ).rejects.toThrow('订单已出库');
+  });
+
+  test('原因必填（道哥 2026-09-23）：空/纯空白被拒', async () => {
+    const order = await makeOrder('paid');
+    await expect(
+      business.applyPreDeliveryRefund(
+        userId,
+        order.id,
+        {} as ApplyPreDeliveryRefundDto,
+      ),
+    ).rejects.toThrow('请填写退款原因');
+    await expect(
+      business.applyPreDeliveryRefund(userId, order.id, { reason: '   ' }),
+    ).rejects.toThrow('请填写退款原因');
+    // 该单仍可带原因正常申请（校验不占坑）
+    const refund = await business.applyPreDeliveryRefund(userId, order.id, {
+      reason: '下错单',
+    });
+    expect(refund.status).toBe('pending');
   });
 
   test('金额口径：券抵扣后实付过低时钳 0 不出负数', async () => {
@@ -120,7 +140,7 @@ describe('refund v1 (IKHZKA)', () => {
       where: { id: order.id },
       data: { discount: 1200, payableAmount: 0 }, // 券超抵：实付 0
     });
-    const refund = await business.applyPreDeliveryRefund(userId, order.id, {});
+    const refund = await business.applyPreDeliveryRefund(userId, order.id, { reason: '测试退款' });
     expect(refund.amount).toBe(0);
   });
 
@@ -162,7 +182,7 @@ describe('refund v1 (IKHZKA)', () => {
 
   test('approve 无支付通道：报「未就绪」且申请仍为 pending（不卡死）', async () => {
     const order = await makeOrder('paid');
-    const refund = await business.applyPreDeliveryRefund(userId, order.id, {});
+    const refund = await business.applyPreDeliveryRefund(userId, order.id, { reason: '测试退款' });
     await expect(
       admin.auditRefund(refund.id, 'approve', 'tester', CAMPUS),
     ).rejects.toThrow('支付服务未就绪');
@@ -172,7 +192,7 @@ describe('refund v1 (IKHZKA)', () => {
 
   test('校区隔离：跨校区审核不可见（NotFound）', async () => {
     const order = await makeOrder('paid');
-    const refund = await business.applyPreDeliveryRefund(userId, order.id, {});
+    const refund = await business.applyPreDeliveryRefund(userId, order.id, { reason: '测试退款' });
     await expect(
       admin.auditRefund(refund.id, 'reject', 'tester', 'campus-other', ''),
     ).rejects.toThrow('退款申请不存在');
