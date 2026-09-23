@@ -4526,7 +4526,8 @@ export class AdminService {
       throw new NotFoundException('退款申请不存在');
     const campusId = refund.order.campusId;
     if (action === 'reject') {
-      if (refund.status !== 'pending')
+      // failed 也可拒绝：微信受理失败且确认不退的单要有终态出口，不能永远挂着
+      if (!['pending', 'failed'].includes(refund.status))
         throw new BadRequestException('当前状态不可拒绝');
       const record = await this.db.$transaction(async (tx) => {
         const after = await tx.refund.update({
