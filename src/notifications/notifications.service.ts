@@ -667,6 +667,68 @@ export class NotificationsService {
       throw new Error(`gzh send ${body.errcode} ${body.errmsg}`);
   }
 
+  /**
+   * 服务号绑定对账（IKI3ZP 时序缝隙兜底）：code2session 只在用户已关注
+   * 服务号时返回 unionid——「先绑定后关注」的骑手，关注事件到达时
+   * Staff.unionId 还是空，匹配不上即漏绑。此兜底拉服务号关注者全量列表，
+   * 逐个查 unionid 匹配员工表，把 unionId 已知但 gzhOpenid 为空的补上。
+   * 触发时机：登录补录 unionId 后 fire-and-forget；骑手量级小（几十人），
+   * user/info 调用量可控。
+   */
+  async syncGzhBindings(): Promise<void> {
+    if (!process.env.WX_GZH_APPID || !process.env.WX_GZH_SECRET) return;
+    try {
+      const token = await this.gzhAccessToken();
+      const openids: string[] = [];
+      let next = '';
+      // 分页拉全量关注者（每页最多 10000）
+      for (let i = 0; i < 10; i++) {
+        const res = await fetch(
+          `https://api.weixin.qq.com/cgi-bin/user/get?access_token=${token}${next ? `&next_openid=${next}` : ''}`,
+          { signal: AbortSignal.timeout(6000) },
+        );
+        const body = (await res.json()) as {
+          count?: number;
+          data?: { openid?: string[] };
+          next_openid?: string;
+          errcode?: number;
+        };
+        openids.push(...(body.data?.openid ?? []));
+        if (!body.next_openid || !body.count) break;
+        next = body.next_openid;
+      }
+      if (!openids.length) return;
+      let bound = 0;
+      for (const openid of openids) {
+        // 已绑定的跳过（查库不查微信，省 user/info 调用）
+        const known = await this.db.staff.findFirst({
+          where: { gzhOpenid: openid },
+          select: { id: true },
+        });
+        if (known) continue;
+        const res = await fetch(
+          `https://api.weixin.qq.com/cgi-bin/user/info?access_token=${token}&openid=${openid}&lang=zh_CN`,
+          { signal: AbortSignal.timeout(5000) },
+        );
+        const info = (await res.json()) as { unionid?: string; subscribe?: number };
+        if (!info.unionid || info.subscribe !== 1) continue;
+        const staff = await this.db.staff.findUnique({
+          where: { unionId: info.unionid },
+          select: { id: true },
+        });
+        if (!staff) continue;
+        await this.db.staff
+          .update({ where: { id: staff.id }, data: { gzhOpenid: openid } })
+          .catch(() => undefined);
+        bound++;
+      }
+      if (bound)
+        this.logger.log(`服务号绑定对账完成：关注者 ${openids.length}，新补绑 ${bound}`);
+    } catch (error) {
+      this.logger.warn(`服务号绑定对账失败（已忽略）: ${(error as Error).message}`);
+    }
+  }
+
   /** 派单消息服务号模板数据（模板 ID 到位后按实际字段编号适配此映射）。 */
   private gzhDispatchData(order: {
     payableAmount: number;

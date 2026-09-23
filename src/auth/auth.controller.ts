@@ -18,6 +18,7 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtService } from '@nestjs/jwt';
+import { NotificationsService } from '../notifications/notifications.service';
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import {
   IsOptional,
@@ -26,7 +27,7 @@ import {
   MaxLength,
   MinLength,
 } from 'class-validator';
-import { SetMetadata } from '@nestjs/common';
+import { Optional, SetMetadata } from '@nestjs/common';
 import { compare, hash } from 'bcryptjs';
 import { Prisma } from '@prisma/client';
 import { ok } from '../common/api-response';
@@ -125,6 +126,8 @@ export class AuthController {
     private readonly db: PrismaService,
     private readonly business: BusinessService,
     private readonly rbac: RbacService,
+    // IKI3ZP：登录补录 unionId 后触发服务号绑定对账（Optional 兼容既有测试构造）
+    @Optional() private readonly notifications?: NotificationsService,
   ) {}
 
   /**
@@ -376,13 +379,17 @@ export class AuthController {
       if (!staff || staff.status === 'deleted')
         throw new NotFoundException('该微信未绑定员工账号，请用工号绑定后登录');
       // IKI3ZP：登录侧写补录 unionId（服务号关注事件按 unionid 自动绑定派单通道）
-      if (session.unionid && staff.unionId !== session.unionid)
+      if (session.unionid && staff.unionId !== session.unionid) {
         await this.db.staff
           .update({
             where: { id: staff.id },
             data: { unionId: session.unionid },
           })
           .catch(() => undefined); // unionId 唯一冲突（异常数据）静默跳过
+        // 时序缝隙兜底：先绑定后关注的骑手会错过关注事件——补录 unionId 后
+        // 全量对账服务号关注者，把漏绑的补上（fire-and-forget）
+        void this.notifications?.syncGzhBindings().catch(() => undefined);
+      }
       const claims: AuthUser = {
         id: staff.id,
         campusId: staff.campusId,
