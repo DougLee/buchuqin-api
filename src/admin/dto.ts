@@ -721,3 +721,9 @@ export class UpdateNoticeDto {
   @IsOptional() @IsString() endsAt?: string;
   @IsOptional() @IsIn(['active', 'disabled']) status?: 'active' | 'disabled';
 }
+
+/** 退款审核（IKHZKA）：approve=批准并发起微信原路退回；reject=拒绝（备注建议填写）。 */
+export class RefundAuditDto {
+  @IsIn(['approve', 'reject']) action!: 'approve' | 'reject';
+  @IsOptional() @IsString() @MaxLength(200) remark?: string;
+}

@@ -37,7 +37,9 @@ export const MENU_NODES: MenuNodeDef[] = [
   { code: 'orders', name: '订单配送', type: 1, parent: 'g.ops', path: '/orders', icon: 'orders', order: 2, perms: ['GET /admin/orders', 'GET /admin/orders/status-counts', 'GET /admin/orders/new-order-watch', 'GET /admin/orders/:id'] },
   { code: 'orders.write', name: '订单操作', type: 2, parent: 'orders', order: 1, perms: ['POST /admin/orders/:id/actions/:action', 'POST /admin/orders/:id/status', 'POST /admin/orders/:id/print-receipt'], remark: '改状态/出库/补打小票' },
   { code: 'inventory.outbound', name: '订单出库', type: 2, parent: 'orders', order: 2, perms: ['POST /admin/orders/:id/actions/outbound'], remark: '拣货出库（仓储角色对订单只读但可出库）' },
-  { code: 'after-sales', name: '售后退款', type: 1, parent: 'g.ops', path: '/after-sales', icon: 'after', order: 3, perms: ['GET /admin/after-sales'] },
+  { code: 'after-sales', name: '售后退款', type: 1, parent: 'g.ops', path: '/after-sales', icon: 'after', order: 3, perms: ['GET /admin/after-sales', 'GET /admin/refunds'] },
+  // IKHZKA 退款审核（动钱）：默认只授校区运营模板；仓储/财务/总部只读
+  { code: 'after-sales.audit', name: '退款审核', type: 2, parent: 'after-sales', order: 1, perms: ['POST /admin/refunds/:id/audit', 'POST /admin/refunds/:id/sync'], remark: '批准=微信原路退回；拒绝=回滚订单；同步=查询退款终态' },
   { code: 'battle-map', name: '营销作战地图', type: 1, parent: 'g.ops', path: '/battle-map', icon: 'buildings', order: 4, perms: ['GET /admin/marketing/map', 'GET /admin/battle-map/buildings/:buildingId', 'GET /admin/battle-map/rooms/:roomId'] },
   { code: 'campus-report', name: '校区日报', type: 1, parent: 'g.ops', path: '/campus-report', icon: 'campus-report', order: 5, perms: ['GET /admin/reports/campus-daily', 'GET /admin/reports/hq-daily'] },
 
@@ -196,7 +198,7 @@ export const ROLE_TEMPLATES: { code: string; name: string; remark: string; menuC
     name: '校区运营（迁移）',
     remark: '旧 operations 角色迁移模板：按校区授予',
     menuCodes: withDirs([
-      'dashboard', 'orders', 'orders.write', 'after-sales', 'battle-map', 'campus-report',
+      'dashboard', 'orders', 'orders.write', 'after-sales', 'after-sales.audit', 'battle-map', 'campus-report',
       'products', 'products.write', 'products.price', 'products.status',
       'categories', 'categories.write', 'inventory', 'inventory.adjust', 'inventory.outbound',
       'warehouse-orders', 'inventory-txns',

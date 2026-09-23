@@ -25,6 +25,7 @@ import {
 import {
   CreateAddressDto,
   CreateAfterSalesDto,
+  ApplyPreDeliveryRefundDto,
   CreateOrderDto,
   UpdateAddressDto,
   UpdateCartDto,
@@ -104,6 +105,17 @@ const json = (value: unknown) =>
 const number = (value: Prisma.Decimal | number) => Number(value);
 /** 金额展示：分 → 元字符串（仅错误文案/通知文本用，接口一律返回分）。 */
 const yuan = (cents: number) => (cents / 100).toFixed(2);
+
+/** Refund 状态中文文案（IKHZKA；cancelled=用户撤销、failed=微信退款失败可重试）。 */
+export const REFUND_STATUS_TEXT: Record<string, string> = {
+  pending: '待审核',
+  approved: '已批准，退款中',
+  refunding: '退款处理中',
+  refunded: '已退款',
+  rejected: '已拒绝',
+  failed: '退款失败，可重试',
+  cancelled: '已撤销',
+};
 
 @Injectable()
 export class BusinessService {
@@ -1813,6 +1825,51 @@ export class BusinessService {
       };
     });
   }
+  /** 退款金额（IKHZKA）：实付 − 配送费（配送费不退），券抵扣全部算商品侧；负数钳 0。 */
+  private refundAmountFor(order: {
+    payableAmount: number;
+    deliveryFee: number;
+  }) {
+    const payable = Number(order.payableAmount),
+      fee = Number(order.deliveryFee);
+    return Math.max(0, Math.min(payable - fee, payable));
+  }
+
+  /** 退款记录 C 端视图：金额 number 化、日期 ISO、图片还原数组。 */
+  private refundView(record: {
+    id: string;
+    orderId: string;
+    source: string;
+    type: string | null;
+    description: string;
+    images: unknown;
+    amount: number;
+    reason: string;
+    status: string;
+    auditRemark: string;
+    wxRefundId: string | null;
+    createdAt: Date;
+    updatedAt: Date;
+  }) {
+    return {
+      id: record.id,
+      orderId: record.orderId,
+      source: record.source,
+      type: record.type,
+      description: record.description,
+      images: (record.images as string[] | null) ?? [],
+      amount: Number(record.amount),
+      reason: record.reason,
+      status: record.status,
+      statusText: REFUND_STATUS_TEXT[record.status] ?? record.status,
+      auditRemark: record.auditRemark,
+      wxRefundId: record.wxRefundId,
+      createdAt: record.createdAt.toISOString(),
+      updatedAt: record.updatedAt.toISOString(),
+    };
+  }
+
+  /** 售后申请（IKHZKA 迁移 Refund 统一申请主表；AfterSale 历史数据保留不再新写）。 */
   async createAfterSales(
     userId: string,
     orderId: string,
@@ -1835,29 +1892,93 @@ export class BusinessService {
       Date.now() - new Date(deliveredAt).getTime() > 24 * 60 * 60 * 1000
     )
       throw new BadRequestException('已超过送达后 24 小时售后期限');
-    if (await this.db.afterSale.findFirst({ where: { orderId } }))
-      throw new BadRequestException('该订单已提交售后');
-    return this.db.$transaction(async (tx) => {
-      const record = await tx.afterSale.create({
-        data: {
-          userId,
-          orderId,
-          type: dto.type,
-          description: dto.description,
-          images: json(dto.images),
-          status: 'pending',
-        },
-      });
-      await tx.order.update({
-        where: { id: orderId },
-        data: { status: 'after-sales', statusText: '售后审核中' },
-      });
-      return {
-        ...record,
-        createdAt: record.createdAt.toISOString(),
-        images: dto.images,
-      };
+    return this.upsertRefund(order, {
+      source: 'after-sale',
+      type: dto.type,
+      description: dto.description,
+      images: json(dto.images),
+      reason: '',
+      statusText: '售后审核中',
     });
+  }
+
+  /**
+   * 悔单退款（IKHZKA）：已支付未出库（paid）可申请，人工审核通过后原路退回。
+   * 出库即不可悔单（货已离仓），引导联系客服。
+   */
+  async applyPreDeliveryRefund(
+    userId: string,
+    orderId: string,
+    dto: ApplyPreDeliveryRefundDto,
+  ) {
+    const order = await this.db.order.findFirst({
+      where: { id: orderId, userId },
+    });
+    if (!order) throw new NotFoundException('订单不存在');
+    if (order.status === 'after-sales')
+      throw new BadRequestException('该订单已有退款申请在审核中');
+    if (order.status !== 'paid')
+      throw new BadRequestException(
+        '订单已出库，无法申请退款，请联系客服处理',
+      );
+    return this.upsertRefund(order, {
+      source: 'pre-delivery',
+      type: null,
+      description: '',
+      images: json([]),
+      reason: (dto.reason ?? '').slice(0, 120),
+      statusText: '退款审核中',
+    });
+  }
+
+  /** 建立或重新提交退款申请（拒绝后复用同一条记录，rejectCount 留痕走审计）。 */
+  private async upsertRefund(
+    order: {
+      id: string;
+      userId: string;
+      status: string;
+      payableAmount: number;
+      deliveryFee: number;
+    },
+    input: {
+      source: 'after-sale' | 'pre-delivery';
+      type: string | null;
+      description: string;
+      images: Prisma.InputJsonValue;
+      reason: string;
+      statusText: string;
+    },
+  ) {
+    const existing = await this.db.refund.findUnique({
+      where: { orderId: order.id },
+    });
+    if (existing && existing.status !== 'rejected')
+      throw new BadRequestException('该订单已有退款申请在审核中');
+    const amount = this.refundAmountFor(order);
+    const record = await this.db.$transaction(async (tx) => {
+      const data = {
+        source: input.source,
+        type: input.type,
+        description: input.description,
+        images: input.images,
+        reason: input.reason,
+        amount,
+        beforeStatus: order.status,
+        status: 'pending',
+        auditRemark: '',
+        refundError: '',
+      };
+      return existing
+        ? tx.refund.update({ where: { id: existing.id }, data })
+        : tx.refund.create({
+            data: { userId: order.userId, orderId: order.id, ...data },
+          });
+    });
+    await this.db.order.update({
+      where: { id: order.id },
+      data: { status: 'after-sales', statusText: input.statusText },
+    });
+    return this.refundView(record);
   }
   async afterSales(userId: string) {
     const items = await this.db.afterSale.findMany({
@@ -1880,13 +2001,54 @@ export class BusinessService {
     };
   }
   async cancelAfterSale(userId: string, id: string) {
+    // IKHZKA：新申请走 Refund 表——撤销同时把订单回滚到申请前状态
+    const refund = await this.db.refund.findFirst({ where: { id, userId } });
+    if (refund) {
+      if (refund.status !== 'pending')
+        throw new BadRequestException('当前退款申请状态不可撤销');
+      return this.db.$transaction(async (tx) => {
+        const record = await tx.refund.update({
+          where: { id },
+          data: { status: 'cancelled' },
+        });
+        await this.restoreOrderFromRefund(tx, record.orderId, record.beforeStatus);
+        return this.refundView(record);
+      });
+    }
+    // 遗留 AfterSale（IKHZKA 前的历史申请）：撤销并回滚订单（无快照按 delivered 兜底）
     const item = await this.db.afterSale.findFirst({ where: { id, userId } });
     if (!item) throw new NotFoundException('售后单不存在');
     if (item.status !== 'pending')
       throw new BadRequestException('当前售后状态不可撤销');
-    return this.db.afterSale.update({
-      where: { id },
-      data: { status: 'cancelled' },
+    return this.db.$transaction(async (tx) => {
+      const record = await tx.afterSale.update({
+        where: { id },
+        data: { status: 'cancelled' },
+      });
+      await this.restoreOrderFromRefund(tx, item.orderId, 'delivered');
+      return record;
+    });
+  }
+
+  /** 退款申请撤销/拒绝后订单回滚：仅当订单仍在售后态时回（并发推进则不动）。 */
+  private async restoreOrderFromRefund(
+    tx: Prisma.TransactionClient,
+    orderId: string,
+    beforeStatus: string,
+  ) {
+    const target =
+      ['paid', 'delivered', 'completed'].includes(beforeStatus)
+        ? beforeStatus
+        : 'delivered';
+    const statusText =
+      target === 'paid'
+        ? '仓库正在接单'
+        : target === 'completed'
+          ? '已确认收货'
+          : '已送达寝室';
+    await tx.order.updateMany({
+      where: { id: orderId, status: 'after-sales' },
+      data: { status: target, statusText },
     });
   }
   async refunds(userId: string) {

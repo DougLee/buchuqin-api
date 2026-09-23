@@ -2,6 +2,7 @@ import { RbacService } from './rbac/rbac.service';
 import {
   BadRequestException,
   ForbiddenException,
+  HttpException,
   Injectable,
   NotFoundException,
   Optional,
@@ -17,6 +18,8 @@ import { perRetailUnitCostFen } from '../common/product-units';
 import { maskIdCard } from '../common/sensitive';
 import { presignCosUrl } from '../files/cos-presign';
 import { CommissionService } from '../commission/commission.service';
+import { REFUND_STATUS_TEXT } from '../business/business.service';
+import { PaymentsService } from '../payments/payments.service';
 import type {
   AdjustStockDto,
   CreateAccountDto,
@@ -81,6 +84,8 @@ export class AdminService {
     @Optional() private readonly push?: NotificationsService,
     // 小票打印（IKBT6N）：可选注入——补打端点用；测试不传时报「未配置」。
     @Optional() private readonly printer?: PrinterService,
+    // 微信退款（IKHZKA）：可选注入——审核批准时原路退回；测试不传时报「未就绪」。
+    @Optional() private readonly payments?: PaymentsService,
     private readonly rbac: RbacService = new RbacService(db),
   ) {}
   private num(x: unknown) {
@@ -4433,6 +4438,383 @@ export class AdminService {
       where: { order: { campusId }, ...(status ? { status } : {}) },
       include: { order: true },
       orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  /* ---------- IKHZKA 退款功能 v1：审核 + 微信原路退回 + 联动 ---------- */
+
+  /** 售后/退款申请列表：校区范围 + 状态/来源筛选（新申请走 Refund 统一主表）。 */
+  async refunds(campusId: string, status?: string, source?: string) {
+    const items = await this.db.refund.findMany({
+      where: {
+        ...(campusId ? { order: { campusId } } : {}),
+        ...(status ? { status } : {}),
+        ...(source ? { source } : {}),
+      },
+      include: {
+        order: {
+          select: {
+            orderNo: true,
+            campusId: true,
+            status: true,
+            statusText: true,
+            payableAmount: true,
+            deliveryFee: true,
+            items: true,
+            address: true,
+            createdAt: true,
+          },
+        },
+        user: { select: { nickname: true, phone: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    return items.map((r) => ({
+      id: r.id,
+      orderId: r.orderId,
+      orderNo: r.order.orderNo,
+      campusId: r.order.campusId,
+      orderStatus: r.order.status,
+      userName: r.user.nickname,
+      userPhone: r.user.phone,
+      source: r.source,
+      type: r.type,
+      description: r.description,
+      images: (r.images as string[] | null) ?? [],
+      reason: r.reason,
+      amount: this.num(r.amount),
+      payableAmount: this.num(r.order.payableAmount),
+      deliveryFee: this.num(r.order.deliveryFee),
+      status: r.status,
+      statusText: REFUND_STATUS_TEXT[r.status] ?? r.status,
+      beforeStatus: r.beforeStatus,
+      auditBy: r.auditBy,
+      auditAt: r.auditAt?.toISOString() ?? null,
+      auditRemark: r.auditRemark,
+      refundError: r.refundError,
+      rejectCount: r.rejectCount,
+      wxRefundId: r.wxRefundId,
+      createdAt: r.createdAt.toISOString(),
+      orderCreatedAt: r.order.createdAt.toISOString(),
+    }));
+  }
+
+  /**
+   * 审核退款申请（IKHZKA）：
+   * - approve：抢占 → 微信原路退回（out_refund_no=Refund.id，重试幂等）→
+   *   即时终态直接落账；受理中（PROCESSING）转 refunding 由 syncRefund 补齐；
+   *   受理失败标 failed + 原因，可再次批准重试。
+   * - reject：拒绝并回滚订单到申请前状态（beforeStatus 快照），用户可重新申请。
+   * 金额口径：Refund.amount（申请时锁定 = 实付 − 配送费）。
+   * scope：校区级授权传本校区（强校验），平台级传 null（跨校区可审）。
+   */
+  async auditRefund(
+    id: string,
+    action: 'approve' | 'reject',
+    operator: string,
+    scope: string | null,
+    remark = '',
+  ) {
+    const refund = await this.db.refund.findUnique({
+      where: { id },
+      include: { order: true },
+    });
+    if (
+      !refund ||
+      (scope !== null && refund.order.campusId !== scope)
+    )
+      throw new NotFoundException('退款申请不存在');
+    const campusId = refund.order.campusId;
+    if (action === 'reject') {
+      if (refund.status !== 'pending')
+        throw new BadRequestException('当前状态不可拒绝');
+      const record = await this.db.$transaction(async (tx) => {
+        const after = await tx.refund.update({
+          where: { id },
+          data: {
+            status: 'rejected',
+            auditBy: operator,
+            auditAt: new Date(),
+            auditRemark: remark,
+            rejectCount: { increment: 1 },
+          },
+        });
+        await this.restoreOrderFromRefund(
+          tx,
+          refund.orderId,
+          refund.beforeStatus,
+        );
+        return after;
+      });
+      await this.audit(
+        operator,
+        'refund.reject',
+        'refund',
+        id,
+        { status: refund.status },
+        { status: 'rejected', remark },
+        campusId,
+      );
+      try {
+        await this.push?.refundResultPush(
+          refund.userId,
+          refund.order.orderNo,
+          refund.amount,
+          false,
+        );
+      } catch {
+        // 推送失败不阻塞审核结果
+      }
+      return record;
+    }
+    // approve：pending 或 failed（failed = 微信受理失败后的重试）
+    if (!['pending', 'failed'].includes(refund.status))
+      throw new BadRequestException('当前状态不可批准');
+    if (refund.order.status !== 'after-sales')
+      throw new BadRequestException('订单状态已变化，无法退款，请刷新');
+    if (!this.payments)
+      // 先验支付通道再抢占：否则抢占成 approved 后失败会卡死申请
+      throw new ServiceUnavailableException('支付服务未就绪，无法发起退款');
+    // 条件更新抢占审核权：并发双批只有一笔进入退款
+    const claimed = await this.db.refund.updateMany({
+      where: { id, status: refund.status },
+      data: {
+        status: 'approved',
+        auditBy: operator,
+        auditAt: new Date(),
+        auditRemark: remark,
+      },
+    });
+    if (!claimed.count) throw new BadRequestException('申请状态已变化，请刷新');
+    try {
+      const applied = await this.payments.applyWechatRefund(
+        refund.order.orderNo,
+        Number(refund.order.payableAmount),
+        refund.amount,
+        refund.id,
+        remark || refund.description || refund.reason || '订单退款',
+      );
+      if (applied.status === 'SUCCESS')
+        return await this.finishRefund(
+          refund,
+          applied.refundId,
+          operator,
+          campusId,
+        );
+      const record = await this.db.refund.update({
+        where: { id },
+        data: { status: 'refunding', wxRefundId: applied.refundId },
+      });
+      await this.audit(
+        operator,
+        'refund.approve',
+        'refund',
+        id,
+        { status: refund.status },
+        { status: 'refunding', wxRefundId: applied.refundId },
+        campusId,
+      );
+      return record;
+    } catch (error) {
+      const message =
+        error instanceof HttpException ? error.message : '退款请求失败';
+      await this.db.refund.update({
+        where: { id },
+        data: { status: 'failed', refundError: message },
+      });
+      await this.audit(
+        operator,
+        'refund.approve.fail',
+        'refund',
+        id,
+        null,
+        { error: message },
+        campusId,
+      );
+      throw new BadRequestException(
+        `退款发起失败：${message}（申请已标记失败，处理后可再次批准重试）`,
+      );
+    }
+  }
+
+  /**
+   * 退款终态落账（微信确认退款后）：订单 refunded + 按来源联动——
+   * 悔单（pre-delivery）回补库存与销量（stockRestored 防双补）；
+   * 售后（after-sale）佣金负向冲回（refundAdjust：settled→负向行、pending→翻负）。
+   */
+  private async finishRefund(
+    refund: {
+      id: string;
+      orderId: string;
+      userId: string;
+      amount: number;
+      source: string;
+    },
+    wxRefundId: string,
+    operator: string,
+    campusId: string,
+  ) {
+    const order = await this.db.order.findUniqueOrThrow({
+      where: { id: refund.orderId },
+    });
+    const record = await this.db.$transaction(async (tx) => {
+      // 条件更新防重复落账（approve 即时终态与 syncRefund 并发）
+      const won = await tx.order.updateMany({
+        where: { id: order.id, status: 'after-sales' },
+        data: { status: 'refunded', statusText: '已退款' },
+      });
+      if (!won.count) throw new BadRequestException('订单状态已变化，请刷新');
+      const after = await tx.refund.update({
+        where: { id: refund.id },
+        data: { status: 'refunded', wxRefundId, refundError: '' },
+      });
+      if (refund.source === 'pre-delivery') {
+        // 货未出仓：回补库存与销量（商品可能已被清理，存在才回补）
+        if (!order.stockRestored) {
+          const lines =
+            (order.items as Array<{
+              product?: { id?: string };
+              quantity: number;
+            }>) ?? [];
+          const productIds = [
+            ...new Set(
+              lines
+                .map((l) => l.product?.id)
+                .filter((pid): pid is string => Boolean(pid)),
+            ),
+          ];
+          const existing = productIds.length
+            ? await tx.product.findMany({
+                where: { id: { in: productIds } },
+                select: { id: true },
+              })
+            : [];
+          const alive = new Set(existing.map((p) => p.id));
+          for (const line of lines) {
+            if (line.product?.id && alive.has(line.product.id))
+              await tx.product.update({
+                where: { id: line.product.id },
+                data: {
+                  stock: { increment: line.quantity },
+                  sales: { decrement: line.quantity },
+                },
+              });
+          }
+          await tx.order.update({
+            where: { id: order.id },
+            data: { stockRestored: true },
+          });
+        }
+      } else {
+        // 货已送达：佣金冲回（机制预留于 CommissionService.refundAdjust）
+        await this.commissions.refundAdjust(
+          tx,
+          order.id,
+          `售后退款冲回 ${order.orderNo}`,
+        );
+      }
+      return after;
+    });
+    await this.audit(
+      operator,
+      'refund.finish',
+      'refund',
+      refund.id,
+      null,
+      { status: 'refunded', wxRefundId, source: refund.source, amount: refund.amount },
+      campusId,
+    );
+    try {
+      await this.push?.refundResultPush(
+        refund.userId,
+        order.orderNo,
+        refund.amount,
+        true,
+      );
+    } catch {
+      // 推送失败不阻塞落账
+    }
+    return record;
+  }
+
+  /**
+   * 退款状态同步（IKHZKA）：refunding/approved/failed 的单向微信查终态并落账；
+   * CLOSED=微信侧关闭（可重新批准重试）、ABNORMAL=微信异常（需商户平台人工处理）。
+   * scope：校区级授权传本校区（强校验），平台级传 null（跨校区可查）。
+   */
+  async syncRefund(id: string, operator: string, scope: string | null) {
+    const refund = await this.db.refund.findUnique({
+      where: { id },
+      include: { order: true },
+    });
+    if (
+      !refund ||
+      (scope !== null && refund.order.campusId !== scope)
+    )
+      throw new NotFoundException('退款申请不存在');
+    const campusId = refund.order.campusId;
+    if (!['refunding', 'approved', 'failed'].includes(refund.status))
+      throw new BadRequestException('当前状态无需同步');
+    if (!this.payments)
+      throw new ServiceUnavailableException('支付服务未就绪');
+    // 微信按 out_refund_no（= Refund.id）查询
+    const result = await this.payments.queryWechatRefund(refund.id);
+    await this.audit(
+      operator,
+      'refund.sync',
+      'refund',
+      id,
+      { status: refund.status },
+      { wxStatus: result.status },
+      campusId,
+    );
+    if (result.status === 'SUCCESS')
+      return this.finishRefund(
+        refund,
+        result.refundId ?? refund.wxRefundId ?? '',
+        operator,
+        campusId,
+      );
+    if (result.status === 'CLOSED')
+      return this.db.refund.update({
+        where: { id },
+        data: { status: 'failed', refundError: '微信侧退款已关闭，可重新批准发起' },
+      });
+    if (result.status === 'ABNORMAL')
+      return this.db.refund.update({
+        where: { id },
+        data:
+          // approved=抢占后从未被微信受理（进程中断等）→ 回 failed 可重试；
+          // refunding=微信已受理但处理异常 → 保持状态，待商户平台人工处理
+          refund.status === 'approved'
+            ? {
+                status: 'failed',
+                refundError: '退款未被微信受理，可重新批准发起',
+              }
+            : { refundError: '微信侧退款异常，需登录商户平台处理' },
+      });
+    return refund; // PROCESSING：继续等
+  }
+
+  /** 退款申请撤销/拒绝后订单回滚（与 C 端撤销共用口径，仅当订单仍在售后态）。 */
+  private async restoreOrderFromRefund(
+    tx: Prisma.TransactionClient,
+    orderId: string,
+    beforeStatus: string,
+  ) {
+    const target =
+      ['paid', 'delivered', 'completed'].includes(beforeStatus)
+        ? beforeStatus
+        : 'delivered';
+    const statusText =
+      target === 'paid'
+        ? '仓库正在接单'
+        : target === 'completed'
+          ? '已确认收货'
+          : '已送达寝室';
+    await tx.order.updateMany({
+      where: { id: orderId, status: 'after-sales' },
+      data: { status: target, statusText },
     });
   }
   /** 提成规则列表（版本倒序，含失效规则）。 */

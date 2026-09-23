@@ -149,6 +149,91 @@ export class PaymentsService {
     };
   }
 
+  /**
+   * 微信 v3 退款申请（IKHZKA）：原路退回。
+   * - out_refund_no = Refund.id（每单一条申请，重试同号幂等，微信去重）
+   * - amount.total 必须为原订单实付金额，refund ≤ total（部分退款）
+   * - 受理成功返回微信退款单号与状态（SUCCESS 即到账 / PROCESSING 处理中，
+   *   终态由调用方 queryRefund 补齐，v1 不依赖退款回调）
+   */
+  async applyWechatRefund(
+    orderNo: string,
+    totalFen: number,
+    refundFen: number,
+    refundNo: string,
+    reason: string,
+  ): Promise<{ refundId: string; status: string }> {
+    if (!this.configured())
+      throw new HttpException('微信支付未配置', HttpStatus.NOT_IMPLEMENTED);
+    const body = JSON.stringify({
+      out_trade_no: orderNo,
+      out_refund_no: refundNo,
+      reason: reason.slice(0, 80) || '用户退款',
+      amount: { refund: refundFen, total: totalFen, currency: 'CNY' },
+    });
+    const urlPath = '/v3/refund/domestic/refunds';
+    let response: Response;
+    try {
+      response = await fetch(`${WX_PAY_HOST}${urlPath}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          Authorization: this.authorization('POST', urlPath, body),
+        },
+        body,
+        signal: AbortSignal.timeout(8000),
+      });
+    } catch {
+      throw new HttpException('微信退款服务暂不可用', HttpStatus.BAD_GATEWAY);
+    }
+    const result = (await response.json().catch(() => ({}))) as {
+      refund_id?: string;
+      status?: string;
+      message?: string;
+    };
+    if (!response.ok || !result.refund_id)
+      throw new HttpException(
+        `微信退款失败：${result.message ?? response.status}`,
+        HttpStatus.BAD_GATEWAY,
+      );
+    return { refundId: result.refund_id, status: result.status ?? 'PROCESSING' };
+  }
+
+  /** 按商户退款单号查退款终态：SUCCESS/PROCESSING/ABNORMAL/CLOSED。 */
+  async queryWechatRefund(refundNo: string): Promise<{
+    status: string;
+    refundId?: string;
+  }> {
+    if (!this.configured())
+      throw new HttpException('微信支付未配置', HttpStatus.NOT_IMPLEMENTED);
+    const urlPath = `/v3/refund/domestic/refunds/${refundNo}?mchid=${process.env.WX_MCH_ID}`;
+    let response: Response;
+    try {
+      response = await fetch(`${WX_PAY_HOST}${urlPath}`, {
+        headers: {
+          Accept: 'application/json',
+          Authorization: this.authorization('GET', urlPath, ''),
+        },
+        signal: AbortSignal.timeout(6000),
+      });
+    } catch {
+      throw new HttpException('微信查退款服务暂不可用', HttpStatus.BAD_GATEWAY);
+    }
+    if (response.status === 404)
+      return { status: 'ABNORMAL' }; // 微信侧无此退款单（从未受理）
+    if (!response.ok)
+      throw new HttpException(
+        `微信查退款失败（${response.status}）`,
+        HttpStatus.BAD_GATEWAY,
+      );
+    const result = (await response.json()) as {
+      status?: string;
+      refund_id?: string;
+    };
+    return { status: result.status ?? 'PROCESSING', refundId: result.refund_id };
+  }
+
   /** 订阅消息模板 ID（ADR-0004 精简两条；未配置返回空数组，前端静默跳过授权）。 */
   subscribeTemplates(): string[] {
     return [process.env.WX_TMPL_PAID, process.env.WX_TMPL_DELIVERED].filter(

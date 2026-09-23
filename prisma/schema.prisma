@@ -812,15 +812,37 @@ model AfterSale {
 }
 
 model Refund {
-  id        String   @id @default(cuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id])
-  orderId   String
-  order     Order    @relation(fields: [orderId], references: [id])
-  amount    Int
-  reason    String
-  status    String
-  createdAt DateTime @default(now())
+  id String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+  orderId String
+  order   Order  @relation(fields: [orderId], references: [id])
+  /// 来源：after-sale=送达后售后（原 AfterSale 流程迁移）；pre-delivery=已支付未出库悔单
+  source   String @default("after-sale")
+  /// 售后类型（source=after-sale 有值）：quality|missing|damaged
+  type        String?
+  description String  @default("")
+  images      Json?
+  /// 退款金额（分）= 实付 − 配送费，审批通过时锁定
+  amount  Int
+  /// 申请时订单状态快照（拒绝/撤销后回滚用：paid/delivered/completed）
+  beforeStatus String @default("")
+  /// 悔单原因（选填）
+  reason      String @default("")
+  /// pending|approved|refunding|refunded|rejected|failed
+  status      String @default("pending")
+  auditBy     String?
+  auditAt     DateTime?
+  auditRemark String  @default("")
+  wxRefundId  String?
+  /// 最近一次退款失败原因（failed 可人工重试）
+  refundError String @default("")
+  /// 拒绝次数（拒绝后可重新申请，复用同一条记录留痕于审计）
+  rejectCount Int    @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([orderId])
 }
 
 model Staff {

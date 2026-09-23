@@ -84,6 +84,7 @@ import {
   CreateLocationDto,
   UpdateOrderStatusDto,
   UpdateStaffDto,
+  RefundAuditDto,
 } from './dto';
 
 @ApiTags('PC 管理后台 MVP')
@@ -1495,6 +1496,62 @@ export class AdminController {
         pageSize,
         keyword,
       ),
+    );
+  }
+  /* ---------- IKHZKA 退款功能 v1：申请列表 + 审核 + 状态同步 ---------- */
+
+  @Get('refunds')
+  @ApiOperation({ summary: '退款申请列表（?campus&status&source&page&pageSize）' })
+  async refunds(
+    @Req() req: AuthRequest,
+    @Query('campus') campus?: string,
+    @Query('status') status?: string,
+    @Query('source') source?: string,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+    @Query('keyword') keyword?: string,
+  ) {
+    return ok(
+      paginate(
+        await this.service.refunds(
+          await this.campusScope(req, campus),
+          status,
+          source,
+        ),
+        page,
+        pageSize,
+        keyword,
+      ),
+    );
+  }
+  /** 审核退款申请（after-sales.audit 权限）：approve 发起微信原路退回 / reject 回滚订单。 */
+  @Post('refunds/:id/audit')
+  async auditRefund(
+    @Req() req: AuthRequest,
+    @Param('id') id: string,
+    @Body() body: RefundAuditDto,
+  ) {
+    return ok(
+      await this.service.auditRefund(
+        id,
+        body.action,
+        req.user.id,
+        this.ctx(req).platform ? null : req.user.campusId,
+        (body.remark ?? '').slice(0, 200),
+      ),
+      body.action === 'approve' ? '已批准并发起退款' : '已拒绝该申请',
+    );
+  }
+  /** 退款状态同步：受理中的单向微信查终态并落账。 */
+  @Post('refunds/:id/sync')
+  async syncRefund(@Req() req: AuthRequest, @Param('id') id: string) {
+    return ok(
+      await this.service.syncRefund(
+        id,
+        req.user.id,
+        this.ctx(req).platform ? null : req.user.campusId,
+      ),
+      '退款状态已同步',
     );
   }
   @Get('commission-rules')

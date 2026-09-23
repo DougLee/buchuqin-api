@@ -24,6 +24,7 @@ import {
   CartQuantityDto,
   CreateAddressDto,
   CreateAfterSalesDto,
+  ApplyPreDeliveryRefundDto,
   CreateOrderDto,
   DrawWheelDto,
   UpdateAddressDto,
@@ -310,6 +311,17 @@ export class BusinessController {
     return ok(
       await this.service.createAfterSales(req.user.id, id, dto),
       '售后申请已提交',
+    );
+  }
+  /** 悔单退款（IKHZKA）：已支付未出库可申请，人工审核通过后原路退回。 */
+  @Post('orders/:id/refund') async applyRefund(
+    @Req() req: AuthRequest,
+    @Param('id') id: string,
+    @Body() dto: ApplyPreDeliveryRefundDto,
+  ) {
+    return ok(
+      await this.service.applyPreDeliveryRefund(req.user.id, id, dto),
+      '退款申请已提交，等待审核',
     );
   }
   @Get('after-sales') async afterSales(@Req() req: AuthRequest) {
