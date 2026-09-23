@@ -744,7 +744,16 @@ export class FulfillmentService {
       ),
       mode: order.deliveryMode,
       modeText: order.deliveryMode === 'instant' ? '立即配送' : '预约配送',
-      deadline: order.estimatedArrival,
+      // IKI7LZ：deadline（estimatedArrival 纯时段文案跨天歧义）退出骑手端，
+      // 改展示「下单时间（北京时间）」——客观数据零歧义
+      orderedAt: (() => {
+        const t = new Date(
+          (order.paidAt ?? order.createdAt ?? new Date()).getTime() +
+            8 * 3600_000,
+        );
+        const iso = t.toISOString();
+        return `${iso.slice(5, 10).replace('-', '-')} ${iso.slice(11, 16)}`;
+      })(),
       warehouse: '湖北工业大学校园仓',
       // 金额口径统一（IK8W5L）：Commission 记录优先，未送达按规则预览，兜底常量（单位:分）。
       commission:

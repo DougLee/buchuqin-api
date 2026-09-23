@@ -598,10 +598,52 @@ export class BusinessService {
     });
   }
   async slots(campusId: string) {
-    return this.db.deliverySlot.findMany({
+    const rows = await this.db.deliverySlot.findMany({
       where: { campusId },
       orderBy: { label: 'asc' },
     });
+    // IKI7LZ：按时段标记今日是否已过（前端置灰，服务端下单校验兜底）
+    return rows.map((s) => ({
+      ...s,
+      expired: this.slotExpiredToday(s.label),
+    }));
+  }
+
+  /** 'HH:mm-HH:mm' → 分钟数；end<=start 视为跨零点时段（如 22:00-06:00）。 */
+  private parseSlotLabel(label: string): { start: number; end: number } | null {
+    const m = /^(\d{1,2}):(\d{2})-(\d{1,2}):(\d{2})$/.exec(label.trim());
+    if (!m) return null;
+    const start = Number(m[1]) * 60 + Number(m[2]);
+    const end = Number(m[3]) * 60 + Number(m[4]);
+    return { start, end };
+  }
+
+  /**
+   * 时段今日可用性（IKI7LZ）：
+   * - 结束前 30 分钟缓冲即禁选（仓配需拣货出库时间，杜绝「17:00 截止 16:55 下单」必超时单）；
+   * - 跨零点时段（end<=start）：当晚已开始（now>=start）或凌晨跨夜段进行中
+   *   （now<end）都算已过——凌晨不提供「今晚 22:00」的歧义可选；
+   * - 非 HH:mm-HH:mm 结构的自定义 label 不拦（兼容）。
+   */
+  slotExpiredToday(label: string, now = new Date()): boolean {
+    const s = this.parseSlotLabel(label);
+    if (!s) return false;
+    const nowMin = this.beijingMinutes(now);
+    if (s.end <= s.start)
+      return nowMin >= s.start || nowMin < s.end || s.start <= nowMin + 30;
+    return s.start <= nowMin + 30;
+  }
+
+  /** 时效日期前缀（IKI7LZ）：过滤后可选时段必在未来，正常都落在今天；
+   *  兜底「明天 (MM-DD)」防旧前端绕过传过期时段。 */
+  private slotDayPrefix(label: string, now = new Date()): string {
+    const s = this.parseSlotLabel(label);
+    if (!s) return '';
+    const nowMin = this.beijingMinutes(now);
+    const isTomorrow = s.end <= s.start ? nowMin >= s.end : s.start <= nowMin;
+    if (!isTomorrow) return '今天 ';
+    const d = new Date(now.getTime() + 8 * 3600_000 + 24 * 3600_000);
+    return `明天 (${d.toISOString().slice(5, 10).replace('-', '.')}) `;
   }
   async home(campusId: string) {
     // IKH0EK 推荐位（2026-09-19 道哥定版）：运营勾选的 featured 商品按
@@ -1085,6 +1127,9 @@ export class BusinessService {
         },
       });
       if (!slot) throw new BadRequestException('请选择可用的送达时段');
+      // IKI7LZ：过期时段服务端兜底拒绝（前端置灰之外防绕过直调）
+      if (this.slotExpiredToday(slot.label ?? ''))
+        throw new BadRequestException('该时段今日已截止，请选择其他时段');
     }
     return { cart, address };
   }
@@ -1156,7 +1201,7 @@ export class BusinessService {
       estimatedArrival:
         dto.deliveryMode === 'instant'
           ? '预计 30-60 分钟送达'
-          : `${dto.deliverySlot} 送达`,
+          : `${this.slotDayPrefix(dto.deliverySlot ?? '')}${dto.deliverySlot} 送达`,
       managerTip,
     };
   }
