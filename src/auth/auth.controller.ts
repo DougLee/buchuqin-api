@@ -375,6 +375,14 @@ export class AuthController {
       });
       if (!staff || staff.status === 'deleted')
         throw new NotFoundException('该微信未绑定员工账号，请用工号绑定后登录');
+      // IKI3ZP：登录侧写补录 unionId（服务号关注事件按 unionid 自动绑定派单通道）
+      if (session.unionid && staff.unionId !== session.unionid)
+        await this.db.staff
+          .update({
+            where: { id: staff.id },
+            data: { unionId: session.unionid },
+          })
+          .catch(() => undefined); // unionId 唯一冲突（异常数据）静默跳过
       const claims: AuthUser = {
         id: staff.id,
         campusId: staff.campusId,
@@ -600,10 +608,24 @@ export class AuthController {
     // 姓名双因子：防纯工号枚举绑定他人账号（换绑即覆盖旧 openid）
     if (staff.name !== body.name.trim())
       throw new BadRequestException('工号与姓名不匹配');
-    const after = await this.db.staff.update({
-      where: { id: staff.id },
-      data: { openid: session.openid },
-    });
+    const after = await this.db.staff
+      .update({
+        where: { id: staff.id },
+        // IKI3ZP：绑定时一并落 unionId（服务号关注自动绑定派单通道的匹配键）
+        data: {
+          openid: session.openid,
+          unionId: session.unionid ?? undefined,
+        },
+      })
+      .catch((e) => {
+        // unionId 唯一冲突：unionId 落不了不阻塞绑定主流程（openid 必落）
+        if ((e as { code?: string })?.code === 'P2002')
+          return this.db.staff.update({
+            where: { id: staff.id },
+            data: { openid: session.openid },
+          });
+        throw e;
+      });
     const claims: AuthUser = {
       id: after.id,
       campusId: after.campusId,

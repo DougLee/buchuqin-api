@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { createHash } from 'node:crypto';
 import { PrismaService } from '../database/prisma.service';
 
 /** 订单最小形态（渠道推送只需这些字段，避免服务间循环依赖具体类型）。 */
@@ -331,6 +332,9 @@ export class NotificationsService {
   /**
    * 出库待接单 → 通知本校区全部骑手（IKDQP9 策略：同校区所有骑手，
    * 不限在线状态）。fire-and-forget，由业务触发点调用。
+   * IKI3ZP 双通道路由：已绑定服务号（gzhOpenid）优先走服务号模板消息
+   * （关注即可推，无额度概念），发送失败自动回退订阅消息；未绑定走原
+   * 订阅消息。每骑手一次触达，不重复。
    */
   async notifyRidersOnFirstMile(order: {
     id: string;
@@ -347,7 +351,7 @@ export class NotificationsService {
           openid: { not: null },
           role: { in: ['fulltime-rider', 'parttime-rider'] },
         },
-        select: { id: true, openid: true },
+        select: { id: true, openid: true, gzhOpenid: true },
       });
       if (!riders.length) return;
       const addr = (order.address ?? {}) as Record<string, unknown>;
@@ -363,10 +367,22 @@ export class NotificationsService {
         name7: { value: '不出寝食社' },
         time8: { value: NotificationsService.fmtCn(new Date()) },
       };
+      const gzhReady = this.gzhConfigured();
       await Promise.all(
-        riders.map((r) =>
-          this.sendStaffSubscribe(r.id, r.openid as string, data),
-        ),
+        riders.map(async (r) => {
+          if (gzhReady && r.gzhOpenid) {
+            try {
+              await this.sendGzhTemplate(r.gzhOpenid, this.gzhDispatchData(order));
+              return; // 服务号成功即触达，不发订阅消息
+            } catch (error) {
+              // 取关/接口异常 → 回退订阅消息（该骑手仍有 openid 授权额度体系）
+              this.logger.warn(
+                `服务号派单失败回退订阅消息 staff=${r.id}: ${(error as Error).message}`,
+              );
+            }
+          }
+          await this.sendStaffSubscribe(r.id, r.openid as string, data);
+        }),
       );
     } catch (error) {
       this.logger.warn(
@@ -507,5 +523,169 @@ export class NotificationsService {
     this.logger.warn(
       `短信渠道已启用但服务商未接入，跳过 → ${order.orderNo} ${scene}`,
     );
+  }
+
+  /* ---------- 服务号派单推送（IKI3ZP）：关注即可推，订阅消息兜底 ---------- */
+
+  private gzhToken: { token: string; expiresAt: number } | null = null;
+
+  /** 服务号配置是否齐备（模板 ID 可后补——未配置时服务号通道整体关闭）。 */
+  gzhConfigured(): boolean {
+    return Boolean(
+      process.env.WX_GZH_APPID &&
+        process.env.WX_GZH_SECRET &&
+        process.env.WX_GZH_TOKEN &&
+        process.env.WX_GZH_TEMPLATE_ID,
+    );
+  }
+
+  /** 服务号 access_token（stable_token，与小程序票互不干扰）。 */
+  private async gzhAccessToken(): Promise<string> {
+    if (this.gzhToken && this.gzhToken.expiresAt > Date.now())
+      return this.gzhToken.token;
+    const res = await fetch('https://api.weixin.qq.com/cgi-bin/stable_token', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        grant_type: 'client_credential',
+        appid: process.env.WX_GZH_APPID,
+        secret: process.env.WX_GZH_SECRET,
+        force_refresh: false,
+      }),
+    });
+    const body = (await res.json()) as {
+      access_token?: string;
+      expires_in?: number;
+      errcode?: number;
+      errmsg?: string;
+    };
+    if (!body.access_token)
+      throw new Error(`gzh token ${body.errcode} ${body.errmsg}`);
+    this.gzhToken = {
+      token: body.access_token,
+      expiresAt: Date.now() + ((body.expires_in ?? 7200) - 300) * 1000,
+    };
+    return body.access_token;
+  }
+
+  /**
+   * 服务号回调入口（IKI3ZP）：
+   * - GET：URL 有效性验证（sha1(token,timestamp,nonce) 对签，原样回 echostr）
+   * - POST：事件推送 XML——subscribe/unsubscribe 按 openid 查 unionid 匹配
+   *   Staff.unionId 自动绑定/解绑 gzhOpenid。始终回 'success'（非 200 微信会重试）。
+   */
+  async handleGzhCallback(
+    query: Record<string, string>,
+    rawBody: string,
+  ): Promise<string> {
+    const token = process.env.WX_GZH_TOKEN;
+    const { signature, timestamp, nonce, echostr } = query;
+    if (!token || !signature || !timestamp || !nonce)
+      return 'bad request';
+    const expected = createHash('sha1')
+      .update([token, timestamp, nonce].sort().join(''))
+      .digest('hex');
+    if (expected !== signature) return 'signature mismatch';
+    if (echostr) return echostr; // GET 验证
+    // POST 事件：固定结构 XML，正则提取（不引 XML 依赖）
+    const pick = (tag: string) => {
+      const m =
+        rawBody.match(new RegExp(`<${tag}><!\\[CDATA\\[([^\\]]*)\\]\\]>`)) ??
+        rawBody.match(new RegExp(`<${tag}>([^<]*)</${tag}>`));
+      return m?.[1] ?? '';
+    };
+    const openid = pick('FromUserName');
+    const event = pick('Event');
+    if (!openid) return 'success';
+    if (event === 'subscribe') {
+      try {
+        const token_ = await this.gzhAccessToken();
+        const res = await fetch(
+          `https://api.weixin.qq.com/cgi-bin/user/info?access_token=${token_}&openid=${openid}&lang=zh_CN`,
+          { signal: AbortSignal.timeout(5000) },
+        );
+        const info = (await res.json()) as { unionid?: string };
+        if (info.unionid) {
+          const staff = await this.db.staff.findUnique({
+            where: { unionId: info.unionid },
+            select: { id: true },
+          });
+          if (staff)
+            await this.db.staff
+              .update({
+                where: { id: staff.id },
+                data: { gzhOpenid: openid },
+              })
+              .catch(() => undefined); // gzhOpenid 唯一冲突静默（异常数据）
+          this.logger.log(
+            `服务号关注：openid=${openid.slice(0, 8)}… unionid 匹配 ${staff ? '成功' : '无员工（未用工号绑定过小程序）'}`,
+          );
+        }
+      } catch (error) {
+        this.logger.warn(
+          `服务号关注绑定失败（已忽略）: ${(error as Error).message}`,
+        );
+      }
+    } else if (event === 'unsubscribe') {
+      // 取关：清绑定，派单自动回退订阅消息通道
+      await this.db.staff.updateMany({
+        where: { gzhOpenid: openid },
+        data: { gzhOpenid: null },
+      });
+    }
+    return 'success';
+  }
+
+  /**
+   * 服务号模板消息发送（IKI3ZP）：关注即可推，无额度概念；miniprogram 字段
+   * 跳履约小程序任务页（要求同开放平台，已确认）。失败抛错由调用方回退。
+   */
+  private async sendGzhTemplate(
+    openid: string,
+    data: Record<string, { value: string }>,
+  ): Promise<void> {
+    const token = await this.gzhAccessToken();
+    const res = await fetch(
+      `https://api.weixin.qq.com/cgi-bin/message/template/send?access_token=${token}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          touser: openid,
+          template_id: process.env.WX_GZH_TEMPLATE_ID,
+          data,
+          miniprogram: {
+            appid: process.env.WX_APPID_DELIVERY,
+            pagepath: 'pages/tasks/index',
+          },
+        }),
+        signal: AbortSignal.timeout(6000),
+      },
+    );
+    const body = (await res.json()) as { errcode?: number; errmsg?: string };
+    if (body.errcode !== 0)
+      throw new Error(`gzh send ${body.errcode} ${body.errmsg}`);
+  }
+
+  /** 派单消息服务号模板数据（模板 ID 到位后按实际字段编号适配此映射）。 */
+  private gzhDispatchData(order: {
+    payableAmount: number;
+    deliveryMode: string;
+    address: unknown;
+  }): Record<string, { value: string }> {
+    const addr = (order.address ?? {}) as Record<string, unknown>;
+    const building = String(addr.buildingName ?? '');
+    const room = String(addr.room ?? '');
+    return {
+      first: {
+        value: `${building}新单待接 ¥${(order.payableAmount / 100).toFixed(2)}`.slice(0, 40),
+      },
+      keyword1: { value: `${building} ${room}`.trim().slice(0, 40) },
+      keyword2: {
+        value: order.deliveryMode === 'instant' ? '即时达' : '2小时达',
+      },
+      keyword3: { value: NotificationsService.fmtCn(new Date(), true) },
+      remark: { value: '点击查看详情并接单' },
+    };
   }
 }

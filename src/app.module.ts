@@ -25,6 +25,7 @@ import { PaymentsService } from './payments/payments.service';
 import { OrderTimeoutService } from './payments/order-timeout.service';
 import { FilesController } from './files/files.controller';
 import { NotificationsService } from './notifications/notifications.service';
+import { GzhController } from './notifications/gzh.controller';
 import { PrinterService } from './printer/printer.service';
 
 // 部署模式下由 API 容器托管管理后台静态站（ADMIN_DIST_DIR 指向挂载目录）；
@@ -67,6 +68,8 @@ const adminDistDir = process.env.ADMIN_DIST_DIR ?? '';
     AdminController,
     PaymentsController,
     FilesController,
+    // 服务号回调（IKI3ZP）：微信服务器推送事件（subscribe 绑定/取关解绑）
+    GzhController,
   ],
   providers: [
     PrismaService,

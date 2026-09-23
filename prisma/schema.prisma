@@ -857,6 +857,16 @@ model Staff {
    * 微信登录绑定（IK8W5Q）：员工首次登录用工号+姓名换绑，之后 openid 直登
    */
   openid              String?              @unique
+  /**
+   * UnionID（IKI3ZP）：履约小程序登录侧写——小程序/服务号同开放平台，
+   * 服务号关注事件按 unionid 自动匹配本表落 gzhOpenid（零操作绑定）
+   */
+  unionId             String?              @unique
+  /**
+   * 服务号 openid（IKI3ZP）：关注事件落库、取关清空；派单推送优先走服务号
+   * 模板消息（关注即可推，无订阅额度），失败/未绑定回退小程序订阅消息
+   */
+  gzhOpenid           String?              @unique
   buildingId          String?
   buildingRef         Building?            @relation(fields: [buildingId], references: [id])
   building            String

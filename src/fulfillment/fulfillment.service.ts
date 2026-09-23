@@ -527,7 +527,7 @@ export class FulfillmentService {
       });
     const s = await this.db.staff.findUniqueOrThrow({
       where: { id: staffId },
-      select: { notifyQuota: true, notifyQuotaFailedAt: true },
+      select: { notifyQuota: true, notifyQuotaFailedAt: true, gzhOpenid: true },
     });
     // 北京时间今天 0 点（容器 UTC，+8 偏移后取当日零点）
     const cnMidnight = new Date(Date.now() + 8 * 3600_000);
@@ -538,6 +538,8 @@ export class FulfillmentService {
       failedToday:
         !!s.notifyQuotaFailedAt &&
         s.notifyQuotaFailedAt.getTime() >= cnMidnight.getTime(),
+      // IKI3ZP：服务号绑定状态——骑手端据此展示「关注服务号」引导
+      gzhBound: !!s.gzhOpenid,
     };
   }
   async leave(staffId: string) {
