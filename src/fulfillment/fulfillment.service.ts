@@ -752,7 +752,8 @@ export class FulfillmentService {
             8 * 3600_000,
         );
         const iso = t.toISOString();
-        return `${iso.slice(5, 10).replace('-', '-')} ${iso.slice(11, 16)}`;
+        // 道哥 2026-09-24：带年份（YYYY-MM-DD HH:mm）
+        return `${iso.slice(0, 10)} ${iso.slice(11, 16)}`;
       })(),
       warehouse: '湖北工业大学校园仓',
       // 金额口径统一（IK8W5L）：Commission 记录优先，未送达按规则预览，兜底常量（单位:分）。
