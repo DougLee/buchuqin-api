@@ -249,7 +249,10 @@ export class RbacService implements OnModuleInit {
   assertSession(account: AdminAccount, tokenSv?: number): void {
     if (account.status !== 'active') throw new UnauthorizedException('账号已停用');
     if ((tokenSv ?? 0) !== account.sessionVersion)
-      throw new UnauthorizedException('登录已失效，请重新登录');
+      // ADMIN_SINGLE_SESSION 顶下线场景：文案明确化（道哥 2026-09-24）
+      throw new UnauthorizedException(
+        '该账号已在其他设备登录，您已被顶下线；如非本人操作请及时改密',
+      );
   }
 
   async getEffective(account: AdminAccount): Promise<RbacContext> {
