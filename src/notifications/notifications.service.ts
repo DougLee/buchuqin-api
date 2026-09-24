@@ -338,6 +338,7 @@ export class NotificationsService {
    */
   async notifyRidersOnFirstMile(order: {
     id: string;
+    orderNo: string;
     campusId: string;
     payableAmount: number;
     deliveryMode: string;
@@ -372,7 +373,10 @@ export class NotificationsService {
         riders.map(async (r) => {
           if (gzhReady && r.gzhOpenid) {
             try {
-              await this.sendGzhTemplate(r.gzhOpenid, this.gzhDispatchData(order));
+              await this.sendGzhTemplate(
+                r.gzhOpenid,
+                this.gzhDispatchData(order),
+              );
               return; // 服务号成功即触达，不发订阅消息
             } catch (error) {
               // 取关/接口异常 → 回退订阅消息（该骑手仍有 openid 授权额度体系）
@@ -729,25 +733,22 @@ export class NotificationsService {
     }
   }
 
-  /** 派单消息服务号模板数据（模板 ID 到位后按实际字段编号适配此映射）。 */
+  /**
+   * 派单消息服务号模板数据（IKI3ZP）：类目模板「新订单通知」（编号 42995），
+   * 字段 character_string2=订单编号 / amount3=订单金额 / thing4=客户姓名 /
+   * time5=下单时间。
+   */
   private gzhDispatchData(order: {
+    orderNo: string;
     payableAmount: number;
-    deliveryMode: string;
     address: unknown;
   }): Record<string, { value: string }> {
     const addr = (order.address ?? {}) as Record<string, unknown>;
-    const building = String(addr.buildingName ?? '');
-    const room = String(addr.room ?? '');
     return {
-      first: {
-        value: `${building}新单待接 ¥${(order.payableAmount / 100).toFixed(2)}`.slice(0, 40),
-      },
-      keyword1: { value: `${building} ${room}`.trim().slice(0, 40) },
-      keyword2: {
-        value: order.deliveryMode === 'instant' ? '即时达' : '2小时达',
-      },
-      keyword3: { value: NotificationsService.fmtCn(new Date(), true) },
-      remark: { value: '点击查看详情并接单' },
+      character_string2: { value: order.orderNo },
+      amount3: { value: `¥${(order.payableAmount / 100).toFixed(2)}` },
+      thing4: { value: String(addr.contactName ?? '客户').slice(0, 20) },
+      time5: { value: NotificationsService.fmtCn(new Date(), true) },
     };
   }
 }

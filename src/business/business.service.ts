@@ -1620,6 +1620,7 @@ export class BusinessService {
     // IKDQP9：出库待接单 → 订阅消息通知本校区全部骑手（fire-and-forget）
     void this.push?.notifyRidersOnFirstMile({
       id: updated.id,
+      orderNo: updated.orderNo,
       campusId: updated.campusId,
       payableAmount: updated.payableAmount,
       deliveryMode: updated.deliveryMode,
