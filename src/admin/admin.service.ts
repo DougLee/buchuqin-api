@@ -1,3 +1,4 @@
+import { readSkuAnalysis } from './sku-analysis';
 import { RbacService } from './rbac/rbac.service';
 import {
   BadRequestException,
@@ -3036,6 +3037,10 @@ export class AdminService {
   // 销售额=payableAmount 实付（配送费为无成本收入直接落毛利）；
   // 成本=IKFOPQ 行级 unitWholesaleCost 快照×数量（快照上线前历史单按 0 计）；
   // 实时聚合不建跑批表；行=日期×校区（校区角色查询天然单校区）。
+  async skuAnalysis(campusId: string, query: { start?: string; end?: string; categoryId?: string; keyword?: string }) {
+    return readSkuAnalysis(this.db, campusId, query);
+  }
+
   async campusDailyReport(
     start: string,
     end: string,

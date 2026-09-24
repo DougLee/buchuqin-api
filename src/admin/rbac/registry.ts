@@ -43,6 +43,8 @@ export const MENU_NODES: MenuNodeDef[] = [
   { code: 'battle-map', name: '营销作战地图', type: 1, parent: 'g.ops', path: '/battle-map', icon: 'buildings', order: 4, perms: ['GET /admin/marketing/map', 'GET /admin/battle-map/buildings/:buildingId', 'GET /admin/battle-map/rooms/:roomId'] },
   { code: 'campus-report', name: '校区日报', type: 1, parent: 'g.ops', path: '/campus-report', icon: 'campus-report', order: 5, perms: ['GET /admin/reports/campus-daily', 'GET /admin/reports/hq-daily'] },
 
+  { code: 'sku-analysis', name: 'SKU经营分析', type: 1, parent: 'g.ops', path: '/sku-analysis', icon: 'dashboard', order: 6, perms: ['GET /admin/reports/sku-analysis'], remark: '查看校区SKU成交、批发成本毛利及当前库存估值；含当前查询结果导出，按授权校区范围访问' },
+
   /* ---------- 目录：仓储中心 ---------- */
   { code: 'g.wh', name: '仓储中心', type: 0, order: 2 },
   { code: 'official-products', name: '官方商品库', type: 1, parent: 'g.wh', path: '/official-products', icon: 'official-products', order: 1, perms: ['GET /admin/products', 'GET /admin/products/status-counts', 'GET /admin/products/official-library'] },

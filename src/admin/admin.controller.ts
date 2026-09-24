@@ -813,6 +813,19 @@ export class AdminController {
 
   // ==================== 校区经营日报（IKFOPS）：C 端订单实时聚合 ====================
   // 平台视角（hq/admin）可跨校区筛选；校区角色锁本校区 + 楼栋筛选
+  @Get('reports/sku-analysis') async skuAnalysis(
+    @Req() req: AuthRequest,
+    @Query('start') start?: string,
+    @Query('end') end?: string,
+    @Query('campusId') campusId?: string,
+    @Query('categoryId') categoryId?: string,
+    @Query('keyword') keyword?: string,
+  ) {
+    const scope = await this.campusScope(req, campusId);
+    if (!this.ctx(req).platform && !scope) throw new ForbiddenException('账号未绑定校区');
+    return ok(await this.service.skuAnalysis(scope, { start, end, categoryId, keyword }));
+  }
+
   @Get('reports/campus-daily') async campusDailyReport(
     @Req() req: AuthRequest,
     @Query('start') start?: string,
