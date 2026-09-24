@@ -4452,6 +4452,7 @@ export class AdminService {
         ...(source ? { source } : {}),
       },
       include: {
+        items: true,
         order: {
           select: {
             orderNo: true,
@@ -4496,6 +4497,14 @@ export class AdminService {
       wxRefundId: r.wxRefundId,
       createdAt: r.createdAt.toISOString(),
       orderCreatedAt: r.order.createdAt.toISOString(),
+      items: (r.items ?? []).map((i) => ({
+        id: i.id,
+        productId: i.productId,
+        productName: i.productName,
+        unitPrice: this.num(i.unitPrice),
+        quantity: i.quantity,
+        amount: this.num(i.amount),
+      })),
     }));
   }
 
@@ -4514,6 +4523,8 @@ export class AdminService {
     operator: string,
     scope: string | null,
     remark = '',
+    /** v2 部分退款：审核核定的各行金额（客服可改），按 RefundItem.id 对齐 */
+    amounts?: Array<{ itemId: string; amount: number }>,
   ) {
     const refund = await this.db.refund.findUnique({
       where: { id },
@@ -4571,11 +4582,58 @@ export class AdminService {
     // approve：pending 或 failed（failed = 微信受理失败后的重试）
     if (!['pending', 'failed'].includes(refund.status))
       throw new BadRequestException('当前状态不可批准');
-    if (refund.order.status !== 'after-sales')
+    if (
+      !['after-sales', 'delivered', 'completed'].includes(refund.order.status)
+    )
       throw new BadRequestException('订单状态已变化，无法退款，请刷新');
     if (!this.payments)
       // 先验支付通道再抢占：否则抢占成 approved 后失败会卡死申请
       throw new ServiceUnavailableException('支付服务未就绪，无法发起退款');
+    // v2 部分退款：审核可改金额（Q3 定稿）——按提交的 amounts 核定各行金额
+    if (amounts?.length) {
+      const owned = await this.db.refundItem.findMany({
+        where: { refundId: id },
+      });
+      const byId = new Map(owned.map((i) => [i.id, i]));
+      for (const a of amounts) {
+        const item = byId.get(a.itemId);
+        if (!item) throw new BadRequestException('退款商品行不存在');
+        if (a.amount < 0 || a.amount > item.unitPrice * item.quantity)
+          throw new BadRequestException(
+            `${item.productName} 金额超出该行上限`,
+          );
+      }
+      await this.db.$transaction(
+        amounts.map((a) =>
+          this.db.refundItem.update({
+            where: { id: a.itemId },
+            data: { amount: Math.round(a.amount) },
+          }),
+        ),
+      );
+    }
+    // 金额核定后重算合计，并做全局硬上限校验：累计已退 + 本次 ≤ 实付 − 配送费
+    const finalItems = await this.db.refundItem.findMany({
+      where: { refundId: id },
+    });
+    const finalAmount = finalItems.reduce((s, i) => s + Math.round(i.amount), 0);
+    const refundedBefore = await this.db.refund.aggregate({
+      where: { orderId: refund.orderId, status: 'refunded', id: { not: id } },
+      _sum: { amount: true },
+    });
+    const goodsPaid =
+      Number(refund.order.payableAmount) - Number(refund.order.deliveryFee);
+    if (
+      finalAmount + Number(refundedBefore._sum.amount ?? 0) >
+      goodsPaid
+    )
+      throw new BadRequestException(
+        `超出可退上限：本单最多还可退 ¥${((goodsPaid - Number(refundedBefore._sum.amount ?? 0)) / 100).toFixed(2)}`,
+      );
+    await this.db.refund.update({
+      where: { id },
+      data: { amount: finalAmount },
+    });
     // 条件更新抢占审核权：并发双批只有一笔进入退款
     const claimed = await this.db.refund.updateMany({
       where: { id, status: refund.status },
@@ -4623,6 +4681,12 @@ export class AdminService {
         where: { id },
         data: { status: 'failed', refundError: message },
       });
+      // 微信未受理：订单解锁回原状态（客服单可能未转售后态，尽力回滚）
+      await this.restoreOrderFromRefund(
+        this.db as unknown as Prisma.TransactionClient,
+        refund.orderId,
+        refund.beforeStatus || 'delivered',
+      );
       await this.audit(
         operator,
         'refund.approve.fail',
@@ -4639,9 +4703,11 @@ export class AdminService {
   }
 
   /**
-   * 退款终态落账（微信确认退款后）：订单 refunded + 按来源联动——
-   * 未发货退款（pre-delivery）回补库存与销量（stockRestored 防双补）；
-   * 售后（after-sale）佣金负向冲回（refundAdjust：settled→负向行、pending→翻负）。
+   * 退款终态落账（微信确认退款后，IKHZKA v2）：
+   * - 累计已退 ≥ 实付−配送费 → 订单 refunded（整单终态：券返还+秒杀限购派生释放）
+   * - 部分退 → 订单回滚 beforeStatus（状态不变+金额标记，Q4 定稿 A）
+   * - 未发货退款（pre-delivery，整单）回补库存与销量（stockRestored 防双补）
+   * - 售后（after-sale）佣金按「累计退款 ÷ 商品实付」比例负向冲回（目标差值法防超冲）
    */
   private async finishRefund(
     refund: {
@@ -4650,6 +4716,8 @@ export class AdminService {
       userId: string;
       amount: number;
       source: string;
+      status: string;
+      beforeStatus: string;
     },
     wxRefundId: string,
     operator: string,
@@ -4658,18 +4726,49 @@ export class AdminService {
     const order = await this.db.order.findUniqueOrThrow({
       where: { id: refund.orderId },
     });
+    const goodsPaid =
+      Number(order.payableAmount) - Number(order.deliveryFee);
+    const refundedAgg = await this.db.refund.aggregate({
+      where: { orderId: order.id, status: 'refunded' },
+      _sum: { amount: true },
+    });
+    const totalRefunded =
+      Number(refundedAgg._sum.amount ?? 0) + refund.amount;
+    const isFull = totalRefunded >= goodsPaid;
+    // 幂等早退：本条已落过账（syncRefund 重复调用）直接返回
+    if (refund.status === 'refunded')
+      return this.db.refund.findUniqueOrThrow({ where: { id: refund.id } });
     const record = await this.db.$transaction(async (tx) => {
-      // 条件更新防重复落账（approve 即时终态与 syncRefund 并发）
+      // 部分退：订单回原状态（快照在 Refund.beforeStatus）；整单退：refunded。
+      // 客服单批准时订单在 delivered/completed（未转售后态）也在合法范围。
+      const patchData = isFull
+        ? { status: 'refunded', statusText: '已退款' }
+        : (() => {
+            const target = ['paid', 'delivered', 'completed'].includes(
+              refund.beforeStatus,
+            )
+              ? refund.beforeStatus
+              : 'delivered';
+            return {
+              status: target,
+              statusText:
+                target === 'paid'
+                  ? '仓库正在接单'
+                  : target === 'completed'
+                    ? '已确认收货'
+                    : '已送达寝室',
+            };
+          })();
       const won = await tx.order.updateMany({
-        where: { id: order.id, status: 'after-sales' },
-        data: { status: 'refunded', statusText: '已退款' },
+        where: { id: order.id, status: { in: ['after-sales', order.status] } },
+        data: patchData,
       });
       if (!won.count) throw new BadRequestException('订单状态已变化，请刷新');
       const after = await tx.refund.update({
         where: { id: refund.id },
         data: { status: 'refunded', wxRefundId, refundError: '' },
       });
-      if (refund.source === 'pre-delivery') {
+      if (refund.source === 'pre-delivery' && isFull) {
         // 货未出仓：回补库存与销量（商品可能已被清理，存在才回补）
         if (!order.stockRestored) {
           const lines =
@@ -4706,23 +4805,49 @@ export class AdminService {
             data: { stockRestored: true },
           });
         }
-      } else {
-        // 货已送达：佣金冲回（机制预留于 CommissionService.refundAdjust）
-        await this.commissions.refundAdjust(
-          tx,
-          order.id,
-          `售后退款冲回 ${order.orderNo}`,
-        );
+        // 整单终态：优惠券返还（locked/used → released，可再次使用）
+        if (order.couponId)
+          await tx.userCoupon.updateMany({
+            where: { id: order.couponId, status: { in: ['locked', 'used'] } },
+            data: { status: 'released' },
+          });
       }
       return after;
     });
+    if (refund.source !== 'pre-delivery') {
+      if (isFull) {
+        // 整单终态的售后退款：佣金全额冲回
+        await this.db.$transaction(async (tx) => {
+          await this.commissions.refundAdjust(
+            tx,
+            order.id,
+            `售后退款冲回 ${order.orderNo}`,
+          );
+        });
+      } else {
+        // 部分退：按累计退款比例冲回（目标差值法）
+        await this.refundCommissionPartial(
+          order.id,
+          goodsPaid,
+          totalRefunded,
+          order.orderNo,
+        );
+      }
+    }
     await this.audit(
       operator,
       'refund.finish',
       'refund',
       refund.id,
       null,
-      { status: 'refunded', wxRefundId, source: refund.source, amount: refund.amount },
+      {
+        status: 'refunded',
+        wxRefundId,
+        source: refund.source,
+        amount: refund.amount,
+        partial: !isFull,
+        totalRefunded,
+      },
       campusId,
     );
     try {
@@ -4736,6 +4861,68 @@ export class AdminService {
       // 推送失败不阻塞落账
     }
     return record;
+  }
+
+  /**
+   * 售后部分退款佣金冲回（IKHZKA v2，比例目标差值法）：
+   * 目标冲回额 = 原佣金总额 × (累计已退 ÷ 商品实付)，本次补足「目标 − 已冲回」，
+   * 多次部分退累加不会超过佣金全额。在 finishRefund 落账事务外单独执行
+   * （Commission 读写独立，失败仅记日志）。
+   */
+  private async refundCommissionPartial(
+    orderId: string,
+    goodsPaid: number,
+    totalRefunded: number,
+    orderNo: string,
+  ) {
+    try {
+      const ratio =
+        goodsPaid > 0 ? Math.min(1, totalRefunded / goodsPaid) : 1;
+      await this.db.$transaction(async (tx) => {
+        const originals = await tx.commission.findMany({
+          where: { orderId, kind: 'commission' },
+        });
+        const adjusted = await tx.commission.aggregate({
+          where: { orderId, kind: 'adjustment' },
+          _sum: { amount: true },
+        });
+        const totalCommission = originals.reduce(
+          (s, x) => s + Math.abs(x.amount),
+          0,
+        );
+        if (totalCommission <= 0) return;
+        const target = Math.round(totalCommission * ratio);
+        const done = Math.abs(adjusted._sum.amount ?? 0);
+        const delta = target - done;
+        if (delta <= 0) return;
+        const riders = [...new Set(originals.map((x) => x.staffId))];
+        // 多骑手单按各自佣金占比分摊（单骑手单即全额差值）
+        for (const staffId of riders) {
+          const share = originals
+            .filter((x) => x.staffId === staffId)
+            .reduce((s, x) => s + Math.abs(x.amount), 0);
+          const part = Math.round((delta * share) / totalCommission);
+          if (part <= 0) continue;
+          await tx.commission.create({
+            data: {
+              staffId,
+              orderId,
+              campusId: originals[0].campusId,
+              amount: -part,
+              kind: 'adjustment',
+              status: 'adjusted',
+              period: new Date().toISOString().slice(0, 7),
+              remark: `售后部分退款冲回 ${orderNo}`,
+            },
+          });
+        }
+      });
+    } catch (error) {
+      console.warn(
+        `[refund] 部分退款佣金冲回失败（不影响退款）: ${orderNo}`,
+        error instanceof Error ? error.message : error,
+      );
+    }
   }
 
   /**
@@ -4785,8 +4972,6 @@ export class AdminService {
       return this.db.refund.update({
         where: { id },
         data:
-          // approved=抢占后从未被微信受理（进程中断等）→ 回 failed 可重试；
-          // refunding=微信已受理但处理异常 → 保持状态，待商户平台人工处理
           refund.status === 'approved'
             ? {
                 status: 'failed',
@@ -4797,7 +4982,96 @@ export class AdminService {
     return refund; // PROCESSING：继续等
   }
 
-  /** 退款申请撤销/拒绝后订单回滚（与 C 端撤销共用口径，仅当订单仍在售后态）。 */
+  /**
+   * 客服按商品发起部分退款并即时批准（IKHZKA v2）：客服操作即审核，一次提交。
+   * 金额=行原价小计（可传 amounts 核定），硬上限：累计已退 + 本次 ≤ 实付 − 配送费。
+   */
+  async createAndApproveRefund(
+    orderId: string,
+    input: {
+      productIds: string[];
+      amounts?: Array<{ productId: string; amount: number }>;
+      remark?: string;
+    },
+    operator: string,
+    scope: string | null,
+  ) {
+    const order = await this.db.order.findUnique({ where: { id: orderId } });
+    if (!order || (scope !== null && order.campusId !== scope))
+      throw new NotFoundException('订单不存在');
+    if (!['delivered', 'completed', 'after-sales'].includes(order.status))
+      throw new BadRequestException('仅送达后的订单支持按商品退款');
+    if (!input.productIds?.length)
+      throw new BadRequestException('请勾选退款商品');
+    const pending = await this.db.refund.findFirst({
+      where: { orderId, status: 'pending' },
+      select: { id: true },
+    });
+    if (pending) throw new BadRequestException('该订单已有退款申请在审核中');
+    const items = this.business.parseRefundItems(order, input.productIds);
+    const amtMap = new Map(
+      (input.amounts ?? []).map((a) => [a.productId, a.amount]),
+    );
+    for (const item of items) {
+      const cap = item.unitPrice * item.quantity;
+      const amt = amtMap.get(item.productId);
+      if (amt != null) {
+        if (amt < 0 || amt > cap)
+          throw new BadRequestException(
+            `${item.productName} 金额超出该行上限 ¥${(cap / 100).toFixed(2)}`,
+          );
+        item.amount = Math.round(amt);
+      }
+    }
+    const total = items.reduce((s, i) => s + i.amount, 0);
+    const refundedBefore = await this.db.refund.aggregate({
+      where: { orderId, status: 'refunded' },
+      _sum: { amount: true },
+    });
+    const goodsPaid =
+      Number(order.payableAmount) - Number(order.deliveryFee);
+    const already = Number(refundedBefore._sum.amount ?? 0);
+    if (total + already > goodsPaid)
+      throw new BadRequestException(
+        `超出可退上限：本单最多还可退 ¥${((goodsPaid - already) / 100).toFixed(2)}`,
+      );
+    if (!this.payments)
+      // 校验全过再验支付通道（便于测试上限逻辑）
+      throw new ServiceUnavailableException('支付服务未就绪，无法发起退款');
+    const refund = await this.db.refund.create({
+      data: {
+        userId: order.userId,
+        orderId,
+        source: 'after-sale',
+        type: null,
+        description: '',
+        images: [],
+        reason: input.remark?.slice(0, 120) ?? '',
+        amount: total,
+        beforeStatus: order.status === 'after-sales' ? '' : order.status,
+        status: 'pending',
+        auditBy: operator,
+        auditAt: new Date(),
+        auditRemark: input.remark?.slice(0, 200) ?? '',
+        items: { create: items },
+      },
+    });
+    // 订单转售后态锁定（与 C 端申请一致；部分退落账时回滚 beforeStatus）
+    await this.db.order.update({
+      where: { id: orderId },
+      data: { status: 'after-sales', statusText: '部分退款中' },
+    });
+    // 创建即批准：复用 auditRefund 的微信退款+落账链路
+    return this.auditRefund(
+      refund.id,
+      'approve',
+      operator,
+      scope,
+      input.remark?.slice(0, 200) ?? '',
+    );
+  }
+
+  /** 退款申请撤销/拒绝后订单回滚  /** 退款申请撤销/拒绝后订单回滚（与 C 端撤销共用口径，仅当订单仍在售后态）。 */
   private async restoreOrderFromRefund(
     tx: Prisma.TransactionClient,
     orderId: string,

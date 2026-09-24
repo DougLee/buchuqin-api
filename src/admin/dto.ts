@@ -722,8 +722,33 @@ export class UpdateNoticeDto {
   @IsOptional() @IsIn(['active', 'disabled']) status?: 'active' | 'disabled';
 }
 
-/** 退款审核（IKHZKA）：approve=批准并发起微信原路退回；reject=拒绝（备注建议填写）。 */
+/** 退款审核（IKHZKA）：approve=批准并发起微信原路退回；reject=拒绝（备注建议填写）。
+ *  v2：amounts=审核核定的部分退款各行金额（客服可改）。 */
+export class RefundAuditAmountDto {
+  @IsString() itemId!: string;
+  @Type(() => Number) @IsInt() @Min(0) amount!: number;
+}
 export class RefundAuditDto {
   @IsIn(['approve', 'reject']) action!: 'approve' | 'reject';
+  @IsOptional() @IsString() @MaxLength(200) remark?: string;
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => RefundAuditAmountDto)
+  amounts?: RefundAuditAmountDto[];
+}
+
+/** 客服按商品发起部分退款（IKHZKA v2）：勾选商品行，金额可核定（分）。 */
+export class RefundItemAmountDto {
+  @IsString() productId!: string;
+  @Type(() => Number) @IsInt() @Min(0) amount!: number;
+}
+export class AdminCreateRefundDto {
+  @IsArray() @ArrayMinSize(1) @IsString({ each: true }) productIds!: string[];
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => RefundItemAmountDto)
+  amounts?: RefundItemAmountDto[];
   @IsOptional() @IsString() @MaxLength(200) remark?: string;
 }

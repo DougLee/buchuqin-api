@@ -144,7 +144,7 @@ describe('refund v1 (IKHZKA)', () => {
     expect(refund.amount).toBe(0);
   });
 
-  test('后台拒绝：订单回滚 paid，可重新申请且 rejectCount 留痕', async () => {
+  test('后台拒绝：订单回滚 paid，可重新申请（v2 新建一条，旧条留痕）', async () => {
     const order = await makeOrder('paid');
     const first = await business.applyPreDeliveryRefund(userId, order.id, {
       reason: '第一次',
@@ -155,10 +155,10 @@ describe('refund v1 (IKHZKA)', () => {
     const again = await business.applyPreDeliveryRefund(userId, order.id, {
       reason: '第二次',
     });
-    expect(again.id).toBe(first.id); // 复用同一条记录
+    expect(again.id).not.toBe(first.id); // v2：重新申请新建一条（不复用）
     expect(again.status).toBe('pending');
-    const row = await db.refund.findUniqueOrThrow({ where: { id: first.id } });
-    expect(row.rejectCount).toBe(1);
+    const old = await db.refund.findUniqueOrThrow({ where: { id: first.id } });
+    expect(old.status).toBe('rejected'); // 旧申请历史保留
   });
 
   test('后台拒绝：售后单回滚 delivered（beforeStatus 快照）', async () => {
@@ -196,5 +196,87 @@ describe('refund v1 (IKHZKA)', () => {
     await expect(
       admin.auditRefund(refund.id, 'reject', 'tester', 'campus-other', ''),
     ).rejects.toThrow('退款申请不存在');
+  });
+
+  test('v2 部分退款：售后勾选商品行，金额=行原价小计', async () => {
+    const order = await makeOrder('delivered');
+    const proof = { time: new Date().toISOString() };
+    await db.order.update({
+      where: { id: order.id },
+      data: {
+        package: json({ proof }),
+        // 快照两行：10×1 + 15×2（行小计 1000 + 3000）
+        items: json([
+          { product: { id: 'p001', name: '商品A', price: 1000 }, quantity: 1 },
+          { product: { id: 'p002', name: '商品B', price: 1500 }, quantity: 2 },
+        ]),
+      },
+    });
+    const refund = await business.createAfterSales(userId, order.id, {
+      type: 'damaged',
+      description: 'B 碎了',
+      images: ['https://example.com/b.jpg'],
+      productIds: ['p002'],
+    });
+    expect(refund.amount).toBe(3000); // 仅勾选行原价小计（申请口径 B）
+    expect(refund.items?.length).toBe(1);
+    expect(refund.items?.[0].productId).toBe('p002');
+  });
+
+  test('v2 部分退款：一单可多次申请（旧条 rejected 不阻塞新条）', async () => {
+    const order = await makeOrder('paid');
+    const first = await business.applyPreDeliveryRefund(userId, order.id, {
+      reason: 'a',
+    });
+    await admin.auditRefund(first.id, 'reject', 'tester', CAMPUS, 'no');
+    const second = await business.applyPreDeliveryRefund(userId, order.id, {
+      reason: 'b',
+    });
+    expect(second.id).not.toBe(first.id);
+    await db.refund.deleteMany({ where: { orderId: order.id } });
+    await db.order.update({
+      where: { id: order.id },
+      data: { status: 'paid', statusText: '仓库正在接单' },
+    });
+  });
+
+  test('v2 客服通道：勾选商品+改金额，超上限被拦（payments 未注入前移校验可测）', async () => {
+    const order = await makeOrder('delivered');
+    // 超上限：商品实付（1150-150=1000）只有 10 元，勾两行 1000+3000=4000 超限
+    await db.order.update({
+      where: { id: order.id },
+      data: {
+        items: json([
+          { product: { id: 'p001', name: '商品A', price: 1000 }, quantity: 1 },
+          { product: { id: 'p002', name: '商品B', price: 1500 }, quantity: 2 },
+        ]),
+      },
+    });
+    await expect(
+      admin.createAndApproveRefund(
+        order.id,
+        { productIds: ['p001', 'p002'], remark: '' },
+        'tester',
+        CAMPUS,
+      ),
+    ).rejects.toThrow('超出可退上限');
+    // 核定金额到上限内即可通过校验（到支付通道一步才报未就绪）
+    await expect(
+      admin.createAndApproveRefund(
+        order.id,
+        {
+          productIds: ['p001', 'p002'],
+          amounts: [
+            { productId: 'p001', amount: 400 },
+            { productId: 'p002', amount: 600 },
+          ],
+          remark: '',
+        },
+        'tester',
+        CAMPUS,
+      ),
+    ).rejects.toThrow('支付服务未就绪');
+    // 未落任何申请（校验先于创建）
+    expect(await db.refund.count({ where: { orderId: order.id } })).toBe(0);
   });
 });

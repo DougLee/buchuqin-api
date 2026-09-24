@@ -85,6 +85,7 @@ import {
   UpdateOrderStatusDto,
   UpdateStaffDto,
   RefundAuditDto,
+  AdminCreateRefundDto,
 } from './dto';
 
 @ApiTags('PC 管理后台 MVP')
@@ -1538,8 +1539,33 @@ export class AdminController {
         req.user.id,
         this.ctx(req).platform ? null : req.user.campusId,
         (body.remark ?? '').slice(0, 200),
+        body.amounts?.map((a) => ({ itemId: a.itemId, amount: a.amount })),
       ),
       body.action === 'approve' ? '已批准并发起退款' : '已拒绝该申请',
+    );
+  }
+  /** 客服按商品发起部分退款并即时批准（IKHZKA v2）：客服操作即审核。 */
+  @Post('orders/:id/refunds')
+  async createRefund(
+    @Req() req: AuthRequest,
+    @Param('id') id: string,
+    @Body() body: AdminCreateRefundDto,
+  ) {
+    return ok(
+      await this.service.createAndApproveRefund(
+        id,
+        {
+          productIds: body.productIds,
+          amounts: body.amounts?.map((a) => ({
+            productId: a.productId,
+            amount: a.amount,
+          })),
+          remark: body.remark,
+        },
+        req.user.id,
+        this.ctx(req).platform ? null : req.user.campusId,
+      ),
+      '已按商品退款',
     );
   }
   /** 退款状态同步：受理中的单向微信查终态并落账。 */

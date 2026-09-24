@@ -85,6 +85,8 @@ export class CreateAfterSalesDto {
     'quality' | 'missing' | 'damaged';
   @IsString() @MaxLength(300) description!: string;
   @IsArray() @ArrayMinSize(1) @IsString({ each: true }) images!: string[];
+  /** v2 部分退款：勾选的商品行 productId（缺省=整单退，兼容 v1） */
+  @IsOptional() @IsArray() @IsString({ each: true }) productIds?: string[];
 }
 
 /** 未发货退款（IKHZKA）：已支付未出库可申请；原因必填（道哥 2026-09-23 改）。 */

@@ -842,7 +842,28 @@ model Refund {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  @@unique([orderId])
+  /// v2 部分退款：一单可多条申请（每次申请一条，含 1..N 商品行）
+  items RefundItem[]
+
+  @@index([orderId])
+}
+
+/// 退款商品行（IKHZKA v2）：部分退款的商品行快照与金额
+model RefundItem {
+  id        String @id @default(cuid())
+  refundId  String
+  refund    Refund @relation(fields: [refundId], references: [id], onDelete: Cascade)
+  /// 商品行快照（下单时 items 快照对应行）
+  productId   String
+  productName String
+  /// 行快照单价（分）
+  unitPrice Int
+  /// 行购买数量
+  quantity  Int
+  /// 本行金额（分）：申请=行原价小计；批准=客服最终核定
+  amount    Int
+
+  @@index([refundId])
 }
 
 model Staff {
