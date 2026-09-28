@@ -188,13 +188,16 @@ describe('battle map (IKFOQ3)', () => {
     expect(r201.status).toBe('ordered');
   });
 
-  it('防串校区：楼栋不属于当前校区 → 404', async () => {
+  it('防串校区：楼栋不属于当前校区 → 404；平台全校区视角（空串）放行', async () => {
     await expect(admin.battleMapBuilding(CAMPUS_1, B2)).rejects.toThrow(
       NotFoundException,
     );
     await expect(admin.battleMapBuilding(CAMPUS_2, B1)).rejects.toThrow(
       NotFoundException,
     );
+    // IKISDN：空串=平台账号（campusScope 缺省）→ 任意校区楼栋放行
+    const cross = await admin.battleMapBuilding('', B2);
+    expect(cross.building.id).toBe(B2);
   });
 
   it('寝室详情：用户统计+高频标签（近 30 天 ≥3）+手机号脱敏', async () => {

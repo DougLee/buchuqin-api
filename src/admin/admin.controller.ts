@@ -839,22 +839,32 @@ export class AdminController {
   }
 
   // ==================== 营销作战地图（IKFOQ3）：寝室级下单覆盖 ====================
-  // 权限复用 buildings 键（admin/operations）；校区跟顶栏上下文，
-  // service 校验楼栋归属防串校区
+  // 权限复用 buildings 键（admin/operations）；校区经 campusScope（IKISDN）：
+  // 校区级恒本校区防串；平台级可 ?campus= 聚焦、缺省全放行（页面内选校区）
   @Get('battle-map/buildings/:buildingId') async battleMapBuilding(
     @Req() req: AuthRequest,
     @Param('buildingId') buildingId: string,
+    @Query('campus') campus?: string,
   ) {
     return ok(
-      await this.service.battleMapBuilding(req.user.campusId, buildingId),
+      await this.service.battleMapBuilding(
+        await this.campusScope(req, campus),
+        buildingId,
+      ),
     );
   }
 
   @Get('battle-map/rooms/:roomId') async battleMapRoom(
     @Req() req: AuthRequest,
     @Param('roomId') roomId: string,
+    @Query('campus') campus?: string,
   ) {
-    return ok(await this.service.battleMapRoom(req.user.campusId, roomId));
+    return ok(
+      await this.service.battleMapRoom(
+        await this.campusScope(req, campus),
+        roomId,
+      ),
+    );
   }
 
   // ==================== 采购单（IKFOQ1）：独立板块「采购管理」====================

@@ -3161,8 +3161,8 @@ export class AdminService {
     const building = await this.db.building.findUnique({
       where: { id: buildingId },
     });
-    // 防串校区：楼栋必须属于当前运营校区（顶栏切换上下文）
-    if (!building || building.campusId !== campusId)
+    // 防串校区：校区级恒本校区；空串=平台全校区视角放行（IKISDN 页内选校区）
+    if (!building || (campusId && building.campusId !== campusId))
       throw new NotFoundException('楼栋不存在');
     return building;
   }
