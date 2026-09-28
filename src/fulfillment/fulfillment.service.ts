@@ -158,6 +158,14 @@ export class FulfillmentService {
       const proof = (x.package as JsonMap | null)?.proof as JsonMap | undefined;
       return Array.isArray(proof?.images) && proof.images.length > 0;
     });
+    // 推广订单金额（IKIRO6）：归属订单中完成单的实付合计——今日/本月两个口径，
+    // 激励看板（督促按单推广），与佣金体系无关。
+    const monthStart = startOfToday;
+    monthStart.setDate(1);
+    const inMonth = (x: (typeof completed)[number]) =>
+      (deliveredAt(x)?.getTime() ?? 0) >= monthStart.getTime();
+    const gmvOf = (list: Array<{ payableAmount: number }>) =>
+      list.reduce((sum, x) => sum + Number(x.payableAmount ?? 0), 0);
     const rate = (n: number, d: number) =>
       d ? Number(((n / d) * 100).toFixed(1)) : 0;
     // 收入口径统一（IK8W5L）：本月 Commission 记录合计（含负向调整），不再按单数×常量估算。
@@ -180,6 +188,10 @@ export class FulfillmentService {
       ).length,
       completed: completedToday.length,
       completedTotal: completed.length,
+      // IKIRO6：推广订单金额（分）——今日/本月（送达时间口径，与 completed 一致）
+      todayGmv: gmvOf(completedToday),
+      monthGmv: gmvOf(completed.filter(inMonth)),
+      monthOrders: completed.filter(inMonth).length,
       income: incomeAgg._sum.amount ?? 0,
       onTimeRate: rate(onTime.length, completed.length),
       proofRate: rate(withProof.length, completed.length),
