@@ -3145,13 +3145,17 @@ export class AdminService {
     const rows = [...agg.values()]
       .map((r) => {
         // IKISZ2 双口径：毛利=商品金额−成本（未扣券，同详情逐行加总）；
-        // gross=综合毛利=实付−成本（扣券+配送费无成本收入），口径不变仅正名
+        // gross=综合毛利=实付−成本（扣券+配送费无成本收入），口径不变仅正名；
+        // marginRawRate=毛利率（未扣券基数=商品金额），marginRate=综合毛利率（基数=实付）
         const gross = r.salesTotal - r.costTotal;
         const marginTotal = r.productTotal - r.costTotal;
         return {
           ...r,
           marginTotal,
           gross,
+          marginRawRate: r.productTotal
+            ? Math.round((marginTotal / r.productTotal) * 10000)
+            : 0,
           marginRate: r.salesTotal
             ? Math.round((gross / r.salesTotal) * 10000)
             : 0,
@@ -3168,13 +3172,17 @@ export class AdminService {
     const tCost = rows.reduce((s, r) => s + r.costTotal, 0);
     const tGross = tSales - tCost;
     const tMargin = rows.reduce((s, r) => s + r.marginTotal, 0);
+    // IKISZ2+：合计毛利率按合计金额重算（非行均值），productTotal 随 rows 带出
+    const tProduct = rows.reduce((s, r) => s + (r.productTotal ?? 0), 0);
     return {
       totals: {
         orders: rows.reduce((s, r) => s + r.orders, 0),
         salesTotal: tSales,
         costTotal: tCost,
+        productTotal: tProduct,
         marginTotal: tMargin,
         gross: tGross,
+        marginRawRate: tProduct ? Math.round((tMargin / tProduct) * 10000) : 0,
         marginRate: tSales ? Math.round((tGross / tSales) * 10000) : 0,
       },
       rows,

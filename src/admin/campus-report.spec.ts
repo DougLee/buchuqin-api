@@ -177,6 +177,8 @@ describe('campus daily report (IKFOPS)', () => {
     // 综合毛利=实付−成本=3400（口径不变）；毛利=商品金额−成本=2340+1260=3600
     expect(r.totals.gross).toBe(3400);
     expect(r.totals.marginTotal).toBe(3600);
+    // 毛利率=3600/3700 商品金额=9730；综合毛利率=3400/3500 实付=9714
+    expect(r.totals.marginRawRate).toBe(9730);
     expect(r.totals.marginRate).toBe(9714);
     // 行=日期×校区，两行
     expect(r.rows.length).toBe(2);
@@ -193,6 +195,8 @@ describe('campus daily report (IKFOPS)', () => {
     // O2 券单：毛利 1260 ≠ 综合毛利 1060（差=200 券）
     expect(c2.marginTotal).toBe(1260);
     expect(c2.gross).toBe(1060);
+    // 毛利率=1260/1300=9692；综合毛利率=1060/1100=9636
+    expect(c2.marginRawRate).toBe(9692);
     expect(c2.marginRate).toBe(9636);
   });
 
