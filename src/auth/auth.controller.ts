@@ -379,6 +379,9 @@ export class AuthController {
       if (!staff || staff.status === 'deleted')
         throw new NotFoundException('该微信未绑定员工账号，请用工号绑定后登录');
       // IKI3ZP：登录侧写补录 unionId（服务号关注事件按 unionid 自动绑定派单通道）
+      this.logger.log(
+        `骑手静默登录诊断：staff=${staff.staffNo} code2session unionid=${session.unionid ?? '未返回（用户未关注同平台服务号或绑定不一致）'}`,
+      );
       if (session.unionid && staff.unionId !== session.unionid) {
         await this.db.staff
           .update({
@@ -403,6 +406,9 @@ export class AuthController {
     // 用户端小程序 → 买家通道：首次登录创建用户（昵称"微信用户"、手机号空，
     // 后续 POST /auth/phone 绑定），campusId 取默认校园（第一个 campus）。
     // IKDETO 迎新礼包：首建档标记（函数级，响应透出 isNewUser）
+    this.logger.log(
+      `用户端登录诊断（IKI3ZP 排查）：appid=${credentials.appid} unionid=${session.unionid ?? '未返回'}`,
+    );
     let created = false;
     let user = await this.db.user.findUnique({
       where: { openid: session.openid },
