@@ -37,6 +37,8 @@ describe('campus daily report (IKFOPS)', () => {
     hour: number;
     status: string;
     payable: number;
+    /** IKISZ2：缺省=payable（无券） */
+    productAmount?: number;
     items: unknown[];
     buildingId?: string;
   }) => {
@@ -54,7 +56,8 @@ describe('campus daily report (IKFOPS)', () => {
         }),
         deliveryMode: 'instant',
         items: json(o.items),
-        productAmount: o.payable,
+        // IKISZ2：可传 productAmount 模拟券单（商品金额≠实付）
+        productAmount: o.productAmount ?? o.payable,
         totalQuantity: 1,
         deliveryThreshold: 0,
         deliveryFee: 0,
@@ -110,13 +113,15 @@ describe('campus daily report (IKFOPS)', () => {
         { quantity: 1, product: { id: 'p2', name: 'B', price: 0 } },
       ],
     });
-    // O2：昨日 C2，completed——配送费/优惠并入 payable 的实付口径
+    // O2：昨日 C2，completed——券单（商品金额 1300=原价，实付 1100=扣 200 券）：
+    // 毛利=1300−40=1260（未扣券）≠ 综合毛利=1100−40=1060
     await mkOrder({
       campusId: CAMPUS_2,
       paidDay: YD,
       hour: 11,
       status: 'completed',
       payable: 1100,
+      productAmount: 1300,
       items: [
         { quantity: 2, product: { id: 'p3', name: 'C', price: 550, unitWholesaleCost: 20 } },
       ],
@@ -169,7 +174,9 @@ describe('campus daily report (IKFOPS)', () => {
     expect(r.totals.salesTotal).toBe(3500);
     // O1 成本=3×20+0（无快照行），O2=2×20
     expect(r.totals.costTotal).toBe(100);
+    // 综合毛利=实付−成本=3400（口径不变）；毛利=商品金额−成本=2340+1260=3600
     expect(r.totals.gross).toBe(3400);
+    expect(r.totals.marginTotal).toBe(3600);
     expect(r.totals.marginRate).toBe(9714);
     // 行=日期×校区，两行
     expect(r.rows.length).toBe(2);
@@ -177,10 +184,15 @@ describe('campus daily report (IKFOPS)', () => {
     expect(c1.orders).toBe(1);
     expect(c1.salesTotal).toBe(2400);
     expect(c1.costTotal).toBe(60);
+    // O1 无券：毛利=综合毛利=2340
+    expect(c1.marginTotal).toBe(2340);
     expect(c1.gross).toBe(2340);
     expect(c1.marginRate).toBe(9750);
     const c2 = r.rows.find((x) => x.campusId === CAMPUS_2)!;
     expect(c2.salesTotal).toBe(1100);
+    // O2 券单：毛利 1260 ≠ 综合毛利 1060（差=200 券）
+    expect(c2.marginTotal).toBe(1260);
+    expect(c2.gross).toBe(1060);
     expect(c2.marginRate).toBe(9636);
   });
 
