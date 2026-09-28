@@ -97,6 +97,12 @@ export class BusinessController {
   async seckill(@Req() req: AuthRequest) {
     return ok(await this.service.listSeckill(req.user.campusId, req.user.id));
   }
+  /** 推荐专区商品（道哥 2026-09-24）：运营勾选的 featured 商品，分类页「推荐」分类用。 */
+  @Get('featured-products')
+  @ApiOperation({ summary: '推荐专区商品列表（运营勾选的 featured 商品，手动排序）' })
+  async featured(@Req() req: AuthRequest) {
+    return ok(await this.service.listFeatured(req.user.campusId));
+  }
   /** 同款匹配（IKGZSU 跨校区分享）：外校区商品 id → 按条码找本校区在售同款。
    *  命中返回 productView（价格/促销按本校区）；未命中 product=null，
    *  sourceName/sourceCampusName 供前端弹窗/占位页展示来源。 */

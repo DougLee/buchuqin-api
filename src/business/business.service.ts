@@ -796,6 +796,29 @@ export class BusinessService {
       ),
     );
   }
+  /**
+   * 推荐专区商品（道哥 2026-09-24）：仅运营勾选的 featured 商品（featuredSort
+   * 手动排序），分类页「推荐」特殊分类用。秒杀价不进推荐区（IKHL6Y 双渠道），
+   * clearance 等正常活动价照常生效。空列表时分类页不插段（同秒杀模式）。
+   */
+  async listFeatured(campusId: string) {
+    const now = new Date();
+    const rows = await this.db.product.findMany({
+      where: {
+        campusId,
+        status: 'on-sale',
+        featured: true,
+        category: { hidden: false },
+      },
+      orderBy: { featuredSort: 'asc' },
+    });
+    const promoMap = await this.promotionMap(
+      rows.map((p) => p.id),
+      now,
+      true,
+    );
+    return rows.map((p) => this.productView(p, false, promoMap.get(p.id)));
+  }
   async product(id: string, campusId: string, userId?: string) {
     const item = await this.db.product.findFirst({
       where: { id, campusId, status: 'on-sale' },
