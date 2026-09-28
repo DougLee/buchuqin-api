@@ -127,10 +127,16 @@ export class AdminService {
         }),
         this.db.building.groupBy({ by: ['campusId'], _count: { _all: true } }),
         // 校区概览毛利（2026-09-18 道哥）：口径与校区经营日报一致——
-        // 实付 − 行级 unitWholesaleCost 快照×数量（快照前历史单按 0 成本计）
+        // 综合毛利=实付 − 行级 unitWholesaleCost 快照×数量（快照前历史单按 0 成本计）；
+        // IKISZ2 增毛利（未扣券）=商品金额 − 同口径成本
         this.db.order.findMany({
           where: { createdAt: { gte: startOfToday }, paidAt: { not: null } },
-          select: { campusId: true, payableAmount: true, items: true },
+          select: {
+            campusId: true,
+            payableAmount: true,
+            productAmount: true,
+            items: true,
+          },
         }),
       ]);
     const paidByCampus = new Map(paidAgg.map((r) => [r.campusId, r]));
@@ -144,6 +150,7 @@ export class AdminService {
       buildingAgg.map((r) => [r.campusId, r._count._all]),
     );
     const profitByCampus = new Map<string, number>();
+    const marginByCampus = new Map<string, number>();
     for (const o of profitRows) {
       const lines =
         (o.items as unknown as Array<{
@@ -158,6 +165,10 @@ export class AdminService {
         o.campusId,
         (profitByCampus.get(o.campusId) ?? 0) + (o.payableAmount - cost),
       );
+      marginByCampus.set(
+        o.campusId,
+        (marginByCampus.get(o.campusId) ?? 0) + (o.productAmount - cost),
+      );
     }
     const campusRows = campuses.map((c) => {
       const paid = paidByCampus.get(c.id);
@@ -168,6 +179,8 @@ export class AdminService {
         status: c.status,
         buildings: buildingsByCampus.get(c.id) ?? 0,
         revenue: this.num(paid?._sum.payableAmount ?? 0),
+        // IKISZ2 双口径：margin=毛利（未扣券） / profit=综合毛利（实付−成本）
+        margin: this.num(marginByCampus.get(c.id) ?? 0),
         profit: this.num(profitByCampus.get(c.id) ?? 0),
         orders: paid?._count._all ?? 0,
         newUsers: usersByCampus.get(c.id) ?? 0,
@@ -178,6 +191,7 @@ export class AdminService {
       campusRows,
       kpis: {
         revenue: campusRows.reduce((sum, r) => sum + r.revenue, 0),
+        margin: campusRows.reduce((sum, r) => sum + r.margin, 0),
         profit: campusRows.reduce((sum, r) => sum + r.profit, 0),
         orders: campusRows.reduce((sum, r) => sum + r.orders, 0),
         newUsers: campusRows.reduce((sum, r) => sum + r.newUsers, 0),
@@ -186,7 +200,10 @@ export class AdminService {
       },
       caliber: {
         revenue: '全部校区今日支付的有效单实付金额合计（分）',
-        profit: '全部校区今日支付的有效单毛利合计（实付−行级批发成本快照，分）',
+        margin:
+          '全部校区今日支付的有效单毛利合计（商品金额−行级批发成本快照，未扣券，分）',
+        profit:
+          '全部校区今日支付的有效单综合毛利合计（实付−行级批发成本快照，扣券，分）',
         orders: '全部校区今日支付的有效单合计',
         newUsers: '全部校区今日新增用户',
         exceptions: '状态为异常的未结订单（不限当日）',
@@ -3067,6 +3084,7 @@ export class AdminService {
         campusId: true,
         paidAt: true,
         payableAmount: true,
+        productAmount: true,
         items: true,
         address: true,
         campus: { select: { name: true, shortName: true } },
@@ -3089,6 +3107,7 @@ export class AdminService {
         campusShortName: string;
         orders: number;
         salesTotal: number;
+        productTotal: number;
         costTotal: number;
       }
     >();
@@ -3104,10 +3123,13 @@ export class AdminService {
         campusShortName: o.campus.shortName,
         orders: 0,
         salesTotal: 0,
+        productTotal: 0,
         costTotal: 0,
       };
       cur.orders += 1;
       cur.salesTotal += o.payableAmount;
+      // IKISZ2 商品金额合计（毛利未扣券口径的分母项）
+      cur.productTotal += o.productAmount;
       // 行成本=数量×IKFOPQ 每零售单位批发成本快照（缺快照按 0）
       cur.costTotal += (
         o.items as Array<{
@@ -3122,9 +3144,13 @@ export class AdminService {
     }
     const rows = [...agg.values()]
       .map((r) => {
+        // IKISZ2 双口径：毛利=商品金额−成本（未扣券，同详情逐行加总）；
+        // gross=综合毛利=实付−成本（扣券+配送费无成本收入），口径不变仅正名
         const gross = r.salesTotal - r.costTotal;
+        const marginTotal = r.productTotal - r.costTotal;
         return {
           ...r,
+          marginTotal,
           gross,
           marginRate: r.salesTotal
             ? Math.round((gross / r.salesTotal) * 10000)
@@ -3141,11 +3167,13 @@ export class AdminService {
     const tSales = rows.reduce((s, r) => s + r.salesTotal, 0);
     const tCost = rows.reduce((s, r) => s + r.costTotal, 0);
     const tGross = tSales - tCost;
+    const tMargin = rows.reduce((s, r) => s + r.marginTotal, 0);
     return {
       totals: {
         orders: rows.reduce((s, r) => s + r.orders, 0),
         salesTotal: tSales,
         costTotal: tCost,
+        marginTotal: tMargin,
         gross: tGross,
         marginRate: tSales ? Math.round((tGross / tSales) * 10000) : 0,
       },
