@@ -7,8 +7,8 @@ import { HQ_CAMPUS_ID, OFFICIAL_CAMPUS_ID } from '../common/campus';
  * 订货批次（IKFOQ0，2026-09-15 grilling 定版）：
  * - 批次窗口推导阶段（upcoming/open/ended/closed），窗口外不可订
  * - 校区一批次一张单（upsert），按件订 + unitsPerCase 快照换算
- * - 状态机全环：提交/撤回/驳回重提/确认/撤销确认
- * - 确认即锁总部仓库存（可用=stock−lockedStock，不足阻断），撤销释放
+ * - 多单制（IKJCJF）：填完即提交成一张新单，可多次订货；待审核可删除
+ * - 确认不校验不锁库存（IKJC1R 订货驱动采购）
  * 独立 fixture，afterAll 全清理。
  */
 describe('restock batch (IKFOQ0)', () => {
@@ -152,19 +152,20 @@ describe('restock batch (IKFOQ0)', () => {
     await expect(save(1, `rs-not-in-batch-${tag}`)).rejects.toThrow('不在官方库在售范围');
   });
 
-  it('保存订货单：unitsPerCase 快照 + upsert 同一张单', async () => {
+  it('提交成单：每次保存一张新单（IKJCJF 多单制、无草稿）', async () => {
     const first = await save(5);
     orderId = first!.id;
+    expect(first!.status).toBe('submitted'); // 填完即提交
     expect(first!.items[0].unitsPerCase).toBe(24);
-    const again = await save(6);
-    expect(again!.id).toBe(orderId); // 一批次一校区一张
-    expect(again!.items).toHaveLength(1);
-    expect(again!.items[0].cases).toBe(6);
-    await save(5); // 回到 5 件（后续锁定按 5×24=120 断言）
+    const second = await save(6);
+    expect(second!.id).not.toBe(orderId); // 再订=另一张新单
+    expect(second!.status).toBe('submitted');
+    // 删除第二张（待审核可删），回到第一张为主单
+    await admin.deleteRestockOrder(second!.id, OP, CAMPUS_ID);
+    expect(await db.restockOrder.findUnique({ where: { id: second!.id } })).toBeNull();
   });
 
-  it('提交 → 确认锁总部仓 120（5 件 × 24 听）', async () => {
-    await admin.submitRestockOrder(openBatchId, OP, CAMPUS_ID);
+  it('确认不校验不锁库存（IKJC1R：订货驱动采购）', async () => {
     const res = await admin.auditRestockOrder(
       orderId,
       { action: 'confirm' } as any,
@@ -172,69 +173,79 @@ describe('restock batch (IKFOQ0)', () => {
     );
     expect(res.status).toBe('confirmed');
     const hqRow = await db.product.findUnique({ where: { id: HQ_ROW_ID } });
-    expect(hqRow!.lockedStock).toBe(120);
+    // 确认环节完全不碰库存：lockedStock 恒 0
+    expect(hqRow!.lockedStock).toBe(0);
   });
 
-  it('确认后：重复确认被拦，校区改单被拦（提交后锁定）', async () => {
+  it('确认后：重复确认被拦；已确认单不可删除', async () => {
     await expect(
       admin.auditRestockOrder(orderId, { action: 'confirm' } as any, HQ_OP),
     ).rejects.toThrow('只有已提交');
-    await expect(save(9)).rejects.toThrow('不能修改');
+    // confirmed 已进采购聚合，删除被拦
+    await expect(
+      admin.deleteRestockOrder(orderId, OP, CAMPUS_ID),
+    ).rejects.toThrow('只有待审核');
   });
 
-  it('总部仓不足/未铺货阻断确认（信息含明细）', async () => {
-    // 先撤销上一用例的确认（回 submitted、lockedStock=0），后续断言口径干净
-    await admin.auditRestockOrder(orderId, { action: 'revoke' } as any, HQ_OP);
-    // 未铺货：临时删 sourceProductId 关联再恢复
+  it('总部仓不足/未铺货不再阻断确认（IKJC1R，新单验证）', async () => {
+    // 未铺货：临时删 sourceProductId 关联再恢复——新单确认照常通过
     await db.product.update({
       where: { id: HQ_ROW_ID },
       data: { sourceProductId: null },
     });
-    await expect(
-      admin.auditRestockOrder(orderId, { action: 'confirm' } as any, HQ_OP),
-    ).rejects.toThrow('总部仓未铺货');
+    const o2 = await save(4);
+    const r1 = await admin.auditRestockOrder(
+      o2!.id,
+      { action: 'confirm' } as any,
+      HQ_OP,
+    );
+    expect(r1.status).toBe('confirmed');
+    await admin.auditRestockOrder(o2!.id, { action: 'revoke' } as any, HQ_OP);
     await db.product.update({
       where: { id: HQ_ROW_ID },
       data: { sourceProductId: OFF_ID },
     });
-    // 不足：可用 100 < 需 120
+    // 库存不足（可用 100 < 需 96）同样不阻断
     await db.product.update({ where: { id: HQ_ROW_ID }, data: { stock: 100 } });
-    await expect(
-      admin.auditRestockOrder(orderId, { action: 'confirm' } as any, HQ_OP),
-    ).rejects.toThrow('总部仓库存不足');
-    await db.product.update({ where: { id: HQ_ROW_ID }, data: { stock: 240 } });
-    expect((await db.restockOrder.findUnique({ where: { id: orderId } }))!.status).toBe(
-      'submitted',
+    const o3 = await save(4);
+    const r2 = await admin.auditRestockOrder(
+      o3!.id,
+      { action: 'confirm' } as any,
+      HQ_OP,
     );
+    expect(r2.status).toBe('confirmed');
+    await admin.auditRestockOrder(o3!.id, { action: 'revoke' } as any, HQ_OP);
+    await db.product.update({ where: { id: HQ_ROW_ID }, data: { stock: 240 } });
   });
 
-  it('撤销确认释放锁定：lockedStock 回 0、状态回已提交', async () => {
-    await admin.auditRestockOrder(orderId, { action: 'confirm' } as any, HQ_OP);
-    let hqRow = await db.product.findUnique({ where: { id: HQ_ROW_ID } });
-    expect(hqRow!.lockedStock).toBe(120);
+  it('撤销确认：lockedStock 恒 0（IKJC1R 不再锁/释放）', async () => {
+    const o = await save(5);
+    await admin.auditRestockOrder(o!.id, { action: 'confirm' } as any, HQ_OP);
     const res = await admin.auditRestockOrder(
-      orderId,
+      o!.id,
       { action: 'revoke', note: '订错了' } as any,
       HQ_OP,
     );
     expect(res.status).toBe('submitted');
-    hqRow = await db.product.findUnique({ where: { id: HQ_ROW_ID } });
+    const hqRow = await db.product.findUnique({ where: { id: HQ_ROW_ID } });
     expect(hqRow!.lockedStock).toBe(0);
   });
 
-  it('撤回与驳回重提：状态机全环', async () => {
-    const w = await admin.withdrawRestockOrder(openBatchId, OP, CAMPUS_ID); // submitted → draft
-    expect(w.status).toBe('draft');
-    await admin.submitRestockOrder(openBatchId, OP, CAMPUS_ID);
+  it('驳回=终态，再订生成新单（IKJCJF 无草稿重提）', async () => {
+    const o = await save(8);
     const r = await admin.auditRestockOrder(
-      orderId,
+      o!.id,
       { action: 'reject', note: '数量待定' } as any,
       HQ_OP,
     );
     expect(r.status).toBe('rejected');
-    await save(8); // 驳回后可改
-    const s = await admin.submitRestockOrder(openBatchId, OP, CAMPUS_ID);
-    expect(s.status).toBe('submitted');
+    // 驳回单不可删（仅待审核可删）；再订=另一张新单
+    await expect(
+      admin.deleteRestockOrder(o!.id, OP, CAMPUS_ID),
+    ).rejects.toThrow('只有待审核');
+    const fresh = await save(3);
+    expect(fresh!.status).toBe('submitted');
+    orderId = o!.id; // 主单指向驳回单（后续列表断言按 8 件）
   });
 
   it('关闭批次后拒新订（关窗幂等）', async () => {
@@ -261,7 +272,9 @@ describe('restock batch (IKFOQ0)', () => {
     expect(hqOrders.some((o) => o.id === orderId)).toBe(true);
     const detail = await admin.restockBatchDetail(openBatchId, true, '');
     expect(detail.items.some((i) => i.productId === OFF_ID)).toBe(true);
-    expect(detail.orders).toHaveLength(1);
-    expect(detail.orders[0].totalUnits).toBe(8 * 24);
+    // IKJCJF 多单制：主单（8 件驳回单）在列，多张并存
+    const main = detail.orders.find((o) => o.id === orderId);
+    expect(main).toBeDefined();
+    expect(main!.totalUnits).toBe(8 * 24);
   });
 });

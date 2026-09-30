@@ -484,7 +484,7 @@ model RestockBatchItem {
 }
 
 /**
- * 校区订货单（IKFOQ0）：一批次一校区一张（@@unique 兜底）；草稿/驳回可改，
+ * 校区订货单（IKFOQ0 → IKJCJF 多单制）：一批次一校区可多张（每次提交成单），
  * 提交后锁定，总部确认即锁总部仓库存，发货转扣（IKFOQ2）。
  */
 model RestockOrder {
@@ -493,8 +493,8 @@ model RestockOrder {
   batch        RestockBatch @relation(fields: [batchId], references: [id])
   campusId     String
   campus       Campus    @relation(fields: [campusId], references: [id])
-  /// draft | submitted | confirmed | rejected（撤回/重提/撤销环见 grilling #12）
-  status       String    @default("draft")
+  /// submitted | confirmed | rejected | shipped | received（IKJCJF：无草稿，每次提交成单）
+  status       String    @default("submitted")
   submitBy     String?
   submitByName String    @default("")
   submittedAt  DateTime?
@@ -507,7 +507,7 @@ model RestockOrder {
   items        RestockOrderItem[]
   shipment     RestockShipment?
 
-  @@unique([batchId, campusId])
+  @@index([batchId, campusId])
   @@index([campusId, status])
 }
 

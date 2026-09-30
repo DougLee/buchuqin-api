@@ -18,6 +18,7 @@ describe('purchase order (IKFOQ1)', () => {
   const CAT_ID = `po-cat-${tag}`;
   const OFF_A = `po-offA-${tag}`;
   const OFF_B = `po-offB-${tag}`;
+  const OFF_C = `po-offC-${tag}`;
   const HQ_A = `po-hqA-${tag}`;
   const HQ_B = `po-hqB-${tag}`;
   const CAMPUS_ID = `po-campus-${tag}`;
@@ -26,6 +27,7 @@ describe('purchase order (IKFOQ1)', () => {
   const hour = 3600 * 1000;
   let batchId = '';
   let poId = '';
+  let batch2Id = '';
 
   /** 官方在售商品 + 总部仓铺货行（stock 初值 0） */
   const seedProduct = async (offId: string, hqId: string, name: string) => {
@@ -116,15 +118,13 @@ describe('purchase order (IKFOQ1)', () => {
         'spec-op',
         campus,
       );
-      await admin.submitRestockOrder(batchId, 'spec-op', campus);
     }
-    // 总部仓先备货再确认：确认即锁 A=7×24=168、B=3×24=72（锁后可用 332/428，
-    // 采购验收动的是 stock 本身，与锁定无冲突；锁定语义 restock.spec 已覆盖）
+    // 总部仓先备货再确认（IKJC1R：确认不再锁库存，lockedStock 恒 0）
     await db.product.update({ where: { id: HQ_A }, data: { stock: 500 } });
     await db.product.update({ where: { id: HQ_B }, data: { stock: 500 } });
     for (const campus of [CAMPUS_ID, `po-campus2-${tag}`]) {
-      const order = await db.restockOrder.findUniqueOrThrow({
-        where: { batchId_campusId: { batchId, campusId: campus } },
+      const order = await db.restockOrder.findFirstOrThrow({
+        where: { batchId, campusId: campus },
       });
       await admin.auditRestockOrder(order.id, { action: 'confirm' } as any, HQ_OP);
     }
@@ -138,10 +138,18 @@ describe('purchase order (IKFOQ1)', () => {
     });
     await db.restockOrder.deleteMany({ where: { batchId } });
     await db.restockBatch.delete({ where: { id: batchId } }).catch(() => {});
+    await db.purchaseOrderItem.deleteMany({ where: { order: { batchId: batch2Id } } });
+    await db.purchaseOrder.deleteMany({ where: { batchId: batch2Id } });
+    await db.restockOrderItem.deleteMany({ where: { order: { batchId: batch2Id } } });
+    await db.restockOrder.deleteMany({ where: { batchId: batch2Id } });
+    await db.restockBatch.delete({ where: { id: batch2Id } }).catch(() => {});
     await db.inventoryTxn
-      .deleteMany({ where: { productId: { in: [OFF_A, OFF_B, HQ_A, HQ_B] } } })
+      .deleteMany({ where: { productId: { in: [OFF_A, OFF_B, OFF_C, HQ_A, HQ_B] } } })
       .catch(() => {});
-    await db.product.deleteMany({ where: { id: { in: [OFF_A, OFF_B, HQ_A, HQ_B] } } });
+    await db.product
+      .deleteMany({ where: { sourceProductId: OFF_C } })
+      .catch(() => {});
+    await db.product.deleteMany({ where: { id: { in: [OFF_A, OFF_B, OFF_C, HQ_A, HQ_B] } } });
     await db.campus
       .deleteMany({ where: { id: { in: [CAMPUS_ID, `po-campus2-${tag}`] } } })
       .catch(() => {});
@@ -273,5 +281,72 @@ describe('purchase order (IKFOQ1)', () => {
     const detail2 = await admin.purchaseOrderDetail(row2.id);
     expect(detail2.phase).toBe('pending');
     expect(detail2.items.find((i) => i.productId === OFF_A)!.requiredCases).toBe(7);
+  });
+
+  it('未铺货商品验收：自动建总部仓行再入库（IKJC1R 订货驱动采购）', async () => {
+    // 官方在售行 C：无总部仓铺货行（模拟新品直接订货采购）
+    await db.product.create({
+      data: {
+        id: OFF_C,
+        campusId: OFFICIAL_CAMPUS_ID,
+        categoryId: CAT_ID,
+        name: '未铺货测试官方商品',
+        subtitle: '',
+        price: 400,
+        originalPrice: 500,
+        stock: 9999,
+        tag: '',
+        image: '',
+        weight: 0,
+        retailUnit: '听',
+        wholesaleUnit: '件',
+        unitsPerCase: 12,
+        status: 'on-sale',
+      } as any,
+    });
+    // 独立新批次：C 订货→确认（IKJC1R 确认不校验库存/铺货）→聚合生成采购单
+    const batch2 = await admin.createRestockBatch(
+      {
+        name: `C批次${tag}`,
+        startAt: new Date(Date.now() - 3600_000).toISOString(),
+        endAt: new Date(Date.now() + 86_400_000).toISOString(),
+      } as any,
+      HQ_OP,
+    );
+    const cOrder = await admin.saveRestockOrder(
+      batch2.id,
+      { items: [{ productId: OFF_C, cases: 2 }] } as any,
+      'spec-op',
+      CAMPUS_ID,
+    );
+    const confirmed = await admin.auditRestockOrder(
+      cOrder!.id,
+      { action: 'confirm' } as any,
+      HQ_OP,
+    );
+    expect(confirmed.status).toBe('confirmed');
+    batch2Id = batch2.id;
+    const po2 = await admin.createPurchaseOrder(
+      batch2.id,
+      { supplierName: `供应商C${tag}`, lines: [{ productId: OFF_C, unitCost: 260 }] } as any,
+      HQ_OP,
+    );
+    const res = await admin.receivePurchaseOrder(
+      po2.id,
+      { lines: [{ productId: OFF_C, receiveCases: 2, badCases: 0, note: '' }] } as any,
+      HQ_OP,
+    );
+    expect(res.phase).toBe('completed');
+    // 自动建行：总部仓行存在、关联官方行、库存=到货数、下架态
+    const created = await db.product.findFirstOrThrow({
+      where: { sourceProductId: OFF_C },
+    });
+    expect(created.campusId).toBe('campus-hq');
+    expect(created.stock).toBe(2 * 12);
+    expect(created.status).toBe('off-sale');
+    const txn = await db.inventoryTxn.findFirstOrThrow({
+      where: { productId: created.id, type: 'purchase-receive' },
+    });
+    expect(txn.delta).toBe(24);
   });
 });

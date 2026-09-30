@@ -5,7 +5,7 @@ import { HQ_CAMPUS_ID, OFFICIAL_CAMPUS_ID } from '../common/campus';
 
 /**
  * 分拨发货（IKFOQ2，2026-09-15 grilling 定版）：
- * - 发货：已确认订货单整单发（不拆包），总部仓 stock/lockedStock 双降（锁转实扣），
+ * - 发货：已确认订货单整单发（不拆包），总部仓只扣 stock（IKJC1R：确认不再锁库存），
  *   行快照进货价（批次采购实际价优先回退 costPrice）+批发价（实时），restock-out 流水
  * - 库存不足拦截：报缺货数量
  * - 确认到货：按发货数全额入账（不登记差异），校区行缺失自动建（off-sale 态），
@@ -151,14 +151,12 @@ describe('restock shipment (IKFOQ2)', () => {
       'spec-op2',
       CAMPUS_2,
     );
-    await admin.submitRestockOrder(batchId, OP_1, CAMPUS_1);
-    await admin.submitRestockOrder(batchId, 'spec-op2', CAMPUS_2);
     // 备货在确认前（确认锁库存：A 锁 72、B 锁 12）
     await db.product.update({ where: { id: HQ_A }, data: { stock: 500 } });
     await db.product.update({ where: { id: HQ_B }, data: { stock: 240 } });
     for (const campus of [CAMPUS_1, CAMPUS_2]) {
-      const order = await db.restockOrder.findUniqueOrThrow({
-        where: { batchId_campusId: { batchId, campusId: campus } },
+      const order = await db.restockOrder.findFirstOrThrow({
+        where: { batchId, campusId: campus },
       });
       await admin.auditRestockOrder(order.id, { action: 'confirm' } as any, HQ_OP);
       if (campus === CAMPUS_1) orderId1 = order.id;
@@ -207,11 +205,11 @@ describe('restock shipment (IKFOQ2)', () => {
     await db.$disconnect();
   });
 
-  it('发货：锁转实扣双降、成本快照采购价优先、restock-out 流水、状态 shipped', async () => {
+  it('发货：只扣实库、成本快照采购价优先、restock-out 流水、状态 shipped', async () => {
     await admin.shipRestockOrder(orderId1, { note: '整箱发' } as any, HQ_OP);
     const hqA = await db.product.findUniqueOrThrow({ where: { id: HQ_A } });
     expect(hqA.stock).toBe(500 - 48); // 2 件 × 24 听
-    expect(hqA.lockedStock).toBe(72 - 48); // 确认时锁 72（两单合计），本单 48 转实扣
+    expect(hqA.lockedStock).toBe(0); // IKJC1R：确认不锁库存，lockedStock 恒 0
     const txn = await db.inventoryTxn.findFirstOrThrow({
       where: { productId: HQ_A, type: 'restock-out' },
     });

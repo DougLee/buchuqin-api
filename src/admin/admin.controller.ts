@@ -719,31 +719,19 @@ export class AdminController {
       throw new BadRequestException('账号未绑定校区，无法订货');
     return ok(
       await this.service.saveRestockOrder(batchId, body, req.user.id, await this.scopedCampus(req)),
-      '订货单已保存',
-    );
-  }
-  /** 校区提交订货单（窗口内）。 */
-  @Post('restock/batches/:batchId/order/submit') async submitRestockOrder(
-    @Req() req: AuthRequest,
-    @Param('batchId') batchId: string,
-  ) {
-    if (!req.user.campusId)
-      throw new BadRequestException('账号未绑定校区，无法订货');
-    return ok(
-      await this.service.submitRestockOrder(batchId, req.user.id, await this.scopedCampus(req)),
       '订货单已提交，等待总部审核',
     );
   }
-  /** 校区撤回（已提交未审核）。 */
-  @Post('restock/batches/:batchId/order/withdraw') async withdrawRestockOrder(
+  /** 校区删除订货单（IKJCJF：仅待审核可删，物理删除）。 */
+  @Delete('restock/orders/:id') async deleteRestockOrder(
     @Req() req: AuthRequest,
-    @Param('batchId') batchId: string,
+    @Param('id') id: string,
   ) {
     if (!req.user.campusId)
       throw new BadRequestException('账号未绑定校区，无法订货');
     return ok(
-      await this.service.withdrawRestockOrder(batchId, req.user.id, await this.scopedCampus(req)),
-      '订货单已撤回草稿',
+      await this.service.deleteRestockOrder(id, req.user.id, req.user.campusId),
+      '订货单已删除',
     );
   }
   /** 订货单列表（?batchId&status 过滤）。 */
