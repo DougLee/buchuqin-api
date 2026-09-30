@@ -119,42 +119,69 @@ export class AdminController {
     return !!ctx && this.rbac.allow(ctx, method, path);
   }
   /**
-   * 多校区数据范围（RBAC V1）：平台级授权 → ?campus= 可选聚焦（需真实存在的
-   * 校区，服务端校验，空=跨校区全量）；校区级授权 → 恒定本上下文校区（参数被
-   * 忽略，杜绝越校区查询）。
+   * 多校区数据范围（RBAC V1 + IKJA7Y）：平台级授权 → ?campus= 可选聚焦（需真实
+   * 存在的校区，服务端校验，空=跨校区全量）；校区级授权 → 参数在授权集内则用之
+   * （页内校区下拉替代顶栏切换器），集外/缺省恒本上下文校区（杜绝越权校区）。
    */
   private async campusScope(req: AuthRequest, campus?: string): Promise<string> {
     const ctx = this.ctx(req);
+    const c = (campus ?? (req.query.campus as string | undefined))?.trim() ?? '';
     if (ctx.platform) {
-      const c = campus?.trim() ?? '';
       if (c && !(await this.rbac.knownCampusIds()).has(c))
         throw new BadRequestException('目标校区不存在');
       return c;
     }
+    if (c && c !== ctx.campusId) {
+      if (!ctx.campuses.includes(c))
+        throw new ForbiddenException('未授权在该校区操作');
+      return c;
+    }
     return ctx.campusId;
   }
-  /** 校区级写入目标校验：目标校区必须在授权范围内（平台级=存在即可；校区级=已授权校区） */
+  /**
+   * 单校区操作上下文（IKJA7Y）：区别于 campusScope 的平台全量语义——锁定类
+   * 端点（券/楼栋/员工/打印机…）的校区维度取值。?campus= 优先（平台需真实
+   * 存在；校区级需授权集内），缺省账号落点/本校区。未传参时与原
+   * req.user.campusId 行为完全一致（向后兼容）。
+   */
+  private async scopedCampus(req: AuthRequest, campus?: string): Promise<string> {
+    const ctx = this.ctx(req);
+    const c = (campus ?? (req.query.campus as string | undefined))?.trim() ?? '';
+    if (!c) return ctx.campusId;
+    if (ctx.platform) {
+      if (!(await this.rbac.knownCampusIds()).has(c))
+        throw new BadRequestException('目标校区不存在');
+      return c;
+    }
+    if (!ctx.campuses.includes(c))
+      throw new ForbiddenException('未授权在该校区操作');
+    return c;
+  }
+  /** 校区级写入目标校验：目标校区必须在授权范围内（平台级=存在即可；校区级=授权集内） */
   private async assertCampusAllowed(req: AuthRequest, campusId?: string): Promise<string> {
     const ctx = this.ctx(req);
     const target = campusId?.trim() || ctx.campusId;
     if (!target) throw new BadRequestException('未指定校区');
     if (!(await this.rbac.knownCampusIds()).has(target))
       throw new BadRequestException('校区不存在');
-    if (!ctx.platform && target !== ctx.campusId)
+    if (!ctx.platform && !ctx.campuses.includes(target))
       throw new ForbiddenException('未授权在该校区操作');
     return target;
   }
   /**
-   * Banner 数据范围（IKBW0A）：校区自管——一律限定操作者本校区（多校区账号
-   * 经切换校区换 token）。
+   * Banner 数据范围（IKBW0A）：校区自管——平台级恒本上下文校区（banner 不做
+   * 跨校区管理）；校区级授权集内可切（IKJA7Y 页内切换），缺省本校区。
    */
-  private bannerScope(req: AuthRequest): string {
-    return this.ctx(req).campusId;
+  private bannerScope(req: AuthRequest, campus?: string): string {
+    const ctx = this.ctx(req);
+    const c = campus?.trim() ?? '';
+    if (!ctx.platform && c && ctx.campuses.includes(c)) return c;
+    return ctx.campusId;
   }
   /**
-   * 商品板块数据范围（RBAC V1 双视角）：平台级授权（总部长/超管）默认官方库，
-   * ?view=campus 切本校区（可显式 ?campus=）；校区级授权固定本校区。
-   * 旧 hq/admin 分支语义由 platform 授权等价承接。
+   * 商品板块数据范围（RBAC V1 双视角 + IKJA7Y）：平台级授权（总部长/超管）默认
+   * 官方库，?view=campus 切本校区（可显式 ?campus=）；校区级授权集内可切，缺省
+   * 本校区。旧 hq/admin 分支语义由 platform 授权等价承接。
    */
   private productCampus(req: AuthRequest, view?: string, campus?: string): string {
     const ctx = this.ctx(req);
@@ -163,6 +190,8 @@ export class AdminController {
         ? campus?.trim() || ctx.campusId || OFFICIAL_CAMPUS_ID
         : OFFICIAL_CAMPUS_ID;
     }
+    const c = campus?.trim() ?? '';
+    if (c && ctx.campuses.includes(c)) return c;
     return ctx.campusId;
   }
   @Get('dashboard')
@@ -243,7 +272,7 @@ export class AdminController {
           OFFICIAL_CAMPUS_ID,
           ['on-sale'],
           undefined,
-          req.user.campusId,
+          await this.scopedCampus(req),
         ),
         page,
         pageSize,
@@ -261,7 +290,7 @@ export class AdminController {
     @Body() body: CreateCategoryDto,
   ) {
     return ok(
-      await this.service.createCategory(body, req.user.id, req.user.campusId),
+      await this.service.createCategory(body, req.user.id, await this.scopedCampus(req)),
       '类别已创建',
     );
   }
@@ -275,7 +304,7 @@ export class AdminController {
         id,
         body,
         req.user.id,
-        req.user.campusId,
+        await this.scopedCampus(req),
       ),
     );
   }
@@ -284,7 +313,7 @@ export class AdminController {
     @Param('id') id: string,
   ) {
     return ok(
-      await this.service.deleteCategory(id, req.user.id, req.user.campusId),
+      await this.service.deleteCategory(id, req.user.id, await this.scopedCampus(req)),
       '类别已删除',
     );
   }
@@ -368,7 +397,7 @@ export class AdminController {
   ) {
     return ok(
       paginate(
-        await this.service.promotions(req.user.campusId, state, categoryId),
+        await this.service.promotions(await this.scopedCampus(req), state, categoryId),
         page,
         pageSize,
         keyword,
@@ -379,7 +408,7 @@ export class AdminController {
   @Get('featured')
   @ApiOperation({ summary: '首页推荐位列表（本校区，featuredSort 升序）' })
   async featured(@Req() req: AuthRequest) {
-    return ok(await this.service.featured(req.user.campusId));
+    return ok(await this.service.featured(await this.scopedCampus(req)));
   }
   @Put('featured')
   @ApiOperation({
@@ -387,7 +416,7 @@ export class AdminController {
   })
   async saveFeatured(@Req() req: AuthRequest, @Body() body: SaveFeaturedDto) {
     return ok(
-      await this.service.saveFeatured(body.productIds, req.user.campusId),
+      await this.service.saveFeatured(body.productIds, await this.scopedCampus(req)),
       '推荐位已保存',
     );
   }
@@ -417,7 +446,7 @@ export class AdminController {
     @Body() body: CreatePromotionDto,
   ) {
     return ok(
-      await this.service.createPromotion(body, req.user.id, req.user.campusId),
+      await this.service.createPromotion(body, req.user.id, await this.scopedCampus(req)),
       '促销活动已创建',
     );
   }
@@ -427,7 +456,7 @@ export class AdminController {
     @Body() body: UpdatePromotionDto,
   ) {
     return ok(
-      await this.service.updatePromotion(id, body, req.user.id, req.user.campusId),
+      await this.service.updatePromotion(id, body, req.user.id, await this.scopedCampus(req)),
     );
   }
   @Post('products/barcode/lookup') async lookupBarcode(
@@ -567,7 +596,7 @@ export class AdminController {
       await this.service.importProducts(
         body.productIds,
         req.user.id,
-        req.user.campusId,
+        await this.scopedCampus(req),
       ),
     );
   }
@@ -580,7 +609,7 @@ export class AdminController {
     if (this.ctx(req).platform && (!req.user.campusId || req.user.campusId === HQ_CAMPUS_ID))
       throw new ForbiddenException('官方商品库即商品源头，无需拉取上游');
     return ok(
-      await this.service.pullUpstream(id, req.user.id, req.user.campusId),
+      await this.service.pullUpstream(id, req.user.id, await this.scopedCampus(req)),
       '已同步官方库最新资料',
     );
   }
@@ -600,7 +629,7 @@ export class AdminController {
           // IKFOPY：campusScope 化——平台视角可聚焦总部仓/任一校区。
           // 缺省落地（修复空串炸 P2025）：admin 用本校区归属，hq 无归属缺省总部仓
           await this.campusScope(req, campus) ||
-            req.user.campusId ||
+            await this.scopedCampus(req) ||
             HQ_CAMPUS_ID,
           // IKD6FG：分类筛选（库存按类别盘点）
           categoryId || undefined,
@@ -643,7 +672,7 @@ export class AdminController {
   /** 批次列表：阶段由时间窗推导；校区角色附带本校区单况统计。 */
   @Get('restock/batches') async restockBatches(@Req() req: AuthRequest) {
     return ok(
-      await this.service.restockBatches(this.ctx(req).platform, req.user.campusId),
+      await this.service.restockBatches(this.ctx(req).platform, await this.scopedCampus(req)),
     );
   }
   @Post('restock/batches') async createRestockBatch(
@@ -675,7 +704,7 @@ export class AdminController {
       await this.service.restockBatchDetail(
         id,
         this.ctx(req).platform,
-        req.user.campusId,
+        await this.scopedCampus(req),
       ),
     );
   }
@@ -688,7 +717,7 @@ export class AdminController {
     if (!req.user.campusId)
       throw new BadRequestException('账号未绑定校区，无法订货');
     return ok(
-      await this.service.saveRestockOrder(batchId, body, req.user.id, req.user.campusId),
+      await this.service.saveRestockOrder(batchId, body, req.user.id, await this.scopedCampus(req)),
       '订货单已保存',
     );
   }
@@ -700,7 +729,7 @@ export class AdminController {
     if (!req.user.campusId)
       throw new BadRequestException('账号未绑定校区，无法订货');
     return ok(
-      await this.service.submitRestockOrder(batchId, req.user.id, req.user.campusId),
+      await this.service.submitRestockOrder(batchId, req.user.id, await this.scopedCampus(req)),
       '订货单已提交，等待总部审核',
     );
   }
@@ -712,7 +741,7 @@ export class AdminController {
     if (!req.user.campusId)
       throw new BadRequestException('账号未绑定校区，无法订货');
     return ok(
-      await this.service.withdrawRestockOrder(batchId, req.user.id, req.user.campusId),
+      await this.service.withdrawRestockOrder(batchId, req.user.id, await this.scopedCampus(req)),
       '订货单已撤回草稿',
     );
   }
@@ -723,7 +752,7 @@ export class AdminController {
     @Query('status') status?: string,
   ) {
     return ok(
-      await this.service.restockOrders(this.ctx(req).platform, req.user.campusId, {
+      await this.service.restockOrders(this.ctx(req).platform, await this.scopedCampus(req), {
         batchId,
         status,
       }),
@@ -737,7 +766,7 @@ export class AdminController {
       await this.service.restockOrderDetail(
         id,
         this.ctx(req).platform,
-        req.user.campusId,
+        await this.scopedCampus(req),
       ),
     );
   }
@@ -774,7 +803,7 @@ export class AdminController {
     @Param('id') id: string,
   ) {
     return ok(
-      await this.service.confirmRestockReceipt(id, req.user.id, req.user.campusId),
+      await this.service.confirmRestockReceipt(id, req.user.id, await this.scopedCampus(req)),
       '到货已确认，库存已入账',
     );
   }
@@ -786,7 +815,7 @@ export class AdminController {
       await this.service.restockShipmentDetail(
         id,
         this.ctx(req).platform,
-        req.user.campusId,
+        await this.scopedCampus(req),
       ),
     );
   }
@@ -833,7 +862,7 @@ export class AdminController {
         campusId: campusId || undefined,
         buildingId: buildingId || undefined,
         hqScope,
-        userCampusId: req.user.campusId,
+        userCampusId: await this.scopedCampus(req),
       }),
     );
   }
@@ -1002,7 +1031,7 @@ export class AdminController {
     @Req() req: AuthRequest,
     @Param('id') id: string,
   ) {
-    return ok(await this.service.order(id, req.user.campusId));
+    return ok(await this.service.order(id, await this.scopedCampus(req)));
   }
   @Post('orders/:id/actions/:action') async orderAction(
     @Req() req: AuthRequest,
@@ -1015,7 +1044,7 @@ export class AdminController {
         id,
         action,
         req.user.id,
-        req.user.campusId,
+        await this.scopedCampus(req),
       ),
     );
   }
@@ -1031,7 +1060,7 @@ export class AdminController {
         id,
         body,
         req.user.id,
-        req.user.campusId,
+        await this.scopedCampus(req),
       ),
       '订单状态已更新',
     );
@@ -1043,7 +1072,7 @@ export class AdminController {
     @Param('id') id: string,
   ) {
     return ok(
-      await this.service.reprintReceipt(id, req.user.id, req.user.campusId),
+      await this.service.reprintReceipt(id, req.user.id, await this.scopedCampus(req)),
       '小票已发送打印',
     );
   }
@@ -1051,7 +1080,7 @@ export class AdminController {
   @Get('printers')
   @ApiOperation({ summary: '本校区打印机列表（一校区一台，IKBW0Q）' })
   async printers(@Req() req: AuthRequest) {
-    return ok(await this.service.printers(req.user.campusId));
+    return ok(await this.service.printers(await this.scopedCampus(req)));
   }
   @Post('printers')
   @ApiOperation({ summary: '绑定/换绑打印机（SN+KEY，先绑芯烨云账号再落库）' })
@@ -1060,7 +1089,7 @@ export class AdminController {
     @Body() body: BindPrinterDto,
   ) {
     return ok(
-      await this.service.bindPrinter(body, req.user.id, req.user.campusId),
+      await this.service.bindPrinter(body, req.user.id, await this.scopedCampus(req)),
       '打印机已绑定',
     );
   }
@@ -1068,7 +1097,7 @@ export class AdminController {
   @ApiOperation({ summary: '解绑打印机（删本校区绑定记录）' })
   async unbindPrinter(@Req() req: AuthRequest, @Param('id') id: string) {
     return ok(
-      await this.service.unbindPrinter(id, req.user.id, req.user.campusId),
+      await this.service.unbindPrinter(id, req.user.id, await this.scopedCampus(req)),
       '打印机已解绑',
     );
   }
@@ -1076,7 +1105,7 @@ export class AdminController {
   @ApiOperation({ summary: '测试打印（连通性验证，出一张测试小票）' })
   async testPrintPrinter(@Req() req: AuthRequest, @Param('id') id: string) {
     return ok(
-      await this.service.testPrintPrinter(id, req.user.id, req.user.campusId),
+      await this.service.testPrintPrinter(id, req.user.id, await this.scopedCampus(req)),
       '测试小票已发送打印',
     );
   }
@@ -1141,7 +1170,7 @@ export class AdminController {
   @Get('wechat-groups')
   @ApiOperation({ summary: '群码列表（IKAJSY）' })
   async wechatGroups(@Req() req: AuthRequest) {
-    return ok(await this.service.wechatGroups(req.user.campusId));
+    return ok(await this.service.wechatGroups(await this.scopedCampus(req)));
   }
   @Post('wechat-groups')
   @ApiOperation({ summary: '新增/替换楼栋群或校级大群二维码' })
@@ -1153,7 +1182,7 @@ export class AdminController {
       await this.service.upsertWechatGroup(
         body,
         req.user.id,
-        req.user.campusId,
+        await this.scopedCampus(req),
       ),
       '群码已保存',
     );
@@ -1163,7 +1192,7 @@ export class AdminController {
   @Get('wheel')
   @ApiOperation({ summary: '转盘配置（IKD6FC，含奖位与概率预览）' })
   async wheel(@Req() req: AuthRequest) {
-    return ok(await this.service.wheel(req.user.campusId));
+    return ok(await this.service.wheel(await this.scopedCampus(req)));
   }
   @Put('wheel')
   @ApiOperation({ summary: '保存转盘配置（8 奖位 + 活动开关）' })
@@ -1172,7 +1201,7 @@ export class AdminController {
     @Body() body: UpsertWheelDto,
   ) {
     return ok(
-      await this.service.upsertWheel(body, req.user.id, req.user.campusId),
+      await this.service.upsertWheel(body, req.user.id, await this.scopedCampus(req)),
       '转盘配置已保存',
     );
   }
@@ -1183,13 +1212,13 @@ export class AdminController {
     @Param('id') id: string,
   ) {
     return ok(
-      await this.service.deleteWechatGroup(id, req.user.id, req.user.campusId),
+      await this.service.deleteWechatGroup(id, req.user.id, await this.scopedCampus(req)),
       '群码已删除',
     );
   }
   /* ---------- 库位管理（IKA0VG）：随库存板块权限走 ---------- */
   @Get('locations') async locations(@Req() req: AuthRequest) {
-    return ok(await this.service.locations(req.user.campusId));
+    return ok(await this.service.locations(await this.scopedCampus(req)));
   }
   @Post('locations')
   async createLocation(
@@ -1197,7 +1226,7 @@ export class AdminController {
     @Body() body: CreateLocationDto,
   ) {
     return ok(
-      await this.service.createLocation(body, req.user.id, req.user.campusId),
+      await this.service.createLocation(body, req.user.id, await this.scopedCampus(req)),
       '库位已创建',
     );
   }
@@ -1212,14 +1241,14 @@ export class AdminController {
         id,
         body,
         req.user.id,
-        req.user.campusId,
+        await this.scopedCampus(req),
       ),
       '库位已更新',
     );
   }
   @Delete('locations/:id')
   async deleteLocation(@Req() req: AuthRequest, @Param('id') id: string) {
-    await this.service.deleteLocation(id, req.user.id, req.user.campusId);
+    await this.service.deleteLocation(id, req.user.id, await this.scopedCampus(req));
     return ok({ id }, '库位已删除');
   }
   @Get('staff')
@@ -1235,7 +1264,7 @@ export class AdminController {
     return ok(
       // IKB5PA：status 过滤（在线/暂停/离线 Tab）；IKD6FG：角色筛选
       paginate(
-        await this.service.staff(req.user.campusId, status, role || undefined),
+        await this.service.staff(await this.scopedCampus(req), status, role || undefined),
         page,
         pageSize,
         keyword,
@@ -1254,7 +1283,7 @@ export class AdminController {
     return ok(
       paginate(
         // IKB5PA：status 过滤（请假审核状态 Tab）
-        await this.service.leaveRequests(req.user.campusId, status),
+        await this.service.leaveRequests(await this.scopedCampus(req), status),
         page,
         pageSize,
         keyword,
@@ -1273,7 +1302,7 @@ export class AdminController {
     return ok(
       paginate(
         // IKB5PA：status 过滤（邀请响应状态 Tab）
-        await this.service.dispatchInvitations(req.user.campusId, status),
+        await this.service.dispatchInvitations(await this.scopedCampus(req), status),
         page,
         pageSize,
         keyword,
@@ -1288,7 +1317,7 @@ export class AdminController {
       await this.service.createDispatchInvitation(
         body,
         req.user.id,
-        req.user.campusId,
+        await this.scopedCampus(req),
       ),
       '调配邀请已发出',
     );
@@ -1301,7 +1330,7 @@ export class AdminController {
       await this.service.cancelDispatchInvitation(
         id,
         req.user.id,
-        req.user.campusId,
+        await this.scopedCampus(req),
       ),
       '调配邀请已取消',
     );
@@ -1343,7 +1372,7 @@ export class AdminController {
     description: '即时达/次日达配送费与起送门槛，business 端 cart/checkout 按此生效。',
   })
   async deliveryConfig(@Req() req: AuthRequest) {
-    return ok(await this.service.deliveryConfig(req.user.campusId));
+    return ok(await this.service.deliveryConfig(await this.scopedCampus(req)));
   }
   @Patch('delivery-config')
   async updateDeliveryConfig(
@@ -1355,7 +1384,7 @@ export class AdminController {
       await this.service.updateDeliveryConfig(
         body,
         req.user.id,
-        req.user.campusId,
+        await this.scopedCampus(req),
       ),
       '配送配置已更新',
     );
@@ -1375,7 +1404,7 @@ export class AdminController {
       paginate(
         // RBAC V1：目标校区经授权校验（校区级忽略参数恒本校区；平台级验存在）
         await this.service.buildings(
-          (await this.campusScope(req, campus)) || req.user.campusId,
+          (await this.campusScope(req, campus)) || await this.scopedCampus(req),
         ),
         page,
         pageSize,
@@ -1388,7 +1417,7 @@ export class AdminController {
     @Body() body: CreateBuildingDto,
   ) {
     return ok(
-      await this.service.createBuilding(body, req.user.id, req.user.campusId),
+      await this.service.createBuilding(body, req.user.id, await this.scopedCampus(req)),
       '楼栋已创建',
     );
   }
@@ -1402,7 +1431,7 @@ export class AdminController {
         id,
         body,
         req.user.id,
-        req.user.campusId,
+        await this.scopedCampus(req),
       ),
     );
   }
@@ -1411,7 +1440,7 @@ export class AdminController {
     @Param('id') id: string,
   ) {
     return ok(
-      await this.service.deleteBuilding(id, req.user.id, req.user.campusId),
+      await this.service.deleteBuilding(id, req.user.id, await this.scopedCampus(req)),
       '楼栋已删除',
     );
   }
@@ -1425,7 +1454,7 @@ export class AdminController {
     @Query('keyword') keyword?: string,
   ) {
     return ok(
-      paginate(await this.service.rooms(id, req.user.campusId), page, pageSize, keyword),
+      paginate(await this.service.rooms(id, await this.scopedCampus(req)), page, pageSize, keyword),
     );
   }
   @Post('buildings/:id/rooms') async createRoom(
@@ -1434,7 +1463,7 @@ export class AdminController {
     @Body() body: CreateRoomDto,
   ) {
     return ok(
-      await this.service.createRoom(id, body, req.user.id, req.user.campusId),
+      await this.service.createRoom(id, body, req.user.id, await this.scopedCampus(req)),
       '寝室已创建',
     );
   }
@@ -1444,7 +1473,7 @@ export class AdminController {
     @Param('roomId') roomId: string,
   ) {
     return ok(
-      await this.service.deleteRoom(id, roomId, req.user.id, req.user.campusId),
+      await this.service.deleteRoom(id, roomId, req.user.id, await this.scopedCampus(req)),
       '寝室已删除',
     );
   }
@@ -1458,7 +1487,7 @@ export class AdminController {
   ): Promise<StreamableFile> {
     const { filename, buffer } = await this.service.roomTemplate(
       id,
-      req.user.campusId,
+      await this.scopedCampus(req),
     );
     return new StreamableFile(buffer, {
       type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -1484,7 +1513,7 @@ export class AdminController {
     return ok(
       await this.service.importRooms(
         id,
-        req.user.campusId,
+        await this.scopedCampus(req),
         file.buffer,
         req.user.id,
       ),
@@ -1502,7 +1531,7 @@ export class AdminController {
     return ok(
       paginate(
         // IKB5PA：status 过滤（售后状态 Tab）
-        await this.service.afterSales(req.user.campusId, status),
+        await this.service.afterSales(await this.scopedCampus(req), status),
         page,
         pageSize,
         keyword,
@@ -1547,7 +1576,7 @@ export class AdminController {
         id,
         body.action,
         req.user.id,
-        this.ctx(req).platform ? null : req.user.campusId,
+        await this.campusScope(req),
         (body.remark ?? '').slice(0, 200),
         body.amounts?.map((a) => ({ itemId: a.itemId, amount: a.amount })),
       ),
@@ -1573,7 +1602,7 @@ export class AdminController {
           remark: body.remark,
         },
         req.user.id,
-        this.ctx(req).platform ? null : req.user.campusId,
+        await this.campusScope(req),
       ),
       '已按商品退款',
     );
@@ -1585,7 +1614,7 @@ export class AdminController {
       await this.service.syncRefund(
         id,
         req.user.id,
-        this.ctx(req).platform ? null : req.user.campusId,
+        await this.campusScope(req),
       ),
       '退款状态已同步',
     );
@@ -1600,7 +1629,7 @@ export class AdminController {
   ) {
     return ok(
       paginate(
-        await this.service.commissionRules(req.user.campusId),
+        await this.service.commissionRules(await this.scopedCampus(req)),
         page,
         pageSize,
         keyword,
@@ -1615,7 +1644,7 @@ export class AdminController {
       await this.service.createCommissionRule(
         body,
         req.user.id,
-        req.user.campusId,
+        await this.scopedCampus(req),
       ),
       '提成规则已创建',
     );
@@ -1630,7 +1659,7 @@ export class AdminController {
         id,
         body,
         req.user.id,
-        req.user.campusId,
+        await this.scopedCampus(req),
       ),
       '提成规则已更新',
     );
@@ -1648,7 +1677,7 @@ export class AdminController {
   ) {
     return ok(
       paginate(
-        await this.service.settlements(req.user.campusId, month),
+        await this.service.settlements(await this.scopedCampus(req), month),
         page,
         pageSize,
         keyword,
@@ -1660,7 +1689,7 @@ export class AdminController {
     @Param('id') id: string,
   ) {
     return ok(
-      await this.service.confirmSettlement(id, req.user.id, req.user.campusId),
+      await this.service.confirmSettlement(id, req.user.id, await this.scopedCampus(req)),
       '账单已确认',
     );
   }
@@ -1669,7 +1698,7 @@ export class AdminController {
     @Param('id') id: string,
   ) {
     return ok(
-      await this.service.paySettlement(id, req.user.id, req.user.campusId),
+      await this.service.paySettlement(id, req.user.id, await this.scopedCampus(req)),
       '账单已支付',
     );
   }
@@ -1790,7 +1819,7 @@ export class AdminController {
     return ok(
       // IKB5PA：status 过滤（发放中/已暂停 Tab）
       paginate(
-        await this.service.coupons(req.user.campusId, status),
+        await this.service.coupons(await this.scopedCampus(req), status),
         page,
         pageSize,
         keyword,
@@ -1802,7 +1831,7 @@ export class AdminController {
     @Body() body: CreateCouponDto,
   ) {
     return ok(
-      await this.service.createCoupon(body, req.user.id, req.user.campusId),
+      await this.service.createCoupon(body, req.user.id, await this.scopedCampus(req)),
       '优惠券已创建',
     );
   }
@@ -1812,7 +1841,7 @@ export class AdminController {
     @Body() body: UpdateCouponDto,
   ) {
     return ok(
-      await this.service.updateCoupon(id, body, req.user.id, req.user.campusId),
+      await this.service.updateCoupon(id, body, req.user.id, await this.scopedCampus(req)),
     );
   }
   /** 优惠券删除（IKDES1）：仅限从未发放；已发记录拒绝（走暂停） */
@@ -1821,7 +1850,7 @@ export class AdminController {
     @Param('id') id: string,
   ) {
     return ok(
-      await this.service.deleteCoupon(id, req.user.id, req.user.campusId),
+      await this.service.deleteCoupon(id, req.user.id, await this.scopedCampus(req)),
       '优惠券已删除',
     );
   }
@@ -1831,7 +1860,7 @@ export class AdminController {
     @Body() body: IssueCouponDto,
   ) {
     return ok(
-      await this.service.issueCoupon(id, body, req.user.id, req.user.campusId),
+      await this.service.issueCoupon(id, body, req.user.id, await this.scopedCampus(req)),
       '发放完成',
     );
   }
