@@ -3457,6 +3457,8 @@ export class AdminService {
     status: string | undefined,
     campusId: string,
     deliveryMode?: string,
+    start?: string,
+    end?: string,
   ) {
     const statuses =
       status && status !== 'all'
@@ -3471,6 +3473,17 @@ export class AdminService {
         ...(statuses.length ? { status: { in: statuses } } : {}),
         // IKD6FG：配送方式筛选（instant/scheduled）
         ...(deliveryMode ? { deliveryMode } : {}),
+        // IKJ9XQ 对账：创建时间范围（北京时间日界，与列表「下单时间」列同字段）
+        ...(start || end
+          ? {
+              createdAt: {
+                ...(start ? { gte: new Date(`${start}T00:00:00+08:00`) } : {}),
+                ...(end
+                  ? { lte: new Date(`${end}T23:59:59.999+08:00`) }
+                  : {}),
+              },
+            }
+          : {}),
       },
       include: {
         user: { select: { id: true, nickname: true, phone: true } },

@@ -994,6 +994,8 @@ export class AdminController {
     @Query('pageSize') pageSize?: string,
     @Query('keyword') keyword?: string,
     @Query('deliveryMode') deliveryMode?: string,
+    @Query('start') start?: string,
+    @Query('end') end?: string,
   ) {
     return ok(
       paginate(
@@ -1002,6 +1004,9 @@ export class AdminController {
           await this.campusScope(req, campus),
           // IKD6FG：配送方式筛选（instant/scheduled）
           deliveryMode || undefined,
+          // IKJ9XQ 对账：创建时间范围（YYYY-MM-DD）
+          start || undefined,
+          end || undefined,
         ),
         page,
         pageSize,
