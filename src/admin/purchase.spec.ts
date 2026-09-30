@@ -119,7 +119,7 @@ describe('purchase order (IKFOQ1)', () => {
         campus,
       );
     }
-    // 总部仓先备货再确认（IKJC1R：确认不再锁库存，lockedStock 恒 0）
+    // 总部仓先备货（IKJC1R 确认不锁库存）（IKJC1R：确认不再锁库存，lockedStock 恒 0）
     await db.product.update({ where: { id: HQ_A }, data: { stock: 500 } });
     await db.product.update({ where: { id: HQ_B }, data: { stock: 500 } });
     for (const campus of [CAMPUS_ID, `po-campus2-${tag}`]) {

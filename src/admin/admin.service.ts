@@ -1690,7 +1690,7 @@ export class AdminService {
    */
   // ==================== 订货批次（IKFOQ0 2026-09-15 grilling 定版）====================
   // 批次=总部起止窗口+可订商品范围；校区一批次一张订货单按件订（unitsPerCase
-  // 快照换算）；确认即锁总部仓库存（可用=stock−lockedStock），发货转扣（IKFOQ2）。
+  // 快照换算）；审核确认不锁库存（IKJC1R 订货驱动采购），发货只扣实库（IKFOQ2）。
 
   /** 批次阶段（grilling #9）：时间窗推导 + 手动关闭，不落状态字段。 */
   private restockPhase(b: { startAt: Date; endAt: Date; closedAt: Date | null }) {
@@ -2134,7 +2134,7 @@ export class AdminService {
     return { id: orderId, deleted: true };
   }
 
-  /** 总部审核（grilling #2/#4）：confirm 锁总部仓库存（不足阻断），revoke 释放。 */
+  /** 总部审核（IKJC1R 不锁库存）：confirm 确认、reject 驳回、revoke 撤销回待审核。 */
   async auditRestockOrder(
     orderId: string,
     body: AuditRestockOrderDto,
@@ -2198,7 +2198,7 @@ export class AdminService {
       return { id: row.id, status: row.status };
     }
 
-    // revoke：confirmed → submitted，释放锁定库存（grilling #4）。
+    // revoke：confirmed → submitted（IKJC1R：无锁可释放，仅回状态）。
     // IKFOQ1：批次已生成采购单的订货单禁撤销——采购依据不能被抽走。
     if (order.status !== 'confirmed')
       throw new BadRequestException('只有已确认的订货单可以撤销确认');

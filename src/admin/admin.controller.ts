@@ -576,7 +576,7 @@ export class AdminController {
   }
   /** 校区从官方库导入商品（IKAJSO）：本地售价/上下架/库存自管。
    *  IKFOQ0：总部视角（hq / 未绑校区的 admin）可带 ?campus=campus-hq 铺货到
-   *  总部仓（订货锁库存的前提）。
+   *  总部仓（订货采购验收的目标仓）。
    *  IKGNQ 修复（2026-09-18 道哥）：admin 绑定实际校区后，导入与校区角色
    *  同语义——落自己绑定的校区，不再被 isHqScope 一刀切拦成「仅可铺货总部仓」。 */
   @Post('products/import') async importProducts(
@@ -759,7 +759,7 @@ export class AdminController {
       ),
     );
   }
-  /** 总部审核：confirm 锁总部仓库存（不足阻断），reject 驳回，revoke 撤销放锁。 */
+  /** 总部审核（IKJC1R 不锁库存）：confirm 确认、reject 驳回、revoke 撤销回待审核。 */
   @Post('restock/orders/:id/audit') async auditRestockOrder(
     @Req() req: AuthRequest,
     @Param('id') id: string,
@@ -769,7 +769,7 @@ export class AdminController {
     return ok(
       await this.service.auditRestockOrder(id, body, req.user.id),
       body.action === 'confirm'
-        ? '已确认并锁定总部仓库存'
+        ? '已确认，等待按订货量采购发货'
         : body.action === 'reject'
           ? '已驳回'
           : '已撤销确认，锁定库存已释放',
@@ -777,7 +777,7 @@ export class AdminController {
   }
 
   // ==================== 分拨发货（IKFOQ2）：发货/到货/发货单查看 ====================
-  /** 总部发货：整单发（锁转实扣），库存不足拦截。 */
+  /** 总部发货：整单发，零校验（未铺货自动建行、库存可负，IKJC1R）。 */
   @Post('restock/orders/:id/ship') async shipRestockOrder(
     @Req() req: AuthRequest,
     @Param('id') id: string,

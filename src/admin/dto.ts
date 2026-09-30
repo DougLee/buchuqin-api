@@ -371,7 +371,7 @@ export class SaveRestockOrderDto {
   @Type(() => RestockOrderItemDto)
   items!: RestockOrderItemDto[];
 }
-/** 订货审核（IKFOQ0）：confirm 锁总部仓库存，revoke 释放。 */
+/** 订货审核（IKFOQ0/IKJC1R）：confirm 确认、reject 驳回、revoke 撤销回待审核。 */
 export class AuditRestockOrderDto {
   @IsIn(['confirm', 'reject', 'revoke']) action!: 'confirm' | 'reject' | 'revoke';
   @IsOptional() @IsString() @MaxLength(200) note?: string;
