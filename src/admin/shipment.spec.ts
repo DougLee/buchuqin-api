@@ -7,7 +7,7 @@ import { HQ_CAMPUS_ID, OFFICIAL_CAMPUS_ID } from '../common/campus';
  * 分拨发货（IKFOQ2，2026-09-15 grilling 定版）：
  * - 发货：已确认订货单整单发（不拆包），总部仓只扣 stock（IKJC1R：确认不再锁库存），
  *   行快照进货价（批次采购实际价优先回退 costPrice）+批发价（实时），restock-out 流水
- * - 库存不足拦截：报缺货数量
+ * - 库存不足照发负库存（发货零校验）
  * - 确认到货：按发货数全额入账（不登记差异），校区行缺失自动建（off-sale 态），
  *   restock-in 流水，订货单 received 终态；收货校区本人操作
  * - 状态机：confirmed 才能发、shipped 才能确认、发货后禁撤销确认
@@ -228,19 +228,15 @@ describe('restock shipment (IKFOQ2)', () => {
     expect(rows.find((r) => r.id === orderId1)!.shippedAt).toBeTruthy();
   });
 
-  it('库存不足拦截报缺货数量；恢复后可发货，B 行成本回退 costPrice', async () => {
+  it('库存不足照发负库存（IKJC1R 发货零校验）；B 行成本回退 costPrice', async () => {
     await db.product.update({ where: { id: HQ_B }, data: { stock: 10 } });
-    await expect(
-      admin.shipRestockOrder(orderId2, {} as any, HQ_OP),
-    ).rejects.toThrow('缺 2');
-    await db.product.update({ where: { id: HQ_B }, data: { stock: 240 } });
     await admin.shipRestockOrder(orderId2, {} as any, HQ_OP);
     const detail = await admin.restockShipmentDetail(orderId2, true, '');
     expect(detail.totalUnits).toBe(36); // 24 + 12
     const b = detail.items.find((i) => i.productId === OFF_B)!;
     expect(b.costPerCase).toBe(500 * 12); // 无采购行回退 costPrice 500/听 → 6000/件
     const hqB = await db.product.findUniqueOrThrow({ where: { id: HQ_B } });
-    expect(hqB.stock).toBe(240 - 12);
+    expect(hqB.stock).toBe(10 - 12); // 库存不足照发，负库存=账实差异由盘点修
     expect(hqB.lockedStock).toBe(0); // 锁定清零
     // 重复发货拦截（状态机已 shipped，双保险）
     await expect(

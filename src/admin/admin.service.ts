@@ -2695,17 +2695,8 @@ export class AdminService {
       where: { id: { in: order.items.map((i) => i.productId) } },
     });
     const officialById = new Map(officials.map((p) => [p.id, p]));
-    const shortages: string[] = [];
-    for (const it of order.items) {
-      const hq = hqBySource.get(it.productId);
-      const units = it.cases * it.unitsPerCase;
-      if (!hq)
-        shortages.push(`${officialById.get(it.productId)?.name ?? it.productId}：总部仓未铺货`);
-      else if (hq.stock < units)
-        shortages.push(`${hq.name}：库存 ${hq.stock}，需 ${units}（缺 ${units - hq.stock}）`);
-    }
-    if (shortages.length)
-      throw new BadRequestException(`总部仓库存不足，无法发货：${shortages.join('；')}`);
+    // IKJC1R 追加（2026-09-30 道哥）：发货零校验——未铺货自动建行、库存不足
+    // 照发（负库存=账实差异由盘点修），不再阻断。
     await this.db.$transaction(async (tx) => {
       const shipment = await tx.restockShipment.create({
         data: {
@@ -2733,8 +2724,40 @@ export class AdminService {
       });
       for (const it of order.items) {
         const units = it.cases * it.unitsPerCase;
-        const hqId = hqBySource.get(it.productId)!.id;
-        // IKJC1R：确认环节已不锁库存，发货只扣实库
+        // 未铺货自动建总部仓行（扣成负库存=账实差异，验收/盘点回正）
+        let hqId = hqBySource.get(it.productId)?.id;
+        if (!hqId) {
+          const official = officialById.get(it.productId);
+          if (!official)
+            throw new BadRequestException(`商品不存在：${it.productId}`);
+          const created = await tx.product.create({
+            data: {
+              campusId: HQ_CAMPUS_ID,
+              categoryId: official.categoryId,
+              name: official.name,
+              subtitle: official.subtitle,
+              price: official.price,
+              originalPrice: official.originalPrice,
+              costPrice: official.costPrice,
+              wholesalePrice: official.price,
+              stock: 0,
+              tag: official.tag,
+              image: official.image,
+              images: (official.images as Prisma.InputJsonValue) ?? undefined,
+              description: official.description,
+              weight: official.weight,
+              retailUnit: official.retailUnit,
+              wholesaleUnit: official.wholesaleUnit,
+              unitsPerCase: official.unitsPerCase,
+              sales: 0,
+              status: 'off-sale',
+              sourceProductId: official.id,
+              sourceSyncedAt: official.updatedAt,
+            },
+          });
+          hqId = created.id;
+        }
+        // IKJC1R：确认环节已不锁库存，发货只扣实库（可负）
         await tx.product.update({
           where: { id: hqId },
           data: { stock: { decrement: units } },
