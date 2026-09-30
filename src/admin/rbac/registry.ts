@@ -63,7 +63,7 @@ export const MENU_NODES: MenuNodeDef[] = [
 
   /* ---------- 目录：订货与采购 ---------- */
   { code: 'g.supply', name: '订货与采购', type: 0, order: 3 },
-  { code: 'restock', name: '订货管理', type: 1, parent: 'g.supply', path: '/restock', icon: 'restock', order: 1, perms: ['GET /admin/restock/batches', 'GET /admin/restock/batches/:id', 'GET /admin/restock/orders', 'GET /admin/restock/orders/:id', 'GET /admin/restock/orders/:id/shipment'] },
+  { code: 'restock', name: '订货单', type: 1, parent: 'g.supply', path: '/restock', icon: 'restock', order: 1, perms: ['GET /admin/restock/batches', 'GET /admin/restock/batches/:id', 'GET /admin/restock/orders', 'GET /admin/restock/orders/:id', 'GET /admin/restock/orders/:id/shipment'] },
   { code: 'restock.order', name: '校区订货', type: 2, parent: 'restock', order: 1, perms: ['PUT /admin/restock/batches/:batchId/order', 'DELETE /admin/restock/orders/:id', 'POST /admin/restock/orders/:id/receipt'], remark: '提交订货单/删除待审核单/收货确认（IKJCJF 多单制）' },
   { code: 'restock.manage', name: '批次管理', type: 2, parent: 'restock', order: 2, perms: ['POST /admin/restock/batches', 'PATCH /admin/restock/batches/:id', 'POST /admin/restock/batches/:id/close', 'POST /admin/restock/orders/:id/audit', 'POST /admin/restock/orders/:id/ship'], remark: '建批/改批/关批/审单/发货（平台）' },
   { code: 'purchase', name: '采购管理', type: 1, parent: 'g.supply', path: '/purchase', icon: 'purchase', order: 2, perms: ['GET /admin/purchase/orders', 'GET /admin/purchase/orders/:id', 'GET /admin/reports/hq-daily'] },
