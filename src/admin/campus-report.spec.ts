@@ -39,6 +39,8 @@ describe('campus daily report (IKFOPS)', () => {
     payable: number;
     /** IKISZ2：缺省=payable（无券） */
     productAmount?: number;
+    /** IKJ92S：缺省=0（无配送费） */
+    deliveryFee?: number;
     items: unknown[];
     buildingId?: string;
   }) => {
@@ -60,7 +62,7 @@ describe('campus daily report (IKFOPS)', () => {
         productAmount: o.productAmount ?? o.payable,
         totalQuantity: 1,
         deliveryThreshold: 0,
-        deliveryFee: 0,
+        deliveryFee: o.deliveryFee ?? 0,
         discount: 0,
         payableAmount: o.payable,
         estimatedArrival: '预计 30-60 分钟送达',
@@ -113,8 +115,8 @@ describe('campus daily report (IKFOPS)', () => {
         { quantity: 1, product: { id: 'p2', name: 'B', price: 0 } },
       ],
     });
-    // O2：昨日 C2，completed——券单（商品金额 1300=原价，实付 1100=扣 200 券）：
-    // 毛利=1300−40=1260（未扣券）≠ 综合毛利=1100−40=1060
+    // O2：昨日 C2，completed——券+配送费单（商品金额 1300，实付 1100 含 300 配送费）：
+    // 毛利=1300−40=1260（未扣券）；综合毛利=1100−300−40=760（IKJ92S 剔除配送费）
     await mkOrder({
       campusId: CAMPUS_2,
       paidDay: YD,
@@ -122,6 +124,7 @@ describe('campus daily report (IKFOPS)', () => {
       status: 'completed',
       payable: 1100,
       productAmount: 1300,
+      deliveryFee: 300,
       items: [
         { quantity: 2, product: { id: 'p3', name: 'C', price: 550, unitWholesaleCost: 20 } },
       ],
@@ -174,12 +177,13 @@ describe('campus daily report (IKFOPS)', () => {
     expect(r.totals.salesTotal).toBe(3500);
     // O1 成本=3×20+0（无快照行），O2=2×20
     expect(r.totals.costTotal).toBe(100);
-    // 综合毛利=实付−成本=3400（口径不变）；毛利=商品金额−成本=2340+1260=3600
-    expect(r.totals.gross).toBe(3400);
+    // 综合毛利=实付−配送费−成本=3500−300−100=3100（IKJ92S 剔除配送费）；
+    // 毛利=商品金额−成本=2340+1260=3600
+    expect(r.totals.gross).toBe(3100);
     expect(r.totals.marginTotal).toBe(3600);
-    // 毛利率=3600/3700 商品金额=9730；综合毛利率=3400/3500 实付=9714
+    // 毛利率=3600/3700 商品金额=9730；综合毛利率=3100/3500 实付=8857
     expect(r.totals.marginRawRate).toBe(9730);
-    expect(r.totals.marginRate).toBe(9714);
+    expect(r.totals.marginRate).toBe(8857);
     // 行=日期×校区，两行
     expect(r.rows.length).toBe(2);
     const c1 = r.rows.find((x) => x.campusId === CAMPUS_1)!;
@@ -192,12 +196,12 @@ describe('campus daily report (IKFOPS)', () => {
     expect(c1.marginRate).toBe(9750);
     const c2 = r.rows.find((x) => x.campusId === CAMPUS_2)!;
     expect(c2.salesTotal).toBe(1100);
-    // O2 券单：毛利 1260 ≠ 综合毛利 1060（差=200 券）
+    // O2 券+配送费单：毛利 1260；综合毛利=1100−300−40=760（差=券 200+配送费 300）
     expect(c2.marginTotal).toBe(1260);
-    expect(c2.gross).toBe(1060);
-    // 毛利率=1260/1300=9692；综合毛利率=1060/1100=9636
+    expect(c2.gross).toBe(760);
+    // 毛利率=1260/1300=9692；综合毛利率=760/1100=6909
     expect(c2.marginRawRate).toBe(9692);
-    expect(c2.marginRate).toBe(9636);
+    expect(c2.marginRate).toBe(6909);
   });
 
   it('hq 按校区筛选：只看该校区', async () => {

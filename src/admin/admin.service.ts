@@ -127,7 +127,8 @@ export class AdminService {
         }),
         this.db.building.groupBy({ by: ['campusId'], _count: { _all: true } }),
         // 校区概览毛利（2026-09-18 道哥）：口径与校区经营日报一致——
-        // 综合毛利=实付 − 行级 unitWholesaleCost 快照×数量（快照前历史单按 0 成本计）；
+        // 综合毛利=实付−配送费 − 行级 unitWholesaleCost 快照×数量（IKJ92S：
+        // 配送费交付配送员属配送成本，不进毛利；快照前历史单按 0 成本计）；
         // IKISZ2 增毛利（未扣券）=商品金额 − 同口径成本
         this.db.order.findMany({
           where: { createdAt: { gte: startOfToday }, paidAt: { not: null } },
@@ -135,6 +136,7 @@ export class AdminService {
             campusId: true,
             payableAmount: true,
             productAmount: true,
+            deliveryFee: true,
             items: true,
           },
         }),
@@ -163,7 +165,8 @@ export class AdminService {
       );
       profitByCampus.set(
         o.campusId,
-        (profitByCampus.get(o.campusId) ?? 0) + (o.payableAmount - cost),
+        (profitByCampus.get(o.campusId) ?? 0) +
+          (o.payableAmount - o.deliveryFee - cost),
       );
       marginByCampus.set(
         o.campusId,
@@ -203,7 +206,7 @@ export class AdminService {
         margin:
           '全部校区今日支付的有效单毛利合计（商品金额−行级批发成本快照，未扣券，分）',
         profit:
-          '全部校区今日支付的有效单综合毛利合计（实付−行级批发成本快照，扣券，分）',
+          '全部校区今日支付的有效单综合毛利合计（实付−配送费−行级批发成本快照，扣券且剔除交付配送员的配送费，分）',
         orders: '全部校区今日支付的有效单合计',
         newUsers: '全部校区今日新增用户',
         exceptions: '状态为异常的未结订单（不限当日）',
@@ -3050,7 +3053,8 @@ export class AdminService {
 
   // ==================== 校区经营日报（IKFOPS）：C 端订单实时聚合 ====================
   // 口径（2026-09-16 道哥拍板，与 IKFOPR 同族）：paidAt 支付时间落日、只计 completed；
-  // 销售额=payableAmount 实付（配送费为无成本收入直接落毛利）；
+  // 销售额=payableAmount 实付；综合毛利=实付−配送费−成本（IKJ92S：配送费
+  // 交付配送员属配送成本，不进毛利）；毛利=商品金额−成本（未扣券）；
   // 成本=IKFOPQ 行级 unitWholesaleCost 快照×数量（快照上线前历史单按 0 计）；
   // 实时聚合不建跑批表；行=日期×校区（校区角色查询天然单校区）。
   async campusDailyReport(
@@ -3085,6 +3089,7 @@ export class AdminService {
         paidAt: true,
         payableAmount: true,
         productAmount: true,
+        deliveryFee: true,
         items: true,
         address: true,
         campus: { select: { name: true, shortName: true } },
@@ -3108,6 +3113,7 @@ export class AdminService {
         orders: number;
         salesTotal: number;
         productTotal: number;
+        deliveryTotal: number;
         costTotal: number;
       }
     >();
@@ -3124,12 +3130,15 @@ export class AdminService {
         orders: 0,
         salesTotal: 0,
         productTotal: 0,
+        deliveryTotal: 0,
         costTotal: 0,
       };
       cur.orders += 1;
       cur.salesTotal += o.payableAmount;
       // IKISZ2 商品金额合计（毛利未扣券口径的分母项）
       cur.productTotal += o.productAmount;
+      // IKJ92S 配送费合计（综合毛利剔除项：交付配送员的配送成本）
+      cur.deliveryTotal += o.deliveryFee;
       // 行成本=数量×IKFOPQ 每零售单位批发成本快照（缺快照按 0）
       cur.costTotal += (
         o.items as Array<{
@@ -3145,9 +3154,9 @@ export class AdminService {
     const rows = [...agg.values()]
       .map((r) => {
         // IKISZ2 双口径：毛利=商品金额−成本（未扣券，同详情逐行加总）；
-        // gross=综合毛利=实付−成本（扣券+配送费无成本收入），口径不变仅正名；
+        // gross=综合毛利=实付−配送费−成本（IKJ92S：剔除交付配送员的配送费）；
         // marginRawRate=毛利率（未扣券基数=商品金额），marginRate=综合毛利率（基数=实付）
-        const gross = r.salesTotal - r.costTotal;
+        const gross = r.salesTotal - r.deliveryTotal - r.costTotal;
         const marginTotal = r.productTotal - r.costTotal;
         return {
           ...r,
@@ -3170,7 +3179,8 @@ export class AdminService {
       );
     const tSales = rows.reduce((s, r) => s + r.salesTotal, 0);
     const tCost = rows.reduce((s, r) => s + r.costTotal, 0);
-    const tGross = tSales - tCost;
+    const tDelivery = rows.reduce((s, r) => s + r.deliveryTotal, 0);
+    const tGross = tSales - tDelivery - tCost;
     const tMargin = rows.reduce((s, r) => s + r.marginTotal, 0);
     // IKISZ2+：合计毛利率按合计金额重算（非行均值），productTotal 随 rows 带出
     const tProduct = rows.reduce((s, r) => s + (r.productTotal ?? 0), 0);
