@@ -621,6 +621,13 @@ export class AuthController {
     // 姓名双因子：防纯工号枚举绑定他人账号（换绑即覆盖旧 openid）
     if (staff.name !== body.name.trim())
       throw new BadRequestException('工号与姓名不匹配');
+    // IKJ9LR：openid 自动换绑迁移——同微信换绑工号时，先摘旧员工上的 openid
+    // （唯一约束）。否则 update 直接 P2002（冲突在 openid 而非 unionId）→
+    // 重试仍写 openid 再撞 → 500「服务端暂不可用」，正式版换绑设备全部登录失败。
+    await this.db.staff.updateMany({
+      where: { openid: session.openid, id: { not: staff.id } },
+      data: { openid: null },
+    });
     const after = await this.db.staff
       .update({
         where: { id: staff.id },
