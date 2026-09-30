@@ -174,7 +174,7 @@ export class AdminController {
    */
   private bannerScope(req: AuthRequest, campus?: string): string {
     const ctx = this.ctx(req);
-    const c = campus?.trim() ?? '';
+    const c = (campus ?? (req.query.campus as string | undefined))?.trim() ?? '';
     if (!ctx.platform && c && ctx.campuses.includes(c)) return c;
     return ctx.campusId;
   }
@@ -185,12 +185,13 @@ export class AdminController {
    */
   private productCampus(req: AuthRequest, view?: string, campus?: string): string {
     const ctx = this.ctx(req);
+    const qc = (req.query.campus as string | undefined)?.trim() ?? '';
     if (ctx.platform) {
       return view === 'campus'
-        ? campus?.trim() || ctx.campusId || OFFICIAL_CAMPUS_ID
+        ? campus?.trim() || qc || ctx.campusId || OFFICIAL_CAMPUS_ID
         : OFFICIAL_CAMPUS_ID;
     }
-    const c = campus?.trim() ?? '';
+    const c = campus?.trim() || qc;
     if (c && ctx.campuses.includes(c)) return c;
     return ctx.campusId;
   }
