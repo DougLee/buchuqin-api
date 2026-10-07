@@ -4466,6 +4466,7 @@ export class AdminService {
             items: true,
             address: true,
             createdAt: true,
+            campus: { select: { name: true, shortName: true } },
           },
         },
         user: { select: { nickname: true, phone: true } },
@@ -4477,6 +4478,9 @@ export class AdminService {
       orderId: r.orderId,
       orderNo: r.order.orderNo,
       campusId: r.order.campusId,
+      // IKJ9XQ 对账配套：校区筛选的列表展示列
+      campusName: r.order.campus?.name,
+      campusShortName: r.order.campus?.shortName,
       orderStatus: r.order.status,
       userName: r.user.nickname,
       userPhone: r.user.phone,
