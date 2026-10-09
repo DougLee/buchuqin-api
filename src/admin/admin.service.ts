@@ -776,14 +776,15 @@ export class AdminService {
     return created.id;
   }
 
-  /** 类别列表（IKKA1S 校区隔离）：按上下文校区过滤；商品数=本校区该类别商品数。 */
+  /** 类别列表（IKKA1S 校区隔离）：campusId 非空按校区过滤（商品数同口径）；
+   *  空（平台缺省）=全量，商品数为全校区合计。 */
   async categories(campusId?: string) {
     const rows = await this.db.category.findMany({
-      where: { campusId },
+      where: campusId ? { campusId } : {},
       orderBy: [{ sort: 'asc' }, { name: 'asc' }],
       include: {
         _count: {
-          select: { products: { where: { campusId } } },
+          select: { products: campusId ? { where: { campusId } } : true },
         },
       },
     });

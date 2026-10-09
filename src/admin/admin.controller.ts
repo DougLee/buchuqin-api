@@ -282,9 +282,14 @@ export class AdminController {
     );
   }
   @Get('categories')
-  @ApiOperation({ summary: '商品类别列表（全局字典，带每类商品数）' })
-  async categories(@Req() req: AuthRequest) {
-    return ok(await this.service.categories(this.ctx(req).platform ? undefined : this.ctx(req).campusId));
+  @ApiOperation({
+    summary: '商品类别列表（IKKA1S 校区隔离：?campus= 聚焦，缺省平台全量/校区本校区）',
+  })
+  async categories(
+    @Req() req: AuthRequest,
+    @Query('campus') campus?: string,
+  ) {
+    return ok(await this.service.categories(await this.campusScope(req, campus)));
   }
   @Post('categories') async createCategory(
     @Req() req: AuthRequest,
