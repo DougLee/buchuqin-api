@@ -72,7 +72,8 @@ describe('purchase order (IKFOQ1)', () => {
 
   beforeAll(async () => {
     await db.category.create({
-      data: { id: CAT_ID, name: `采购测试分类${tag}` } as any,
+      data: { campusId: CAMPUS_ID,
+      id: CAT_ID, name: `采购测试分类${tag}` } as any,
     });
     await seedProduct(OFF_A, HQ_A, '采购测试商品A');
     await seedProduct(OFF_B, HQ_B, '采购测试商品B');

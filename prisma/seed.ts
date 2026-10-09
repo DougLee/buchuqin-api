@@ -8,9 +8,10 @@ const json = (value: unknown) =>
   JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 
 async function main() {
-  // 守卫：库里已有校园数据时拒绝重灌（防止生产误配 SEED_ON_BOOT 每次重启清库）
+  // 守卫：库里已有校园数据时拒绝重灌（防止生产误配 SEED_ON_BOOT 每次重启清库）；
+  // SEED_FORCE=1 本地开发强制重灌（IKKA1S 清洗测试污染用）
   const existing = await prisma.campus.findFirst();
-  if (existing) {
+  if (existing && !process.env.SEED_FORCE) {
     console.log(
       `[seed] 数据库已有数据（campus: ${existing.id}），跳过重灌。如需强制重置请用 prisma migrate reset。`,
     );
@@ -19,11 +20,21 @@ async function main() {
   await prisma.auditLog.deleteMany();
   await prisma.bmBill.deleteMany();
   await prisma.commission.deleteMany();
+  // IKKA1S：补新表删除（FK 指向 Product/Campus，缺失会拦重灌）
+  await prisma.promotion.deleteMany();
+  await prisma.purchaseOrderItem.deleteMany();
+  await prisma.purchaseOrder.deleteMany();
+  await prisma.restockOrderItem.deleteMany();
+  await prisma.restockShipmentItem.deleteMany();
+  await prisma.restockShipment.deleteMany();
+  await prisma.restockOrder.deleteMany();
+  await prisma.restockBatch.deleteMany();
   await prisma.commissionRule.deleteMany();
   await prisma.room.deleteMany();
   await prisma.building.deleteMany();
   await prisma.dispatchInvitation.deleteMany();
   await prisma.leaveRequest.deleteMany();
+  await prisma.recruitingApplication.deleteMany();
   await prisma.refund.deleteMany();
   await prisma.afterSale.deleteMany();
   await prisma.notification.deleteMany();
@@ -31,12 +42,20 @@ async function main() {
   await prisma.cartItem.deleteMany();
   await prisma.address.deleteMany();
   await prisma.staff.deleteMany();
+  await prisma.inventoryTxn.deleteMany();
   await prisma.product.deleteMany();
   await prisma.category.deleteMany();
   await prisma.deliverySlot.deleteMany();
   await prisma.coupon.deleteMany();
   await prisma.banner.deleteMany();
   await prisma.user.deleteMany();
+  await prisma.storageLocation.deleteMany();
+  await prisma.printer.deleteMany();
+  await prisma.wechatGroup.deleteMany();
+  await prisma.lotteryWheel.deleteMany();
+  await prisma.auditLog.deleteMany();
+  await prisma.deliverySlot.deleteMany();
+  await prisma.notice.deleteMany();
   await prisma.campus.deleteMany();
 
   await prisma.campus.create({
@@ -45,6 +64,13 @@ async function main() {
       address: '湖北省武汉市洪山区南李路 28 号',
       status: 'active',
     },
+  });
+  // IKKA1S：官方库/总部仓伪校区行（类别模板集与采购收货的归属，无 FK 但业务定位需要）
+  await prisma.campus.createMany({
+    data: [
+      { id: 'campus-official', type: 'campus', name: '官方商品库', shortName: '官方', warehouseName: '官方库', status: 'official' },
+      { id: 'campus-hq', type: 'hq', name: '总部仓', shortName: '总部', warehouseName: '总部仓', status: 'active' },
+    ] as any,
   });
   await prisma.user.create({
     data: {
@@ -56,7 +82,12 @@ async function main() {
     },
   });
   await prisma.category.createMany({
-    data: source.categories.map((item, sort) => ({ ...item, sort })),
+    // IKKA1S：seed 初始类别归官方库模板集（campus-official）
+    data: source.categories.map((item, sort) => ({
+      ...item,
+      sort,
+      campusId: 'campus-official',
+    })),
   });
   for (const product of source.products)
     await prisma.product.create({

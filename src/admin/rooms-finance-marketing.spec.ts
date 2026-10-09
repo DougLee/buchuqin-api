@@ -34,7 +34,7 @@ describe('Rooms / stocktake / purchase / marketing map (IKD6FH/FI/FJ)', () => {
       } as any,
     });
     await db.category.create({
-      data: { id: 'cat-rim-spec', name: '底座测试分类' } as any,
+      data: { id: 'cat-rim-spec', campusId: 'campus-rim-spec', name: '底座测试分类' } as any,
     });
     await db.product.create({
       data: {

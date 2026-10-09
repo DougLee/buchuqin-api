@@ -125,7 +125,7 @@ export class AdminController {
    */
   private async campusScope(req: AuthRequest, campus?: string): Promise<string> {
     const ctx = this.ctx(req);
-    const c = (campus ?? (req.query.campus as string | undefined))?.trim() ?? '';
+    const c = (campus ?? (req.query?.campus as string | undefined))?.trim() ?? '';
     if (ctx.platform) {
       if (c && !(await this.rbac.knownCampusIds()).has(c))
         throw new BadRequestException('目标校区不存在');
@@ -146,7 +146,7 @@ export class AdminController {
    */
   private async scopedCampus(req: AuthRequest, campus?: string): Promise<string> {
     const ctx = this.ctx(req);
-    const c = (campus ?? (req.query.campus as string | undefined))?.trim() ?? '';
+    const c = (campus ?? (req.query?.campus as string | undefined))?.trim() ?? '';
     if (!c) return ctx.campusId;
     if (ctx.platform) {
       if (!(await this.rbac.knownCampusIds()).has(c))
@@ -174,7 +174,7 @@ export class AdminController {
    */
   private bannerScope(req: AuthRequest, campus?: string): string {
     const ctx = this.ctx(req);
-    const c = (campus ?? (req.query.campus as string | undefined))?.trim() ?? '';
+    const c = (campus ?? (req.query?.campus as string | undefined))?.trim() ?? '';
     if (!ctx.platform && c && ctx.campuses.includes(c)) return c;
     return ctx.campusId;
   }
@@ -185,7 +185,7 @@ export class AdminController {
    */
   private productCampus(req: AuthRequest, view?: string, campus?: string): string {
     const ctx = this.ctx(req);
-    const qc = (req.query.campus as string | undefined)?.trim() ?? '';
+    const qc = (req.query?.campus as string | undefined)?.trim() ?? '';
     if (ctx.platform) {
       return view === 'campus'
         ? campus?.trim() || qc || ctx.campusId || OFFICIAL_CAMPUS_ID

@@ -40,7 +40,8 @@ describe('order line cost snapshot (IKFOPQ)', () => {
         campusId: CAMPUS,
       } as any,
     });
-    await db.category.create({ data: { id: CAT, name: '快照测试分类' } as any });
+    await db.category.create({ data: { campusId: CAMPUS,
+      id: CAT, name: '快照测试分类' } as any });
     await db.product.create({
       data: {
         id: CASED,

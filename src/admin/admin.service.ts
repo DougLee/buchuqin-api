@@ -748,27 +748,63 @@ export class AdminService {
     ]);
     return { count: valid.length };
   }
+  /**
+   * 类别重映射到目标校区（IKKA1S）：官方模板类别 → 本校区同名副本，
+   * 缺失自动建（资料跟模板）。官方库导入/发货建行等跨校区商品落地的类别对齐。
+   */
+  private async remapCategoryToCampus(
+    officialCategoryId: string,
+    campusId: string,
+  ): Promise<string> {
+    const template = await this.db.category.findUnique({
+      where: { id: officialCategoryId },
+    });
+    if (!template) return officialCategoryId;
+    const existing = await this.db.category.findFirst({
+      where: { campusId, name: template.name },
+    });
+    if (existing) return existing.id;
+    const created = await this.db.category.create({
+      data: {
+        campusId,
+        name: template.name,
+        sort: template.sort,
+        image: template.image,
+        hidden: false,
+      },
+    });
+    return created.id;
+  }
+
+  /** 类别列表（IKKA1S 校区隔离）：按上下文校区过滤；商品数=本校区该类别商品数。 */
   async categories(campusId?: string) {
     const rows = await this.db.category.findMany({
+      where: { campusId },
       orderBy: [{ sort: 'asc' }, { name: 'asc' }],
-      include: { _count: { select: { products: campusId !== undefined ? { where: { campusId } } : true } } },
+      include: {
+        _count: {
+          select: { products: { where: { campusId } } },
+        },
+      },
     });
     return rows.map(({ _count, ...row }) => ({
       ...row,
       productCount: _count.products,
     }));
   }
+  /** 新建类别（IKKA1S）：落上下文校区，名称校区内唯一。 */
   async createCategory(
     body: CreateCategoryDto,
     operator: string,
     campusId: string,
   ) {
     const duplicate = await this.db.category.findFirst({
-      where: { name: body.name },
+      where: { name: body.name, campusId },
     });
     if (duplicate) throw new BadRequestException('类别名称已存在');
     const category = await this.db.category.create({
       data: {
+        campusId,
         name: body.name,
         sort: body.sort ?? 0,
         image: body.image ?? '',
@@ -786,6 +822,7 @@ export class AdminService {
     );
     return category;
   }
+  /** 修改类别（IKKA1S）：仅本校区类别可改；名称查重限本校区。 */
   async updateCategory(
     id: string,
     body: UpdateCategoryDto,
@@ -793,16 +830,17 @@ export class AdminService {
     campusId: string,
   ) {
     const found = await this.db.category.findUnique({ where: { id } });
-    if (!found) throw new NotFoundException('类别不存在');
+    if (!found || found.campusId !== campusId)
+      throw new NotFoundException('类别不存在');
     if (body.name && body.name !== found.name) {
       const duplicate = await this.db.category.findFirst({
-        where: { name: body.name, id: { not: id } },
+        where: { name: body.name, campusId, id: { not: id } },
       });
       if (duplicate) throw new BadRequestException('类别名称已存在');
     }
     const category = await this.db.category.update({
       where: { id },
-      // Prisma 惯例：undefined 字段跳过更新（hidden 为类目可见性开关 IKC9M4）
+      // Prisma 惯例：undefined 字段跳过更新（hidden 为类目可见性开关，校区级 IKKA1S）
       data: {
         name: body.name,
         sort: body.sort,
@@ -821,15 +859,19 @@ export class AdminService {
     );
     return category;
   }
+  /** 删除类别（IKKA1S）：仅本校区类别可删；商品数按本校区统计。 */
   async deleteCategory(id: string, operator: string, campusId: string) {
     const found = await this.db.category.findUnique({
       where: { id },
-      include: { _count: { select: { products: true } } },
+      include: {
+        _count: { select: { products: { where: { campusId } } } },
+      },
     });
-    if (!found) throw new NotFoundException('类别不存在');
+    if (!found || found.campusId !== campusId)
+      throw new NotFoundException('类别不存在');
     if (found._count.products)
       throw new BadRequestException(
-        `该类别下还有 ${found._count.products} 个商品，请先在商品管理中转移到其他类别`,
+        `本校区该类别下还有 ${found._count.products} 个商品，请先在商品管理中转移到其他类别`,
       );
     await this.db.category.delete({ where: { id } });
     await this.audit(
@@ -1442,13 +1484,18 @@ export class AdminService {
         });
         continue;
       }
+      // IKKA1S：类别重映射到本校区副本（缺失自动建）
+      const campusCategoryId = await this.remapCategoryToCampus(
+        official.categoryId,
+        campusId,
+      );
       const created = await this.db.product.create({
         data: {
           campusId,
           barcode: official.barcode,
           name: official.name,
           subtitle: official.subtitle,
-          categoryId: official.categoryId,
+          categoryId: campusCategoryId,
           // 售价/划线价取官方价起步，校区可改；库存归校区，导入为 0
           price: official.price,
           originalPrice: official.originalPrice,
@@ -5367,6 +5414,20 @@ export class AdminService {
           : {}),
       },
     });
+    // IKKA1S：新校区初始化——复制官方库模板类别集（一套初始分类）
+    const templates = await this.db.category.findMany({
+      where: { campusId: OFFICIAL_CAMPUS_ID },
+    });
+    if (templates.length)
+      await this.db.category.createMany({
+        data: templates.map((t) => ({
+          campusId: campus.id,
+          name: t.name,
+          sort: t.sort,
+          image: t.image,
+          hidden: t.hidden,
+        })),
+      });
     await this.audit(
       operator,
       'campus.create',

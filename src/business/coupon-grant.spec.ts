@@ -49,7 +49,8 @@ describe('Coupon kind/trigger/expirable (IKDCVO)', () => {
       } as any,
     });
     await db.category.create({
-      data: { id: 'cat-coupon-spec', name: '发券测试分类' } as any,
+      data: { campusId: CAMPUS,
+      id: 'cat-coupon-spec', name: '发券测试分类' } as any,
     });
     await db.product.create({
       data: {

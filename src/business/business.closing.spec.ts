@@ -72,7 +72,8 @@ describe('closing hours hard-block (IKGI1C)', () => {
       } as any,
     });
     await db.category.create({
-      data: { id: CAT, name: '打烊停单测试分类' } as any,
+      data: { campusId: CAMPUS,
+      id: CAT, name: '打烊停单测试分类' } as any,
     });
     await db.product.create({
       data: {

@@ -30,7 +30,8 @@ describe('restock batch (IKFOQ0)', () => {
 
   beforeAll(async () => {
     await db.category.create({
-      data: { id: CAT_ID, name: `订货测试分类${tag}` } as any,
+      data: { campusId: CAMPUS_ID,
+      id: CAT_ID, name: `订货测试分类${tag}` } as any,
     });
     // 官方库在售行：1 件 = 24 听
     await db.product.create({

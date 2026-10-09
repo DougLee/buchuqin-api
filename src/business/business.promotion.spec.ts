@@ -37,7 +37,8 @@ describe('Promotion engine (ADR-0006)', () => {
       } as any,
     });
     await db.category.create({
-      data: { id: 'cat-promo-spec', name: '促销测试分类' } as any,
+      data: { campusId: CAMPUS,
+      id: 'cat-promo-spec', name: '促销测试分类' } as any,
     });
     await db.product.create({
       data: {

@@ -20,7 +20,7 @@ async function main() {
       const existing = await db.adminRole.findUnique({ where: { code } });
       if (!existing) await rbac.createRole(actor, { code, name: code, menuCodes: [...menuCodes] });
     }
-    await db.category.upsert({ where: { id: 'qa-category' }, update: {}, create: { id: 'qa-category', name: '验收商品分类' } });
+    await db.category.upsert({ where: { id: 'qa-category' }, update: {}, create: { id: 'qa-category', campusId: 'campus-official', name: '验收商品分类' } });
     for (const campusId of ['qa-a', 'qa-b']) await db.product.upsert({
       where: { id: `qa-product-${campusId}` }, update: {}, create: {
         id: `qa-product-${campusId}`, campusId, categoryId: 'qa-category', name: `验收商品 ${campusId}`,

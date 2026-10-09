@@ -81,7 +81,8 @@ describe('restock shipment (IKFOQ2)', () => {
 
   beforeAll(async () => {
     await db.category.create({
-      data: { id: CAT_ID, name: `发货测试分类${tag}` } as any,
+      data: { campusId: CAMPUS_1,
+      id: CAT_ID, name: `发货测试分类${tag}` } as any,
     });
     // A：24 听/件 cost 300；B：12 听/件 cost 500（无采购行，发货回退 costPrice）
     await seedProduct(OFF_A, HQ_A, '发货测试商品A', 24, 300);

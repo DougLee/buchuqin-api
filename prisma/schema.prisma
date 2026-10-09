@@ -329,13 +329,18 @@ model User {
 
 model Category {
   id       String    @id @default(cuid())
+  // 归属校区：纯字符串不建外键（IKKA1S——campus-official 模板集/各校区副本，
+  // 生命周期独立；先例同 AdminAccount.campusId）
+  campusId String
   name     String
-  sort     Int       @default(0)
+  sort     Int        @default(0)
   image    String    @default("")
-  // 类目可见性开关（IKC9M4）：隐藏后 C 端分类导航/全部列表/搜索/热销/秒杀
-  // 全链路不出现该类目及其商品（类目资质类目审核场景），商品数据不动
+  // 类目可见性开关（IKC9M4 → IKKA1S 校区级）：隐藏后本校区 C 端分类导航/全部
+  // 列表/搜索/热销/秒杀全链路不出现该类目及其商品（商品数据不动）
   hidden   Boolean   @default(false)
   products Product[]
+
+  @@unique([campusId, name])
 }
 
 model Product {

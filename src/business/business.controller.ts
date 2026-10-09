@@ -62,8 +62,8 @@ export class BusinessController {
   @Get('campuses') async campuses(@Req() req: AuthRequest) {
     return ok(await this.service.campusOptions());
   }
-  @Get('categories') async categories() {
-    return ok(await this.service.categories());
+  @Get('categories') async categories(@Req() req: AuthRequest) {
+    return ok(await this.service.categories(req.user.campusId));
   }
   @Get('products')
   @ApiOperation({

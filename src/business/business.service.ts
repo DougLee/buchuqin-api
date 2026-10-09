@@ -380,11 +380,10 @@ export class BusinessService {
     const { closed, reason } = this.isClosedNow(item);
     return { ...item, closedNow: closed, closedReason: reason };
   }
-  async categories() {
-    // 分类为全局字典（无 campusId 维度），商品侧按校园过滤。
-    // IKC9M4：hidden 分类不下发 C 端（后台类目开关，类目审核场景）。
+  /** 分类字典（IKKA1S 校区隔离）：只下发本校区类别（hidden 不下发，IKC9M4）。 */
+  async categories(campusId: string) {
     return this.db.category.findMany({
-      where: { hidden: false },
+      where: { campusId, hidden: false },
       orderBy: { sort: 'asc' },
     });
   }
@@ -661,7 +660,7 @@ export class BusinessService {
         },
         orderBy: { sort: 'asc' },
       }),
-      this.categories(),
+      this.categories(campusId),
       this.db.product.findMany({
         where: { ...onSale, featured: true },
         orderBy: { featuredSort: 'asc' },

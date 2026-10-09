@@ -33,7 +33,7 @@ describe('RBAC valid A/B target isolation (HTTP + PostgreSQL)', () => {
     app.setGlobalPrefix('api/v1');
     await app.init();
     db = app.get(PrismaService); rbac = app.get(RbacService);
-    categoryId = (await db.category.create({ data: { name: prefix } })).id;
+    categoryId = (await db.category.create({ data: { name: prefix, campusId: 'campus-hq' } })).id;
     for (const campusId of campuses) {
       await db.campus.create({ data: { id: campusId, name: campusId, shortName: campusId, warehouseName: campusId } });
       const user = await db.user.create({ data: { campusId, nickname: campusId, phone: campusId === campusA ? '13900000001' : '13900000002', role: 'user' } });

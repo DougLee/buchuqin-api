@@ -25,7 +25,8 @@ describe('Admin promotions CRUD (IKAHFF)', () => {
       } as any,
     });
     await db.category.create({
-      data: { id: 'cat-promo-admin', name: '促销后台分类' } as any,
+      data: { campusId: CAMPUS,
+      id: 'cat-promo-admin', name: '促销后台分类' } as any,
     });
     await db.product.create({
       data: {

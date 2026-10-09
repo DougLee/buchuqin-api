@@ -33,7 +33,8 @@ describe('Cart sold-out/off-sale escape hatch (IKDFZK)', () => {
       } as any,
     });
     await db.category.create({
-      data: { id: 'cat-cart-spec', name: '购物车测试分类' } as any,
+      data: { campusId: CAMPUS,
+      id: 'cat-cart-spec', name: '购物车测试分类' } as any,
     });
     await db.product.create({
       data: {

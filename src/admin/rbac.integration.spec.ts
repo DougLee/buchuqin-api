@@ -276,7 +276,7 @@ describe('RBAC 蛋词体系 integration (real PG + HTTP)', () => {
   });
 
   it('改价分权：仅 products.write 的角色夹带改价 403；补 products.price 后合并端点与拆分端点都通', async () => {
-    const cat = await db.category.create({ data: { name: `cat-${suffix}` } });
+    const cat = await db.category.create({ data: { name: `cat-${suffix}`, campusId: 'campus-hq' } });
     created.categories.push(cat.id);
     const product = await db.product.create({
       data: {

@@ -33,7 +33,8 @@ describe('hq warehouse campus (IKFOPY)', () => {
 
   it('总部仓库存可经 campusId 聚焦（仓储页复用）', async () => {
     const cat = await db.category.create({
-      data: { id: `hq-cat-${tag}`, name: `总部仓测试分类${tag}` } as any,
+      data: { campusId: HQ_CAMPUS,
+      id: `hq-cat-${tag}`, name: `总部仓测试分类${tag}` } as any,
     });
     await db.product.create({
       data: {
