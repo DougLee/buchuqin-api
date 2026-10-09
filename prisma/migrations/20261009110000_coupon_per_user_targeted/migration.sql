@@ -1,0 +1,3 @@
+-- IKKEWS 优惠券三问题改造：每人限领 + 定向券标记（默认值对存量行为无影响）
+ALTER TABLE "Coupon" ADD COLUMN IF NOT EXISTS "perUserLimit" INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE "Coupon" ADD COLUMN IF NOT EXISTS "targetedOnly" BOOLEAN NOT NULL DEFAULT false;

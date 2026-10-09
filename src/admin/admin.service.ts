@@ -5685,6 +5685,9 @@ export class AdminService {
         status: 'active',
         // 支付后推荐（道哥 2026-09-08）：支付成功页领券卡
         featuredAfterPay: body.featuredAfterPay ?? false,
+        // IKKEWS：每人限领（默认 1）与定向券标记
+        perUserLimit: body.perUserLimit ?? 1,
+        targetedOnly: body.targetedOnly ?? false,
         expiresAt,
         issued: 0,
         claimed: 0,
@@ -5774,6 +5777,11 @@ export class AdminService {
     // 支付后推荐（道哥 2026-09-08）：undefined 不动
     if (body.featuredAfterPay !== undefined)
       data.featuredAfterPay = body.featuredAfterPay;
+    // IKKEWS：每人限领与定向券标记
+    if (body.perUserLimit !== undefined)
+      data.perUserLimit = body.perUserLimit;
+    if (body.targetedOnly !== undefined)
+      data.targetedOnly = body.targetedOnly;
     if (amount !== undefined) data.amount = amount;
     if (threshold !== undefined) data.threshold = threshold;
     // total/expiresAt：undefined 不动；null 显式转不限量/长期
@@ -5830,37 +5838,58 @@ export class AdminService {
           ? '定向条件未匹配到任何用户，请检查手机号/寝室范围'
           : '请选择发放对象',
       );
+    // IKKEWS 多张发放：每人可补发张数 = perUserLimit − 未使用持有数（默认 1），
+    // 本次 count 再与其取小；已达限领的用户跳过。
+    const limit = coupon.perUserLimit ?? 1;
+    const wantCount = Math.min(body.count ?? 1, limit);
     const holdings = await this.db.userCoupon.findMany({
       where: { couponId: id, userId: { in: userIds }, status: { not: 'used' } },
       select: { userId: true },
     });
-    const heldBy = new Set(holdings.map((x) => x.userId));
-    const targets = userIds.filter((userId) => !heldBy.has(userId));
-    if (!targets.length)
-      throw new BadRequestException('所选用户均持有该券，无需重复发放');
+    const heldCount = new Map<string, number>();
+    for (const h of holdings)
+      heldCount.set(h.userId, (heldCount.get(h.userId) ?? 0) + 1);
+    const grants = userIds
+      .map((userId) => ({
+        userId,
+        count: Math.min(
+          wantCount,
+          Math.max(0, limit - (heldCount.get(userId) ?? 0)),
+        ),
+      }))
+      .filter((g) => g.count > 0);
+    if (!grants.length)
+      throw new BadRequestException(
+        body.phones?.length || body.buildingId
+          ? '定向条件未匹配到可发放的用户（命中用户均已达到每人限领张数）'
+          : '所选用户均已达到每人限领张数',
+      );
+    const totalGrant = grants.reduce((sum, g) => sum + g.count, 0);
     const result = await this.db.$transaction(async (tx) => {
-      // 条件更新兜底并发：已领取数加上本次发放数不能超过总量。
+      // 条件更新兜底并发：已领取数加上本次发放总数不能超过总量。
       // IKDEN2：不限量券（total=null）跳过额度条件。
       const won = await tx.coupon.updateMany({
         where: {
           id,
           ...(coupon.total === null
             ? {}
-            : { claimed: { lte: coupon.total - targets.length } }),
+            : { claimed: { lte: coupon.total - totalGrant } }),
         },
         data: {
-          claimed: { increment: targets.length },
-          issued: { increment: targets.length },
+          claimed: { increment: totalGrant },
+          issued: { increment: totalGrant },
         },
       });
       if (!won.count)
         throw new BadRequestException('发放数量超过优惠券剩余额度');
       return tx.userCoupon.createMany({
-        data: targets.map((userId) => ({
-          userId,
-          couponId: id,
-          status: 'claimed',
-        })),
+        data: grants.flatMap((g) =>
+          Array.from({ length: g.count }, () => ({
+            userId: g.userId,
+            couponId: id,
+            status: 'claimed',
+          })),
+        ),
       });
     });
     await this.audit(
@@ -5870,12 +5899,18 @@ export class AdminService {
       id,
       coupon,
       {
-        targets,
-        skipped: userIds.filter((userId) => heldBy.has(userId)),
+        grants,
+        skipped: userIds.filter(
+          (userId) => !grants.some((g) => g.userId === userId),
+        ),
       },
       campusId,
     );
-    return { issued: result.count, targets, couponId: id };
+    return {
+      issued: result.count,
+      targets: grants.map((g) => g.userId),
+      couponId: id,
+    };
   }
   /**
    * 定向发券目标解析（IKD6FI）：手机号（绑定手机号口径，非微信昵称）→

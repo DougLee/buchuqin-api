@@ -288,6 +288,10 @@ export class CreateCouponDto {
   @IsOptional() @IsString() @MaxLength(60) remark?: string;
   /** 支付后推荐（道哥 2026-09-08）：支付成功页领券卡展示 */
   @IsOptional() @IsBoolean() featuredAfterPay?: boolean;
+  /** 每人限领张数（IKKEWS）：默认 1；>1 时同券同用户可持多张 */
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) perUserLimit?: number;
+  /** 定向券（IKKEWS）：领券中心不显示、领取接口拒绝，只能定向发放触达 */
+  @IsOptional() @IsBoolean() targetedOnly?: boolean;
 }
 /**
  * 优惠券编辑（IKDERC）：全字段可选，至少传一个。
@@ -298,6 +302,10 @@ export class UpdateCouponDto {
   @IsOptional() @IsIn(['active', 'paused']) status?: 'active' | 'paused';
   /** 支付后推荐（道哥 2026-09-08）：支付成功页领券卡展示。 */
   @IsOptional() @IsBoolean() featuredAfterPay?: boolean;
+  /** 每人限领张数（IKKEWS）：默认 1 */
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) perUserLimit?: number;
+  /** 定向券标记（IKKEWS）：领券中心不可见，仅定向发放 */
+  @IsOptional() @IsBoolean() targetedOnly?: boolean;
   @IsOptional() @IsString() @MinLength(1) @MaxLength(40) name?: string;
   @IsOptional() @IsString() @MaxLength(60) remark?: string;
   @IsOptional() @ValidateIf((_, v) => v !== null) @Type(() => Number)
@@ -330,6 +338,8 @@ export class IssueCouponDto {
   @IsOptional() @IsString() buildingId?: string;
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) floor?: number;
   @IsOptional() @IsArray() @IsString({ each: true }) roomNos?: string[];
+  /** IKKEWS：本次给每个命中用户发放的张数（默认 1；上限=每人限领−已持有） */
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) count?: number;
 }
 /** 盘点校准（IKD6FJ）：提交实际清点数量，系统自动算差额落账。 */
 export class StocktakeDto {

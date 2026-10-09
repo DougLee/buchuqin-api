@@ -268,7 +268,7 @@ describe('Rooms / stocktake / purchase / marketing map (IKD6FH/FI/FJ)', () => {
         OPERATOR,
         CAMPUS,
       ),
-    ).rejects.toThrow('均持有');
+    ).rejects.toThrow('均已达到每人限领张数');
 
     // 条件没圈到人：明确报错而不是「请选择发放对象」
     await expect(

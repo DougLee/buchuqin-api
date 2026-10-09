@@ -438,15 +438,18 @@ export class BusinessService {
     );
     return {
       // IKDCVO：公开可领列表只出 manual 券（lottery/signup 券靠发放入账）。
+      // IKKEWS：定向券不进公开列表；perUserLimit>1 时按「限领−已持有」允许多领。
       claimable: items
         .filter(
           (c) =>
             c.trigger === 'manual' &&
+            !c.targetedOnly &&
             c.status === 'active' &&
             (!c.expiresAt || c.expiresAt > now) &&
             // IKDEN2：不限量券恒可领
             (c.total === null || c.claimed < c.total) &&
-            !holding.has(c.id),
+            (mine.filter((x) => x.couponId === c.id && x.status !== 'used').length <
+              (c.perUserLimit ?? 1)),
         )
         .map((c) => this.couponView(c)),
       mine: mine.map((x) => ({
@@ -460,15 +463,6 @@ export class BusinessService {
   }
   async claimCoupon(userId: string, couponId: string, campusId: string) {
     return this.db.$transaction(async (tx) => {
-      const existing = await tx.userCoupon.findFirst({
-        where: { userId, couponId },
-      });
-      if (existing) {
-        // 幂等：重复领取直接返回已有记录。
-        if (existing.status === 'used')
-          throw new BadRequestException('该优惠券已使用');
-        return existing;
-      }
       const coupon = await tx.coupon.findUnique({ where: { id: couponId } });
       if (!coupon) throw new NotFoundException('优惠券不存在');
       // 券跨校园隔离：只能领取本校发放的券。
@@ -476,11 +470,27 @@ export class BusinessService {
         throw new BadRequestException('该优惠券不属于当前校园');
       if (coupon.status !== 'active')
         throw new BadRequestException('优惠券暂不可领取');
-      // IKDCVO：lottery/signup 券只走发放通道，不开放手动领取。
-      if (coupon.trigger !== 'manual')
+      // IKDCVO：lottery/signup/定向 券只走发放通道，不开放手动领取。
+      if (coupon.trigger !== 'manual' || coupon.targetedOnly)
         throw new BadRequestException('该优惠券不支持手动领取');
       if (coupon.expiresAt && coupon.expiresAt.getTime() <= Date.now())
         throw new BadRequestException('优惠券已过期');
+      // IKKEWS：perUserLimit 限领（默认 1=同券一张；>1 时持有数<限领可再领）
+      const limit = coupon.perUserLimit ?? 1;
+      const holdings = await tx.userCoupon.findMany({
+        where: { userId, couponId },
+      });
+      const holding = holdings.find((x) => x.status !== 'used');
+      if (holdings.length >= limit) {
+        // 达到限领：幂等返回已有记录（used 单独提示）。
+        if (holding)
+          return holding;
+        throw new BadRequestException('该优惠券已使用');
+      }
+      if (holding) {
+        // 未达限领：幂等返回已有未使用记录（重复点击不重复入账）。
+        return holding;
+      }
       // 并发不超发：条件更新占用名额，抢不到名额即已领完。
       // IKDEN2：不限量券（total=null）不设 claimed 上限条件。
       const won = await tx.coupon.updateMany({
@@ -514,9 +524,8 @@ export class BusinessService {
     if (!['claimed', 'released'].includes(record.status))
       throw new BadRequestException('优惠券当前状态不可使用');
     // IKA0BI：bonus 为 2 小时送达专属赠券模板状态——不进公开可领列表、
-    // 领取接口拒收，但已发放到账的券正常可用（active=常规券）
-    if (!['active', 'bonus'].includes(record.coupon.status))
-      throw new BadRequestException('优惠券已下架');
+    // 领取接口拒收，但已发放到账的券正常可用（active=常规券）。
+    // IKKEWS：券关闭（disabled）只停发放/领取，已领未到期的券继续可用（过期独立拦截）。
     // IKDCVO：异业券只做到店展示，不参与下单抵扣。
     if (record.coupon.kind === 'partner')
       throw new BadRequestException('异业券请在到店时出示，不参与下单抵扣');
@@ -1870,8 +1879,8 @@ export class BusinessService {
       const amount = row.coupon.amount,
         threshold = row.coupon.threshold;
       let reason: string | undefined;
-      if (row.coupon.status !== 'active') reason = '优惠券已下架';
-      else if (row.coupon.expiresAt && row.coupon.expiresAt <= now)
+      // IKKEWS：券关闭不再拦已领券使用，过期仍拦
+      if (row.coupon.expiresAt && row.coupon.expiresAt <= now)
         reason = '优惠券已过期';
       else if (cart.productAmount < threshold)
         reason = `还差${yuan(threshold - cart.productAmount)}元可用`;

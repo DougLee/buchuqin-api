@@ -732,6 +732,11 @@ model Coupon {
   // 支付后推荐（道哥 2026-09-08）：勾选的 manual 券出现在支付成功页
   // 「领券卡」一键领取——支付完成后的复购营销位
   featuredAfterPay Boolean @default(false)
+  // 每人限领张数（IKKEWS）：1=同券同用户仅持一张（默认，存量行为不变）；
+  // 定向发放/领券中心按「限领数−已持有」补发
+  perUserLimit Int          @default(1)
+  // 定向券（IKKEWS）：只能定向发放触达用户，领券中心不显示、领取接口拒绝
+  targetedOnly Boolean     @default(false)
   issued      Int          @default(0)
   claimed     Int          @default(0)
   used        Int          @default(0)
