@@ -137,6 +137,7 @@ export class AdminService {
             payableAmount: true,
             productAmount: true,
             deliveryFee: true,
+            discount: true,
             items: true,
           },
         }),
@@ -153,6 +154,7 @@ export class AdminService {
     );
     const profitByCampus = new Map<string, number>();
     const marginByCampus = new Map<string, number>();
+    const couponByCampus = new Map<string, number>();
     for (const o of profitRows) {
       const lines =
         (o.items as unknown as Array<{
@@ -172,6 +174,10 @@ export class AdminService {
         o.campusId,
         (marginByCampus.get(o.campusId) ?? 0) + (o.productAmount - cost),
       );
+      couponByCampus.set(
+        o.campusId,
+        (couponByCampus.get(o.campusId) ?? 0) + o.discount,
+      );
     }
     const campusRows = campuses.map((c) => {
       const paid = paidByCampus.get(c.id);
@@ -184,6 +190,8 @@ export class AdminService {
         revenue: this.num(paid?._sum.payableAmount ?? 0),
         // IKISZ2 双口径：margin=毛利（未扣券） / profit=综合毛利（实付−成本）
         margin: this.num(marginByCampus.get(c.id) ?? 0),
+        // 今日优惠券消耗（订单优惠抵扣，IKJ9YP）
+        coupon: this.num(couponByCampus.get(c.id) ?? 0),
         profit: this.num(profitByCampus.get(c.id) ?? 0),
         orders: paid?._count._all ?? 0,
         newUsers: usersByCampus.get(c.id) ?? 0,
@@ -195,6 +203,7 @@ export class AdminService {
       kpis: {
         revenue: campusRows.reduce((sum, r) => sum + r.revenue, 0),
         margin: campusRows.reduce((sum, r) => sum + r.margin, 0),
+        coupon: campusRows.reduce((sum, r) => sum + r.coupon, 0),
         profit: campusRows.reduce((sum, r) => sum + r.profit, 0),
         orders: campusRows.reduce((sum, r) => sum + r.orders, 0),
         newUsers: campusRows.reduce((sum, r) => sum + r.newUsers, 0),
@@ -205,6 +214,8 @@ export class AdminService {
         revenue: '全部校区今日支付的有效单实付金额合计（分）',
         margin:
           '全部校区今日支付的有效单毛利合计（商品金额−行级批发成本快照，未扣券，分）',
+        coupon:
+          '全部校区今日支付的有效单优惠券抵扣合计（订单 discount 字段，分）',
         profit:
           '全部校区今日支付的有效单综合毛利合计（实付−配送费−行级批发成本快照，扣券且剔除交付配送员的配送费，分）',
         orders: '全部校区今日支付的有效单合计',
