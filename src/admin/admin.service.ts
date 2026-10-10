@@ -6506,19 +6506,27 @@ export class AdminService {
       ],
     }));
   }
-  /** Account profile and permissions share an atomic RBAC transaction. */
+  /** Account profile and permissions share an atomic RBAC transaction.
+   * IKKRMQ：账号写端点现状超管独占（守卫拦截非超管），此处仅剩 spec 夹具
+   * 调用——操作者按超管声明（对齐控制器 grantActor 透传 ctx.super）。 */
   createAccount(body: CreateAccountDto, operator: string) {
-    return this.rbac.createAccount({ id: operator, username: operator }, body);
+    return this.rbac.createAccount(
+      { id: operator, username: operator, super: true },
+      body,
+    );
   }
   updateAccount(id: string, body: { nickname?: string }, operator: string) {
     return this.rbac.updateAccount(
-      { id: operator, username: operator },
+      { id: operator, username: operator, super: true },
       id,
       body,
     );
   }
   deleteAccount(id: string, operator: string) {
-    return this.rbac.deleteAccount({ id: operator, username: operator }, id);
+    return this.rbac.deleteAccount(
+      { id: operator, username: operator, super: true },
+      id,
+    );
   }
   /* ---------- 微信群二维码（IKAJSY）：楼栋群 + 校级大群，轻量 upsert ---------- */
   /** 群码列表：校级大群排最前，其余按楼栋名；buildingName 供前端直接展示。 */

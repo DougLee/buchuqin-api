@@ -14,7 +14,7 @@ import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../../database/prisma.service';
 import { HQ_CAMPUS_ID } from '../../common/campus';
 import { isSuperOnlyOperation, PLATFORM_PATTERNS } from './access-policy';
-import { ALL_PERM_PATTERNS, MENU_NODES, ROLE_TEMPLATES, SUPER_ROLE_CODE, LEGACY_ROLE_MAP } from './registry';
+import { ALL_PERM_PATTERNS, MENU_NODES, PRESET_ROLES, ROLE_TEMPLATES, SUPER_ROLE_CODE, LEGACY_ROLE_MAP } from './registry';
 
 /**
  * RBAC 服务（蛋词体系对齐版，2026-09-19 拍板 B）：
@@ -70,6 +70,44 @@ type OrgLevel = (typeof ORG_LEVELS)[number];
 /** 列值归一：合法层级原样；NULL/非法值回落 campusId 推导（防御脏数据放大边界） */
 function normalizeOrgLevel(raw: string | null, campusId: string): OrgLevel {
   return ORG_LEVELS.includes(raw as OrgLevel) ? (raw as OrgLevel) : resolveOrgLevel(campusId);
+}
+
+/**
+ * IKKRMQ：授权操作者（分配边界判定输入）。super/orgLevel 由控制器从有效
+ * 上下文透传；缺省视为非超管平台层（分配权空集，fail closed）——服务层
+ * 防御不依赖守卫（现状账号写端点超管独占，未来开放组织/校区下放时复用）。
+ */
+export interface GrantActor {
+  id: string;
+  username: string;
+  super?: boolean;
+  orgLevel?: OrgLevel;
+}
+
+/**
+ * IKKRMQ 分配边界（纯函数，spec 钉死）：角色是否可由该操作者授予该目标账号。
+ * - 超管操作者：不限制（全可）；
+ * - org 级操作者：仅 assignableBy ∈ {org, campus}（platform=平台独占不下放）；
+ * - campus 级操作者：仅 assignableBy = campus；
+ * - 非超管平台层操作者：一律不可（平台层分配权超管独占，现状收紧）；
+ * - applicableLevel 适配目标账号层级：null 不限；否则必须等于目标 orgLevel
+ *   （平台级目标不匹配任何具层级角色——org/campus 专用角色不下放给平台账号）。
+ */
+export function canAssignRole(
+  operator: { super?: boolean; orgLevel?: OrgLevel },
+  role: { assignableBy?: string | null; applicableLevel?: string | null },
+  targetLevel: OrgLevel,
+): boolean {
+  if (operator.super) return true;
+  const allowed: Record<OrgLevel, string[]> = {
+    platform: [],
+    org: ['org', 'campus'],
+    campus: ['campus'],
+  };
+  const assignableBy = role.assignableBy ?? 'platform';
+  if (!allowed[operator.orgLevel ?? 'platform'].includes(assignableBy)) return false;
+  const applicable = role.applicableLevel ?? null;
+  return applicable === null || applicable === targetLevel;
 }
 
 /** URL 模式匹配：模式 "METHOD /admin/x/:id" 与请求比对，:seg 通配单段 */
@@ -192,6 +230,31 @@ export class RbacService implements OnModuleInit {
           skipDuplicates: true,
         });
         await tx.adminRole.update({ where: { id: role.id }, data: { seeded: true } });
+        changed = true;
+      }
+      // 3.5) 预设角色（IKKRMQ 统一角色管理）：org-admin / campus-admin /
+      // campus-operator 首次登记（名称/说明/分配边界）并首灌菜单；已有行不
+      // 覆盖后台修改（seeded 后不再重置）。super-admin 已由内置超管 upsert
+      // 维护（通配无菜单行），跳过。与旧迁移模板并存互不影响。
+      for (const p of PRESET_ROLES) {
+        if (p.code === SUPER_ROLE_CODE) continue;
+        const preset = await tx.adminRole.upsert({
+          where: { code: p.code },
+          update: {},
+          create: {
+            code: p.code, name: p.name, remark: p.remark, seeded: false,
+            assignableBy: p.assignableBy, applicableLevel: p.applicableLevel,
+          },
+        });
+        if (preset.seeded || preset.menusMigrated) continue;
+        await tx.adminRoleMenu.createMany({
+          data: p.menuCodes
+            .map((c) => codeToId.get(c))
+            .filter((id): id is string => !!id)
+            .map((menuId) => ({ roleId: preset.id, menuId })),
+          skipDuplicates: true,
+        });
+        await tx.adminRole.update({ where: { id: preset.id }, data: { seeded: true } });
         changed = true;
       }
       // 4) 存量角色迁移：无 role_menu 行的角色（首版权限体系/两层菜单体系 → 菜单树）
@@ -526,7 +589,7 @@ export class RbacService implements OnModuleInit {
   /* ==================== 账号-角色授权管理（仅超管） ==================== */
 
   async setAccountRoles(
-    actor: { id: string; username: string },
+    actor: GrantActor,
     accountId: string,
     grants: { roleCode: string; scope: 'platform' | 'campus'; campusId?: string | null }[],
   ) {
@@ -540,9 +603,11 @@ export class RbacService implements OnModuleInit {
 
   private async replaceAccountGrants(
     tx: Prisma.TransactionClient,
-    actor: { username: string },
+    actor: GrantActor,
     accountId: string,
     grants: { roleCode: string; scope: 'platform' | 'campus'; campusId?: string | null }[],
+    /** IKKRMQ：目标账号层级（updateAccount 同请求合并态优先；缺省用账号现行值） */
+    targetOrgLevel?: string | null,
   ) {
       const before = await tx.adminAccountRole.findMany({
         where: { accountId }, include: { role: { select: { code: true } } },
@@ -552,6 +617,11 @@ export class RbacService implements OnModuleInit {
       const grantKeys = grants.map(g => `${g.roleCode}:${g.scope}:${g.campusId ?? ''}`);
       if (new Set(grantKeys).size !== grants.length)
         throw new BadRequestException('存在重复角色与校区授权');
+      // IKKRMQ：目标账号层级（分配边界适配用）——历史账号 NULL 按 campusId 推导
+      const targetLevel = normalizeOrgLevel(
+        targetOrgLevel !== undefined ? targetOrgLevel : account.orgLevel,
+        account.campusId,
+      );
       for (const g of grants) {
         if (g.scope !== 'platform' && g.scope !== 'campus')
           throw new BadRequestException('授权范围只允许 platform/campus');
@@ -569,6 +639,14 @@ export class RbacService implements OnModuleInit {
           const campus = await tx.campus.findUnique({ where: { id: g.campusId! } });
           if (!campus) throw new BadRequestException(`校区不存在: ${g.campusId}`);
         }
+        // IKKRMQ 分配边界（service 层防御）：非超管操作者只能分配被标记为
+        // 允许下放（assignableBy）且适用目标账号层级（applicableLevel）的角色；
+        // 超管全可。现状账号写端点超管独占，本条为未来组织/校区下放的闸门。
+        if (!canAssignRole(actor, role, targetLevel))
+          throw new ForbiddenException(
+            `角色 ${g.roleCode} 不允许由当前操作者分配（assignableBy=${role.assignableBy}` +
+              `${role.applicableLevel ? `, applicableLevel=${role.applicableLevel}` : ''}，目标账号层级=${targetLevel}）`,
+          );
       }
       const isSuperAccount = before.some(
         (b) => b.role.code === SUPER_ROLE_CODE && b.scope === 'platform',
@@ -696,7 +774,7 @@ export class RbacService implements OnModuleInit {
   }
 
   /** Account fields, grants and audit commit together; all super changes share one lock. */
-  async createAccount(actor: { id: string; username: string }, input: CreateAccountDto) {
+  async createAccount(actor: GrantActor, input: CreateAccountDto) {
     const passwordHash = await hash(input.password, 10);
     const org = await this.resolveAccountOrgFields(input);
     const account = await this.db.$transaction(async tx => {
@@ -724,7 +802,7 @@ export class RbacService implements OnModuleInit {
     return account;
   }
 
-  async updateAccount(actor: { id: string; username: string }, accountId: string, input: UpdateAccountDto) {
+  async updateAccount(actor: GrantActor, accountId: string, input: UpdateAccountDto) {
     if (
       input.nickname === undefined && !input.password && !input.status && !input.grants &&
       input.orgLevel === undefined && input.organizationId === undefined
@@ -741,7 +819,9 @@ export class RbacService implements OnModuleInit {
       const org = await this.resolveAccountOrgFields(input, before);
       const orgChanged =
         org.orgLevel !== before.orgLevel || org.organizationId !== before.organizationId;
-      if (input.grants) await this.replaceAccountGrants(tx, actor, accountId, input.grants);
+      // IKKRMQ：同请求改层级+授权时按合并态校验分配边界（grants 先于账号行落库）
+      if (input.grants)
+        await this.replaceAccountGrants(tx, actor, accountId, input.grants, org.orgLevel);
       if (input.status) await this.changeAccountStatus(tx, actor, accountId, input.status);
       const updated = await tx.adminAccount.update({ where: { id: accountId }, data: {
         ...(input.nickname !== undefined ? { nickname: input.nickname } : {}),
@@ -771,7 +851,7 @@ export class RbacService implements OnModuleInit {
     return account;
   }
 
-  async deleteAccount(actor: { id: string; username: string }, accountId: string) {
+  async deleteAccount(actor: GrantActor, accountId: string) {
     if (actor.id === accountId) throw new BadRequestException('不能删除当前登录账号');
     await this.db.$transaction(async tx => {
       await this.lockSuperGuard(tx);

@@ -259,3 +259,140 @@ export const LEGACY_ROLE_MAP: Record<string, { template: string; scope: 'platfor
 for (const t of ROLE_TEMPLATES)
   for (const c of t.menuCodes)
     if (!MENU_NODE_CODES.has(c)) throw new Error(`模板 ${t.code} 引用未登记菜单节点: ${c}`);
+
+/* ==================== 预设角色（IKKRMQ，2026-10-10）：统一角色管理 ====================
+ * 平台超管 / 组织管理员 / 校区管理员 / 校区运营四个官方预设，与旧五角色迁移
+ * 模板（ROLE_TEMPLATES）并存且互不影响。启动同步按 code 幂等登记：首次落
+ * 名称/说明/分配边界并首灌菜单（seeded 标记），之后实际权限勾选仍走角色管
+ * 管理页（超管可自由增删菜单）。super-admin 为内置通配（无菜单行、不可编辑
+ * 不可删），登记仅为说明与校验锚点——同步时跳过。
+ *
+ * 分配边界（授权侧校验，rbac.service.canAssignRole）：
+ * - assignableBy：'platform' 仅超管可分配 | 'org' 组织管理员可分配 | 'campus' 校区管理员可分配；
+ * - applicableLevel：null 不限 | 'org' 仅组织级账号 | 'campus' 仅校区级账号。
+ */
+export interface PresetRoleDef {
+  code: string;
+  name: string;
+  remark: string;
+  /** 分配权归属（值域同 AdminRole.assignableBy） */
+  assignableBy: 'platform' | 'org' | 'campus';
+  /** 适用目标账号层级（null=不限，值域同 AdminRole.applicableLevel） */
+  applicableLevel: 'org' | 'campus' | null;
+  /** 首灌菜单节点 code 集（目录自动补齐父链；super-admin 通配恒空） */
+  menuCodes: string[];
+}
+
+/** campus-operator 与旧 campus-operations 迁移模板对齐（钉死不漂移的锚点） */
+const CAMPUS_OPERATOR_BASE = ROLE_TEMPLATES.find(
+  (t) => t.code === 'campus-operations',
+)!.menuCodes;
+
+/** campus-admin = campus-operator 全集 + 校区落位配置面（送达时段/公告） */
+const CAMPUS_ADMIN_MENUS = withDirs([
+  ...CAMPUS_OPERATOR_BASE,
+  'campus-config',
+  'campus-config.slots',
+  'campus-config.notices',
+]);
+
+/**
+ * org-admin = campus-admin 裁剪（IKKRMQ 拍板：组织域读 + 校区经营授权）：
+ * 保留经营管理面（订单/售后/商品/库存读调/订货/营销/人事/楼栋/财务读），
+ * 裁掉驻场执行与单校区落位配置（拣货出库/拣货任务/流水/库位/配送费与时段
+ * 公告），另加组织域读（organizations）。scope 按 platform 授予——平台功能
+ * 可携带，数据边界由账号 orgLevel='org' 收口（IKKRMP：层级优先于角色视角）。
+ */
+const ORG_ADMIN_MENUS = withDirs([
+  'dashboard',
+  'orders',
+  'orders.write',
+  'after-sales',
+  'after-sales.audit',
+  'battle-map',
+  'campus-report',
+  'products',
+  'products.write',
+  'products.price',
+  'products.status',
+  'categories',
+  'categories.write',
+  'inventory',
+  'inventory.adjust',
+  'restock',
+  'restock.order',
+  'coupons',
+  'marketing.write',
+  'promotions',
+  'promotions.write',
+  'featured',
+  'featured.write',
+  'wheel',
+  'wheel.write',
+  'wechat-groups',
+  'wechat-groups.write',
+  'staff',
+  'staff.write',
+  'recruit',
+  'recruit.note',
+  'recruit.interview',
+  'recruit.approve',
+  'recruit.reject',
+  'recruit.idcard.read',
+  'recruit.idcard.write',
+  'buildings',
+  'buildings.write',
+  'campuses',
+  'users',
+  'users.phone.reveal',
+  'dispatch',
+  'dispatch.write',
+  'finance',
+  'rules',
+  'audit',
+  'organizations',
+]);
+
+export const PRESET_ROLES: PresetRoleDef[] = [
+  {
+    code: SUPER_ROLE_CODE,
+    name: '超级管理员',
+    remark: '内置：全部权限（通配），不可编辑/删除；仅系统主账号持有',
+    assignableBy: 'platform',
+    applicableLevel: null,
+    menuCodes: [], // 通配不落 role_menu（buildMeResponse 超管分支取全树）
+  },
+  {
+    code: 'org-admin',
+    name: '组织管理员',
+    remark:
+      '组织域读+校区经营授权（IKKRMQ）；授权按平台级，数据边界由账号 orgLevel=org 收口',
+    assignableBy: 'platform',
+    applicableLevel: 'org',
+    menuCodes: ORG_ADMIN_MENUS,
+  },
+  {
+    code: 'campus-admin',
+    name: '校区管理员',
+    remark: '校区经营管理+落位配置（送达时段/公告）（IKKRMQ）',
+    assignableBy: 'org',
+    applicableLevel: 'campus',
+    menuCodes: CAMPUS_ADMIN_MENUS,
+  },
+  {
+    code: 'campus-operator',
+    name: '校区运营',
+    remark: '校区日常运营（对齐旧 campus-operations 迁移模板）（IKKRMQ）',
+    assignableBy: 'campus',
+    applicableLevel: 'campus',
+    menuCodes: [...CAMPUS_OPERATOR_BASE],
+  },
+];
+
+export const PRESET_ROLE_CODES = new Set(PRESET_ROLES.map((p) => p.code));
+
+// 启动即校验：预设引用的节点 code 必须登记（super-admin 恒空跳过）
+for (const p of PRESET_ROLES)
+  for (const c of p.menuCodes)
+    if (!MENU_NODE_CODES.has(c))
+      throw new Error(`预设角色 ${p.code} 引用未登记菜单节点: ${c}`);

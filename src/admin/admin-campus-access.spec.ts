@@ -26,7 +26,8 @@ describe('admin campus access (IKB3KG)', () => {
   const tag = `ca-${Date.now()}`;
   const campusBId = `${tag}-campus-b`;
   const accountIds: string[] = [];
-  const actor = { id: 'spec-hq', username: 'spec-hq' };
+  // IKKRMQ：账号授权写路径现状超管独占端点——夹具操作者按超管声明
+  const actor = { id: 'spec-hq', username: 'spec-hq', super: true };
 
   beforeAll(async () => {
     try {

@@ -19,7 +19,9 @@ describe('RBAC valid A/B target isolation (HTTP + PostgreSQL)', () => {
   const campuses = [campusA, campusB];
   const fixture: Record<string, Record<string, any>> = {};
   const printer = { accountConfigured: true, printOrderReceipt: jest.fn(), printTest: jest.fn(), addPrinter: jest.fn() };
-  const actor = { id: prefix, username: prefix };
+  // IKKRMQ：createRole/createAccount/setAccountRoles 现状超管独占端点——夹具
+  // 操作者按超管声明（对齐控制器 grantActor 透传 ctx.super）
+  const actor = { id: prefix, username: prefix, super: true };
   const call = (method: 'get'|'post'|'patch'|'put'|'delete', path: string, body?: object) => {
     const req = request(app.getHttpServer())[method](`/api/v1/admin/${path}`).set('Authorization', auth);
     return body ? req.send(body) : req;

@@ -32,7 +32,7 @@ import { filterByKeyword, paginate } from '../common/pagination';
 import { AdminService } from './admin.service';
 import { AdminAuthGuard } from './rbac/admin-auth.guard';
 import { RbacService, matchUrl } from './rbac/rbac.service';
-import type { RbacContext } from './rbac/rbac.service';
+import type { GrantActor, RbacContext } from './rbac/rbac.service';
 import {
   AdjustStockDto,
   BatchProductStatusDto,
@@ -112,6 +112,20 @@ export class AdminController {
     const ctx = (req as { rbac?: RbacContext }).rbac;
     if (!ctx) throw new ForbiddenException('未授权的访问');
     return ctx;
+  }
+  /**
+   * IKKRMQ：授权操作者（分配边界判定输入）——从有效上下文透传超管/层级
+   * 标记，服务层按 assignableBy/applicableLevel 收口（现状写端点超管独占，
+   * 本透传为未来组织/校区下放预留的真实判定依据）。
+   */
+  private grantActor(req: AuthRequest): GrantActor {
+    const ctx = this.ctx(req);
+    return {
+      id: req.user.id,
+      username: ctx.username,
+      super: ctx.super,
+      orgLevel: ctx.orgLevel,
+    };
   }
   /** 字段级分权复检：按 URL 模式判权（超管通配）；未持有抛 403 */
   private requireUrl(req: AuthRequest, method: string, path: string) {
@@ -2253,10 +2267,7 @@ export class AdminController {
     summary: '新建后台账号（含初始授权 grants=[{roleCode,scope,campusId}]）',
   })
   async createAccount(@Req() req: AuthRequest, @Body() body: CreateAccountDto) {
-    const created = await this.rbac.createAccount(
-      { id: req.user.id, username: this.ctx(req).username },
-      body,
-    );
+    const created = await this.rbac.createAccount(this.grantActor(req), body);
     return ok(created, '账号已创建');
   }
   @Patch('accounts/:id')
@@ -2268,8 +2279,7 @@ export class AdminController {
     @Param('id') id: string,
     @Body() body: UpdateAccountDto,
   ) {
-    const actor = { id: req.user.id, username: this.ctx(req).username };
-    await this.rbac.updateAccount(actor, id, body);
+    await this.rbac.updateAccount(this.grantActor(req), id, body);
     return ok({ id }, '账号已更新');
   }
   @Delete('accounts/:id')

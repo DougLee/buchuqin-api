@@ -227,6 +227,13 @@ model AdminRole {
   seeded      Boolean              @default(false)
   /// Legacy role-menu conversion runs once, including deliberately empty roles.
   menusMigrated Boolean            @default(false)
+  /// IKKRMQ 分配权归属：'platform' 仅超管可分配 | 'org' 组织管理员可分配 |
+  /// 'campus' 校区管理员可分配。默认 'platform'=现状收紧（账号写端点现状
+  /// 超管独占）。迁移仅加列不回填，存量角色默认值与现状等价。
+  assignableBy   String            @default("platform")
+  /// IKKRMQ 适用目标账号层级：NULL 不限 | 'org' 仅组织级账号 | 'campus' 仅
+  /// 校区级账号。分配时与目标账号 orgLevel 匹配（服务层校验，超管全可）。
+  applicableLevel String?
   /// 已退役：两层模型时期的菜单 key 清单（真源已切 AdminRoleMenu，保留列供回滚）
   menus       Json?
   createdAt   DateTime             @default(now())
