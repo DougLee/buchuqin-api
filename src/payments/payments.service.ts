@@ -11,17 +11,40 @@ import { createSign, createVerify, createDecipheriv, randomUUID } from 'node:cry
 import { readFileSync } from 'node:fs';
 import { PrismaService } from '../database/prisma.service';
 import { BusinessService } from '../business/business.service';
+import { campusWechatConfig, normalizePem } from '../common/wechat-org';
 
 /** 微信支付 v3 商户 API 主机（下单/证书下载都走这里，不是 api.weixin.qq.com）。 */
 const WX_PAY_HOST = 'https://api.mch.weixin.qq.com';
 
 /**
+ * 微信支付凭证统一形态（IKKRMT 按组织路由）：
+ * - 组织 B：Organization 行微信 7 字段齐备 → 独立商户号 + 独立 AppID
+ *   （ADR-0001 决策 1 钉死：独立经营主体，资金彻底隔离，组织 A env 冻结）
+ * - 组织 A / 未命中组织配置：env 兜底（现状行为一字不变）
+ * organizationId 仅组织配置携带（订阅消息模板路由用），env 路径无此字段。
+ */
+interface WxPayCreds {
+  appId: string;
+  mchId: string;
+  apiV3Key: string;
+  serialNo: string;
+  privateKey: string;
+  notifyUrl: string;
+  organizationId?: string;
+}
+
+/**
  * 微信支付后端（IK8W5I → ADR-0004 真实化）：
- * - WX_APPID_USER + WX_MCH_ID/WX_APIV3_KEY/WX_SERIAL_NO/WX_PRIVATE_KEY(_PATH)/
- *   WX_NOTIFY_URL 齐备才可用；缺失时 prepay/notify 一律 501，无 mock 回退
- *   （演示支付通道 POST /orders/:id/pay 已随 ADR-0004 删除）。
+ * - 组织 A env 兜底：WX_APPID_USER + WX_MCH_ID/WX_APIV3_KEY/WX_SERIAL_NO/
+ *   WX_PRIVATE_KEY(_PATH)/WX_NOTIFY_URL 齐备才可用；缺失且订单未命中组织
+ *   配置时 prepay/notify 一律 501，无 mock 回退（演示支付通道 POST
+ *   /orders/:id/pay 已随 ADR-0004 删除）。
+ * - IKKRMT 支付路由：下单/查单/退款/退款查询按订单所属组织（campusId →
+ *   organizationId → Organization 行微信配置）取凭证；组织行配置不齐 →
+ *   env（组织 A 现状）。
  * - 回调 /payments/wechat/notify：平台证书验签（Wechatpay-Signature，防伪造
- *   回调）+ 时间戳防重放 + APIv3 AES-256-GCM 解密 + business.pay 条件更新幂等。
+ *   回调）+ 时间戳防重放 + APIv3 AES-256-GCM 解密（密钥按组织路由，见
+ *   notify 内注释）+ business.pay 条件更新幂等。
  */
 @Injectable()
 export class PaymentsService {
@@ -46,7 +69,19 @@ export class PaymentsService {
       process.env.WX_NOTIFY_URL,
     );
   }
-  private privateKey() {
+  /** env 凭证（组织 A 兜底路径）；未配置返回 null。 */
+  private envCreds(): WxPayCreds | null {
+    if (!this.configured()) return null;
+    return {
+      appId: process.env.WX_APPID_USER!,
+      mchId: process.env.WX_MCH_ID!,
+      apiV3Key: process.env.WX_APIV3_KEY!,
+      serialNo: process.env.WX_SERIAL_NO!,
+      privateKey: normalizePem(this.envPrivateKey()),
+      notifyUrl: process.env.WX_NOTIFY_URL!,
+    };
+  }
+  private envPrivateKey() {
     if (this.privateKeyCache) return this.privateKeyCache;
     const pem = process.env.WX_PRIVATE_KEY
       ? process.env.WX_PRIVATE_KEY
@@ -54,36 +89,83 @@ export class PaymentsService {
     this.privateKeyCache = pem;
     return pem;
   }
-  /** 微信支付 v3 请求签名（商户私钥 SHA256withRSA）。 */
-  private sign(message: string) {
+  /** 校区 → 微信支付凭证：组织行配置齐备用组织（组织 B 独立商户号），
+   *  否则 env 兜底（组织 A 现状）；两边都不齐返回 null。 */
+  private async campusCreds(
+    campusId?: string | null,
+  ): Promise<WxPayCreds | null> {
+    const org = await campusWechatConfig(this.db, campusId);
+    if (org)
+      return {
+        appId: org.appId,
+        mchId: org.mchId,
+        apiV3Key: org.apiV3Key,
+        serialNo: org.serialNo,
+        privateKey: org.privateKey,
+        notifyUrl: org.notifyUrl,
+        organizationId: org.organizationId,
+      };
+    return this.envCreds();
+  }
+  /** 商户单号 → 订单 → 校区 → 凭证（查单/退款路由；订单不存在回落 env）。 */
+  private async orderCreds(orderNo: string): Promise<WxPayCreds | null> {
+    const order = await this.db.order.findUnique({
+      where: { orderNo },
+      select: { campusId: true },
+    });
+    return this.campusCreds(order?.campusId);
+  }
+  /** 退款单号（=Refund.id）→ 原订单 → 凭证；退款按**原订单所属组织**路由，
+   *  不接受任何请求参数切换（IKKRMT AC：退款商户号与原收款商户号必须一致，
+   *  否则微信侧「订单不属于该商户」直接失败）。 */
+  private async refundCreds(refundNo: string): Promise<WxPayCreds | null> {
+    const refund = await this.db.refund.findUnique({
+      where: { id: refundNo },
+      select: { order: { select: { campusId: true } } },
+    });
+    return this.campusCreds(refund?.order.campusId);
+  }
+  /** 微信支付 v3 请求签名（商户私钥 SHA256withRSA，私钥按组织路由）。 */
+  private sign(message: string, privateKey: string) {
     const signer = createSign('RSA-SHA256');
     signer.update(message);
-    return signer.sign(this.privateKey(), 'base64');
+    return signer.sign(privateKey, 'base64');
   }
-  private authorization(method: string, urlPath: string, body: string) {
+  private authorization(
+    method: string,
+    urlPath: string,
+    body: string,
+    creds: WxPayCreds,
+  ) {
     const timestamp = Math.floor(Date.now() / 1000).toString(),
       nonce = randomUUID().replace(/-/g, ''),
       signature = this.sign(
         `${method}\n${urlPath}\n${timestamp}\n${nonce}\n${body}\n`,
+        creds.privateKey,
       );
-    return `WECHATPAY2-SHA256-RSA2048 mchid="${process.env.WX_MCH_ID}",nonce_str="${nonce}",timestamp="${timestamp}",serial_no="${process.env.WX_SERIAL_NO}",signature="${signature}"`;
+    return `WECHATPAY2-SHA256-RSA2048 mchid="${creds.mchId}",nonce_str="${nonce}",timestamp="${timestamp}",serial_no="${creds.serialNo}",signature="${signature}"`;
   }
 
   /**
    * JSAPI 统一下单：返回小程序 wx.requestPayment 所需参数。
-   * 未配置商户参数 → 501 硬错误（ADR-0004：不再有 mock 演示通道）。
+   * 未配置商户参数（订单未命中组织配置且 env 不齐）→ 501 硬错误
+   * （ADR-0004：不再有 mock 演示通道）。
+   * IKKRMT 支付路由：按订单 campusId → organizationId 取组织凭证——组织 B
+   * 用组织 AppID/独立商户号/组织证书签名，回调 URL 用组织 notifyDomain；
+   * 组织行配置不齐（组织 A 现状）→ env 逻辑一字不变。
    */
   async prepay(userId: string, orderId: string) {
-    if (!this.configured())
-      throw new HttpException('微信支付未配置', HttpStatus.NOT_IMPLEMENTED);
     const order = await this.db.order.findFirst({
       where: { id: orderId, userId },
     });
     if (!order) throw new NotFoundException('订单不存在');
     if (order.status !== 'pending-payment')
       throw new BadRequestException('当前状态不可支付');
+    const creds = await this.campusCreds(order.campusId);
+    if (!creds)
+      throw new HttpException('微信支付未配置', HttpStatus.NOT_IMPLEMENTED);
     const amount = Number(order.payableAmount);
-    const appid = process.env.WX_APPID_USER!;
+    const appid = creds.appId;
     const user = await this.db.user.findUniqueOrThrow({
       where: { id: userId },
       select: { openid: true },
@@ -94,10 +176,10 @@ export class PaymentsService {
       );
     const body = JSON.stringify({
       appid,
-      mchid: process.env.WX_MCH_ID,
+      mchid: creds.mchId,
       description: `不出寝食社订单 ${order.orderNo}`,
       out_trade_no: order.orderNo,
-      notify_url: process.env.WX_NOTIFY_URL,
+      notify_url: creds.notifyUrl,
       // 金额单位:分（IK8W5K）：payableAmount 已是整数分，直接作为微信支付 total。
       amount: { total: amount, currency: 'CNY' },
       payer: { openid: user.openid },
@@ -110,7 +192,7 @@ export class PaymentsService {
         headers: {
           'Content-Type': 'application/json',
           Accept: 'application/json',
-          Authorization: this.authorization('POST', urlPath, body),
+          Authorization: this.authorization('POST', urlPath, body, creds),
         },
         body,
         signal: AbortSignal.timeout(6000),
@@ -128,7 +210,7 @@ export class PaymentsService {
         `微信下单失败：${result.message ?? response.status}`,
         HttpStatus.BAD_GATEWAY,
       );
-    // 小程序支付参数（wx.requestPayment）。
+    // 小程序支付参数（wx.requestPayment）。paySign 用所属组织的商户证书签。
     const timeStamp = Math.floor(Date.now() / 1000).toString(),
       nonceStr = randomUUID().replace(/-/g, ''),
       pkg = `prepay_id=${result.prepay_id}`;
@@ -136,15 +218,20 @@ export class PaymentsService {
       orderId: order.id,
       orderNo: order.orderNo,
       amount,
-      // 订阅消息模板（ADR-0004 两条）：随预下单下发，小程序支付前请求授权
-      subscribeTemplates: this.subscribeTemplates(),
+      // 订阅消息模板（ADR-0004 两条）：随预下单下发，小程序支付前请求授权。
+      // IKKRMT：组织 B 订单下发空数组（env 模板属于组织 A 小程序，跨 AppID
+      // 无效；组织级模板 ID 未入库，前端拿到空数组即静默跳过授权）。
+      subscribeTemplates: creds.organizationId ? [] : this.subscribeTemplates(),
       payParams: {
         appId: appid,
         timeStamp,
         nonceStr,
         package: pkg,
         signType: 'RSA',
-        paySign: this.sign(`${appid}\n${timeStamp}\n${nonceStr}\n${pkg}\n`),
+        paySign: this.sign(
+          `${appid}\n${timeStamp}\n${nonceStr}\n${pkg}\n`,
+          creds.privateKey,
+        ),
       },
     };
   }
@@ -155,6 +242,8 @@ export class PaymentsService {
    * - amount.total 必须为原订单实付金额，refund ≤ total（部分退款）
    * - 受理成功返回微信退款单号与状态（SUCCESS 即到账 / PROCESSING 处理中，
    *   终态由调用方 queryRefund 补齐，v1 不依赖退款回调）
+   * - IKKRMT 退款路由：按**原订单所属组织**取商户凭证（见 refundCreds 注释，
+   *   组织 B 独立商户号退款必须走组织 B 商户号），组织 A env 路径不变
    */
   async applyWechatRefund(
     orderNo: string,
@@ -163,7 +252,8 @@ export class PaymentsService {
     refundNo: string,
     reason: string,
   ): Promise<{ refundId: string; status: string }> {
-    if (!this.configured())
+    const creds = await this.orderCreds(orderNo);
+    if (!creds)
       throw new HttpException('微信支付未配置', HttpStatus.NOT_IMPLEMENTED);
     const body = JSON.stringify({
       out_trade_no: orderNo,
@@ -179,7 +269,7 @@ export class PaymentsService {
         headers: {
           'Content-Type': 'application/json',
           Accept: 'application/json',
-          Authorization: this.authorization('POST', urlPath, body),
+          Authorization: this.authorization('POST', urlPath, body, creds),
         },
         body,
         signal: AbortSignal.timeout(8000),
@@ -204,12 +294,14 @@ export class PaymentsService {
    * 按商户退款单号查退款终态：SUCCESS/PROCESSING/ABNORMAL/CLOSED。
    * 直连商户查单**不带 query 参数**（带 mchid 微信报 400 PARAM_ERROR「未在API
    * 文档中定义的参数」，2026-09-23 测试环境实测；mchid 从鉴权头取）。
+   * IKKRMT：凭证按原订单所属组织路由（组织 B 退款单只能在组织 B 商户号下查）。
    */
   async queryWechatRefund(refundNo: string): Promise<{
     status: string;
     refundId?: string;
   }> {
-    if (!this.configured())
+    const creds = await this.refundCreds(refundNo);
+    if (!creds)
       throw new HttpException('微信支付未配置', HttpStatus.NOT_IMPLEMENTED);
     const urlPath = `/v3/refund/domestic/refunds/${refundNo}`;
     let response: Response;
@@ -217,7 +309,7 @@ export class PaymentsService {
       response = await fetch(`${WX_PAY_HOST}${urlPath}`, {
         headers: {
           Accept: 'application/json',
-          Authorization: this.authorization('GET', urlPath, ''),
+          Authorization: this.authorization('GET', urlPath, '', creds),
         },
         signal: AbortSignal.timeout(6000),
       });
@@ -292,6 +384,13 @@ export class PaymentsService {
    *   `${timestamp}\n${nonce}\n${rawBody}\n`，防伪造回调把订单置已支付；
    * - 防重放：timestamp 偏离当前超 5 分钟拒绝；
    * - 幂等：复用 business.pay（条件更新抢占支付权，重复通知/并发回调只生效一次）。
+   *
+   * IKKRMT 回调路由：回调报文外层无 appid，out_trade_no 在密文里——先用 env
+   * APIv3 密钥（组织 A）解密，失败再遍历已配置组织的 mchApiV3Key（GCM 认证
+   * 标签天然甄别密钥归属：错钥必解败，不存在误判）；解密出 event.appid /
+   * out_trade_no 即完成「报文 → 组织 → 订单」的反查。组织 A 回调永远命中
+   * 第一把钥匙，行为一字不变。验签信任锚（平台公钥/平台证书）仍为 env——
+   * 组织表 7 字段无平台公钥项（IKKRMS 字段集），不构成本期路由缺口。
    */
   async notify(
     headers: Record<string, string | string[] | undefined>,
@@ -311,12 +410,14 @@ export class PaymentsService {
     const resource = body.resource;
     if (!resource?.ciphertext || !resource.nonce)
       throw new BadRequestException('回调报文缺少加密资源');
-    const decrypted = this.decryptResource(
+    const decrypted = await this.decryptEventResource(
       resource.ciphertext,
       resource.nonce,
       resource.associated_data ?? '',
     );
     const event = JSON.parse(decrypted) as {
+      appid?: string;
+      mchid?: string;
       out_trade_no?: string;
       transaction_id?: string;
       trade_state?: string;
@@ -329,6 +430,47 @@ export class PaymentsService {
     if (!order) return { code: 'SUCCESS', message: '订单不存在，忽略' };
     await this.applyPayment(order, event.transaction_id);
     return { code: 'SUCCESS', message: 'OK' };
+  }
+
+  /**
+   * 回调资源解密的密钥路由（IKKRMT）：候选键 = env APIv3Key（组织 A，优先）
+   * + 已配置组织行的 mchApiV3Key。任一命中即返回明文；全败抛错（验签已过，
+   * 解密失败只可能是密钥配置漂移，留日志便于定位）。
+   */
+  private async decryptEventResource(
+    ciphertext: string,
+    nonce: string,
+    associatedData: string,
+  ): Promise<string> {
+    const candidates: Array<{ label: string; key: string | null | undefined }> =
+      [{ label: 'env(组织A)', key: process.env.WX_APIV3_KEY }];
+    const orgs = await this.db.organization.findMany({
+      where: { mchApiV3Key: { not: null } },
+      select: { id: true, name: true, mchApiV3Key: true },
+    });
+    for (const org of orgs)
+      candidates.push({
+        label: `org:${org.id}(${org.name})`,
+        key: org.mchApiV3Key,
+      });
+    for (const c of candidates) {
+      if (!c.key) continue;
+      try {
+        const plain = this.decryptResource(
+          ciphertext,
+          nonce,
+          associatedData,
+          c.key,
+        );
+        if (c.label !== 'env(组织A)')
+          this.logger.log(`回调解密命中组织密钥 ${c.label}`);
+        return plain;
+      } catch {
+        // 该候选键解不开（GCM authTag 校验失败），试下一把
+      }
+    }
+    this.logger.error('回调解密失败：env 与全部组织 APIv3 密钥均未命中');
+    throw new UnauthorizedException('回调解密失败');
   }
 
   /**
@@ -378,18 +520,22 @@ export class PaymentsService {
   /**
    * 主动查单（IK9SO7 兜底）：按商户单号向微信查询交易状态。
    * 签名串的 url 必须带 query（微信 v3 规范），失败抛错由调用方决定兜底。
+   * IKKRMT：凭证按订单所属组织路由（mchid 取对应商户号）。
    */
   private async queryWechatTrade(orderNo: string): Promise<{
     trade_state?: string;
     transaction_id?: string;
   }> {
-    const urlPath = `/v3/pay/transactions/out-trade-no/${orderNo}?mchid=${process.env.WX_MCH_ID}`;
+    const creds = await this.orderCreds(orderNo);
+    if (!creds)
+      throw new HttpException('微信支付未配置', HttpStatus.NOT_IMPLEMENTED);
+    const urlPath = `/v3/pay/transactions/out-trade-no/${orderNo}?mchid=${creds.mchId}`;
     let response: Response;
     try {
       response = await fetch(`${WX_PAY_HOST}${urlPath}`, {
         headers: {
           Accept: 'application/json',
-          Authorization: this.authorization('GET', urlPath, ''),
+          Authorization: this.authorization('GET', urlPath, '', creds),
         },
         signal: AbortSignal.timeout(6000),
       });
@@ -406,18 +552,20 @@ export class PaymentsService {
     return (await response.json()) as { trade_state?: string };
   }
 
-  /** APIv3 回调资源解密：AES-256-GCM（key=APIv3Key，尾 16 字节为 authTag）。 */
+  /** APIv3 回调资源解密：AES-256-GCM（key=APIv3Key，尾 16 字节为 authTag）。
+   *  IKKRMT：密钥按组织路由（env=组织 A / 组织行 mchApiV3Key），见调用方。 */
   private decryptResource(
     ciphertext: string,
     nonce: string,
     associatedData: string,
+    apiV3Key: string,
   ) {
     const buf = Buffer.from(ciphertext, 'base64');
     const authTag = buf.subarray(buf.length - 16);
     const data = buf.subarray(0, buf.length - 16);
     const decipher = createDecipheriv(
       'aes-256-gcm',
-      Buffer.from(process.env.WX_APIV3_KEY!, 'utf8'),
+      Buffer.from(apiV3Key, 'utf8'),
       Buffer.from(nonce, 'utf8'),
     );
     decipher.setAuthTag(authTag);
@@ -498,6 +646,9 @@ export class PaymentsService {
   /**
    * 下载微信平台证书（GET /v3/certificates，商户私钥签名请求，
    * 响应用 APIv3Key AES-GCM 解密）。60 秒内不重复拉取。
+   * IKKRMT 注：平台证书属于「微信 ↔ 本服务」的信任锚（组织表 7 字段无
+   * 平台公钥项），下载与缓存仍走 env 商户凭证——组织 B 商户若需独立平台
+   * 证书，等字段扩展后再按组织分桶。
    */
   private async refreshPlatformCertificates() {
     if (
@@ -505,13 +656,16 @@ export class PaymentsService {
       Date.now() - this.platformCertsFetchedAt < 60_000
     )
       return;
+    const creds = this.envCreds();
+    if (!creds)
+      throw new HttpException('微信支付未配置', HttpStatus.NOT_IMPLEMENTED);
     const urlPath = '/v3/certificates';
     let response: Response;
     try {
       response = await fetch(`${WX_PAY_HOST}${urlPath}`, {
         headers: {
           Accept: 'application/json',
-          Authorization: this.authorization('GET', urlPath, ''),
+          Authorization: this.authorization('GET', urlPath, '', creds),
         },
         signal: AbortSignal.timeout(6000),
       });
@@ -551,6 +705,7 @@ export class PaymentsService {
           encrypted.ciphertext,
           encrypted.nonce,
           encrypted.associated_data ?? '',
+          creds.apiV3Key,
         ),
       );
     }

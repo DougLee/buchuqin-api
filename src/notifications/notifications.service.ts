@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import { PrismaService } from '../database/prisma.service';
+import { campusOrganizationId } from '../common/organization';
 
 /** 订单最小形态（渠道推送只需这些字段，避免服务间循环依赖具体类型）。 */
 export interface OrderPushContext {
@@ -31,8 +32,12 @@ export interface OrderPushContext {
 @Injectable()
 export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name);
-  /** 微信 access_token 缓存（7200s 有效期，提前 5 分钟刷新）。 */
-  private wxToken: { token: string; expiresAt: number } | null = null;
+  /**
+   * 微信 access_token 缓存（7200s 有效期，提前 5 分钟刷新）。
+   * IKKRMT：缓存 key 加 appid 维度隔离——组织 A（env WX_APPID_USER）单 key
+   * 行为等价；组织 B 独立 AppID 各自缓存，互不驱逐/互不串票。
+   */
+  private wxTokens = new Map<string, { token: string; expiresAt: number }>();
 
   constructor(private readonly db: PrismaService) {}
 
@@ -113,6 +118,33 @@ export class NotificationsService {
     }
   }
 
+  /**
+   * IKKRMT：订单 → 组织小程序凭证（订阅消息侧只需 appid/secret）。
+   * 订单不存在/校区无组织归属/组织行 wxAppId+wxSecret 未配全 → null（env
+   * 兜底=组织 A 现状）。解析失败静默回落 env，绝不阻塞推送链路。
+   */
+  private async orderWxCredentials(order: {
+    id: string;
+    orderNo: string;
+  }): Promise<{ appId: string; secret: string } | null> {
+    try {
+      const row = await this.db.order.findFirst({
+        where: order.id ? { id: order.id } : { orderNo: order.orderNo },
+        select: { campusId: true },
+      });
+      const organizationId = await campusOrganizationId(this.db, row?.campusId);
+      if (!organizationId) return null;
+      const org = await this.db.organization.findUnique({
+        where: { id: organizationId },
+        select: { wxAppId: true, wxSecret: true },
+      });
+      if (!org?.wxAppId || !org.wxSecret) return null;
+      return { appId: org.wxAppId, secret: org.wxSecret };
+    } catch {
+      return null;
+    }
+  }
+
   /** 状态 → 通知事件映射（PRD §15.1：支付成功/出库/一级配送中/即将到楼/已送达/退款）。 */
   private static readonly STATUS_EVENT: Record<string, string> = {
     paid: 'paid',
@@ -133,18 +165,24 @@ export class NotificationsService {
     refund: 'WX_TMPL_REFUND',
   };
 
-  /** 小程序订阅消息（env 门控）：WX_APPID_USER/WX_SECRET_USER + 模板 ID 齐备才发送。 */
+  /**
+   * 小程序订阅消息（env 门控）：模板 ID env 齐备才发送。
+   * IKKRMT 订阅消息按组织路由：订单所属组织配置了 wxAppId/wxSecret 时用
+   * 组织凭证取 access_token（缓存按 appid 隔离，互不串票）；组织 A 现状
+   * （组织行未配/无归属）→ env 凭证，行为一字不变。模板 ID 仍取 env——
+   * 组织级模板未入库，组织 B 订单用 env 模板跨 AppID 发送会被微信拒，
+   * 走既有 warn 静默降级（不阻塞订单流）。
+   */
   private async sendSubscribeMessage(
     order: OrderPushContext,
     event: string,
   ): Promise<void> {
     const templateId =
       process.env[NotificationsService.TEMPLATE_ENV[event] ?? ''];
-    if (
-      !process.env.WX_APPID_USER ||
-      !process.env.WX_SECRET_USER ||
-      !templateId
-    ) {
+    const org = await this.orderWxCredentials(order);
+    const appId = org?.appId ?? process.env.WX_APPID_USER;
+    const secret = org?.secret ?? process.env.WX_SECRET_USER;
+    if (!appId || !secret || !templateId) {
       this.logger.debug(
         `订阅消息未配置（${event}），跳过 → ${order.orderNo} ${order.statusText}`,
       );
@@ -190,7 +228,7 @@ export class NotificationsService {
           .filter(Boolean)
           .join(' ') || '校园内地址',
       );
-      const token = await this.wechatAccessToken();
+      const token = await this.wechatAccessToken(appId, secret);
       const data: Record<string, { value: string }> =
         event === 'paid'
           ? {
@@ -484,18 +522,28 @@ export class NotificationsService {
     return withSeconds ? iso.slice(0, 19).replace('T', ' ') : iso.slice(0, 16).replace('T', ' ');
   }
 
-  /** 微信 access_token：stable_token 模式（IKG9J2），带缓存与提前刷新。 */
-  private async wechatAccessToken(): Promise<string> {
-    if (this.wxToken && this.wxToken.expiresAt > Date.now())
-      return this.wxToken.token;
+  /**
+   * 微信 access_token：stable_token 模式（IKG9J2），带缓存与提前刷新。
+   * IKKRMT：appid/secret 可注入（订单所属组织配置了 wxAppId/wxSecret 时传
+   * 组织凭证——订阅消息按组织路由）；缺省 env（组织 A 现状，单 key 等价）。
+   */
+  private async wechatAccessToken(
+    appId?: string | null,
+    secret?: string | null,
+  ): Promise<string> {
+    const appid = appId || process.env.WX_APPID_USER;
+    const appSecret = secret || process.env.WX_SECRET_USER;
+    if (!appid || !appSecret) throw new Error('订阅消息小程序凭证未配置');
+    const cached = this.wxTokens.get(appid);
+    if (cached && cached.expiresAt > Date.now()) return cached.token;
     // IKG9J2：stable_token 有效期内返回同一张票——测试/生产同 appid 不再互踩
     const res = await fetch('https://api.weixin.qq.com/cgi-bin/stable_token', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         grant_type: 'client_credential',
-        appid: process.env.WX_APPID_USER,
-        secret: process.env.WX_SECRET_USER,
+        appid,
+        secret: appSecret,
         force_refresh: false,
       }),
     });
@@ -507,10 +555,10 @@ export class NotificationsService {
     };
     if (!body.access_token)
       throw new Error(`token ${body.errcode} ${body.errmsg}`);
-    this.wxToken = {
+    this.wxTokens.set(appid, {
       token: body.access_token,
       expiresAt: Date.now() + ((body.expires_in ?? 7200) - 300) * 1000,
-    };
+    });
     return body.access_token;
   }
 
