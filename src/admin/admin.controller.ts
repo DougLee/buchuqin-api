@@ -1157,6 +1157,7 @@ export class AdminController {
     @Query('keyword') keyword?: string,
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
+    @Query('plainPhone') plainPhone?: string,
   ) {
     return ok(
       await this.service.users(await this.campusScope(req, campus), {
@@ -1166,6 +1167,8 @@ export class AdminController {
         keyword: keyword?.trim() || undefined,
         page: Math.max(1, Number(page) || 1),
         pageSize: Math.min(100, Math.max(1, Number(pageSize) || 20)),
+        // IKKKC2：定向发券抽屉需要明文手机号（仅此场景；默认列表维持脱敏）
+        plainPhone: plainPhone === '1',
       }),
     );
   }

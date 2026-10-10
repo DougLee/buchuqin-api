@@ -6334,6 +6334,8 @@ export class AdminService {
       keyword?: string;
       page: number;
       pageSize: number;
+      /** IKKKC2：定向发券场景回明文手机号（默认脱敏口径不变） */
+      plainPhone?: boolean;
     },
   ) {
     const where: Prisma.UserWhereInput = {
@@ -6422,6 +6424,8 @@ export class AdminService {
           // 脱敏口径与订单列表一致（管理员看不到完整手机号/openid）
           openidMasked: mask(u.openid ?? ''),
           phoneMasked: this.maskPhone(u.phone),
+          // IKKKC2：明文手机号（仅定向发券抽屉请求时下发）
+          ...(opts.plainPhone ? { phone: u.phone } : {}),
           buildingName: addr?.buildingName ?? '',
           room: addr?.room ?? '',
           createdAt: u.createdAt.toISOString(),
