@@ -244,6 +244,8 @@ describe('admin RBAC 蛋词体系（角色×URL 模式对账）', () => {
 describe('守卫白名单与模式覆盖自检（漏配即红）', () => {
   it('白名单仅包含当前账号权限读取端点', () => {
     expect([...ADMIN_URL_WHITELIST].sort()).toEqual([
+      // IKKRMR：capability 字典（登录可读，只暴露本人持有情况）
+      'GET /admin/rbac/capabilities',
       'GET /admin/rbac/me',
       'GET /admin/rbac/permmenu',
     ]);

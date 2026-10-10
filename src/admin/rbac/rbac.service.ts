@@ -15,6 +15,7 @@ import { PrismaService } from '../../database/prisma.service';
 import { HQ_CAMPUS_ID } from '../../common/campus';
 import { isSuperOnlyOperation, PLATFORM_PATTERNS } from './access-policy';
 import { ALL_PERM_PATTERNS, MENU_NODES, PRESET_ROLES, ROLE_TEMPLATES, SUPER_ROLE_CODE, LEGACY_ROLE_MAP } from './registry';
+import { CAPABILITIES, CAPABILITY_BY_CODE, assertNoCapabilityOverlap } from './capabilities';
 
 /**
  * RBAC 服务（蛋词体系对齐版，2026-09-19 拍板 B）：
@@ -167,6 +168,19 @@ export class RbacService implements OnModuleInit {
    * 4) 旧静态角色账号 → AdminAccountRole（同首版逻辑）。
    */
   async syncRegistry(): Promise<void> {
+    // IKKRMR：capability 字典静态自检（启动即拒，不进事务）——
+    // 1) 同一 URL 模式被两个 capability 声明（歧义重叠，判权语义不清）；
+    // 2) capability 引用未登记的菜单 perms 模式（字典与菜单树漂移——
+    //    端点改名/菜单撤模式后 capability 静默失效）。
+    assertNoCapabilityOverlap();
+    const registeredPerms = new Set(ALL_PERM_PATTERNS);
+    const unknownPerms = [
+      ...new Set(CAPABILITIES.flatMap((c) => c.patterns)),
+    ].filter((p) => !registeredPerms.has(p));
+    if (unknownPerms.length)
+      throw new Error(
+        `capability 引用未登记的接口权限模式: ${unknownPerms.join(',')}（先在 registry MENU_NODES 登记对应 perms）`,
+      );
     let changed = false;
     await this.db.$transaction(async (tx) => {
       await this.lockSuperGuard(tx);
@@ -444,6 +458,37 @@ export class RbacService implements OnModuleInit {
     if (matchUrl(PLATFORM_PATTERNS, method, path))
       return matchUrl(ctx.platformPatterns ?? [], method, path);
     return matchUrl(ctx.patterns, method, path);
+  }
+
+  /**
+   * IKKRMR：按业务 capability 判权——cap 的 URL 模式集内任一模式为账号
+   * 有效权限（复用 allow 全语义：超管通配 / 平台窄化 / 菜单 perms 匹配）
+   * 即视为持有。未登记 capability 恒 false（fail closed）。配套门禁：
+   * orders actions 端点对 action 值复检（AdminController），未登记 action
+   * 直接 403——新增 action 不再有「通配自动获权」。
+   */
+  allowCapability(ctx: RbacContext, capability: string): boolean {
+    const def = CAPABILITY_BY_CODE.get(capability);
+    if (!def) return false;
+    return def.patterns.some((p) => {
+      const sp = p.indexOf(' ');
+      return sp > 0 && this.allow(ctx, p.slice(0, sp), p.slice(sp + 1));
+    });
+  }
+
+  /**
+   * IKKRMR：capability 字典下发（GET /admin/rbac/capabilities，登录可读
+   * 白名单）——字典本体 + 当前账号持有情况（granted），前端按钮判权数据源
+   * （IKKRMY 消费；本端点只供数据不承判权）。
+   */
+  listCapabilities(ctx?: RbacContext) {
+    return CAPABILITIES.map((c) => ({
+      code: c.code,
+      name: c.name,
+      remark: c.remark ?? '',
+      patterns: [...c.patterns],
+      granted: ctx ? this.allowCapability(ctx, c.code) : false,
+    }));
   }
 
   /**

@@ -37,6 +37,14 @@ export const MENU_NODES: MenuNodeDef[] = [
   { code: 'orders', name: '订单配送', type: 1, parent: 'g.ops', path: '/orders', icon: 'orders', order: 2, perms: ['GET /admin/orders', 'GET /admin/orders/status-counts', 'GET /admin/orders/new-order-watch', 'GET /admin/orders/:id'] },
   { code: 'orders.write', name: '订单操作', type: 2, parent: 'orders', order: 1, perms: ['POST /admin/orders/:id/actions/:action', 'POST /admin/orders/:id/status', 'POST /admin/orders/:id/print-receipt'], remark: '改状态/出库/补打小票' },
   { code: 'inventory.outbound', name: '订单出库', type: 2, parent: 'orders', order: 2, perms: ['POST /admin/orders/:id/actions/outbound'], remark: '拣货出库（仓储角色对订单只读但可出库）' },
+  // IKKRMR：订单动作拆钮——POST /admin/orders/:id/actions/:action 通配之外的
+  // 独立授权锚点（每个 action 值一个按钮，capability 判权同源）。orders.write
+  // 通配仍覆盖全部已登记 action（渐进兼容，存量角色零变化）；未登记 capability
+  // 的新增 action 在端点处默认 403（admin.controller 门禁），outbound 复用
+  // inventory.outbound 不重复登记。
+  { code: 'orders.cancel', name: '订单取消', type: 2, parent: 'orders', order: 3, perms: ['POST /admin/orders/:id/actions/cancel'], remark: '取消订单（capability order.cancel）' },
+  { code: 'orders.advance', name: '订单推进', type: 2, parent: 'orders', order: 4, perms: ['POST /admin/orders/:id/actions/advance'], remark: '推进订单（capability order.advance）' },
+  { code: 'orders.exception', name: '订单标记异常', type: 2, parent: 'orders', order: 5, perms: ['POST /admin/orders/:id/actions/mark-exception'], remark: '标记订单异常（capability order.exception）' },
   { code: 'after-sales', name: '售后退款', type: 1, parent: 'g.ops', path: '/after-sales', icon: 'after', order: 3, perms: ['GET /admin/after-sales', 'GET /admin/refunds'] },
   // IKHZKA 退款审核（动钱）：默认只授校区运营模板；仓储/财务/总部只读
   { code: 'after-sales.audit', name: '退款审核', type: 2, parent: 'after-sales', order: 1, perms: ['POST /admin/refunds/:id/audit', 'POST /admin/refunds/:id/sync', 'POST /admin/orders/:id/refunds'], remark: '批准=微信原路退回；拒绝=回滚订单；同步=查询退款终态；按商品退款' },
@@ -165,10 +173,13 @@ export const SUPER_ROLE_CODE = 'super-admin';
 /**
  * 守卫白名单（登录即可读，不判 perms）：当前账号权限读取入口与菜单目录。
  * 匹配语义：method + path 精确比对（path 剥全局前缀与尾部斜杠后）。
+ * IKKRMR：rbac/capabilities 同口径——capability 字典+本人持有情况（前端按钮
+ * 判权数据源，只暴露账号自身权限，与 permmenu 同信任级）。
  */
 export const ADMIN_URL_WHITELIST: ReadonlySet<string> = new Set([
   'GET /admin/rbac/me',
   'GET /admin/rbac/permmenu',
+  'GET /admin/rbac/capabilities',
 ]);
 
 /* ---------- 迁移模板（role_menu 节点 code 集；含目录） ---------- */

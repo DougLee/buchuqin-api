@@ -33,6 +33,7 @@ import { AdminService } from './admin.service';
 import { AdminAuthGuard } from './rbac/admin-auth.guard';
 import { RbacService, matchUrl } from './rbac/rbac.service';
 import type { GrantActor, RbacContext } from './rbac/rbac.service';
+import { ORDER_ACTION_CAPABILITIES } from './rbac/capabilities';
 import {
   AdjustStockDto,
   BatchProductStatusDto,
@@ -1272,6 +1273,15 @@ export class AdminController {
     @Param('id') id: string,
     @Param('action') action: string,
   ) {
+    // IKKRMR capability 门禁：action 值不在登记表（ORDER_ACTION_CAPABILITIES）
+    // → 403 未登记的操作能力（默认拒绝新增 action，消除「通配自动获权」）；
+    // 已登记 action 再按 capability 的 URL 模式集复检（orders.write 通配或
+    // 单 action 按钮皆可，存量角色行为不变）。
+    const capability = ORDER_ACTION_CAPABILITIES[action];
+    if (!capability)
+      throw new ForbiddenException(`未登记的操作能力: ${action}`);
+    if (!this.rbac.allowCapability(this.ctx(req), capability))
+      throw new ForbiddenException('所在用户组暂无该订单操作权限');
     // 仓库出库（IKA0UQ）落在库存板块：仓储角色对 orders 只读但可出库。
     return ok(
       await this.service.orderAction(
@@ -2326,6 +2336,19 @@ export class AdminController {
   @Get('rbac/catalog')
   rbacCatalog() {
     return ok(this.rbac.catalog());
+  }
+  /** IKKRMR：业务 capability 字典——稳定业务能力标识→URL 模式集+中文说明，
+   *  附当前账号持有情况（granted）。守卫白名单：登录即可读（与 permmenu 同
+   *  信任级，只暴露账号自身权限）。前端按钮判权（IKKRMY）统一以此为准。 */
+  @Get('rbac/capabilities')
+  @ApiOperation({
+    summary: '业务 capability 字典+当前账号持有情况（IKKRMR）',
+    description:
+      '守卫白名单：登录即可读。高风险域（订单动作/成本读写）按稳定业务能力标识下发；' +
+      '前端按钮显隐与后端授权使用同一 capability 定义（IKKRMY 消费，本端点只供数据）。',
+  })
+  async rbacCapabilities(@Req() req: AuthRequest) {
+    return ok(this.rbac.listCapabilities(this.ctx(req)));
   }
 
   @Get('rbac/permissions')
