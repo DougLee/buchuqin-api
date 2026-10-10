@@ -57,6 +57,11 @@ export class CreateProductDto extends BarcodeDto {
   @IsOptional() @Type(() => Number) @IsInt() @Min(0) costPrice?: number;
   /** 批发价格（IKC1AC）：仅官方库建档接受，缺省取 price。 */
   @IsOptional() @Type(() => Number) @IsInt() @Min(0) wholesalePrice?: number;
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  localPurchasePrice?: number;
   @Type(() => Number) @IsInt() @Min(0) stock!: number;
   @IsOptional() @IsString() tag?: string;
   @IsOptional() @IsString() image?: string;
@@ -79,7 +84,12 @@ export class CreateProductDto extends BarcodeDto {
   @IsOptional() @IsString() @MaxLength(6) retailUnit?: string;
   @IsOptional() @IsString() @MaxLength(6) wholesaleUnit?: string;
   /** 每件含量：批发单位包含的零售单位数，1~999，无件概念填 1。 */
-  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(999) unitsPerCase?: number;
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(999)
+  unitsPerCase?: number;
   /** 商品介绍（IKAHAU）：纯文本多行 ≤2000 字，空 = C 端不渲染区块。 */
   @IsOptional() @IsString() @MaxLength(2000) description?: string;
 }
@@ -95,6 +105,11 @@ export class UpdateProductPriceDto {
   @IsOptional() @Type(() => Number) @IsInt() @Min(0) costPrice?: number;
   /** 批发价：仅官方库行接受（service 校验 campus）。 */
   @IsOptional() @Type(() => Number) @IsInt() @Min(0) wholesalePrice?: number;
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  localPurchasePrice?: number;
 }
 /** 身份证补录专用端点（POST /admin/recruit-applications/:id/idcard）。 */
 export class UpdateRecruitIdcardDto {
@@ -140,6 +155,12 @@ export class UpdateProductDto {
   @IsOptional() @Type(() => Number) @IsInt() @Min(0) costPrice?: number;
   /** 批发价格（IKC1AC）：仅官方库行接受（service 校验 campus）。 */
   @IsOptional() @Type(() => Number) @IsInt() @Min(0) wholesalePrice?: number;
+  @IsOptional() @IsIn(['HQ', 'LOCAL']) procurementMode?: 'HQ' | 'LOCAL';
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  localPurchasePrice?: number;
   /** 资料字段（IKAHAT）：全部可选（PATCH 语义），空白 name 由 service 拒绝。 */
   @IsOptional() @IsString() @MaxLength(80) name?: string;
   @IsOptional() @IsString() @MaxLength(120) subtitle?: string;
@@ -167,7 +188,12 @@ export class UpdateProductDto {
   /** 单位属性（IKFOPU）：PATCH 语义可选；校区同步行由 service 剔除（只读）。 */
   @IsOptional() @IsString() @MaxLength(6) retailUnit?: string;
   @IsOptional() @IsString() @MaxLength(6) wholesaleUnit?: string;
-  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(999) unitsPerCase?: number;
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(999)
+  unitsPerCase?: number;
   /** 商品介绍（IKAHAU）：整段覆盖，空串清空。 */
   @IsOptional() @IsString() @MaxLength(2000) description?: string;
 }
@@ -270,7 +296,9 @@ export class UpdateDeliveryConfigDto {
   closeEnd?: string;
   @IsOptional() @IsBoolean() manualClosed?: boolean;
   /** 无楼长提示（IKHMKR 校区自定义）：空串=回落默认文案；≤60 字 */
-  @IsOptional() @IsString() @MaxLength(60, { message: '提示文案最多 60 字' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(60, { message: '提示文案最多 60 字' })
   noManagerTip?: string;
 }
 export class CreateCouponDto {
@@ -310,18 +338,29 @@ export class UpdateCouponDto {
   @IsOptional() @IsBoolean() targetedOnly?: boolean;
   @IsOptional() @IsString() @MinLength(1) @MaxLength(40) name?: string;
   @IsOptional() @IsString() @MaxLength(60) remark?: string;
-  @IsOptional() @ValidateIf((_, v) => v !== null) @Type(() => Number)
-  @IsInt() @Min(0)
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null)
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
   amount?: number | null;
-  @IsOptional() @ValidateIf((_, v) => v !== null) @Type(() => Number)
-  @IsInt() @Min(0)
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null)
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
   threshold?: number | null;
   /** null = 转不限量（IKDEN2 口径） */
-  @IsOptional() @ValidateIf((_, v) => v !== null) @Type(() => Number)
-  @IsInt() @Min(1)
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null)
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
   total?: number | null;
   /** null = 转长期有效；传 ISO 日期串改固定日期 */
-  @IsOptional() @ValidateIf((_, v) => v !== null) @IsDateString()
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null)
+  @IsDateString()
   expiresAt?: string | null;
 }
 /** 批量放行/回收（IKCKX4）：官方库放行回收、校区批量上下架共用 */
@@ -333,7 +372,9 @@ export class IssueCouponDto {
   /** IKD6FI：userIds 与定向条件（phones/buildingId/floor/roomNos）至少给一种，并集去重 */
   @IsOptional() @IsArray() @IsString({ each: true }) userIds?: string[];
   /** 按绑定手机号指定用户（邮箱/昵称不可靠，需求指定手机号口径） */
-  @IsOptional() @IsArray() @IsString({ each: true })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
   @ArrayMaxSize(500)
   phones?: string[];
   /** 按寝室地址定向：楼栋必填，楼层/寝室号可选收窄 */
@@ -379,13 +420,16 @@ export class RestockOrderItemDto {
 }
 /** 保存订货单：items 全量替换（草稿/驳回态可改）。 */
 export class SaveRestockOrderDto {
-  @IsArray() @ArrayMaxSize(500) @ValidateNested({ each: true })
+  @IsArray()
+  @ArrayMaxSize(500)
+  @ValidateNested({ each: true })
   @Type(() => RestockOrderItemDto)
   items!: RestockOrderItemDto[];
 }
 /** 订货审核（IKFOQ0/IKJC1R）：confirm 确认、reject 驳回、revoke 撤销回待审核。 */
 export class AuditRestockOrderDto {
-  @IsIn(['confirm', 'reject', 'revoke']) action!: 'confirm' | 'reject' | 'revoke';
+  @IsIn(['confirm', 'reject', 'revoke']) action!:
+    'confirm' | 'reject' | 'revoke';
   @IsOptional() @IsString() @MaxLength(200) note?: string;
 }
 export class CreateBuildingDto {
@@ -570,7 +614,10 @@ export class CreateCampusDto {
   deliveryFeeScheduled?: number;
   @IsOptional() @Type(() => Number) @IsInt() @Min(0) deliveryThreshold?: number;
   /** 楼长月度底薪（IKDOIU，分）：0 = 无底薪（纯提成+调整）。 */
-  @IsOptional() @Type(() => Number) @IsInt() @Min(0)
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
   buildingManagerBaseSalary?: number;
 }
 export class UpdateCampusDto {
@@ -591,14 +638,19 @@ export class UpdateCampusDto {
   deliveryFeeScheduled?: number;
   @IsOptional() @Type(() => Number) @IsInt() @Min(0) deliveryThreshold?: number;
   /** 楼长月度底薪（IKDOIU，分）：0 = 无底薪（纯提成+调整）。 */
-  @IsOptional() @Type(() => Number) @IsInt() @Min(0)
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
   buildingManagerBaseSalary?: number;
   /** 客服电话（IKHMF1 校区自定义）：座机/400/手机号，3-20 位数字与- */
   @IsOptional()
   @Matches(/^[0-9-]{3,20}$/, { message: '客服电话格式不正确' })
   servicePhone?: string;
   /** 无楼长提示（IKHMKR 校区自定义）：空串=回落默认文案；≤60 字（弹窗一行） */
-  @IsOptional() @IsString() @MaxLength(60, { message: '提示文案最多 60 字' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(60, { message: '提示文案最多 60 字' })
   noManagerTip?: string;
   /** 打烊窗/手动闭店（平台账号管理任意校区配送营业配置）：均可选不传不动 */
   @IsOptional()

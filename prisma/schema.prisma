@@ -361,6 +361,11 @@ model Product {
   // （校区行由导入/pullUpstream 自官方 price 复制）
   costPrice       Int            @default(0)
   wholesalePrice  Int            @default(0)
+  // 校区实际采购方式：HQ=总部供货，LOCAL=校区自主采购；null=历史数据待确认。
+  // 与 sourceProductId（商品资料来源）正交，不能据后者推断。
+  procurementMode String?
+  // 校区本地进货价，分/零售单位；LOCAL 时必填（允许 0），C 端永不输出。
+  localPurchasePrice Int?
   stock           Int
   lockedStock     Int            @default(0)
   sales           Int            @default(0)

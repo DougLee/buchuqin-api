@@ -80,6 +80,9 @@ export interface ProductSnapshot {
    *  C 端出口 orderView 必须剥离（进货价属内部数据，绝不进 C 端响应）。 */
   unitWholesaleCost?: number;
   unitPurchaseCost?: number;
+  /** 校区毛利统一成本快照及其来源；仅内部/管理端可见。 */
+  unitGrossCost?: number;
+  costSource?: 'HQ' | 'LOCAL' | 'LEGACY';
   /** 快照时的每件含量：成本换算的审计依据。 */
   unitsPerCase?: number;
 }
@@ -87,6 +90,8 @@ export interface ProductSnapshot {
 const COST_SNAPSHOT_KEYS = [
   'unitWholesaleCost',
   'unitPurchaseCost',
+  'unitGrossCost',
+  'costSource',
   'unitsPerCase',
 ] as const;
 export interface OrderLine {
@@ -250,7 +255,14 @@ export class BusinessService {
    */
   private productView(product: any, withDescription = false, promotion?: any) {
     // IKC1AC：进货价/批发价是内部价格，绝不进 C 端响应
-    const { description, costPrice, wholesalePrice, ...rest } = product;
+    const {
+      description,
+      costPrice,
+      wholesalePrice,
+      localPurchasePrice,
+      procurementMode,
+      ...rest
+    } = product;
     return {
       ...rest,
       // 列表不回介绍（IKAHAU）：≤2000 字 × 全量商品会把首页/列表 payload 撑爆；
@@ -414,7 +426,10 @@ export class BusinessService {
       threshold: coupon.threshold,
       total: coupon.total,
       // IKDEN2：不限量券 remain=null（C 端/后台据此显示「不限量/充足」）
-      remain: coupon.total === null ? null : Math.max(0, coupon.total - coupon.claimed),
+      remain:
+        coupon.total === null
+          ? null
+          : Math.max(0, coupon.total - coupon.claimed),
       status: coupon.status,
       expiresAt: coupon.expiresAt ? coupon.expiresAt.toISOString() : null,
       featuredAfterPay: coupon.featuredAfterPay,
@@ -595,11 +610,7 @@ export class BusinessService {
    * 楼栋寝室列表（IKD6FH 地址四级选择）：某楼全部/某层寝室。
    * 用户端选完楼栋+楼层后拉寝室号列表做 picker；楼栋须为本校区在营。
    */
-  async buildingRooms(
-    campusId: string,
-    buildingId: string,
-    floor?: number,
-  ) {
+  async buildingRooms(campusId: string, buildingId: string, floor?: number) {
     const building = await this.db.building.findFirst({
       where: { id: buildingId, campusId, status: 'active' },
     });
@@ -686,10 +697,10 @@ export class BusinessService {
       }),
     ]);
     const seen = new Set(featured.map((p) => p.id));
-    const products = [...featured, ...rest.filter((p) => !seen.has(p.id))].slice(
-      0,
-      18,
-    );
+    const products = [
+      ...featured,
+      ...rest.filter((p) => !seen.has(p.id)),
+    ].slice(0, 18);
     const now = new Date();
     const promoRows = await this.db.promotion.findMany({
       // 首页促销模块（ADR-0006）：进行中活动带商品视图，type 分组由前端渲染
@@ -778,9 +789,7 @@ export class BusinessService {
       new Date(),
       true,
     );
-    return products.map((p) =>
-      this.productView(p, false, promoMap.get(p.id)),
-    );
+    return products.map((p) => this.productView(p, false, promoMap.get(p.id)));
   }
   /**
    * 限时秒杀商品列表（IKBW0K）：进行中的 seckill 活动带促销价，供分类页
@@ -839,9 +848,9 @@ export class BusinessService {
     if (!item) throw new NotFoundException('商品不存在');
     // IKHL6Y 秒杀双渠道：详情页为正常渠道——原价展示/原价加购（clearance
     // 保留），不挂秒杀价与限购；想按秒杀价买走分类页「限时秒杀」专区
-    const promo = (
-      await this.promotionMap([item.id], new Date(), true)
-    ).get(item.id);
+    const promo = (await this.promotionMap([item.id], new Date(), true)).get(
+      item.id,
+    );
     return this.productView(item, true, promo);
   }
   /**
@@ -869,9 +878,9 @@ export class BusinessService {
     if (!local)
       return { product: null, sourceName: src.name, sourceCampusName };
     // IKHL6Y：同款匹配页同样属正常渠道（原价，clearance 保留，不挂限购）
-    const promo = (
-      await this.promotionMap([local.id], new Date(), true)
-    ).get(local.id);
+    const promo = (await this.promotionMap([local.id], new Date(), true)).get(
+      local.id,
+    );
     const product = this.productView(local, true, promo);
     return { product, sourceName: src.name, sourceCampusName };
   }
@@ -911,9 +920,7 @@ export class BusinessService {
     );
     const items = rows.map((row) => {
       // 秒杀行跟活动窗走：窗内秒杀价，窗外自动回落正常渠道价
-      const seckill = row.asSeckill
-        ? seckillMap.get(row.productId)
-        : undefined;
+      const seckill = row.asSeckill ? seckillMap.get(row.productId) : undefined;
       const promo = seckill ?? normalPromoMap.get(row.productId);
       const product = this.productView(row.product, false, promo);
       if (seckill)
@@ -997,9 +1004,7 @@ export class BusinessService {
         if (!p || p.status !== 'on-sale') continue;
         // 秒杀身份行必须窗内有活动（防伪造）；窗外回落原价行不再拦
         if (line.asSeckill && !seckillIds.has(line.productId))
-          throw new BadRequestException(
-            `「${p.name}」秒杀活动未开始或已结束`,
-          );
+          throw new BadRequestException(`「${p.name}」秒杀活动未开始或已结束`);
         if (seckillIds.has(line.productId)) {
           if (line.quantity > 1)
             throw new BadRequestException(`秒杀商品「${p.name}」每人限购 1 件`);
@@ -1043,11 +1048,7 @@ export class BusinessService {
       select: { quantity: true, asSeckill: true },
     });
     // IKHL6Y：同一商品购物车单一身份——跨身份再加拒绝（先移除已有行再换入口）
-    if (
-      quantity > 0 &&
-      existing &&
-      Boolean(existing.asSeckill) !== asSeckill
-    )
+    if (quantity > 0 && existing && Boolean(existing.asSeckill) !== asSeckill)
       throw new BadRequestException(
         asSeckill
           ? '该商品已在购物车（原价购买），如需秒杀价请先移除再加购'
@@ -1057,8 +1058,7 @@ export class BusinessService {
     // 必须存在进行中秒杀活动（防伪造身份绕过）
     if (quantity > 0 && asSeckill) {
       const seckill = (await this.activeSeckillMap([productId])).get(productId);
-      if (!seckill)
-        throw new BadRequestException('秒杀活动未开始或已结束');
+      if (!seckill) throw new BadRequestException('秒杀活动未开始或已结束');
       if (quantity > 1) throw new BadRequestException('秒杀商品每人限购 1 件');
       const hit = await this.seckillPurchased(userId, [productId]);
       if (hit.has(productId))
@@ -1143,9 +1143,7 @@ export class BusinessService {
     // 在结算时把关——秒杀身份行品种 >1 拒单，引导回购物车调整
     const cartSeckillIds = new Set(
       (
-        await this.activeSeckillMap(
-          seckillRows.map((i) => i.product.id),
-        )
+        await this.activeSeckillMap(seckillRows.map((i) => i.product.id))
       ).keys(),
     );
     if (cartSeckillIds.size > 1)
@@ -1209,9 +1207,7 @@ export class BusinessService {
           select: { noManagerTip: true },
         })
       : null;
-    return (
-      campus?.noManagerTip || BusinessService.DEFAULT_NO_MANAGER_TIP
-    );
+    return campus?.noManagerTip || BusinessService.DEFAULT_NO_MANAGER_TIP;
   }
   async checkout(userId: string, campusId: string, dto: CreateOrderDto) {
     const { cart, address } = await this.validateQuote(userId, campusId, dto);
@@ -1399,10 +1395,22 @@ export class BusinessService {
         // 双成本快照（IKFOPQ）：支付时把每零售单位成本写进行快照——
         // 商品批发价此后再改不影响历史订单毛利；除不尽 floor（毛利
         // 一律整单「金额−金额」计算，快照仅作行级展示基数，不累乘）
-        line.product.unitWholesaleCost = perRetailUnitCostFen(
-          p.wholesalePrice,
-          p.unitsPerCase,
-        );
+        // wholesalePrice/localPurchasePrice 均统一为“分/零售单位”，不可再按
+        // unitsPerCase 二次折算。null 为历史待确认商品，保留旧算法兼容交易。
+        line.product.unitGrossCost =
+          p.procurementMode === 'LOCAL'
+            ? (p.localPurchasePrice ?? undefined)
+            : p.procurementMode === 'HQ'
+              ? p.wholesalePrice
+              : perRetailUnitCostFen(p.wholesalePrice, p.unitsPerCase);
+        if (line.product.unitGrossCost == null)
+          throw new BadRequestException(`${line.product.name}未填写本地进货价`);
+        line.product.costSource =
+          p.procurementMode === 'HQ' || p.procurementMode === 'LOCAL'
+            ? p.procurementMode
+            : 'LEGACY';
+        // 保留旧字段供尚未升级的后台代码读取；值改为同一事实，避免双口径。
+        line.product.unitWholesaleCost = line.product.unitGrossCost;
         line.product.unitPurchaseCost = perRetailUnitCostFen(
           p.costPrice,
           p.unitsPerCase,
@@ -1477,9 +1485,7 @@ export class BusinessService {
             // IKDEN2：不限量券不设上限条件
             where: {
               id: bonus.id,
-              ...(bonus.total === null
-                ? {}
-                : { claimed: { lt: bonus.total } }),
+              ...(bonus.total === null ? {} : { claimed: { lt: bonus.total } }),
             },
             data: { claimed: { increment: 1 }, issued: { increment: 1 } },
           });
@@ -1695,7 +1701,12 @@ export class BusinessService {
       // IKFFHO：联间发送间隔随绑定带出（默认 0=单次 POST 拼联）
       const bound = await this.db.printer.findUnique({
         where: { campusId: order.campusId },
-        select: { sn: true, status: true, copies: true, copiesGapSeconds: true },
+        select: {
+          sn: true,
+          status: true,
+          copies: true,
+          copiesGapSeconds: true,
+        },
       });
       const activeBound = bound && bound.status === 'active' ? bound : null;
       const snOverride = activeBound?.sn;
@@ -1730,9 +1741,7 @@ export class BusinessService {
       );
     } catch (error) {
       BusinessService.logger.warn(
-        `订单 ${order.orderNo} 支付小票打印失败（不影响支付流程）: ${
-          error instanceof Error ? error.message : error
-        }`,
+        `订单 ${order.orderNo} 支付小票打印失败（不影响支付流程）: ${error instanceof Error ? error.message : error}`,
       );
     }
   }
@@ -2020,10 +2029,11 @@ export class BusinessService {
     amount: number;
   }> {
     if (!productIds.length) return [];
-    const lines = (order.items as Array<{
-      product?: { id?: string; name?: string; price?: number };
-      quantity: number;
-    }>) ?? [];
+    const lines =
+      (order.items as Array<{
+        product?: { id?: string; name?: string; price?: number };
+        quantity: number;
+      }>) ?? [];
     const picked: Array<{
       productId: string;
       productName: string;
@@ -2033,8 +2043,7 @@ export class BusinessService {
     }> = [];
     for (const pid of productIds) {
       const line = lines.find((l) => l.product?.id === pid);
-      if (!line?.product)
-        throw new BadRequestException('退款商品与订单不符');
+      if (!line?.product) throw new BadRequestException('退款商品与订单不符');
       if (picked.some((p) => p.productId === pid))
         throw new BadRequestException('退款商品重复');
       picked.push({
@@ -2080,8 +2089,7 @@ export class BusinessService {
       where: { orderId: order.id, status: 'pending' },
       select: { id: true },
     });
-    if (pending)
-      throw new BadRequestException('该订单已有退款申请在审核中');
+    if (pending) throw new BadRequestException('该订单已有退款申请在审核中');
     const amount = input.items.length
       ? input.items.reduce((s, i) => s + i.amount, 0)
       : this.refundAmountFor(order);
@@ -2139,9 +2147,7 @@ export class BusinessService {
     if (order.status === 'after-sales')
       throw new BadRequestException('该订单已有退款申请在审核中');
     if (order.status !== 'paid')
-      throw new BadRequestException(
-        '订单已出库，无法申请退款，请联系客服处理',
-      );
+      throw new BadRequestException('订单已出库，无法申请退款，请联系客服处理');
     const reason = (dto.reason ?? '').trim();
     if (!reason)
       // DTO MinLength 拦不住纯空白；服务端兜底（道哥 2026-09-23：原因必填）
@@ -2187,7 +2193,11 @@ export class BusinessService {
           where: { id },
           data: { status: 'cancelled' },
         });
-        await this.restoreOrderFromRefund(tx, record.orderId, record.beforeStatus);
+        await this.restoreOrderFromRefund(
+          tx,
+          record.orderId,
+          record.beforeStatus,
+        );
         return this.refundView(record);
       });
     }
@@ -2212,10 +2222,9 @@ export class BusinessService {
     orderId: string,
     beforeStatus: string,
   ) {
-    const target =
-      ['paid', 'delivered', 'completed'].includes(beforeStatus)
-        ? beforeStatus
-        : 'delivered';
+    const target = ['paid', 'delivered', 'completed'].includes(beforeStatus)
+      ? beforeStatus
+      : 'delivered';
     const statusText =
       target === 'paid'
         ? '仓库正在接单'
@@ -2604,7 +2613,10 @@ export class BusinessService {
     },
   ) {
     const active = await this.db.recruitingApplication.findFirst({
-      where: { userId, status: { in: ['pending', 'interviewing', 'approved'] } },
+      where: {
+        userId,
+        status: { in: ['pending', 'interviewing', 'approved'] },
+      },
       select: { status: true },
     });
     if (active)
@@ -2636,7 +2648,6 @@ export class BusinessService {
       },
     });
   }
-
 
   /** 审核前修改报名（IKEAGE）：仅 pending/interviewing 可改；校验同新建 */
   async recruitUpdate(

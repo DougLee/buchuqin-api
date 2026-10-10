@@ -159,10 +159,15 @@ export class AdminService {
       const lines =
         (o.items as unknown as Array<{
           quantity: number;
-          product?: { unitWholesaleCost?: number };
+          product?: { unitGrossCost?: number; unitWholesaleCost?: number };
         }>) ?? [];
       const cost = lines.reduce(
-        (sum, line) => sum + line.quantity * (line.product?.unitWholesaleCost ?? 0),
+        (sum, line) =>
+          sum +
+          line.quantity *
+            (line.product?.unitGrossCost ??
+              line.product?.unitWholesaleCost ??
+              0),
         0,
       );
       profitByCampus.set(
@@ -459,9 +464,7 @@ export class AdminService {
         GROUP BY 1`,
     ]);
     const key = (d: Date) =>
-      `${String(d.getMonth() + 1).padStart(2, '0')}-${String(
-        d.getDate(),
-      ).padStart(2, '0')}`;
+      `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     const byDay = new Map(
       orderRows.map((row) => [
         key(row.day),
@@ -622,9 +625,7 @@ export class AdminService {
       })),
       ...audits.map((x) => ({
         time: x.createdAt.toISOString(),
-        text: `${names.get(x.operator) ?? '系统'} · ${
-          AdminService.AUDIT_ACTION_TEXTS[x.action] ?? '后台操作'
-        }`,
+        text: `${names.get(x.operator) ?? '系统'} · ${AdminService.AUDIT_ACTION_TEXTS[x.action] ?? '后台操作'}`,
         type: 'audit',
         entityType: x.entityType,
       })),
@@ -689,6 +690,8 @@ export class AdminService {
       // IKC1AC：价格三层输出（校区端展示批发价快照；进货价由前端按角色显隐）
       costPrice: this.num(x.costPrice),
       wholesalePrice: this.num(x.wholesalePrice),
+      localPurchasePrice:
+        x.localPurchasePrice == null ? null : this.num(x.localPurchasePrice),
       weight: this.num(x.weight),
       skuNo: `SKU-${x.id.toUpperCase()}`,
       // 官方库不记库存（IKAJSM）：库存归校区，不参与售罄映射
@@ -1290,6 +1293,8 @@ export class AdminService {
     operator: string,
     campusId: string,
   ) {
+    if (campusId !== OFFICIAL_CAMPUS_ID && body.localPurchasePrice == null)
+      throw new BadRequestException('本地采购商品必须填写进货价');
     // 条码唯一改校区维度（IKAJSM）：同校区内去重，官方库/他校区可同码。
     // IKFQQ0：条码选填后必须前置非空判断——where.barcode 为 undefined 时
     // Prisma 会忽略该条件，把同校区任意商品误判成重复
@@ -1334,8 +1339,12 @@ export class AdminService {
           ? {
               costPrice: body.costPrice ?? 0,
               wholesalePrice: body.wholesalePrice ?? body.price,
+              procurementMode: 'HQ',
             }
           : {
+              // 校区手工建档只能代表本地采购；总部供货必须经官方库导入/到货。
+              procurementMode: 'LOCAL',
+              localPurchasePrice: body.localPurchasePrice,
               wholesalePrice: body.wholesalePrice ?? 0,
             }),
       },
@@ -1361,6 +1370,46 @@ export class AdminService {
       where: { id, campusId },
     });
     if (!before) throw new NotFoundException('商品不存在');
+    if (
+      body.procurementMode !== undefined &&
+      body.procurementMode !== before.procurementMode
+    ) {
+      // null 是历史数据首次确认，并非采购方式切换，允许在有存量时认领来源。
+      if (
+        before.procurementMode != null &&
+        (before.stock !== 0 || before.lockedStock !== 0)
+      )
+        throw new BadRequestException('库存和锁定库存清零后才能切换采购方式');
+      if (
+        body.procurementMode === 'LOCAL' &&
+        body.localPurchasePrice == null &&
+        before.localPurchasePrice == null
+      )
+        throw new BadRequestException('本地采购商品必须填写进货价');
+      const [pendingPurchase, pendingRestock] = await Promise.all([
+        this.db.purchaseRequest.count({
+          where: { productId: id, status: 'pending' },
+        }),
+        this.db.restockOrderItem.count({
+          where: {
+            productId: before.sourceProductId ?? '__none__',
+            order: {
+              campusId,
+              status: { in: ['submitted', 'confirmed', 'shipped'] },
+            },
+          },
+        }),
+      ]);
+      if (pendingPurchase || pendingRestock)
+        throw new BadRequestException(
+          '商品存在待处理采购或订货单，不能切换采购方式',
+        );
+    }
+    if (
+      (body.procurementMode ?? before.procurementMode) === 'LOCAL' &&
+      body.localPurchasePrice === null
+    )
+      throw new BadRequestException('本地采购商品必须填写进货价');
     // 资料可编辑（IKAHAT）：空白名拒绝；换分类校验目标存在（Category 为全局字典）
     if (body.name !== undefined && !body.name.trim())
       throw new BadRequestException('商品名称不能为空');
@@ -1390,10 +1439,32 @@ export class AdminService {
               wholesaleUnit: undefined,
               unitsPerCase: undefined,
             }
-          : { ...body, costPrice: undefined };
+          : { ...body, costPrice: undefined, wholesalePrice: undefined };
     if (data.unitsPerCase != null && data.unitsPerCase < 1)
       throw new BadRequestException('每件含量不能小于 1');
-    const after = await this.db.product.update({ where: { id }, data });
+    // 采购方式变化使用带旧值/零库存前置条件的条件更新，避免校验后并发入库
+    // 或另一管理员改来源导致覆盖。普通资料更新仍走唯一 id。
+    let after;
+    if (
+      body.procurementMode !== undefined &&
+      body.procurementMode !== before.procurementMode
+    ) {
+      const changed = await this.db.product.updateMany({
+        where: {
+          id,
+          procurementMode: before.procurementMode,
+          ...(before.procurementMode == null
+            ? {}
+            : { stock: 0, lockedStock: 0 }),
+        },
+        data,
+      });
+      if (changed.count !== 1)
+        throw new BadRequestException('商品库存或采购方式已变化，请刷新后重试');
+      after = await this.db.product.findUniqueOrThrow({ where: { id } });
+    } else {
+      after = await this.db.product.update({ where: { id }, data });
+    }
     // 进货价自动下发（2026-09-19 道哥定版「统一用校区价格」）：官方库调进货价
     // → 全部同步行的快照即时跟随（此前是导入时快照，总部调价后校区不自动跟，
     // 促销弹窗与官方库出现两个进货价）。自建行（无来源）不受影响。
@@ -1515,6 +1586,7 @@ export class AdminService {
           // 进货价仅数据留档、校区出口剔除）
           costPrice: official.costPrice,
           wholesalePrice: official.price,
+          procurementMode: 'HQ',
           stock: 0,
           tag: official.tag,
           image: official.image,
@@ -1621,6 +1693,8 @@ export class AdminService {
       where: { id: body.productId, campusId },
     });
     if (!product) throw new NotFoundException('商品不存在');
+    if (campusId !== OFFICIAL_CAMPUS_ID && product.procurementMode !== 'LOCAL')
+      throw new BadRequestException('只有本地采购商品可以手工采购入库');
     const txn = await this.db.$transaction(async (tx) => {
       const record = await tx.inventoryTxn.create({
         data: {
@@ -1631,10 +1705,17 @@ export class AdminService {
           operator,
         },
       });
-      await tx.product.update({
-        where: { id: body.productId },
+      const stocked = await tx.product.updateMany({
+        where: {
+          id: body.productId,
+          ...(campusId === OFFICIAL_CAMPUS_ID
+            ? {}
+            : { procurementMode: 'LOCAL' }),
+        },
         data: { stock: { increment: body.quantity } },
       });
+      if (stocked.count !== 1)
+        throw new BadRequestException('商品采购方式已变化，请刷新后重试');
       return record;
     });
     await this.audit(
@@ -1752,7 +1833,11 @@ export class AdminService {
   // 快照换算）；审核确认不锁库存（IKJC1R 订货驱动采购），发货只扣实库（IKFOQ2）。
 
   /** 批次阶段（grilling #9）：时间窗推导 + 手动关闭，不落状态字段。 */
-  private restockPhase(b: { startAt: Date; endAt: Date; closedAt: Date | null }) {
+  private restockPhase(b: {
+    startAt: Date;
+    endAt: Date;
+    closedAt: Date | null;
+  }) {
     if (b.closedAt) return 'closed' as const;
     const now = Date.now();
     if (now < b.startAt.getTime()) return 'upcoming' as const;
@@ -1804,15 +1889,24 @@ export class AdminService {
     });
     const agg = new Map<
       string,
-      { orderTotal: number; orderConfirmed: number; orderShipped: number; orderReceived: number }
+      {
+        orderTotal: number;
+        orderConfirmed: number;
+        orderShipped: number;
+        orderReceived: number;
+      }
     >();
     for (const o of orders) {
-      const cur =
-        agg.get(o.batchId) ??
-        { orderTotal: 0, orderConfirmed: 0, orderShipped: 0, orderReceived: 0 };
+      const cur = agg.get(o.batchId) ?? {
+        orderTotal: 0,
+        orderConfirmed: 0,
+        orderShipped: 0,
+        orderReceived: 0,
+      };
       cur.orderTotal += 1;
       // IKFOQ2：shipped/received 是 confirmed 的下游态，统计按最远进度
-      if (['confirmed', 'shipped', 'received'].includes(o.status)) cur.orderConfirmed += 1;
+      if (['confirmed', 'shipped', 'received'].includes(o.status))
+        cur.orderConfirmed += 1;
       if (['shipped', 'received'].includes(o.status)) cur.orderShipped += 1;
       if (o.status === 'received') cur.orderReceived += 1;
       agg.set(o.batchId, cur);
@@ -1826,13 +1920,11 @@ export class AdminService {
     }));
   }
 
-  async createRestockBatch(
-    body: CreateRestockBatchDto,
-    operator: string,
-  ) {
+  async createRestockBatch(body: CreateRestockBatchDto, operator: string) {
     const startAt = new Date(body.startAt);
     const endAt = new Date(body.endAt);
-    if (endAt <= startAt) throw new BadRequestException('结束时间必须晚于开始时间');
+    if (endAt <= startAt)
+      throw new BadRequestException('结束时间必须晚于开始时间');
     const account = await this.db.adminAccount.findUnique({
       where: { id: operator },
       select: { nickname: true },
@@ -1870,7 +1962,8 @@ export class AdminService {
       throw new BadRequestException('批次已结束或已关闭，不可修改');
     const startAt = body.startAt ? new Date(body.startAt) : before.startAt;
     const endAt = body.endAt ? new Date(body.endAt) : before.endAt;
-    if (endAt <= startAt) throw new BadRequestException('结束时间必须晚于开始时间');
+    if (endAt <= startAt)
+      throw new BadRequestException('结束时间必须晚于开始时间');
     const row = await this.db.restockBatch.update({
       where: { id },
       data: { name: body.name?.trim() ?? before.name, startAt, endAt },
@@ -1929,28 +2022,44 @@ export class AdminService {
       .filter((o) => o.status === 'confirmed')
       .flatMap((o) => o.items);
     const priceById = new Map(
-      (await this.db.product.findMany({
-        where: { id: { in: [...new Set(confirmedItems.map((i) => i.productId))] } },
-        select: { id: true, price: true },
-      })).map((p) => [p.id, p.price]),
+      (
+        await this.db.product.findMany({
+          where: {
+            id: { in: [...new Set(confirmedItems.map((i) => i.productId))] },
+          },
+          select: { id: true, price: true },
+        })
+      ).map((p) => [p.id, p.price]),
     );
     const wholesaleTotal = confirmedItems.reduce(
-      (sum, i) => sum + i.cases * i.unitsPerCase * (priceById.get(i.productId) ?? 0),
+      (sum, i) =>
+        sum + i.cases * i.unitsPerCase * (priceById.get(i.productId) ?? 0),
       0,
     );
-    const pos = hqScope ? await this.db.purchaseOrder.findMany({
-      where: { batchId: id },
-      select: {
-        id: true,
-        closedAt: true,
-        items: { select: { receivedCases: true, unitCost: true, unitsPerCase: true } },
-      },
-    }) : [];
+    const pos = hqScope
+      ? await this.db.purchaseOrder.findMany({
+          where: { batchId: id },
+          select: {
+            id: true,
+            closedAt: true,
+            items: {
+              select: {
+                receivedCases: true,
+                unitCost: true,
+                unitsPerCase: true,
+              },
+            },
+          },
+        })
+      : [];
     // IKFOPR 按听报价：已收金额=件数×听数×每听单价
     const purchaseReceivedTotal = pos.reduce(
       (sum, po) =>
         sum +
-        po.items.reduce((s2, i) => s2 + i.receivedCases * i.unitCost * i.unitsPerCase, 0),
+        po.items.reduce(
+          (s2, i) => s2 + i.receivedCases * i.unitCost * i.unitsPerCase,
+          0,
+        ),
       0,
     );
     return {
@@ -1958,7 +2067,12 @@ export class AdminService {
       items,
       wholesaleTotal,
       // 采购和毛利是平台财务数据，校区只能读取自己的订货金额。
-      ...(hqScope ? { purchaseReceivedTotal, grossEstimate: wholesaleTotal - purchaseReceivedTotal } : {}),
+      ...(hqScope
+        ? {
+            purchaseReceivedTotal,
+            grossEstimate: wholesaleTotal - purchaseReceivedTotal,
+          }
+        : {}),
       orders: orders.map((o) => ({
         id: o.id,
         campusId: o.campusId,
@@ -1992,7 +2106,13 @@ export class AdminService {
       },
       include: {
         batch: {
-          select: { id: true, name: true, startAt: true, endAt: true, closedAt: true },
+          select: {
+            id: true,
+            name: true,
+            startAt: true,
+            endAt: true,
+            closedAt: true,
+          },
         },
         campus: { select: { id: true, name: true, shortName: true } },
         items: true,
@@ -2029,7 +2149,13 @@ export class AdminService {
       where: { id },
       include: {
         batch: {
-          select: { id: true, name: true, startAt: true, endAt: true, closedAt: true },
+          select: {
+            id: true,
+            name: true,
+            startAt: true,
+            endAt: true,
+            closedAt: true,
+          },
         },
         campus: { select: { id: true, name: true, shortName: true } },
         items: {
@@ -2062,7 +2188,9 @@ export class AdminService {
   }
 
   private async restockOrderForCampus(batchId: string, campusId: string) {
-    const batch = await this.db.restockBatch.findUnique({ where: { id: batchId } });
+    const batch = await this.db.restockBatch.findUnique({
+      where: { id: batchId },
+    });
     if (!batch) throw new NotFoundException('订货批次不存在');
     const phase = this.restockPhase(batch);
     if (phase !== 'open')
@@ -2143,7 +2271,9 @@ export class AdminService {
             },
           },
           // IKFOQ2：shipped 横幅+确认到货入口；received 展示到货时间
-          shipment: { select: { id: true, shippedAt: true, receivedAt: true, note: true } },
+          shipment: {
+            select: { id: true, shippedAt: true, receivedAt: true, note: true },
+          },
         },
       });
       return order;
@@ -2308,7 +2438,13 @@ export class AdminService {
     const rows = await this.db.purchaseOrder.findMany({
       include: {
         batch: {
-          select: { id: true, name: true, startAt: true, endAt: true, closedAt: true },
+          select: {
+            id: true,
+            name: true,
+            startAt: true,
+            endAt: true,
+            closedAt: true,
+          },
         },
         items: {
           select: {
@@ -2359,7 +2495,15 @@ export class AdminService {
     const po = await this.db.purchaseOrder.findUnique({
       where: { id },
       include: {
-        batch: { select: { id: true, name: true, startAt: true, endAt: true, closedAt: true } },
+        batch: {
+          select: {
+            id: true,
+            name: true,
+            startAt: true,
+            endAt: true,
+            closedAt: true,
+          },
+        },
         items: {
           include: {
             product: {
@@ -2413,7 +2557,9 @@ export class AdminService {
     body: CreatePurchaseOrderDto,
     operator: string,
   ) {
-    const batch = await this.db.restockBatch.findUnique({ where: { id: batchId } });
+    const batch = await this.db.restockBatch.findUnique({
+      where: { id: batchId },
+    });
     if (!batch) throw new NotFoundException('订货批次不存在');
     const openPo = await this.db.purchaseOrder.findFirst({
       where: { batchId, closedAt: null },
@@ -2426,7 +2572,9 @@ export class AdminService {
     // 聚合快照：confirmed 订货单行按 productId 求 cases 和（应收以聚合为准）
     const confirmed = await this.db.restockOrder.findMany({
       where: { batchId, status: 'confirmed' },
-      select: { items: { select: { productId: true, cases: true, unitsPerCase: true } } },
+      select: {
+        items: { select: { productId: true, cases: true, unitsPerCase: true } },
+      },
     });
     const agg = new Map<string, { cases: number; unitsPerCase: number }>();
     for (const o of confirmed) {
@@ -2439,7 +2587,9 @@ export class AdminService {
       }
     }
     if (!agg.size)
-      throw new BadRequestException('该批次还没有已确认的订货单，无法生成采购单');
+      throw new BadRequestException(
+        '该批次还没有已确认的订货单，无法生成采购单',
+      );
     const costByLine = new Map(
       body.lines.map((l) => [l.productId, l.unitCost]),
     );
@@ -2561,9 +2711,7 @@ export class AdminService {
             where: { id: l.item.productId },
           });
           if (!official)
-            throw new BadRequestException(
-              `商品不存在：${l.item.productId}`,
-            );
+            throw new BadRequestException(`商品不存在：${l.item.productId}`);
           const created = await tx.product.create({
             data: {
               campusId: HQ_CAMPUS_ID,
@@ -2574,6 +2722,7 @@ export class AdminService {
               originalPrice: official.originalPrice,
               costPrice: official.costPrice,
               wholesalePrice: official.price,
+              procurementMode: 'HQ',
               stock: 0,
               tag: official.tag,
               image: official.image,
@@ -2642,7 +2791,10 @@ export class AdminService {
     );
     const fresh = await this.db.purchaseOrder.findUnique({
       where: { id },
-      select: { items: { select: { requiredCases: true, receivedCases: true } }, closedAt: true },
+      select: {
+        items: { select: { requiredCases: true, receivedCases: true } },
+        closedAt: true,
+      },
     });
     return {
       id,
@@ -2651,7 +2803,11 @@ export class AdminService {
   }
 
   /** 关闭采购单：欠收作废禁验收（grilling #5），可重开继续收。 */
-  async closePurchaseOrder(id: string, body: ClosePurchaseOrderDto, operator: string) {
+  async closePurchaseOrder(
+    id: string,
+    body: ClosePurchaseOrderDto,
+    operator: string,
+  ) {
     const po = await this.db.purchaseOrder.findUnique({ where: { id } });
     if (!po) throw new NotFoundException('采购单不存在');
     if (po.closedAt) throw new BadRequestException('采购单已关闭');
@@ -2689,12 +2845,22 @@ export class AdminService {
       select: { id: true },
     });
     if (openPo)
-      throw new BadRequestException('该批次已有另一张进行中的采购单，不能重开两张');
+      throw new BadRequestException(
+        '该批次已有另一张进行中的采购单，不能重开两张',
+      );
     await this.db.purchaseOrder.update({
       where: { id },
       data: { closedAt: null, closedNote: '', closedBy: '', closedByName: '' },
     });
-    await this.audit(operator, 'purchase.reopen', 'purchase-order', id, null, null, '');
+    await this.audit(
+      operator,
+      'purchase.reopen',
+      'purchase-order',
+      id,
+      null,
+      null,
+      '',
+    );
     return { id };
   }
 
@@ -2705,7 +2871,11 @@ export class AdminService {
   // 全额入账（grilling #3 不登记差异），校区行缺失自动建（官方资料、下架态），
   // 入账流水 restock-in。
 
-  async shipRestockOrder(id: string, body: ShipRestockOrderDto, operator: string) {
+  async shipRestockOrder(
+    id: string,
+    body: ShipRestockOrderDto,
+    operator: string,
+  ) {
     const order = await this.db.restockOrder.findUnique({
       where: { id },
       include: { items: true },
@@ -2799,6 +2969,7 @@ export class AdminService {
               originalPrice: official.originalPrice,
               costPrice: official.costPrice,
               wholesalePrice: official.price,
+              procurementMode: 'HQ',
               stock: 0,
               tag: official.tag,
               image: official.image,
@@ -2876,21 +3047,40 @@ export class AdminService {
         campusId: order.campusId,
         sourceProductId: { in: order.items.map((i) => i.productId) },
       },
-      select: { id: true, sourceProductId: true },
+      select: { id: true, sourceProductId: true, procurementMode: true },
     });
-    const campusBySource = new Map(campusRows.map((r) => [r.sourceProductId, r.id]));
+    const campusBySource = new Map(
+      campusRows.map((r) => [r.sourceProductId, r]),
+    );
     await this.db.$transaction(async (tx) => {
       for (const it of order.items) {
         const units = it.cases * it.unitsPerCase;
         const official = officialById.get(it.productId);
         if (!official)
-          throw new BadRequestException(`商品 ${it.productId} 官方资料缺失，无法入账`);
-        let rowId = campusBySource.get(it.productId);
+          throw new BadRequestException(
+            `商品 ${it.productId} 官方资料缺失，无法入账`,
+          );
+        const campusRow = campusBySource.get(it.productId);
+        let rowId = campusRow?.id;
         if (rowId) {
-          await tx.product.update({
-            where: { id: rowId },
-            data: { stock: { increment: units } },
+          if (campusRow?.procurementMode === 'LOCAL')
+            throw new BadRequestException(
+              `${official.name}是本地采购商品，不能接收总部订货`,
+            );
+          const accepted = await tx.product.updateMany({
+            where: {
+              id: rowId,
+              OR: [{ procurementMode: null }, { procurementMode: 'HQ' }],
+            },
+            data: {
+              stock: { increment: units },
+              procurementMode: 'HQ',
+            },
           });
+          if (accepted.count !== 1)
+            throw new BadRequestException(
+              `${official.name}采购方式已变化，不能接收总部订货`,
+            );
         } else {
           // 自动建档（grilling #2）：复制官方资料、下架态、库存=到货数，校区自己上架
           // 条码撞该校区已有自建行时置空（货已到入账优先，条码可人工补）
@@ -2911,6 +3101,7 @@ export class AdminService {
               originalPrice: official.originalPrice,
               costPrice: official.costPrice,
               wholesalePrice: official.price,
+              procurementMode: 'HQ',
               stock: units,
               tag: official.tag,
               image: official.image,
@@ -2987,7 +3178,9 @@ export class AdminService {
         items: {
           select: { cases: true, costPerCase: true, wholesalePerCase: true },
         },
-        order: { select: { campus: { select: { name: true, shortName: true } } } },
+        order: {
+          select: { campus: { select: { name: true, shortName: true } } },
+        },
       },
     });
     const agg = new Map<
@@ -3021,7 +3214,10 @@ export class AdminService {
         (sum, i) => sum + i.cases * i.wholesalePerCase,
         0,
       );
-      cur.costTotal += s.items.reduce((sum, i) => sum + i.cases * i.costPerCase, 0);
+      cur.costTotal += s.items.reduce(
+        (sum, i) => sum + i.cases * i.costPerCase,
+        0,
+      );
       agg.set(k, cur);
     }
     const rows = [...agg.values()]
@@ -3036,7 +3232,11 @@ export class AdminService {
         };
       })
       .sort((a, b) =>
-        a.date < b.date ? 1 : a.date > b.date ? -1 : a.campusName.localeCompare(b.campusName, 'zh'),
+        a.date < b.date
+          ? 1
+          : a.date > b.date
+            ? -1
+            : a.campusName.localeCompare(b.campusName, 'zh'),
       );
     const tWholesale = rows.reduce((s, r) => s + r.wholesaleTotal, 0);
     const tCost = rows.reduce((s, r) => s + r.costTotal, 0);
@@ -3145,10 +3345,15 @@ export class AdminService {
       cur.costTotal += (
         o.items as Array<{
           quantity: number;
-          product?: { unitWholesaleCost?: number };
+          product?: { unitGrossCost?: number; unitWholesaleCost?: number };
         }>
       ).reduce(
-        (sum, line) => sum + line.quantity * (line.product?.unitWholesaleCost ?? 0),
+        (sum, line) =>
+          sum +
+          line.quantity *
+            (line.product?.unitGrossCost ??
+              line.product?.unitWholesaleCost ??
+              0),
         0,
       );
       agg.set(k, cur);
@@ -3265,16 +3470,14 @@ export class AdminService {
       }
     >();
     for (const r of rooms) {
-      const f =
-        floorMap.get(r.floor) ??
-        {
-          floor: r.floor,
-          total: 0,
-          ordered: 0,
-          registered: 0,
-          fresh: 0,
-          rooms: [],
-        };
+      const f = floorMap.get(r.floor) ?? {
+        floor: r.floor,
+        total: 0,
+        ordered: 0,
+        registered: 0,
+        fresh: 0,
+        rooms: [],
+      };
       f.total += 1;
       const userCount = usersByRoom.get(r.roomNo)?.size ?? 0;
       const orderCount = ordersByRoom.get(r.roomNo) ?? 0;
@@ -3283,7 +3486,13 @@ export class AdminService {
       if (status === 'ordered') f.ordered += 1;
       else if (status === 'registered') f.registered += 1;
       else f.fresh += 1;
-      f.rooms.push({ roomId: r.id, roomNo: r.roomNo, status, userCount, orderCount });
+      f.rooms.push({
+        roomId: r.id,
+        roomNo: r.roomNo,
+        status,
+        userCount,
+        orderCount,
+      });
       floorMap.set(r.floor, f);
     }
     return {
@@ -3339,7 +3548,9 @@ export class AdminService {
       }),
     ]);
     const totalMap = new Map(totalByUser.map((x) => [x.userId, x]));
-    const recentMap = new Map(recentByUser.map((x) => [x.userId, x._count._all]));
+    const recentMap = new Map(
+      recentByUser.map((x) => [x.userId, x._count._all]),
+    );
     return {
       room: { id: room.id, roomNo: room.roomNo, floor: room.floor },
       orderCount: roomOrders,
@@ -3361,7 +3572,11 @@ export class AdminService {
   }
 
   /** 发货单详情（按订货单）：行快照价+发货/收货信息。校区限本单。 */
-  async restockShipmentDetail(orderId: string, hqScope: boolean, campusId: string) {
+  async restockShipmentDetail(
+    orderId: string,
+    hqScope: boolean,
+    campusId: string,
+  ) {
     const shipment = await this.db.restockShipment.findUnique({
       where: { orderId },
       include: {
@@ -3406,13 +3621,19 @@ export class AdminService {
       receivedByName: shipment.receivedByName,
       receivedAt: shipment.receivedAt,
       totalCases: shipment.items.reduce((s, i) => s + i.cases, 0),
-      totalUnits: shipment.items.reduce((s, i) => s + i.cases * i.unitsPerCase, 0),
+      totalUnits: shipment.items.reduce(
+        (s, i) => s + i.cases * i.unitsPerCase,
+        0,
+      ),
       // IKFOPR 单据毛利（每件价口径）：批发金额−进货金额，gross=两者差
       wholesaleTotal: shipment.items.reduce(
         (s, i) => s + i.cases * i.wholesalePerCase,
         0,
       ),
-      costTotal: shipment.items.reduce((s, i) => s + i.cases * i.costPerCase, 0),
+      costTotal: shipment.items.reduce(
+        (s, i) => s + i.cases * i.costPerCase,
+        0,
+      ),
       items: shipment.items.map((i) => ({
         productId: i.productId,
         name: i.product.name,
@@ -3480,9 +3701,7 @@ export class AdminService {
           ? {
               createdAt: {
                 ...(start ? { gte: new Date(`${start}T00:00:00+08:00`) } : {}),
-                ...(end
-                  ? { lte: new Date(`${end}T23:59:59.999+08:00`) }
-                  : {}),
+                ...(end ? { lte: new Date(`${end}T23:59:59.999+08:00`) } : {}),
               },
             }
           : {}),
@@ -3589,7 +3808,8 @@ export class AdminService {
   async newOrderWatch(campusId: string) {
     const start = new Date();
     start.setUTCHours(16, 0, 0, 0); // 上海 00:00 = UTC 16:00（前一日）
-    if (start.getTime() > Date.now()) start.setTime(start.getTime() - 86400_000);
+    if (start.getTime() > Date.now())
+      start.setTime(start.getTime() - 86400_000);
     const where = { paidAt: { gte: start }, ...(campusId ? { campusId } : {}) };
     const [count, latest] = await Promise.all([
       this.db.order.count({ where }),
@@ -3982,8 +4202,7 @@ export class AdminService {
       body.role === 'building-manager' ||
       body.role === 'intern-building-manager'
     ) {
-      if (!body.buildingId)
-        throw new BadRequestException('楼长必须绑定楼栋');
+      if (!body.buildingId) throw new BadRequestException('楼长必须绑定楼栋');
       if (body.role === 'building-manager') {
         const clash = await this.db.staff.findFirst({
           where: {
@@ -4040,9 +4259,16 @@ export class AdminService {
     );
     return staff;
   }
-  async updateStaff(id: string, body: UpdateStaffDto, operator: string, campusId?: string) {
+  async updateStaff(
+    id: string,
+    body: UpdateStaffDto,
+    operator: string,
+    campusId?: string,
+  ) {
     // Source and destination are independent checks: campus grants may only edit current-campus staff.
-    const before = await this.db.staff.findFirst({ where: { id, ...(campusId !== undefined ? { campusId } : {}) } });
+    const before = await this.db.staff.findFirst({
+      where: { id, ...(campusId !== undefined ? { campusId } : {}) },
+    });
     if (!before || before.status === 'deleted')
       throw new NotFoundException('员工不存在');
     if (
@@ -4129,7 +4355,10 @@ export class AdminService {
               ? '全职配送员'
               : '兼职配送员';
     }
-    const after = await this.db.staff.update({ where: { id, campusId: before.campusId }, data });
+    const after = await this.db.staff.update({
+      where: { id, campusId: before.campusId },
+      data,
+    });
     await this.audit(
       operator,
       'staff.update',
@@ -4143,7 +4372,9 @@ export class AdminService {
   }
   async deleteStaff(id: string, operator: string, campusId?: string) {
     // Only a matching platform grant may omit the source campus filter.
-    const before = await this.db.staff.findFirst({ where: { id, ...(campusId !== undefined ? { campusId } : {}) } });
+    const before = await this.db.staff.findFirst({
+      where: { id, ...(campusId !== undefined ? { campusId } : {}) },
+    });
     if (!before || before.status === 'deleted')
       throw new NotFoundException('员工不存在');
     const after = await this.db.staff.update({
@@ -4439,9 +4670,7 @@ export class AdminService {
     try {
       // exceljs 4.4 自带类型钉在旧 @types/node 的 Buffer 上，与项目
       // Buffer<ArrayBufferLike> 不兼容（运行时无差别），此处按参数类型断言
-      await wb.xlsx.load(file as unknown as Parameters<
-        typeof wb.xlsx.load
-      >[0]);
+      await wb.xlsx.load(file as unknown as Parameters<typeof wb.xlsx.load>[0]);
     } catch {
       throw new BadRequestException('文件解析失败，请使用下载的 xlsx 模板');
     }
@@ -4595,10 +4824,7 @@ export class AdminService {
       where: { id },
       include: { order: true },
     });
-    if (
-      !refund ||
-      (scope !== null && refund.order.campusId !== scope)
-    )
+    if (!refund || (scope !== null && refund.order.campusId !== scope))
       throw new NotFoundException('退款申请不存在');
     const campusId = refund.order.campusId;
     if (action === 'reject') {
@@ -4664,9 +4890,7 @@ export class AdminService {
         const item = byId.get(a.itemId);
         if (!item) throw new BadRequestException('退款商品行不存在');
         if (a.amount < 0 || a.amount > item.unitPrice * item.quantity)
-          throw new BadRequestException(
-            `${item.productName} 金额超出该行上限`,
-          );
+          throw new BadRequestException(`${item.productName} 金额超出该行上限`);
       }
       await this.db.$transaction(
         amounts.map((a) =>
@@ -4681,17 +4905,17 @@ export class AdminService {
     const finalItems = await this.db.refundItem.findMany({
       where: { refundId: id },
     });
-    const finalAmount = finalItems.reduce((s, i) => s + Math.round(i.amount), 0);
+    const finalAmount = finalItems.reduce(
+      (s, i) => s + Math.round(i.amount),
+      0,
+    );
     const refundedBefore = await this.db.refund.aggregate({
       where: { orderId: refund.orderId, status: 'refunded', id: { not: id } },
       _sum: { amount: true },
     });
     const goodsPaid =
       Number(refund.order.payableAmount) - Number(refund.order.deliveryFee);
-    if (
-      finalAmount + Number(refundedBefore._sum.amount ?? 0) >
-      goodsPaid
-    )
+    if (finalAmount + Number(refundedBefore._sum.amount ?? 0) > goodsPaid)
       throw new BadRequestException(
         `超出可退上限：本单最多还可退 ¥${((goodsPaid - Number(refundedBefore._sum.amount ?? 0)) / 100).toFixed(2)}`,
       );
@@ -4791,14 +5015,12 @@ export class AdminService {
     const order = await this.db.order.findUniqueOrThrow({
       where: { id: refund.orderId },
     });
-    const goodsPaid =
-      Number(order.payableAmount) - Number(order.deliveryFee);
+    const goodsPaid = Number(order.payableAmount) - Number(order.deliveryFee);
     const refundedAgg = await this.db.refund.aggregate({
       where: { orderId: order.id, status: 'refunded' },
       _sum: { amount: true },
     });
-    const totalRefunded =
-      Number(refundedAgg._sum.amount ?? 0) + refund.amount;
+    const totalRefunded = Number(refundedAgg._sum.amount ?? 0) + refund.amount;
     const isFull = totalRefunded >= goodsPaid;
     // 幂等早退：本条已落过账（syncRefund 重复调用）直接返回
     if (refund.status === 'refunded')
@@ -4838,7 +5060,7 @@ export class AdminService {
         if (!order.stockRestored) {
           const lines =
             (order.items as Array<{
-              product?: { id?: string };
+              product?: { id?: string; costSource?: 'HQ' | 'LOCAL' | 'LEGACY' };
               quantity: number;
             }>) ?? [];
           const productIds = [
@@ -4851,14 +5073,26 @@ export class AdminService {
           const existing = productIds.length
             ? await tx.product.findMany({
                 where: { id: { in: productIds } },
-                select: { id: true },
+                select: { id: true, procurementMode: true },
               })
             : [];
-          const alive = new Set(existing.map((p) => p.id));
+          const currentMode = new Map(
+            existing.map((p) => [p.id, p.procurementMode]),
+          );
           for (const line of lines) {
-            if (line.product?.id && alive.has(line.product.id))
+            const productId = line.product?.id;
+            const soldAs = line.product?.costSource;
+            // 商品清零后可能已切换采购来源；旧来源退款不能自动混回新库存。
+            // LEGACY/无来源快照保持历史兼容，已明确来源则必须与当前一致。
+            if (
+              productId &&
+              currentMode.has(productId) &&
+              (!soldAs ||
+                soldAs === 'LEGACY' ||
+                soldAs === currentMode.get(productId))
+            )
               await tx.product.update({
-                where: { id: line.product.id },
+                where: { id: productId },
                 data: {
                   stock: { increment: line.quantity },
                   sales: { decrement: line.quantity },
@@ -4941,8 +5175,7 @@ export class AdminService {
     orderNo: string,
   ) {
     try {
-      const ratio =
-        goodsPaid > 0 ? Math.min(1, totalRefunded / goodsPaid) : 1;
+      const ratio = goodsPaid > 0 ? Math.min(1, totalRefunded / goodsPaid) : 1;
       await this.db.$transaction(async (tx) => {
         const originals = await tx.commission.findMany({
           where: { orderId, kind: 'commission' },
@@ -5000,16 +5233,12 @@ export class AdminService {
       where: { id },
       include: { order: true },
     });
-    if (
-      !refund ||
-      (scope !== null && refund.order.campusId !== scope)
-    )
+    if (!refund || (scope !== null && refund.order.campusId !== scope))
       throw new NotFoundException('退款申请不存在');
     const campusId = refund.order.campusId;
     if (!['refunding', 'approved', 'failed'].includes(refund.status))
       throw new BadRequestException('当前状态无需同步');
-    if (!this.payments)
-      throw new ServiceUnavailableException('支付服务未就绪');
+    if (!this.payments) throw new ServiceUnavailableException('支付服务未就绪');
     // 微信按 out_refund_no（= Refund.id）查询
     const result = await this.payments.queryWechatRefund(refund.id);
     await this.audit(
@@ -5031,7 +5260,10 @@ export class AdminService {
     if (result.status === 'CLOSED')
       return this.db.refund.update({
         where: { id },
-        data: { status: 'failed', refundError: '微信侧退款已关闭，可重新批准发起' },
+        data: {
+          status: 'failed',
+          refundError: '微信侧退款已关闭，可重新批准发起',
+        },
       });
     if (result.status === 'ABNORMAL')
       return this.db.refund.update({
@@ -5093,8 +5325,7 @@ export class AdminService {
       where: { orderId, status: 'refunded' },
       _sum: { amount: true },
     });
-    const goodsPaid =
-      Number(order.payableAmount) - Number(order.deliveryFee);
+    const goodsPaid = Number(order.payableAmount) - Number(order.deliveryFee);
     const already = Number(refundedBefore._sum.amount ?? 0);
     if (total + already > goodsPaid)
       throw new BadRequestException(
@@ -5142,10 +5373,9 @@ export class AdminService {
     orderId: string,
     beforeStatus: string,
   ) {
-    const target =
-      ['paid', 'delivered', 'completed'].includes(beforeStatus)
-        ? beforeStatus
-        : 'delivered';
+    const target = ['paid', 'delivered', 'completed'].includes(beforeStatus)
+      ? beforeStatus
+      : 'delivered';
     const statusText =
       target === 'paid'
         ? '仓库正在接单'
@@ -5387,7 +5617,10 @@ export class AdminService {
   async campuses(campusId?: string) {
     // status=official 是官方商品库伪校区（IKAJSM），不出现在校区列表
     const xs = await this.db.campus.findMany({
-      where: { status: { not: 'official' }, ...(campusId !== undefined ? { id: campusId } : {}) },
+      where: {
+        status: { not: 'official' },
+        ...(campusId !== undefined ? { id: campusId } : {}),
+      },
       orderBy: { createdAt: 'asc' },
     });
     return Promise.all(
@@ -5476,7 +5709,9 @@ export class AdminService {
           ? { buildingManagerBaseSalary: body.buildingManagerBaseSalary }
           : {}),
         // IKHMF1：客服电话（校区自定义，小程序拨号展示）
-        ...(body.servicePhone != null ? { servicePhone: body.servicePhone } : {}),
+        ...(body.servicePhone != null
+          ? { servicePhone: body.servicePhone }
+          : {}),
         // IKHMKR：无楼长提示（校区自定义，空串=回落默认文案）
         ...(body.noManagerTip != null
           ? { noManagerTip: body.noManagerTip }
@@ -5778,10 +6013,8 @@ export class AdminService {
     if (body.featuredAfterPay !== undefined)
       data.featuredAfterPay = body.featuredAfterPay;
     // IKKEWS：每人限领与定向券标记
-    if (body.perUserLimit !== undefined)
-      data.perUserLimit = body.perUserLimit;
-    if (body.targetedOnly !== undefined)
-      data.targetedOnly = body.targetedOnly;
+    if (body.perUserLimit !== undefined) data.perUserLimit = body.perUserLimit;
+    if (body.targetedOnly !== undefined) data.targetedOnly = body.targetedOnly;
     if (amount !== undefined) data.amount = amount;
     if (threshold !== undefined) data.threshold = threshold;
     // total/expiresAt：undefined 不动；null 显式转不限量/长期
@@ -5841,7 +6074,8 @@ export class AdminService {
     // IKKEWS 多张发放：每人可补发张数 = perUserLimit − 未使用持有数
     // （0=不限——只受券总量约束）；已达限领的用户跳过。
     const limit = coupon.perUserLimit ?? 1; // 0=不限
-    const wantCount = limit === 0 ? (body.count ?? 1) : Math.min(body.count ?? 1, limit);
+    const wantCount =
+      limit === 0 ? (body.count ?? 1) : Math.min(body.count ?? 1, limit);
     const holdings = await this.db.userCoupon.findMany({
       where: { couponId: id, userId: { in: userIds }, status: { not: 'used' } },
       select: { userId: true },
@@ -6043,23 +6277,35 @@ export class AdminService {
     const rows = await this.db.auditLog.findMany({
       // Permission snapshots may contain grants in other campuses. They belong only
       // to the separately authorized, platform-only RBAC audit endpoint.
-      where: { ...(campusId ? { campusId } : {}), NOT: { action: { startsWith: 'rbac.' } } },
+      where: {
+        ...(campusId ? { campusId } : {}),
+        NOT: { action: { startsWith: 'rbac.' } },
+      },
       orderBy: { createdAt: 'desc' },
     });
     const names = await this.operatorNames(rows.map((x) => x.operator));
     const safeRecruitSnapshot = (value: Prisma.JsonValue | null) => {
-      if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+      if (!value || typeof value !== 'object' || Array.isArray(value))
+        return value;
       const { staffRemark, idCardImages, idCardNo, ...rest } = value;
-      return { ...rest,
-        ...(staffRemark !== undefined ? { hasStaffRemark: Boolean(staffRemark) } : {}),
-        ...(typeof idCardNo === 'string' ? { idCardNo: maskIdCard(idCardNo) } : {}),
+      return {
+        ...rest,
+        ...(staffRemark !== undefined
+          ? { hasStaffRemark: Boolean(staffRemark) }
+          : {}),
+        ...(typeof idCardNo === 'string'
+          ? { idCardNo: maskIdCard(idCardNo) }
+          : {}),
       };
     };
     return rows.map((x) => ({
       ...x,
-      ...(x.entityType === 'recruitingApplication' ? {
-        before: safeRecruitSnapshot(x.before), after: safeRecruitSnapshot(x.after),
-      } : {}),
+      ...(x.entityType === 'recruitingApplication'
+        ? {
+            before: safeRecruitSnapshot(x.before),
+            after: safeRecruitSnapshot(x.after),
+          }
+        : {}),
       operatorName: names.get(x.operator) ?? '系统',
       actionText: AdminService.AUDIT_ACTION_TEXTS[x.action] ?? '后台操作',
       entityText: AdminService.AUDIT_ENTITY_TEXTS[x.entityType] ?? '后台数据',
@@ -6085,14 +6331,22 @@ export class AdminService {
         status: true,
         createdAt: true,
         rbacRoles: {
-          include: { role: { select: { code: true, name: true, status: true } } },
+          include: {
+            role: { select: { code: true, name: true, status: true } },
+          },
           orderBy: { createdAt: 'asc' },
         },
       },
     });
     const grantsByAccount = new Map<
       string,
-      { roleCode: string; roleName: string; roleStatus: string; scope: string; campusId: string | null }[]
+      {
+        roleCode: string;
+        roleName: string;
+        roleStatus: string;
+        scope: string;
+        campusId: string | null;
+      }[]
     >();
     for (const x of xs) {
       grantsByAccount.set(
@@ -6131,7 +6385,11 @@ export class AdminService {
     return this.rbac.createAccount({ id: operator, username: operator }, body);
   }
   updateAccount(id: string, body: { nickname?: string }, operator: string) {
-    return this.rbac.updateAccount({ id: operator, username: operator }, id, body);
+    return this.rbac.updateAccount(
+      { id: operator, username: operator },
+      id,
+      body,
+    );
   }
   deleteAccount(id: string, operator: string) {
     return this.rbac.deleteAccount({ id: operator, username: operator }, id);
@@ -6234,7 +6492,11 @@ export class AdminService {
           ...p,
           couponName: c?.name ?? '',
           // IKDEN2：不限量券余量显示 null（后台转盘抽屉显示「不限量」）
-          couponLeft: c ? (c.total === null ? null : c.total - c.claimed) : null,
+          couponLeft: c
+            ? c.total === null
+              ? null
+              : c.total - c.claimed
+            : null,
           weightPct:
             weightTotal > 0
               ? Math.round(((p.weight || 0) / weightTotal) * 1000) / 10
@@ -6630,13 +6892,12 @@ export class AdminService {
     const updated = await this.db.recruitingApplication.update({
       where: { id },
       data: {
-        idCardNo: body.idCardNo === undefined ? undefined : body.idCardNo.trim(),
+        idCardNo:
+          body.idCardNo === undefined ? undefined : body.idCardNo.trim(),
         idCardImages: body.idCardImages as unknown as Prisma.InputJsonValue,
         // IKEAGE：运营备注独立字段（原误绑候选人 note，已切分）
         staffRemark:
-          body.staffRemark === undefined
-            ? undefined
-            : body.staffRemark.trim(),
+          body.staffRemark === undefined ? undefined : body.staffRemark.trim(),
       },
     });
     await this.audit(
@@ -6645,19 +6906,21 @@ export class AdminService {
       'recruitingApplication',
       id,
       // RBAC V1：审计不留身份证明文（掩码保尾 2 位供核对）
-      { idCardNo: maskIdCard(found.idCardNo), hasStaffRemark: Boolean(found.staffRemark) },
-      { idCardNo: maskIdCard(updated.idCardNo), hasStaffRemark: Boolean(updated.staffRemark) },
+      {
+        idCardNo: maskIdCard(found.idCardNo),
+        hasStaffRemark: Boolean(found.staffRemark),
+      },
+      {
+        idCardNo: maskIdCard(updated.idCardNo),
+        hasStaffRemark: Boolean(updated.staffRemark),
+      },
       found.campusId,
     );
     return updated;
   }
 
   /** 待联系 → 面试中（运营已联系上候选人）。 */
-  async recruitTransition(
-    id: string,
-    operator: string,
-    campusId: string,
-  ) {
+  async recruitTransition(id: string, operator: string, campusId: string) {
     const found = campusId
       ? await this.db.recruitingApplication.findFirst({
           where: { id, campusId },
@@ -6813,7 +7076,8 @@ export class AdminService {
         },
       });
     } catch (error) {
-      if (required) throw new ServiceUnavailableException('审计服务暂不可用，请稍后重试');
+      if (required)
+        throw new ServiceUnavailableException('审计服务暂不可用，请稍后重试');
       console.warn(
         `[audit] 审计写入失败（不影响业务操作）: ${action} ${entityType}/${entityId}`,
         error instanceof Error ? error.message : error,
@@ -6863,11 +7127,7 @@ export class AdminService {
 
   /* ---------- 送达时段管理（IKHM1O 补窟窿：原无后台入口） ---------- */
 
-  async createSlot(
-    body: CreateSlotDto,
-    operator: string,
-    scope: string,
-  ) {
+  async createSlot(body: CreateSlotDto, operator: string, scope: string) {
     const campusId = scope || body.campusId;
     const slot = await this.db.deliverySlot.create({
       data: {
@@ -6876,7 +7136,15 @@ export class AdminService {
         capacity: body.capacity ?? 100,
       },
     });
-    await this.audit(operator, 'slot.create', 'delivery-slot', slot.id, null, slot, campusId);
+    await this.audit(
+      operator,
+      'slot.create',
+      'delivery-slot',
+      slot.id,
+      null,
+      slot,
+      campusId,
+    );
     return slot;
   }
   async updateSlot(
@@ -6897,7 +7165,15 @@ export class AdminService {
         ...(body.available != null ? { available: body.available } : {}),
       },
     });
-    await this.audit(operator, 'slot.update', 'delivery-slot', id, before, after, before.campusId);
+    await this.audit(
+      operator,
+      'slot.update',
+      'delivery-slot',
+      id,
+      before,
+      after,
+      before.campusId,
+    );
     return after;
   }
   async deleteSlot(id: string, operator: string, scope: string) {
@@ -6906,7 +7182,15 @@ export class AdminService {
     });
     if (!before) throw new NotFoundException('记录不存在');
     await this.db.deliverySlot.delete({ where: { id } });
-    await this.audit(operator, 'slot.delete', 'delivery-slot', id, before, null, before.campusId);
+    await this.audit(
+      operator,
+      'slot.delete',
+      'delivery-slot',
+      id,
+      before,
+      null,
+      before.campusId,
+    );
     return { id, deleted: true };
   }
 
@@ -6918,11 +7202,7 @@ export class AdminService {
       orderBy: { createdAt: 'asc' },
     });
   }
-  async createNotice(
-    body: CreateNoticeDto,
-    operator: string,
-    scope: string,
-  ) {
+  async createNotice(body: CreateNoticeDto, operator: string, scope: string) {
     const campusId = scope || body.campusId;
     const startsAt = new Date(body.startsAt);
     const endsAt = new Date(body.endsAt);
@@ -6933,7 +7213,15 @@ export class AdminService {
     const notice = await this.db.notice.create({
       data: { campusId, content: body.content, startsAt, endsAt },
     });
-    await this.audit(operator, 'notice.create', 'notice', notice.id, null, notice, campusId);
+    await this.audit(
+      operator,
+      'notice.create',
+      'notice',
+      notice.id,
+      null,
+      notice,
+      campusId,
+    );
     return notice;
   }
   async updateNotice(
@@ -6965,7 +7253,15 @@ export class AdminService {
         ...(body.status ? { status: body.status } : {}),
       },
     });
-    await this.audit(operator, 'notice.update', 'notice', id, before, after, before.campusId);
+    await this.audit(
+      operator,
+      'notice.update',
+      'notice',
+      id,
+      before,
+      after,
+      before.campusId,
+    );
     return after;
   }
   async deleteNotice(id: string, operator: string, scope: string) {
@@ -6974,7 +7270,15 @@ export class AdminService {
     });
     if (!before) throw new NotFoundException('记录不存在');
     await this.db.notice.delete({ where: { id } });
-    await this.audit(operator, 'notice.delete', 'notice', id, before, null, before.campusId);
+    await this.audit(
+      operator,
+      'notice.delete',
+      'notice',
+      id,
+      before,
+      null,
+      before.campusId,
+    );
     return { id, deleted: true };
   }
 }

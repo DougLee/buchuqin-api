@@ -20,6 +20,7 @@ describe('order line cost snapshot (IKFOPQ)', () => {
   // 60 元/件（6000 分）24 听/件 → 250 分/听；进货 48 元/件 → 200 分/听
   const CASED = `product-cased-${tag}`;
   const LOOSE = `product-loose-${tag}`; // 无件概念：含量 1，快照=单价本身
+  const HQ_UNIT = `product-hq-unit-${tag}`;
   const BLDB = `bld-${tag}`;
 
   beforeAll(async () => {
@@ -53,6 +54,26 @@ describe('order line cost snapshot (IKFOPQ)', () => {
         originalPrice: 400,
         wholesalePrice: 6000,
         costPrice: 4800,
+        unitsPerCase: 24,
+        retailUnit: '听',
+        stock: 50,
+        tag: '',
+        image: '',
+        weight: 0.5,
+      } as any,
+    });
+    await db.product.create({
+      data: {
+        id: HQ_UNIT,
+        campusId: CAMPUS,
+        categoryId: CAT,
+        name: '总部按听供货商品',
+        subtitle: '',
+        price: 600,
+        originalPrice: 650,
+        wholesalePrice: 500,
+        costPrice: 300,
+        procurementMode: 'HQ',
         unitsPerCase: 24,
         retailUnit: '听',
         stock: 50,
@@ -102,7 +123,7 @@ describe('order line cost snapshot (IKFOPQ)', () => {
     await db.order.deleteMany({ where: { userId: USER } });
     await db.cartItem.deleteMany({ where: { userId: USER } });
     await db.address.deleteMany({ where: { id: ADDRESS } });
-    await db.product.deleteMany({ where: { id: { in: [CASED, LOOSE] } } });
+    await db.product.deleteMany({ where: { id: { in: [CASED, LOOSE, HQ_UNIT] } } });
     await db.user.deleteMany({ where: { id: USER } });
     await db.category.deleteMany({ where: { id: CAT } });
     await db.campus.deleteMany({ where: { id: CAMPUS } });
@@ -123,7 +144,7 @@ describe('order line cost snapshot (IKFOPQ)', () => {
   }
 
   it('支付后行快照：6000÷24=250 分/听批发、4800÷24=200 进货；含量1恒等', async () => {
-    await placeAndPay([CASED, LOOSE]);
+    await placeAndPay([CASED, LOOSE, HQ_UNIT]);
     const raw = (await db.order.findFirst({
       where: { userId: USER },
     }))!;
@@ -140,6 +161,11 @@ describe('order line cost snapshot (IKFOPQ)', () => {
     expect(loose.product.unitWholesaleCost).toBe(150);
     expect(loose.product.unitPurchaseCost).toBe(100);
     expect(loose.product.unitsPerCase).toBe(1);
+    const hqUnit = lines.find((l) => l.product.id === HQ_UNIT)!;
+    // 批发价已经是分/零售单位；24 听/件不能再除一次。
+    expect(hqUnit.product.unitGrossCost).toBe(500);
+    expect(hqUnit.product.unitWholesaleCost).toBe(500);
+    expect(hqUnit.product.costSource).toBe('HQ');
   });
 
   it('C 端出口剥离：order 视图行无快照字段', async () => {
@@ -148,6 +174,8 @@ describe('order line cost snapshot (IKFOPQ)', () => {
       expect('unitWholesaleCost' in line.product).toBe(false);
       expect('unitPurchaseCost' in line.product).toBe(false);
       expect('unitsPerCase' in line.product).toBe(false);
+      expect('unitGrossCost' in line.product).toBe(false);
+      expect('costSource' in line.product).toBe(false);
     }
   });
 
