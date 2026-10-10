@@ -1,7 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import { PrismaService } from '../database/prisma.service';
-import { campusOrganizationId } from '../common/organization';
+import {
+  campusOrganizationId,
+  campusStaffDelivery,
+} from '../common/organization';
 
 /** 订单最小形态（渠道推送只需这些字段，避免服务间循环依赖具体类型）。 */
 export interface OrderPushContext {
@@ -373,6 +376,9 @@ export class NotificationsService {
    * IKI3ZP 双通道路由：已绑定服务号（gzhOpenid）优先走服务号模板消息
    * （关注即可推，无额度概念），发送失败自动回退订阅消息；未绑定走原
    * 订阅消息。每骑手一次触达，不重复。
+   * IKKRMV：staff_delivery（后台员工配送）组织的校区出库不派单——骑手任务
+   * 池同步为空（FulfillmentService.tasks/availableTasks 跳过），此处静默
+   * 跳过（不通知）；rider_delivery 校区链路一字不变。
    */
   async notifyRidersOnFirstMile(order: {
     id: string;
@@ -382,6 +388,7 @@ export class NotificationsService {
     deliveryMode: string;
     address: unknown;
   }): Promise<void> {
+    if (await campusStaffDelivery(this.db, order.campusId)) return;
     try {
       const riders = await this.db.staff.findMany({
         where: {

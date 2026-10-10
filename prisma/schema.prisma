@@ -40,6 +40,12 @@ model Organization {
   /// 已开通能力白名单（如 ["marketing"]，空数组=全关）。能力开关只收窄不放大
   /// ——组织关了校区不能显式开。
   capabilities Json?
+  /// IKKRMV 配送履约模式：'rider_delivery'=骑手小程序履约（组织 A 现状）|
+  /// 'staff_delivery'=后台员工履约（组织 B）。两种模式共用订单状态语义
+  /// （12 态状态机不因模式增删，见 common/order-state.ts）——仅履约执行
+  /// 入口不同：staff_delivery 校区订单出库后不进骑手任务池/不派单，由
+  /// 后台订单动作（staff-deliver/staff-complete）推进至送达。
+  deliveryMode String   @default("rider_delivery")
   createdAt    DateTime @default(now())
 }
 

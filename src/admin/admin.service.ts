@@ -80,6 +80,7 @@ import {
 } from '../common/order-state';
 import { HQ_CAMPUS_ID, OFFICIAL_CAMPUS_ID } from '../common/campus';
 import { assertMarketingEnabled } from '../common/capability';
+import { campusStaffDelivery } from '../common/organization';
 
 /* ==================== 成本 capability 输出裁剪（IKKRMY，2026-10-10） ====================
  * allowCapability(ctx,'cost.read')=false 的账号，商品/订单/报表响应统一剔除
@@ -4411,6 +4412,25 @@ export class AdminService {
     // 调用方（orderAction/补打小票）走缺省 true，不受影响）
     return costRead ? x : trimOrderCost(x);
   }
+  /**
+   * IKKRMV 后台员工配送动作迁移表（组织 B，Organization.deliveryMode=
+   * 'staff_delivery'）。两种模式共用订单状态语义——复用既有 12 态状态机
+   * （common/order-state.ts IKKRMV 注释段），不新增状态：组织 B 无骑手/
+   * 楼长链路，waiting-handover/last-mile 交接微状态不经过——
+   * - staff-deliver：waiting-first-mile → first-mile（员工取货出发，同骑手
+   *   depart 语义）；
+   * - staff-complete：first-mile/last-mile → delivered（员工送达寝室，无楼长
+   *   交接；last-mile 兼容后台 advance/手动改状态推进到末段的在途单）。
+   * 不生成提成快照：员工配送不进骑手提成链路（Commission 仅由骑手端
+   * delivered 动作产生，FulfillmentService.updateTask）。
+   */
+  private static readonly STAFF_DELIVERY_ACTIONS: Record<
+    string,
+    Record<string, OrderStatus>
+  > = {
+    'staff-deliver': { 'waiting-first-mile': 'first-mile' },
+    'staff-complete': { 'first-mile': 'delivered', 'last-mile': 'delivered' },
+  };
   async orderAction(
     id: string,
     action: string,
@@ -4431,7 +4451,44 @@ export class AdminService {
         where: { id },
         data: { status: 'exception', statusText: '运营标记异常' },
       });
-    else throw new BadRequestException('不支持的订单操作');
+    // IKKRMV 后台员工配送（staff_delivery 组织）：出库后订单不进骑手任务池
+    // （不入池不通知），配送与送达由以下两个后台动作完成同一状态机推进。
+    else if (action === 'staff-deliver' || action === 'staff-complete') {
+      // 骑手配送模式校区不认员工配送动作（组织 A 走骑手小程序履约，禁串道）。
+      if (!(await campusStaffDelivery(this.db, order.campusId)))
+        throw new BadRequestException('该校区为骑手配送模式，无员工配送操作');
+      const next =
+        AdminService.STAFF_DELIVERY_ACTIONS[action][order.status] ?? null;
+      if (!next)
+        throw new BadRequestException(
+          ['paid', 'picking'].includes(order.status)
+            ? '订单尚未出库，请先在管理后台完成出库'
+            : `当前订单状态为「${order.statusText}」，不能执行此操作`,
+        );
+      // 条件更新：并发推进（双人操作/与手动改状态撞车）时仅一笔生效。
+      const won = await this.db.order.updateMany({
+        where: { id, status: order.status },
+        data: {
+          status: next,
+          statusText: ORDER_STATUS_TEXT[next],
+          timeline: markTimelineStep(order.timeline, next),
+        },
+      });
+      if (!won.count)
+        throw new BadRequestException('订单状态已变化，请刷新后重试');
+      result = await this.db.order.findUniqueOrThrow({ where: { id } });
+      // 渠道推送（IK8W5M）：与履约端出发/送达同口径——fire-and-forget 订阅
+      // 消息（未配置静默跳过），两种模式对用户可见的「配送中/已送达」推送
+      // 语义一致。
+      void this.push?.orderStatusPush({
+        id,
+        userId: order.userId,
+        orderNo: order.orderNo,
+        status: next,
+        statusText: ORDER_STATUS_TEXT[next],
+        payableAmount: order.payableAmount,
+      });
+    } else throw new BadRequestException('不支持的订单操作');
     await this.audit(
       operator,
       `order.${action}`,

@@ -9,6 +9,7 @@ import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { markTimelineStep } from '../common/order-state';
+import { campusStaffDelivery } from '../common/organization';
 import {
   bestMatch,
   COMMISSION_PER_ORDER,
@@ -224,6 +225,10 @@ export class FulfillmentService {
   }
   async tasks(staffId: string, status?: string) {
     const staff = await this.profile(staffId);
+    // IKKRMV：后台员工配送（staff_delivery）组织的校区不进骑手任务列表
+    // ——订单出库后不进骑手任务池（不入池不通知），配送与送达由后台订单
+    // 动作（staff-deliver/staff-complete）推进；rider_delivery 校区不变。
+    if (await campusStaffDelivery(this.db, staff.campusId)) return [];
     const manager = staff.role === 'building-manager';
     const orders = this.attributedOrders(
       staff,
@@ -270,9 +275,12 @@ export class FulfillmentService {
   /**
    * 抢单池（IK8W5U）：本校园"待一级配送"且无归属（riderId 为空）的任务。
    * 骑手角色视图；老单优先。grab 与 accept 同互斥（updateTask 内条件更新抢归属）。
+   * IKKRMV：staff_delivery 组织的校区抢单池恒空（不入池；出库侧亦不派单
+   * 通知，见 NotificationsService.notifyRidersOnFirstMile）。
    */
   async availableTasks(staffId: string) {
     const staff = await this.profile(staffId);
+    if (await campusStaffDelivery(this.db, staff.campusId)) return [];
     const orders = await this.db.order.findMany({
       where: {
         campusId: staff.campusId,
@@ -304,6 +312,13 @@ export class FulfillmentService {
     // grab（抢单池，IK8W5U）与 accept 同语义：条件更新抢归属互斥。
     const action = rawAction === 'grab' ? 'accept' : rawAction;
     const staff = await this.profile(staffId);
+    // IKKRMV：staff_delivery 校区订单无骑手任务——任务列表/抢单池已空，
+    // 池外直调动作（accept/depart/…）同样拒绝；配送与送达由后台订单动作
+    // 推进。动作按校区过滤（下方 order 查询限本校区），校区级检查即订单级。
+    if (await campusStaffDelivery(this.db, staff.campusId))
+      throw new BadRequestException(
+        '该校区为后台员工配送模式，骑手端无配送任务',
+      );
     const prefix = `task-${staff.role}-`;
     if (!id.startsWith(prefix)) throw new NotFoundException('履约任务不存在');
     const orderId = id.slice(prefix.length);

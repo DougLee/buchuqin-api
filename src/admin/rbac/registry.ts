@@ -45,6 +45,10 @@ export const MENU_NODES: MenuNodeDef[] = [
   { code: 'orders.cancel', name: '订单取消', type: 2, parent: 'orders', order: 3, perms: ['POST /admin/orders/:id/actions/cancel'], remark: '取消订单（capability order.cancel）' },
   { code: 'orders.advance', name: '订单推进', type: 2, parent: 'orders', order: 4, perms: ['POST /admin/orders/:id/actions/advance'], remark: '推进订单（capability order.advance）' },
   { code: 'orders.exception', name: '订单标记异常', type: 2, parent: 'orders', order: 5, perms: ['POST /admin/orders/:id/actions/mark-exception'], remark: '标记订单异常（capability order.exception）' },
+  // IKKRMV 组织 B 后台员工配送拆钮（staff_delivery 组织校区专用动作，
+  // capability 同源；orders.write 通配仍覆盖——渐进兼容，存量角色零变化）
+  { code: 'orders.staff-deliver', name: '员工配送出发', type: 2, parent: 'orders', order: 6, perms: ['POST /admin/orders/:id/actions/staff-deliver'], remark: '员工取货出发（capability order.staff-deliver，IKKRMV）' },
+  { code: 'orders.staff-complete', name: '员工配送送达', type: 2, parent: 'orders', order: 7, perms: ['POST /admin/orders/:id/actions/staff-complete'], remark: '员工送达寝室（capability order.staff-complete，IKKRMV）' },
   { code: 'after-sales', name: '售后退款', type: 1, parent: 'g.ops', path: '/after-sales', icon: 'after', order: 3, perms: ['GET /admin/after-sales', 'GET /admin/refunds'] },
   // IKHZKA 退款审核（动钱）：默认只授校区运营模板；仓储/财务/总部只读
   { code: 'after-sales.audit', name: '退款审核', type: 2, parent: 'after-sales', order: 1, perms: ['POST /admin/refunds/:id/audit', 'POST /admin/refunds/:id/sync', 'POST /admin/orders/:id/refunds'], remark: '批准=微信原路退回；拒绝=回滚订单；同步=查询退款终态；按商品退款' },

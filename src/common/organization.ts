@@ -58,3 +58,26 @@ export async function campusOrganizationId(
   });
   return campus?.organizationId ?? null;
 }
+
+/** IKKRMV：组织配送履约模式（Organization.deliveryMode 值域）。 */
+export type DeliveryMode = 'rider_delivery' | 'staff_delivery';
+
+/**
+ * 校区是否按「后台员工配送」履约（IKKRMV）：校区→组织→deliveryMode
+ * ='staff_delivery' 才为 true；无组织归属/组织行缺失/默认值一律 false
+ * ——组织 A（org-a 存量默认值）与平台伪校区行为零变化。
+ * 消费点：骑手任务池/派单通知跳过（不入池不通知）+ 后台 staff-deliver/
+ * staff-complete 动作门禁（骑手模式校区不认员工配送动作）。
+ */
+export async function campusStaffDelivery(
+  db: PrismaService,
+  campusId?: string | null,
+): Promise<boolean> {
+  const organizationId = await campusOrganizationId(db, campusId);
+  if (!organizationId) return false;
+  const org = await db.organization.findUnique({
+    where: { id: organizationId },
+    select: { deliveryMode: true },
+  });
+  return org?.deliveryMode === 'staff_delivery';
+}

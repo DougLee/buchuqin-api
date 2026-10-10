@@ -42,12 +42,14 @@ function ctxWith(patterns: string[], campusId = 'campus-hbut'): RbacContext {
 }
 
 describe('IKKRMR：capability 字典登记', () => {
-  it('首批高风险域清单钉死（订单动作拆开 + 成本读写）', () => {
+  it('首批高风险域清单钉死（订单动作拆开 + 员工配送拆开 + 成本读写）', () => {
     expect(CAPABILITIES.map((c) => c.code)).toEqual([
       'order.cancel',
       'order.advance',
       'order.outbound',
       'order.exception',
+      'order.staff-deliver',
+      'order.staff-complete',
       'cost.read',
       'cost.write',
     ]);
@@ -65,7 +67,7 @@ describe('IKKRMR：capability 字典登记', () => {
     for (const c of CAPABILITIES)
       for (const p of c.patterns) expect(ALL_PERM_PATTERNS).toContain(p);
   });
-  it('订单动作拆钮有独立授权锚点（orders.cancel/advance/exception + inventory.outbound）', () => {
+  it('订单动作拆钮有独立授权锚点（orders.cancel/advance/exception/staff-* + inventory.outbound）', () => {
     const node = (code: string) => MENU_NODES.find((n) => n.code === code);
     expect(node('orders.cancel')?.perms).toEqual([
       'POST /admin/orders/:id/actions/cancel',
@@ -76,6 +78,13 @@ describe('IKKRMR：capability 字典登记', () => {
     expect(node('orders.exception')?.perms).toEqual([
       'POST /admin/orders/:id/actions/mark-exception',
     ]);
+    // IKKRMV 组织 B 后台员工配送拆钮（staff_delivery 组织校区专用）
+    expect(node('orders.staff-deliver')?.perms).toEqual([
+      'POST /admin/orders/:id/actions/staff-deliver',
+    ]);
+    expect(node('orders.staff-complete')?.perms).toEqual([
+      'POST /admin/orders/:id/actions/staff-complete',
+    ]);
     expect(node('inventory.outbound')?.perms).toEqual([
       'POST /admin/orders/:id/actions/outbound',
     ]);
@@ -83,8 +92,9 @@ describe('IKKRMR：capability 字典登记', () => {
 });
 
 describe('IKKRMR：orders actions 登记=service 支持的 action 全集', () => {
-  it('ORDER_ACTION_CAPABILITIES 恰好覆盖 service.orderAction 的四个分支', () => {
-    // admin.service.orderAction 支持：cancel / advance / outbound / mark-exception
+  it('ORDER_ACTION_CAPABILITIES 恰好覆盖 service.orderAction 的六个分支', () => {
+    // admin.service.orderAction 支持：cancel / advance / outbound /
+    // mark-exception / staff-deliver / staff-complete（IKKRMV）
     // （不支持的 action 本就 400「不支持的订单操作」；登记表漏一个=该动作被
     // 门禁 403 挡死，多一个=死映射）——此处钉死两者一致。
     expect(Object.keys(ORDER_ACTION_CAPABILITIES).sort()).toEqual([
@@ -92,6 +102,8 @@ describe('IKKRMR：orders actions 登记=service 支持的 action 全集', () =>
       'cancel',
       'mark-exception',
       'outbound',
+      'staff-complete',
+      'staff-deliver',
     ]);
   });
   it('登记表值全部指向已登记 capability', () => {

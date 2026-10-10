@@ -63,6 +63,20 @@ export const CAPABILITIES: readonly CapabilityDef[] = [
     remark: '运营手动把订单置为异常态',
   },
   {
+    code: 'order.staff-deliver',
+    name: '员工配送出发',
+    patterns: ['POST /admin/orders/:id/actions/staff-deliver'],
+    remark:
+      'IKKRMV 组织 B 后台员工配送：已出库单取货出发（waiting-first-mile→first-mile）',
+  },
+  {
+    code: 'order.staff-complete',
+    name: '员工配送送达',
+    patterns: ['POST /admin/orders/:id/actions/staff-complete'],
+    remark:
+      'IKKRMV 组织 B 后台员工配送：送达完成（first-mile→delivered，无楼长交接）',
+  },
+  {
     code: 'cost.read',
     name: '成本/毛利读取',
     patterns: [
@@ -98,6 +112,9 @@ export const ORDER_ACTION_CAPABILITIES: Readonly<Record<string, string>> = {
   advance: 'order.advance',
   outbound: 'order.outbound',
   'mark-exception': 'order.exception',
+  // IKKRMV 组织 B 后台员工配送动作（仅 staff_delivery 组织校区可执行）
+  'staff-deliver': 'order.staff-deliver',
+  'staff-complete': 'order.staff-complete',
 };
 
 /**

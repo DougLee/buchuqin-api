@@ -32,6 +32,15 @@ import type { Prisma } from '@prisma/client';
  *   first-mile 仍可 receive（旧机 arrive 直达 last-mile 的单）；
  *   停留在 picking 的历史单走 outbound 出库。
  *
+ * IKKRMV 两种配送模式共用订单状态语义（2026-10-10 钉死）：
+ *   Organization.deliveryMode='rider_delivery'（组织 A 骑手小程序履约，现状
+ *   链路）| 'staff_delivery'（组织 B 后台员工履约）。模式只切换「谁来推进」，
+ *   不新增/不修改任何状态与 timeline 节点——staff_delivery 出库后不进骑手
+ *   任务池，由后台订单动作推进：outbound → waiting-first-mile →
+ *   staff-deliver → first-mile → staff-complete → delivered（无楼长交接，
+ *   waiting-handover/last-mile 交接微状态不经过，见 admin.service.orderAction）。
+ *   rider_delivery 组织（含默认值存量组织 A）链路一字不变。
+ *
  * timeline 节点（新单 5 步，约定：进入某状态时把对应节点置 done）：
  *   paid(支付成功) / picking(仓库拣货·出库时点亮) / first-mile(送往楼下)
  *   / waiting-handover(楼下待交接) / last-mile(送到寝室)
