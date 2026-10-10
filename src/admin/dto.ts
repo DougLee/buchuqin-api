@@ -289,7 +289,8 @@ export class CreateCouponDto {
   /** 支付后推荐（道哥 2026-09-08）：支付成功页领券卡展示 */
   @IsOptional() @IsBoolean() featuredAfterPay?: boolean;
   /** 每人限领张数（IKKEWS）：默认 1；>1 时同券同用户可持多张 */
-  @IsOptional() @Type(() => Number) @IsInt() @Min(1) perUserLimit?: number;
+  /** 每人限领张数（IKKEWS）：0=不限制 */
+  @IsOptional() @Type(() => Number) @IsInt() @Min(0) perUserLimit?: number;
   /** 定向券（IKKEWS）：领券中心不显示、领取接口拒绝，只能定向发放触达 */
   @IsOptional() @IsBoolean() targetedOnly?: boolean;
 }
@@ -303,7 +304,8 @@ export class UpdateCouponDto {
   /** 支付后推荐（道哥 2026-09-08）：支付成功页领券卡展示。 */
   @IsOptional() @IsBoolean() featuredAfterPay?: boolean;
   /** 每人限领张数（IKKEWS）：默认 1 */
-  @IsOptional() @Type(() => Number) @IsInt() @Min(1) perUserLimit?: number;
+  /** 每人限领张数（IKKEWS）：0=不限制 */
+  @IsOptional() @Type(() => Number) @IsInt() @Min(0) perUserLimit?: number;
   /** 定向券标记（IKKEWS）：领券中心不可见，仅定向发放 */
   @IsOptional() @IsBoolean() targetedOnly?: boolean;
   @IsOptional() @IsString() @MinLength(1) @MaxLength(40) name?: string;

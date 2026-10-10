@@ -5685,7 +5685,7 @@ export class AdminService {
         status: 'active',
         // 支付后推荐（道哥 2026-09-08）：支付成功页领券卡
         featuredAfterPay: body.featuredAfterPay ?? false,
-        // IKKEWS：每人限领（默认 1）与定向券标记
+        // IKKEWS：每人限领（0=不限，缺省 1）与定向券标记
         perUserLimit: body.perUserLimit ?? 1,
         targetedOnly: body.targetedOnly ?? false,
         expiresAt,
@@ -5838,10 +5838,10 @@ export class AdminService {
           ? '定向条件未匹配到任何用户，请检查手机号/寝室范围'
           : '请选择发放对象',
       );
-    // IKKEWS 多张发放：每人可补发张数 = perUserLimit − 未使用持有数（默认 1），
-    // 本次 count 再与其取小；已达限领的用户跳过。
-    const limit = coupon.perUserLimit ?? 1;
-    const wantCount = Math.min(body.count ?? 1, limit);
+    // IKKEWS 多张发放：每人可补发张数 = perUserLimit − 未使用持有数
+    // （0=不限——只受券总量约束）；已达限领的用户跳过。
+    const limit = coupon.perUserLimit ?? 1; // 0=不限
+    const wantCount = limit === 0 ? (body.count ?? 1) : Math.min(body.count ?? 1, limit);
     const holdings = await this.db.userCoupon.findMany({
       where: { couponId: id, userId: { in: userIds }, status: { not: 'used' } },
       select: { userId: true },
@@ -5852,10 +5852,13 @@ export class AdminService {
     const grants = userIds
       .map((userId) => ({
         userId,
-        count: Math.min(
-          wantCount,
-          Math.max(0, limit - (heldCount.get(userId) ?? 0)),
-        ),
+        count:
+          limit === 0
+            ? wantCount // 不限领：按 wantCount 直发
+            : Math.min(
+                wantCount,
+                Math.max(0, limit - (heldCount.get(userId) ?? 0)),
+              ),
       }))
       .filter((g) => g.count > 0);
     if (!grants.length)

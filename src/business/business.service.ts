@@ -448,8 +448,10 @@ export class BusinessService {
             (!c.expiresAt || c.expiresAt > now) &&
             // IKDEN2：不限量券恒可领
             (c.total === null || c.claimed < c.total) &&
-            (mine.filter((x) => x.couponId === c.id && x.status !== 'used').length <
-              (c.perUserLimit ?? 1)),
+            // IKKEWS：0=不限领恒可领；>0 时按「限领−未使用持有」
+            ((c.perUserLimit ?? 1) === 0 ||
+              mine.filter((x) => x.couponId === c.id && x.status !== 'used')
+                .length < (c.perUserLimit ?? 1)),
         )
         .map((c) => this.couponView(c)),
       mine: mine.map((x) => ({
@@ -475,21 +477,24 @@ export class BusinessService {
         throw new BadRequestException('该优惠券不支持手动领取');
       if (coupon.expiresAt && coupon.expiresAt.getTime() <= Date.now())
         throw new BadRequestException('优惠券已过期');
-      // IKKEWS：perUserLimit 限领（默认 1=同券一张；>1 时持有数<限领可再领）
+      // IKKEWS：perUserLimit 限领（0=不限；1=默认同券一张；>1 多张）
       const limit = coupon.perUserLimit ?? 1;
-      const holdings = await tx.userCoupon.findMany({
-        where: { userId, couponId },
-      });
-      const holding = holdings.find((x) => x.status !== 'used');
-      if (holdings.length >= limit) {
-        // 达到限领：幂等返回已有记录（used 单独提示）。
-        if (holding)
+      if (limit === 0) {
+        // 不限领：不受持有数约束（总量条件更新兜底并发）
+      } else {
+        const holdings = await tx.userCoupon.findMany({
+          where: { userId, couponId },
+        });
+        const holding = holdings.find((x) => x.status !== 'used');
+        if (holdings.length >= limit) {
+          // 达到限领：幂等返回已有记录（used 单独提示）。
+          if (holding) return holding;
+          throw new BadRequestException('该优惠券已使用');
+        }
+        if (holding) {
+          // 未达限领：幂等返回已有未使用记录（重复点击不重复入账）。
           return holding;
-        throw new BadRequestException('该优惠券已使用');
-      }
-      if (holding) {
-        // 未达限领：幂等返回已有未使用记录（重复点击不重复入账）。
-        return holding;
+        }
       }
       // 并发不超发：条件更新占用名额，抢不到名额即已领完。
       // IKDEN2：不限量券（total=null）不设 claimed 上限条件。
