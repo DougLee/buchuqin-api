@@ -727,6 +727,71 @@ export class AdminController {
       '已同步官方库最新资料',
     );
   }
+
+  /* ---------- 平台商品目录（IKKRMW，ADR-0001 决策 3）---------- */
+  // 原官方商品库的逻辑层正名：数据源=catalogScope='platform' 行（落
+  // campus-official 伪校区打解绑过渡标记，物理迁移留 IKKRMX）。实现复用
+  // 官方库 service（传 OFFICIAL_CAMPUS_ID），端点是语义别名+registry 登记
+  // （'platform-products' 菜单），为 IKKRMX 组织导入铺路；旧
+  // /admin/products view=official 路径保留兼容（前端零改动）。
+  // 平台级能力（access-policy PLATFORM_PATTERNS：校区级角色不可授予）。
+  @Get('platform-products')
+  @ApiOperation({
+    summary:
+      '平台商品目录列表（IKKRMW：分页/关键词/类目/状态；catalogScope=platform 行=原官方库数据源）',
+  })
+  async platformProducts(
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+    @Query('keyword') keyword?: string,
+    @Query('status') status?: string,
+    @Query('categoryId') categoryId?: string,
+  ) {
+    return ok(
+      paginate(
+        await this.service.platformProducts(
+          status && status !== 'all'
+            ? status
+                .split(',')
+                .map((s) => s.trim())
+                .filter(Boolean)
+            : undefined,
+          categoryId || undefined,
+        ),
+        page,
+        pageSize,
+        keyword,
+      ),
+    );
+  }
+  @Post('platform-products') async createPlatformProduct(
+    @Req() req: AuthRequest,
+    @Body() body: CreateProductDto,
+  ) {
+    // 建档落平台目录（官方库口径：默认不可售，总部核对后放行）
+    return ok(
+      await this.service.createProduct(body, req.user.id, OFFICIAL_CAMPUS_ID),
+      '平台商品已创建',
+    );
+  }
+  @Patch('platform-products/:id') async updatePlatformProduct(
+    @Req() req: AuthRequest,
+    @Param('id') id: string,
+    @Body() body: UpdateProductDto,
+  ) {
+    // 与旧 PATCH /admin/products/:id 同口径：库存字段须另持盘点权限
+    // （官方库行不记库存，防御性同构）
+    if (body.stock !== undefined)
+      this.requireUrl(req, 'POST', '/admin/inventory/stocktake');
+    return ok(
+      await this.service.updateProduct(
+        id,
+        body,
+        req.user.id,
+        OFFICIAL_CAMPUS_ID,
+      ),
+    );
+  }
   @Get('inventory')
   @ApiOperation({ summary: '库存列表（?page&pageSize 统一分页包裹）' })
   async inventory(

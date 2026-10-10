@@ -397,6 +397,13 @@ model Product {
   barcode         String?
   campusId        String
   campus          Campus         @relation(fields: [campusId], references: [id])
+  /**
+   * 目录层级（IKKRMW / ADR-0001 决策 3）：'platform'=平台商品目录行（原官方库，
+   * campus-official 伪校区行打解绑过渡标记）；'campus'=组织校区行（组织 B 接入
+   * 前的现状口径）。本阶段仅逻辑标记——现有查询一律按 campusId 维度工作、
+   * 缺省不读此字段；伪校区物理解绑（campusId 改指向/去外键）留 IKKRMX。
+   */
+  catalogScope    String         @default("campus")
   categoryId      String
   category        Category       @relation(fields: [categoryId], references: [id])
   name            String

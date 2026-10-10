@@ -642,6 +642,10 @@ export class AdminService {
     // 传此参数；官方库管理视角（GET /admin/products view=official）与
     // 状态计数不受影响，各校区互不干扰。
     excludeImportedBy?: string,
+    // IKKRMW（ADR-0001 决策 3）：平台目录视角按 catalogScope='platform' 过滤
+    // （campus-official 伪校区的解绑过渡标记）。缺省不过滤——现有全部调用方
+    // （含 /admin/products view=official 旧路径）查询语义零改动。
+    catalogScope?: 'platform',
   ) {
     // 先取本校区已导入行指向的官方商品 id 集；为空必须跳过 notIn
     // （Prisma notIn: [] 会排除全部行）
@@ -663,6 +667,7 @@ export class AdminService {
       where: {
         campusId,
         ...(categoryId ? { categoryId } : {}),
+        ...(catalogScope ? { catalogScope } : {}),
         ...(importedSourceIds.length
           ? { id: { notIn: importedSourceIds } }
           : {}),
@@ -716,6 +721,22 @@ export class AdminService {
       acc[x.status] = (acc[x.status] ?? 0) + 1;
       return acc;
     }, {});
+  }
+  /**
+   * 平台商品目录（IKKRMW，ADR-0001 决策 3）：catalogScope='platform' 行 =
+   * 原官方商品库数据源（落 campus-official 伪校区，物理解绑留 IKKRMX）。
+   * /admin/platform-products 的数据面——语义别名复用官方库链路（读写仍走
+   * products/createProduct/updateProduct 传 OFFICIAL_CAMPUS_ID），为 IKKRMX
+   * 组织导入做准备；旧 /admin/products view=official 路径保留兼容。
+   */
+  platformProducts(statuses?: string[], categoryId?: string) {
+    return this.products(
+      OFFICIAL_CAMPUS_ID,
+      statuses,
+      categoryId,
+      undefined,
+      'platform',
+    );
   }
   /**
    * 商品类别管理（2026-08-19 grilling）：全局字典（无 campusId 维度），
@@ -1311,6 +1332,9 @@ export class AdminService {
     const product = await this.db.product.create({
       data: {
         campusId,
+        // IKKRMW：官方库行=平台目录行（解绑过渡标记）；组织校区行走缺省
+        // 'campus'，显式落值防未来缺省口径变化
+        catalogScope: campusId === OFFICIAL_CAMPUS_ID ? 'platform' : 'campus',
         barcode: body.barcode,
         name: body.name,
         subtitle: body.subtitle ?? '',
@@ -1518,17 +1542,28 @@ export class AdminService {
    * 本地售价（price）/上下架（status）/库存（stock）自管——导入初始下架 +
    * 零库存，校区定价备货后自行上架。幂等：同 sourceProductId 已导入跳过；
    * 条码撞本校区自建商品跳过（@@unique[campusId,barcode]）。
+   *
+   * IKKRMW（ADR-0001 决策 3）导入副本保护钉死：
+   * - 副本行以 sourceProductId 保留来源关系（指向平台目录行），导入后即与
+   *   源行解耦——平台行停用/回收（batch-status 按 campusId 作用域）不删除、
+   *   不改动组织校区已有行；上游变化只产生「待同步」提示（pullUpstream 钉死）。
+   * - 平台目录行是导入「源」不是「目标」：伪校区不可作为导入落点（最小校验）。
    */
   async importProducts(
     productIds: string[],
     operator: string,
     campusId: string,
   ) {
+    if (campusId === OFFICIAL_CAMPUS_ID)
+      throw new BadRequestException('平台目录行不可作为导入目标');
     const officials = await this.db.product.findMany({
-      // IKC1AB：仅总部放行（on-sale）的商品可导入——候选池与导入双保险
+      // IKC1AB：仅总部放行（on-sale）的商品可导入——候选池与导入双保险；
+      // IKKRMW：导入源=平台目录行（catalogScope='platform'，伪校区解绑后
+      // 仍按此口径收口，组织级导入属 IKKRMX 另立端点）
       where: {
         id: { in: productIds },
         campusId: OFFICIAL_CAMPUS_ID,
+        catalogScope: 'platform',
         status: 'on-sale',
       },
     });
@@ -1575,6 +1610,8 @@ export class AdminService {
       const created = await this.db.product.create({
         data: {
           campusId,
+          // IKKRMW：导入副本=组织校区行（显式钉死口径；与缺省一致）
+          catalogScope: 'campus',
           barcode: official.barcode,
           name: official.name,
           subtitle: official.subtitle,
@@ -1630,6 +1667,10 @@ export class AdminService {
    * 一键拉取官方库最新资料（IKAJSO）：只同步资料字段（名称/副题/划线价/
    * 标签/重量/图片/介绍/分类），不动本校区售价、上下架状态与库存；
    * 拉完记 sourceSyncedAt，「上游已更新」角标清零。
+   *
+   * IKKRMW（ADR-0001 决策 3）钉死：上游=平台目录行；上层修改只产生
+   * 「待同步」提示（列表 upstreamChanged 角标），永不自动覆盖下层经营
+   * 字段（售价/库存/状态）——资料也只有校区显式拉取才同步。
    */
   async pullUpstream(id: string, operator: string, campusId: string) {
     const local = await this.db.product.findFirst({
@@ -1638,6 +1679,8 @@ export class AdminService {
     if (!local) throw new NotFoundException('商品不存在');
     if (!local.sourceProductId)
       throw new BadRequestException('自建商品无官方库来源，无需拉取');
+    // 上游=平台目录行（campus-official 伪校区；IKKRMX 解绑后改按
+    // catalogScope='platform' 定位，行为不变）
     const official = await this.db.product.findFirst({
       where: { id: local.sourceProductId, campusId: OFFICIAL_CAMPUS_ID },
     });
