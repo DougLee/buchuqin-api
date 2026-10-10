@@ -436,7 +436,7 @@ describe('RBAC valid A/B target isolation (HTTP + PostgreSQL)', () => {
     await call('get', 'reports/hq-daily').expect(200);
     const platformFilter = await request(app.getHttpServer()).get('/api/v1/auth/admin/campuses?purpose=filter').set('Authorization', auth).expect(200);
     expect(platformFilter.body.data.map((c: { id: string }) => c.id)).toContain(campusC);
-    expect(Object.keys(platformFilter.body.data[0]).sort()).toEqual(['current', 'id', 'name', 'shortName']);
+    expect(Object.keys(platformFilter.body.data[0]).sort()).toEqual(['current', 'id', 'name', 'organizationId', 'shortName']);
   });
 
 });

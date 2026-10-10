@@ -586,7 +586,9 @@ export class AuthController {
     const campuses = await this.db.campus.findMany({
       where: { ...(ids ? { id: ids } : {}), status: 'active' },
       orderBy: { createdAt: 'asc' },
-      select: { id: true, name: true, shortName: true },
+      // organizationId 供后台账号授权器按组织分组校区；新增只读字段对既有
+      // 后台与小程序调用保持向后兼容。
+      select: { id: true, name: true, shortName: true, organizationId: true },
     });
     return ok(
       campuses.map((c) => ({ ...c, current: c.id === account.campusId })),
