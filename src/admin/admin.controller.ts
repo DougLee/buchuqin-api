@@ -169,13 +169,17 @@ export class AdminController {
     return target;
   }
   /**
-   * Banner 数据范围（IKBW0A）：校区自管——平台级恒本上下文校区（banner 不做
-   * 跨校区管理）；校区级授权集内可切（IKJA7Y 页内切换），缺省本校区。
+   * Banner 数据范围（IKBW0A → IKKKBT 放开）：平台账号可代管各校区 Banner/
+   * 支付广告位（?campus= 选校区，与优惠券等营销板块同口径）；校区级授权集内
+   * 可切，缺省本校区。
    */
   private bannerScope(req: AuthRequest, campus?: string): string {
     const ctx = this.ctx(req);
     const c = (campus ?? (req.query?.campus as string | undefined))?.trim() ?? '';
-    if (!ctx.platform && c && ctx.campuses.includes(c)) return c;
+    if (!c) return ctx.campusId;
+    if (ctx.campuses.includes(c)) return c;
+    // 平台账号：任意真实校区（与 scopedCampus 校验对齐，容错交由调用方）
+    if (ctx.platform) return c;
     return ctx.campusId;
   }
   /**
