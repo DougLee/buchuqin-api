@@ -32,6 +32,10 @@ import { compare, hash } from 'bcryptjs';
 import { Prisma } from '@prisma/client';
 import { ok } from '../common/api-response';
 import { ADMIN_CAMPUS_ID } from '../common/campus';
+import {
+  campusOrganizationId,
+  resolveOrganizationByAppId,
+} from '../common/organization';
 import { PrismaService } from '../database/prisma.service';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { USER_ROLES_KEY, UserRoleGuard } from './user-role.guard';
@@ -371,6 +375,15 @@ export class AuthController {
     if (!credentials)
       throw new BadRequestException('该小程序未配置微信登录凭证');
     const session = await this.code2Session(credentials, body.code.trim());
+    // IKKRMO（ADR-0001）：按本次登录实际使用的 AppID 解析组织身份（用户端/
+    // 履约端共用）。命中 → 用户/员工限定该组织校区集合；未命中（组织 A 未
+    // 登记 wxAppId 的现状）→ null，走 env 单组织兼容路径，现有行为一字不变。
+    // 安全铁律：组织身份只认服务端凭证路由后的 credentials.appid，不接受
+    // 客户端传 organizationId 等组织参数。
+    const organization = await resolveOrganizationByAppId(
+      this.db,
+      credentials.appid,
+    );
     // 履约端小程序 → 员工通道：openid 必须已绑定 Staff，未绑定引导走 staff-bind
     if (credentials.appid === process.env.WX_APPID_DELIVERY) {
       const staff = await this.db.staff.findUnique({
@@ -378,6 +391,15 @@ export class AuthController {
       });
       if (!staff || staff.status === 'deleted')
         throw new NotFoundException('该微信未绑定员工账号，请用工号绑定后登录');
+      // IKKRMO 跨组织员工：登录小程序解析到组织而员工校区不属该组织 →
+      // 拒绝（openid per-app 隔离，正常不会发生，防运营迁移校区后的串号）。
+      // 组织未登记 wxAppId 现状解析 null 不校验，行为不变。
+      if (
+        organization &&
+        (await campusOrganizationId(this.db, staff.campusId)) !==
+          organization.id
+      )
+        throw new ForbiddenException('该账号不属于当前小程序所在组织');
       // IKI3ZP：登录侧写补录 unionId（服务号关注事件按 unionid 自动绑定派单通道）
       this.logger.log(
         `骑手静默登录诊断：staff=${staff.staffNo} code2session unionid=${session.unionid ?? '未返回（用户未关注同平台服务号或绑定不一致）'}`,
@@ -413,19 +435,43 @@ export class AuthController {
     let user = await this.db.user.findUnique({
       where: { openid: session.openid },
     });
+    // IKKRMO 老用户防御校验：openid per-app 唯一，正常不会跨组织；但运营把
+    // 校区迁到其他组织等脏数据会让用户校区与登录组织不符——拒绝登录防串号
+    //（组织未登记 wxAppId 现状解析 null 不校验，行为不变）。
+    if (
+      user &&
+      organization &&
+      (await campusOrganizationId(this.db, user.campusId)) !== organization.id
+    )
+      throw new ForbiddenException('该账号不属于当前小程序所在组织');
     if (!user) {
       // IKGZSU 跨校区分享：新用户首登优先采用分享链路带来的校区（body.campusId），
       // 须为开放中真实运营校区（type=campus + status=active，排除官方库/总部仓
       // 伪校区），非法值静默忽略；自然流量 fallback 同口径取最早真实运营校区
       //（修复原「最早校区」会把新用户落进官方商品库伪校区的隐患）。
+      // IKKRMO 多租户：解析到组织时，分享校区与 fallback 校区都限定在该组织
+      // 开放校区集合内；分享的是它组织校区 → 明确 400 拒绝（防跨组织导流），
+      // 不存在/伪校区仍静默忽略（兼容现状）。组织=null 时两处查询均不加组织
+      // 限定，与现状完全一致。
       const realCampus = { type: 'campus', status: 'active' } as const;
+      const orgScope = organization ? { organizationId: organization.id } : {};
       const shared = body.campusId?.trim();
-      const campus =
-        (shared
-          ? await this.db.campus.findFirst({ where: { id: shared, ...realCampus } })
-          : null) ??
+      let campus = shared
+        ? await this.db.campus.findFirst({
+            where: { id: shared, ...realCampus, ...orgScope },
+          })
+        : null;
+      if (!campus && shared && organization) {
+        const crossOrg = await this.db.campus.findFirst({
+          where: { id: shared, ...realCampus },
+        });
+        if (crossOrg)
+          throw new BadRequestException('分享校区不属于当前小程序所在组织');
+      }
+      campus =
+        campus ??
         (await this.db.campus.findFirst({
-          where: realCampus,
+          where: { ...realCampus, ...orgScope },
           orderBy: { createdAt: 'asc' },
         })) ??
         null;
@@ -613,6 +659,13 @@ export class AuthController {
     if (!body.code?.trim() || !body.staffNo?.trim() || !body.name?.trim())
       throw new BadRequestException('缺少微信凭证/工号/姓名');
     const session = await this.code2Session(credentials, body.code.trim());
+    // IKKRMO（ADR-0001）：按履约端 AppID 解析组织——组织小程序只能绑定本
+    // 组织校区的员工；组织身份只认服务端 AppID，不接受客户端组织参数。
+    // 未命中（组织 A 未登记 wxAppId 现状）→ null 不校验，行为不变。
+    const organization = await resolveOrganizationByAppId(
+      this.db,
+      credentials.appid,
+    );
     const staff = await this.db.staff.findUnique({
       where: { staffNo: body.staffNo.trim() },
     });
@@ -621,6 +674,13 @@ export class AuthController {
     // 姓名双因子：防纯工号枚举绑定他人账号（换绑即覆盖旧 openid）
     if (staff.name !== body.name.trim())
       throw new BadRequestException('工号与姓名不匹配');
+    // IKKRMO：工号属于它组织校区 → 拒绝绑定（工号+姓名双因子在前，防枚举）
+    if (
+      organization &&
+      (await campusOrganizationId(this.db, staff.campusId)) !==
+        organization.id
+    )
+      throw new BadRequestException('该工号不属于当前小程序所在组织');
     // IKJ9LR：openid 自动换绑迁移——同微信换绑工号时，先摘旧员工上的 openid
     // （唯一约束）。否则 update 直接 P2002（冲突在 openid 而非 unionId）→
     // 重试仍写 openid 再撞 → 500「服务端暂不可用」，正式版换绑设备全部登录失败。

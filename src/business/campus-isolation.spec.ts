@@ -31,6 +31,9 @@ describe('cross-campus isolation (IK8W5J)', () => {
         name: '隔离测试大学',
         shortName: '隔离测试',
         warehouseName: '隔离测试校园仓',
+        // IKKRMO 多租户：真实测试校区补组织归属（与 campus-hbut 同属 org-a），
+        // 否则 switchUserCampus 的跨组织校验会拦截 org-a 用户 ↔ 无组织校区切换
+        organizationId: 'org-a',
       },
     });
     userB = (

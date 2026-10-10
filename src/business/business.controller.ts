@@ -58,9 +58,10 @@ export class BusinessController {
   @Get('campus/current') async campus(@Req() req: AuthRequest) {
     return ok(await this.service.campus(req.user.campusId));
   }
-  /** 校区选项（IKAJT2 选校区流程）：开放中校区列表，切换走 POST /auth/campuses/select。 */
+  /** 校区选项（IKAJT2 选校区流程）：开放中校区列表，切换走 POST /auth/campuses/select。
+   *  IKKRMO：传入用户当前校区按组织限定可见集合（组织身份服务端推导）。 */
   @Get('campuses') async campuses(@Req() req: AuthRequest) {
-    return ok(await this.service.campusOptions());
+    return ok(await this.service.campusOptions(req.user.campusId));
   }
   @Get('categories') async categories(@Req() req: AuthRequest) {
     return ok(await this.service.categories(req.user.campusId));

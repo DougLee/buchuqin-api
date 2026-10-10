@@ -9,6 +9,7 @@ import { Prisma } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../database/prisma.service';
 import { perRetailUnitCostFen } from '../common/product-units';
+import { campusOrganizationId } from '../common/organization';
 import { NotificationsService } from '../notifications/notifications.service';
 import {
   PrinterService,
@@ -557,10 +558,19 @@ export class BusinessService {
     return record;
   }
   /** 校区选项（IKAJT2 选校区流程）：仅开放中的普通校区，官方库伪校区
-   *  （status=official）与总部仓（type=hq，IKFOPY）均排除。 */
-  async campusOptions() {
+   *  （status=official）与总部仓（type=hq，IKFOPY）均排除。
+   *  IKKRMO（ADR-0001）多租户：按用户当前校区推导组织归属（campusOrganizationId
+   *  唯一入口，不接受客户端传组织参数），限定本组织校区集合——组织 A 现状
+   *  全部真实校区已回填 org-a，返回集合等价；用户校区无组织归属（兼容
+   *  脏数据）则不加限定，行为不变。 */
+  async campusOptions(userCampusId?: string) {
+    const organizationId = await campusOrganizationId(this.db, userCampusId);
     return this.db.campus.findMany({
-      where: { status: 'active', type: 'campus' },
+      where: {
+        status: 'active',
+        type: 'campus',
+        ...(organizationId ? { organizationId } : {}),
+      },
       orderBy: { createdAt: 'asc' },
       select: { id: true, name: true, shortName: true },
     });
@@ -579,6 +589,12 @@ export class BusinessService {
     const user = await this.db.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('用户不存在');
     if (user.campusId === campusId) return user;
+    // IKKRMO（ADR-0001）：跨组织校区禁止切换——组织身份从用户当前校区推导
+    // （campusOrganizationId，不接受客户端传组织参数），目标校区必须同组织；
+    // 用户校区无组织归属（兼容脏数据）不加限定，行为不变。
+    const fromOrgId = await campusOrganizationId(this.db, user.campusId);
+    if (fromOrgId && campus.organizationId !== fromOrgId)
+      throw new BadRequestException('该校区不属于当前小程序所在组织');
     const [updated] = await this.db.$transaction([
       this.db.user.update({ where: { id: userId }, data: { campusId } }),
       this.db.cartItem.deleteMany({
