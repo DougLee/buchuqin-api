@@ -37,6 +37,13 @@ export interface RbacContext {
   platformPatterns?: Set<string>;
   /** 可见菜单节点 code（目录+菜单行，非按钮） */
   menuCodes: Set<string>;
+  /**
+   * IKKRMM（ADR-0001）：上下文校区的组织归属——账号→campusId→campus.
+   * organizationId 推导；平台账号（平台级授权）属平台层无组织（null）。
+   * 本阶段仅透出给后续 issue（IKKRMP 账号层级固定）消费，不参与任何
+   * 权限判定。可空：旧上下文（spec 夹具/缓存）缺省视为未知。
+   */
+  organizationId?: string | null;
 }
 
 /** URL 模式匹配：模式 "METHOD /admin/x/:id" 与请求比对，:seg 通配单段 */
@@ -318,6 +325,16 @@ export class RbacService implements OnModuleInit {
       patterns,
       platformPatterns,
       menuCodes,
+      // IKKRMM：校区级账号=上下文校区的组织；平台级账号=平台层（无组织）。
+      // campusId 落不到真实校区（空串/已删）→ null。不参与判权（IKKRMP 的活）。
+      organizationId: platform
+        ? null
+        : (
+            await this.db.campus.findUnique({
+              where: { id: account.campusId },
+              select: { organizationId: true },
+            })
+          )?.organizationId ?? null,
     };
     this.cache.set(key, { ctx, expiresAt: Date.now() + RbacService.TTL_MS });
     return ctx;

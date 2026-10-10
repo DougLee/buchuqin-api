@@ -5636,6 +5636,86 @@ export class AdminService {
       })),
     );
   }
+
+  /* ---------- 多租户组织基线（IKKRMM，ADR-0001）：平台视角最小只读端点 ---------- */
+  // 本阶段组织 A 单租户运行：端点仅供平台核对归属与聚合，组织维护（建组/
+  // 微信配置/开通组织 B）属 IKKRMS；权限为平台级（access-policy 拦校区授予）。
+
+  /** 组织列表：每组织聚合校区数（不含平台伪校区）与用户数（经校区归属汇总）。 */
+  async organizations() {
+    const orgs = await this.db.organization.findMany({
+      orderBy: { createdAt: 'asc' },
+    });
+    // 校区归属快照（organizationId 可空=平台层，不进聚合）
+    const campusRows = await this.db.campus.findMany({
+      where: { organizationId: { not: null }, status: { not: 'official' } },
+      select: { id: true, organizationId: true },
+    });
+    const userAgg = await this.db.user.groupBy({
+      by: ['campusId'],
+      _count: { _all: true },
+    });
+    const usersByCampus = new Map(
+      userAgg.map((u) => [u.campusId, u._count._all]),
+    );
+    return orgs.map((o) => {
+      const own = campusRows.filter((c) => c.organizationId === o.id);
+      return {
+        id: o.id,
+        name: o.name,
+        shortName: o.shortName,
+        status: o.status,
+        createdAt: o.createdAt,
+        campusCount: own.length,
+        userCount: own.reduce(
+          (n, c) => n + (usersByCampus.get(c.id) ?? 0),
+          0,
+        ),
+      };
+    });
+  }
+
+  /** 组织详情：校区清单 + 聚合；微信敏感凭据只回「已配置」位，不回明文。 */
+  async organizationDetail(id: string) {
+    const org = await this.db.organization.findUnique({ where: { id } });
+    if (!org) throw new BadRequestException(`组织不存在: ${id}`);
+    const campuses = await this.db.campus.findMany({
+      where: { organizationId: id, status: { not: 'official' } },
+      orderBy: { createdAt: 'asc' },
+      select: {
+        id: true,
+        name: true,
+        shortName: true,
+        type: true,
+        status: true,
+        createdAt: true,
+      },
+    });
+    const userAgg = await this.db.user.groupBy({
+      by: ['campusId'],
+      _count: { _all: true },
+      where: { campusId: { in: campuses.map((c) => c.id) } },
+    });
+    const userCount = userAgg.reduce((n, u) => n + u._count._all, 0);
+    return {
+      id: org.id,
+      name: org.name,
+      shortName: org.shortName,
+      status: org.status,
+      createdAt: org.createdAt,
+      // 微信配置（ADR-0001 决策 2 预留）：非敏感位透出，敏感凭据只回布尔
+      wxAppId: org.wxAppId,
+      mchId: org.mchId,
+      serialNo: org.serialNo,
+      notifyDomain: org.notifyDomain,
+      hasWxSecret: org.wxSecret != null,
+      hasMchApiV3Key: org.mchApiV3Key != null,
+      hasPrivateKey: org.privateKey != null,
+      campuses,
+      campusCount: campuses.length,
+      userCount,
+    };
+  }
   /** 校区本体新增（IKAJSL）：新校区接入入口，仅总部长（controller 守卫）。 */
   async createCampus(body: CreateCampusDto, operator: string) {
     const campus = await this.db.campus.create({

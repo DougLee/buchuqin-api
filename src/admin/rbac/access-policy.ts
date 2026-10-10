@@ -8,6 +8,8 @@ export function isSuperOnlyOperation(method: string, path: string): boolean {
 export const PLATFORM_PATTERNS = [
   'GET /admin/accounts', 'GET /admin/rbac/accounts/:id/preview',
   'GET /admin/rbac/audit', 'GET /admin/reports/hq-daily',
+  // IKKRMM：多租户组织读端点为平台层能力（跨组织视角），校区级角色不可授予
+  'GET /admin/organizations', 'GET /admin/organizations/:id',
   'POST /admin/campuses', 'PATCH /admin/campuses/:id',
   'POST /admin/inventory/stock-in',
   'POST /admin/restock/batches', 'PATCH /admin/restock/batches/:id',

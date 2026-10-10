@@ -121,6 +121,10 @@ export const MENU_NODES: MenuNodeDef[] = [
   /* ---------- 目录：系统 ---------- */
   { code: 'g.sys', name: '系统', type: 0, order: 7 },
   { code: 'accounts', name: '账号管理', type: 1, parent: 'g.sys', path: '/accounts', icon: 'accounts', order: 1, perms: ['GET /admin/accounts', 'GET /admin/rbac/accounts/:id/preview'] },
+  // IKKRMM（ADR-0001）：多租户组织只读端点——平台权限（PLATFORM_PATTERNS 拦
+  // 校区级授予），页面组件属 IKKRMS（组织 B 开通一条龙），落地前该菜单对
+  // 超管显示「页面尚未配置」占位。
+  { code: 'organizations', name: '组织管理', type: 1, parent: 'g.sys', path: '/organizations', icon: 'campus', order: 2, perms: ['GET /admin/organizations', 'GET /admin/organizations/:id'], remark: '多租户组织列表/详情（IKKRMM 基线）' },
   { code: 'rbac.accounts.write', name: '账号管理操作', type: 2, parent: 'accounts', order: 1, perms: ['POST /admin/accounts', 'PATCH /admin/accounts/:id', 'DELETE /admin/accounts/:id'] },
   { code: 'rbac-roles', name: '角色管理', type: 1, parent: 'g.sys', path: '/rbac-roles', icon: 'accounts', order: 2, perms: ['GET /admin/rbac/roles', 'GET /admin/rbac/menus', 'GET /admin/rbac/permissions', 'GET /admin/rbac/catalog'] },
   { code: 'rbac.roles.write', name: '角色管理操作', type: 2, parent: 'rbac-roles', order: 1, perms: ['POST /admin/rbac/roles', 'PATCH /admin/rbac/roles/:id', 'DELETE /admin/rbac/roles/:id'] },

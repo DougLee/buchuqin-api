@@ -10,6 +10,35 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+/* ---------- 多租户组织基线（IKKRMM，ADR-0001 2026-10-10） ---------- */
+
+/// 组织（IKKRMM）：平台—组织—校区三层的中间层。组织 A=不出寝食社（存量
+/// 全部数据无感迁入，迁移回填 org-a）；组织 B（IKKRMS）经平台「组织管理」
+/// 页开通。微信配置字段为预留（ADR-0001 决策 2：存 DB 后台维护，组织 B
+/// 开通用；组织 A env 兜底），本阶段全部可空、无任何读取链路。
+model Organization {
+  id           String   @id @default(cuid())
+  name         String
+  shortName    String   @default("")
+  /// active | disabled（停用后该组织校区/账号的处置属 IKKRMP，本阶段不消费）
+  status       String   @default("active")
+  /// 预留：组织小程序 AppID（组织 A 走 env 兜底，路由属 IKKRMO/IKKRMT）
+  wxAppId      String?
+  /// 预留：组织小程序 Secret（敏感，端点只回「已配置」位不回明文）
+  wxSecret     String?
+  /// 预留：微信支付商户号（ADR-0001 决策 1：组织 B 独立商户号）
+  mchId        String?
+  /// 预留：商户 APIv3 密钥（敏感，同 wxSecret 口径）
+  mchApiV3Key  String?
+  /// 预留：商户证书序列号
+  serialNo     String?
+  /// 预留：商户私钥 PEM（敏感，同 wxSecret 口径）
+  privateKey   String?
+  /// 预留：回调域名（组织 B 独立回调，路由属 IKKRMT）
+  notifyDomain String?
+  createdAt    DateTime @default(now())
+}
+
 model Campus {
   id                   String            @id @default(cuid())
   // IKFOPY：campus=普通校区（用户可见可下单）；hq=总部仓（中转仓储，用户端
@@ -40,6 +69,11 @@ model Campus {
   // 无楼长提示（IKHMKR 道哥 2026-09-21）：结算/下单时楼栋无在职楼长的弹窗
   // 提示，校区自定义；空=回落默认文案（防误清空丢提示）
   noManagerTip         String            @default("")
+  // 多租户归属（IKKRMM/ADR-0001）：可空且本阶段不收紧 NOT NULL——campus-official
+  // 平台伪校区永属平台层留空；campus-hq 与全部真实校区归组织 A（迁移回填
+  // org-a）。纯字符串不建外键（参照 AdminAccount.campusId 先例：生命周期独立），
+  // 组织真源在 Organization 表。
+  organizationId       String?
   createdAt            DateTime          @default(now())
   users                User[]
   products             Product[]
@@ -54,6 +88,8 @@ model Campus {
   recruitApplications  RecruitingApplication[]
   restockOrders        RestockOrder[]
   notices              Notice[]
+
+  @@index([organizationId])
 }
 
 /**

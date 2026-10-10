@@ -1934,6 +1934,24 @@ export class AdminController {
     );
   }
 
+  /* ---------- 多租户组织基线（IKKRMM，ADR-0001）：平台视角只读端点 ---------- */
+  // 平台级能力（access-policy PLATFORM_PATTERNS：校区级角色不可授予）；
+  // 判权=URL 模式（registry 'organizations' 菜单行 perms），超管通配。
+  @Get('organizations')
+  @ApiOperation({
+    summary: '组织列表（IKKRMM 基线：含每组织校区数/用户数聚合）',
+  })
+  async organizations() {
+    return ok(await this.service.organizations());
+  }
+  @Get('organizations/:id')
+  @ApiOperation({
+    summary: '组织详情（IKKRMM 基线：校区清单+聚合，微信凭据只回已配置位）',
+  })
+  async organizationDetail(@Param('id') id: string) {
+    return ok(await this.service.organizationDetail(id));
+  }
+
   /* ---------- IKHM1O/IKHM1P 校区配置聚合页：送达时段 + 公告 ---------- */
 
   @Get('campus-config')
