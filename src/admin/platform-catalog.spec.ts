@@ -117,7 +117,7 @@ describe('platform product catalog (IKKRMW / ADR-0001)', () => {
     });
     campusRowIds.push(campusRow.id);
 
-    const res = await controller.platformProducts('1', '20', tag);
+    const res = await controller.platformProducts(specReq('admin'), '1', '20', tag);
     const list = res.data as {
       items: Array<{ id: string; campusId: string }>;
       total: number;
@@ -132,6 +132,7 @@ describe('platform product catalog (IKKRMW / ADR-0001)', () => {
 
     // 类目过滤：只回 drink 行
     const drinks = await controller.platformProducts(
+      specReq('admin'),
       '1',
       '20',
       tag,
@@ -144,7 +145,7 @@ describe('platform product catalog (IKKRMW / ADR-0001)', () => {
       ),
     ).toEqual([rowB.id]);
     // 分页包裹：total=过滤后命中数，页大小生效
-    const paged = await controller.platformProducts('1', '1', tag);
+    const paged = await controller.platformProducts(specReq('admin'), '1', '1', tag);
     expect((paged.data as { total: number }).total).toBe(2);
     expect((paged.data as { items: unknown[] }).items).toHaveLength(1);
 

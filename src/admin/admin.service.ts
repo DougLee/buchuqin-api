@@ -80,6 +80,88 @@ import {
 } from '../common/order-state';
 import { HQ_CAMPUS_ID, OFFICIAL_CAMPUS_ID } from '../common/campus';
 
+/* ==================== 成本 capability 输出裁剪（IKKRMY，2026-10-10） ====================
+ * allowCapability(ctx,'cost.read')=false 的账号，商品/订单/报表响应统一剔除
+ * 成本与毛利字段（admin 前端 CSV 导出同源列，服务端裁剪=导出同口径）。
+ * - 判权锚点=capability 字典（IKKRMR）：持任一毛利口径端点（dashboard/
+ *   campus-daily/hq-daily）即视为可读成本——控制器计算布尔后透传 service；
+ * - 语义=字段缺席（delete）而非置 null：null 会被误读为「未填成本」，
+ *   缺席即「不可见」，与 C 端 productView/stripCostSnapshot 的既有手法一致；
+ * - 三张成本口径端点（dashboard/两张日报）本身就是 cost.read 的授权锚点：
+ *   能调用的账号必持 cost.read，裁剪分支结构上不可达——保留是为把「报表
+ *   无毛利泄露」做成局部不变量（capability 模式集将来调整也不破防）。
+ * 导出（CSV）由 admin 前端按同一响应列生成，服务端裁剪即同口径。 */
+/** 商品行成本字段：进货价/批发价/本地采购价/采购来源（校区行与组织行共用）。 */
+export const PRODUCT_COST_FIELDS = [
+  'costPrice',
+  'wholesalePrice',
+  'localPurchasePrice',
+  'procurementMode',
+  'supplyMode',
+] as const;
+/** 订单行内成本快照字段（支付时写入）+ 列表回查的当前进货价估算。 */
+export const ORDER_ITEM_COST_FIELDS = [
+  'unitGrossCost',
+  'unitWholesaleCost',
+  'unitPurchaseCost',
+  'costSource',
+  'unitsPerCase',
+  'currentUnitPurchaseCost',
+] as const;
+/** 报表/看板毛利口径字段：成本合计、毛利额与毛利率（含看板 margin/profit）。 */
+export const REPORT_COST_FIELDS = [
+  'costTotal',
+  'marginTotal',
+  'gross',
+  'marginRate',
+  'marginRawRate',
+  'margin',
+  'profit',
+] as const;
+
+/** 浅拷贝并删除指定键（裁剪统一原语；缺省不拷贝场景仅用于本地构造对象）。 */
+function omitCostKeys<T>(row: T, keys: readonly string[]): T {
+  const rest = { ...(row as Record<string, unknown>) };
+  for (const k of keys) delete rest[k];
+  return rest as T;
+}
+
+/** 商品行裁剪：剔除 PRODUCT_COST_FIELDS（含组织目录行 supplyMode 口径）。 */
+export function trimProductCost<T extends object>(row: T): T {
+  return omitCostKeys(row, PRODUCT_COST_FIELDS);
+}
+
+/** 订单行裁剪：剔除 items[].product 上的成本快照字段（快照属内部数据，
+ *  与 C 端 stripCostSnapshot 同一黑名单再加列表估算字段）。 */
+export function trimOrderCost<T extends { items?: unknown }>(row: T): T {
+  const items = row.items as
+    | Array<{ product?: object } | null | undefined>
+    | null;
+  if (!Array.isArray(items)) return row;
+  return {
+    ...row,
+    items: items.map((line) =>
+      line?.product && typeof line.product === 'object'
+        ? { ...line, product: omitCostKeys(line.product, ORDER_ITEM_COST_FIELDS) }
+        : line,
+    ),
+  };
+}
+
+/** 报表/看板裁剪：totals/kpis/campusRows/caliber/rows 容器内剔除毛利口径字段。 */
+export function trimReportCost<T extends object>(report: T): T {
+  const out = { ...(report as Record<string, unknown>) };
+  for (const key of ['totals', 'kpis', 'campusRows', 'caliber', 'rows']) {
+    const v = out[key];
+    if (Array.isArray(v))
+      out[key] = v.map((r) =>
+        r && typeof r === 'object' ? omitCostKeys(r, REPORT_COST_FIELDS) : r,
+      );
+    else if (v && typeof v === 'object') out[key] = omitCostKeys(v, REPORT_COST_FIELDS);
+  }
+  return out as T;
+}
+
 @Injectable()
 export class AdminService {
   constructor(
@@ -105,7 +187,7 @@ export class AdminService {
    * exception 的未结单（不限当日，代表当前待处理）。轻量 groupBy，不复用
    * 单校区 dashboard 的重查询。
    */
-  private async hqDashboard() {
+  private async hqDashboard(costRead = true) {
     const startOfToday = new Date();
     startOfToday.setHours(0, 0, 0, 0);
     const [campuses, paidAgg, userAgg, exceptionAgg, buildingAgg, profitRows] =
@@ -235,9 +317,14 @@ export class AdminService {
       },
     };
   }
-  async dashboard(campusId: string) {
+  async dashboard(campusId: string, costRead = true) {
     // IKAJSL：总部账号 campusId 空 → 跨校区汇总；带 ?campus= 可看单校区明细
-    if (!campusId) return this.hqDashboard();
+    // IKKRMY：总部汇总含校区毛利/综合毛利，无 cost.read 时裁剪（单校区看板
+    // 无成本字段，天然干净）
+    if (!campusId) {
+      const report = await this.hqDashboard();
+      return costRead ? report : trimReportCost(report);
+    }
     const [campus, orders, buildings, trend, activities, staffRows, stageRows] =
       await Promise.all([
         this.db.campus.findFirstOrThrow({ where: { id: campusId } }),
@@ -652,6 +739,8 @@ export class AdminService {
     // （campus-official 伪校区的解绑过渡标记）。缺省不过滤——现有全部调用方
     // （含 /admin/products view=official 旧路径）查询语义零改动。
     catalogScope?: 'platform',
+    // IKKRMY：cost.read=false 时输出剔除成本字段（控制器按 capability 计算）
+    costRead = true,
   ) {
     // 先取本校区已导入行指向的官方商品 id 集；为空必须跳过 notIn
     // （Prisma notIn: [] 会排除全部行）
@@ -722,9 +811,11 @@ export class AdminService {
       ),
     }));
     // IKB3K9：状态 Tab 服务端过滤（口径含售罄映射，直接滤映射后状态）
-    return statuses?.length
+    // IKKRMY：无 cost.read 时输出层统一裁剪成本字段（CSV 导出同口径）
+    const scoped = statuses?.length
       ? rows.filter((x) => statuses.includes(x.status))
       : rows;
+    return costRead ? scoped : scoped.map((x) => trimProductCost(x));
   }
   /** 商品状态计数（IKB3K9 Tab 角标）：口径同列表（售罄=在售但库存 0）。 */
   async productStatusCounts(campusId: string) {
@@ -741,13 +832,14 @@ export class AdminService {
    * products/createProduct/updateProduct 传 OFFICIAL_CAMPUS_ID），为 IKKRMX
    * 组织导入做准备；旧 /admin/products view=official 路径保留兼容。
    */
-  platformProducts(statuses?: string[], categoryId?: string) {
+  platformProducts(statuses?: string[], categoryId?: string, costRead = true) {
     return this.products(
       OFFICIAL_CAMPUS_ID,
       statuses,
       categoryId,
       undefined,
       'platform',
+      costRead,
     );
   }
 
@@ -777,6 +869,8 @@ export class AdminService {
     organizationId: string,
     statuses?: string[],
     categoryId?: string,
+    // IKKRMY：组织目录成本字段（组织进货价/平台批发价快照）同口径裁剪
+    costRead = true,
   ) {
     await this.assertOrganization(organizationId);
     const xs = await this.db.product.findMany({
@@ -799,9 +893,11 @@ export class AdminService {
       actualStock: x.stock + x.lockedStock,
       availableStock: x.stock,
     }));
-    return statuses?.length
+    // IKKRMY：组织目录行无 cost.read 账号剔除成本字段（supplyMode 一并隐藏）
+    const scoped = statuses?.length
       ? rows.filter((x) => statuses.includes(x.status))
       : rows;
+    return costRead ? scoped : scoped.map((x) => trimProductCost(x));
   }
 
   /**
@@ -1540,7 +1636,7 @@ export class AdminService {
     );
     return promo;
   }
-  async lookupBarcode(barcode: string, campusId: string) {
+  async lookupBarcode(barcode: string, campusId: string, costRead = true) {
     // 条码唯一改校区维度（IKAJSM）：本校区库内命中优先
     const product = await this.db.product.findFirst({
       where: { barcode, campusId },
@@ -1550,9 +1646,11 @@ export class AdminService {
         found: true,
         source: 'product-database',
         product: {
-          // IKC1AC：进货价不下发校区端（扫码回填场景同样剔除）
-          ...product,
-          costPrice: undefined,
+          // IKC1AC：进货价不下发校区端（扫码回填场景同样剔除）；
+          // IKKRMY：无 cost.read 连批发价/本地采购价/采购来源一并剔除
+          ...(costRead
+            ? { ...product, costPrice: undefined }
+            : trimProductCost(product)),
           price: this.num(product.price),
           originalPrice: this.num(product.originalPrice),
           weight: this.num(product.weight),
@@ -1575,7 +1673,8 @@ export class AdminService {
           found: true,
           source: 'official-library',
           product: {
-            ...official,
+            // IKKRMY：官方库命中同口径（默认含成本，供导入建档回填）
+            ...(costRead ? official : trimProductCost(official)),
             price: this.num(official.price),
             originalPrice: this.num(official.originalPrice),
             weight: this.num(official.weight),
@@ -2070,10 +2169,11 @@ export class AdminService {
     );
     return after;
   }
-  async inventory(campusId: string, categoryId?: string) {
+  async inventory(campusId: string, categoryId?: string, costRead = true) {
     // IKA0VB 去批次：合成批次号/有效期已移除（零食饮料初期不做效期批次管理）。
     const [items, campus] = await Promise.all([
-      this.products(campusId, undefined, categoryId),
+      // IKKRMY：库存总览复用商品行——成本字段同口径裁剪
+      this.products(campusId, undefined, categoryId, undefined, undefined, costRead),
       this.db.campus.findFirstOrThrow({ where: { id: campusId } }),
     ]);
     return items.map((x) => ({
@@ -3560,7 +3660,13 @@ export class AdminService {
   // 同一张发货单同口径；行=日期×校区，毛利率万分比整数。不建跑批表
   // （T+1 语义=昨日数已落定不再变，聚合即对账）。
 
-  async hqDailyReport(start: string, end: string, campusId?: string) {
+  async hqDailyReport(
+    start: string,
+    end: string,
+    campusId?: string,
+    // IKKRMY：无 cost.read 剔除成本/毛利列（结构性不可达防御，见文件头注释）
+    costRead = true,
+  ) {
     // 业务日界按北京时间切
     const startAt = new Date(`${start}T00:00:00+08:00`);
     const endAt = new Date(`${end}T23:59:59.999+08:00`);
@@ -3642,16 +3748,32 @@ export class AdminService {
     const tWholesale = rows.reduce((s, r) => s + r.wholesaleTotal, 0);
     const tCost = rows.reduce((s, r) => s + r.costTotal, 0);
     const tGross = tWholesale - tCost;
-    return {
-      totals: {
-        shipments: rows.reduce((s, r) => s + r.shipments, 0),
-        wholesaleTotal: tWholesale,
-        costTotal: tCost,
-        gross: tGross,
-        marginRate: tWholesale ? Math.round((tGross / tWholesale) * 10000) : 0,
-      },
-      rows,
-    };
+    return costRead
+      ? {
+          totals: {
+            shipments: rows.reduce((s, r) => s + r.shipments, 0),
+            wholesaleTotal: tWholesale,
+            costTotal: tCost,
+            gross: tGross,
+            marginRate: tWholesale
+              ? Math.round((tGross / tWholesale) * 10000)
+              : 0,
+          },
+          rows,
+        }
+      : // IKKRMY：无 cost.read 输出零成本口径（costTotal/gross/marginRate 剔除）
+        trimReportCost({
+          totals: {
+            shipments: rows.reduce((s, r) => s + r.shipments, 0),
+            wholesaleTotal: tWholesale,
+            costTotal: tCost,
+            gross: tGross,
+            marginRate: tWholesale
+              ? Math.round((tGross / tWholesale) * 10000)
+              : 0,
+          },
+          rows,
+        });
   }
 
   // ==================== 校区经营日报（IKFOPS）：C 端订单实时聚合 ====================
@@ -3668,6 +3790,8 @@ export class AdminService {
       buildingId?: string;
       hqScope: boolean;
       userCampusId?: string;
+      /** IKKRMY：无 cost.read 剔除成本/毛利口径字段（结构性不可达防御） */
+      costRead?: boolean;
     },
   ) {
     // 业务日界按北京时间切
@@ -3792,6 +3916,23 @@ export class AdminService {
     const tMargin = rows.reduce((s, r) => s + r.marginTotal, 0);
     // IKISZ2+：合计毛利率按合计金额重算（非行均值），productTotal 随 rows 带出
     const tProduct = rows.reduce((s, r) => s + (r.productTotal ?? 0), 0);
+    // IKKRMY：无 cost.read 输出零成本口径（costTotal/毛利额/毛利率全剔除）
+    if (opts.costRead === false)
+      return trimReportCost({
+        totals: {
+          orders: rows.reduce((s, r) => s + r.orders, 0),
+          salesTotal: tSales,
+          costTotal: tCost,
+          productTotal: tProduct,
+          marginTotal: tMargin,
+          gross: tGross,
+          marginRawRate: tProduct
+            ? Math.round((tMargin / tProduct) * 10000)
+            : 0,
+          marginRate: tSales ? Math.round((tGross / tSales) * 10000) : 0,
+        },
+        rows,
+      });
     return {
       totals: {
         orders: rows.reduce((s, r) => s + r.orders, 0),
@@ -4083,6 +4224,8 @@ export class AdminService {
     deliveryMode?: string,
     start?: string,
     end?: string,
+    // IKKRMY：无 cost.read 时 items 行内成本快照/估算字段剔除（毛利列口径来源）
+    costRead = true,
   ) {
     const statuses =
       status && status !== 'all'
@@ -4141,7 +4284,7 @@ export class AdminService {
         })
       : [];
     const locationById = new Map(locationRows.map((p) => [p.id, p]));
-    return xs.map((x) => ({
+    const mapped = xs.map((x) => ({
       ...x,
       items: ((x.items as any as Array<{ product?: object }>) ?? []).map(
         (line) => {
@@ -4191,6 +4334,8 @@ export class AdminService {
       userPhone: this.maskPhone(x.user.phone),
       packageNo: (x.package as any)?.id ?? '--',
     }));
+    // IKKRMY：成本快照字段输出层裁剪（无 cost.read 不可见，前端毛利列同源隐藏）
+    return costRead ? mapped : mapped.map((row) => trimOrderCost(row));
   }
   /** 订单状态计数（IKAJSP）：一次 groupBy 拉全量状态分布，Tab 角标用；先不做缓存，量级到了再说。
    *  IKAJSL：campusId 空 = 全校区合计。 */
@@ -4222,12 +4367,14 @@ export class AdminService {
     ]);
     return { todayPaid: count, latest };
   }
-  async order(id: string, campusId: string) {
+  async order(id: string, campusId: string, costRead = true) {
     const x = await this.db.order.findFirst({
       where: { id, ...(campusId ? { campusId } : {}) },
     });
     if (!x) throw new NotFoundException('订单不存在');
-    return x;
+    // IKKRMY：订单详情同列表口径——无 cost.read 剔除行内成本快照（内部
+    // 调用方（orderAction/补打小票）走缺省 true，不受影响）
+    return costRead ? x : trimOrderCost(x);
   }
   async orderAction(
     id: string,

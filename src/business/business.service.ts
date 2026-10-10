@@ -255,13 +255,16 @@ export class BusinessService {
    * 供 C 端角标/倒计时与订单快照审计（含 promotionId，下单锁价）。
    */
   private productView(product: any, withDescription = false, promotion?: any) {
-    // IKC1AC：进货价/批发价是内部价格，绝不进 C 端响应
+    // IKC1AC：进货价/批发价是内部价格，绝不进 C 端响应；
+    // IKKRMY：supplyMode（IKKRMX 新列，组织目录采购来源）同口径剔除——
+    // 校区行恒 null 但列随 rest 展开，采购来源不进 C 端
     const {
       description,
       costPrice,
       wholesalePrice,
       localPurchasePrice,
       procurementMode,
+      supplyMode,
       ...rest
     } = product;
     return {

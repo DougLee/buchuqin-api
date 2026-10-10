@@ -146,6 +146,15 @@ export class AdminController {
     return !!ctx && this.rbac.allow(ctx, method, path);
   }
   /**
+   * IKKRMY 成本读取分权：cost.read capability（持任一毛利口径端点=可读，
+   * IKKRMR 字典 ANY-of 语义）→ 商品/订单/报表输出层是否保留成本/毛利字段。
+   * 服务端裁剪为唯一闸门；admin 前端仅按同源字典隐藏列（GET /admin/rbac/
+   * capabilities），CSV 导出由前端按同一响应列生成=同口径。
+   */
+  private costRead(req: AuthRequest): boolean {
+    return this.rbac.allowCapability(this.ctx(req), 'cost.read');
+  }
+  /**
    * IKKRMP（ADR-0001）：组织级账号=固定组织数据边界（orgLevel='org' 且组织
    * 已配置）。层级是账号属性，优先于角色推导的 platform 视角与校区授权集
    * ——即便组织管理员持有平台级角色，目标校区仍必须属于其组织（fail closed；
@@ -312,7 +321,11 @@ export class AdminController {
   })
   async dashboard(@Req() req: AuthRequest, @Query('campus') campus?: string) {
     return ok(
-      await this.service.dashboard(await this.campusScope(req, campus)),
+      await this.service.dashboard(
+        await this.campusScope(req, campus),
+        // IKKRMY：总部汇总毛利列按 cost.read 裁剪
+        this.costRead(req),
+      ),
     );
   }
   @Get('products')
@@ -342,6 +355,10 @@ export class AdminController {
             : undefined,
           // IKD6FG：分类筛选（官方库/本校区商品共用端点）
           categoryId || undefined,
+          undefined,
+          undefined,
+          // IKKRMY：无 cost.read 剔除进货价/批发价/本地采购价/采购来源
+          this.costRead(req),
         ),
         page,
         pageSize,
@@ -385,6 +402,9 @@ export class AdminController {
           ['on-sale'],
           undefined,
           await this.scopedCampus(req),
+          undefined,
+          // IKKRMY：导入候选池成本字段同口径裁剪
+          this.costRead(req),
         ),
         page,
         pageSize,
@@ -602,6 +622,8 @@ export class AdminController {
       await this.service.lookupBarcode(
         body.barcode,
         this.productCampus(req, view, campus),
+        // IKKRMY：扫码回填同口径（无 cost.read 不下发批发价/采购来源）
+        this.costRead(req),
       ),
     );
   }
@@ -793,6 +815,7 @@ export class AdminController {
       '平台商品目录列表（IKKRMW：分页/关键词/类目/状态；catalogScope=platform 行=原官方库数据源）',
   })
   async platformProducts(
+    @Req() req: AuthRequest,
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
     @Query('keyword') keyword?: string,
@@ -809,6 +832,8 @@ export class AdminController {
                 .filter(Boolean)
             : undefined,
           categoryId || undefined,
+          // IKKRMY：平台目录成本字段同口径裁剪
+          this.costRead(req),
         ),
         page,
         pageSize,
@@ -878,6 +903,8 @@ export class AdminController {
                 .filter(Boolean)
             : undefined,
           categoryId || undefined,
+          // IKKRMY：组织目录成本字段（组织进货价/批发快照/采购来源）同口径裁剪
+          this.costRead(req),
         ),
         page,
         pageSize,
@@ -956,6 +983,8 @@ export class AdminController {
             HQ_CAMPUS_ID,
           // IKD6FG：分类筛选（库存按类别盘点）
           categoryId || undefined,
+          // IKKRMY：库存行复用商品输出——成本字段同口径裁剪
+          this.costRead(req),
         ),
         page,
         pageSize,
@@ -1183,6 +1212,9 @@ export class AdminController {
         start || yesterday,
         end || yesterday,
         campusId || undefined,
+        // IKKRMY：日报成本/毛利列按 cost.read 裁剪（本端点为授权锚点，
+        // 可调用者必持 cost.read——分支为结构性防御）
+        this.costRead(req),
       ),
     );
   }
@@ -1212,6 +1244,8 @@ export class AdminController {
           buildingId: buildingId || undefined,
           hqScope,
           userCampusId: await this.scopedCampus(req),
+          // IKKRMY：日报成本/毛利列按 cost.read 裁剪（结构性防御同 hq-daily）
+          costRead: this.costRead(req),
         },
       ),
     );
@@ -1359,6 +1393,8 @@ export class AdminController {
           // IKJ9XQ 对账：创建时间范围（YYYY-MM-DD）
           start || undefined,
           end || undefined,
+          // IKKRMY：订单行成本快照按 cost.read 裁剪（列表毛利列口径来源）
+          this.costRead(req),
         ),
         page,
         pageSize,
@@ -1395,7 +1431,14 @@ export class AdminController {
     @Req() req: AuthRequest,
     @Param('id') id: string,
   ) {
-    return ok(await this.service.order(id, await this.scopedCampus(req)));
+    return ok(
+      await this.service.order(
+        id,
+        await this.scopedCampus(req),
+        // IKKRMY：订单详情毛利行口径来源（行内成本快照）同列表裁剪
+        this.costRead(req),
+      ),
+    );
   }
   @Post('orders/:id/actions/:action') async orderAction(
     @Req() req: AuthRequest,
