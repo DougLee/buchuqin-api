@@ -252,6 +252,6 @@ describe('organization baseline (IKKRMM / ADR-0001)', () => {
     await expect(controller.organizationDetail('org-a')).resolves.toBeDefined();
     expect(calls).toEqual(['list', 'detail:org-a']);
     // 判权语义钉死：超管请求夹具下端点可调用（guard 层模式已在上文覆盖）
-    expect(specReq('admin').rbac).toBeDefined();
+    expect((specReq('admin') as { rbac?: unknown }).rbac).toBeDefined();
   });
 });
