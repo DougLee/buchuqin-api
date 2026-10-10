@@ -195,6 +195,16 @@ model AdminAccount {
   sessionVersion Int               @default(0)
   /// Explicit migration marker; zero grants can mean deliberate revocation.
   rbacMigrated Boolean              @default(false)
+  /// IKKRMP（ADR-0001）：固定数据边界层级——'platform' 平台级（跨组织不受限）|
+  /// 'org' 组织级（organizationId 固定组织，目标校区必须属于该组织）|
+  /// 'campus' 校区级（恒本校区/授权集，现状语义）。NULL=历史账号按 campusId
+  /// 推导：空串或 campus-hq 视作平台级，其余校区级——迁移只加列不回填，
+  /// 推导式与存量行为等价（组织 A 全部账号零变化）。
+  orgLevel       String?
+  /// 组织级账号固定组织（orgLevel='org' 时必填；platform/campus 级恒 NULL，
+  /// 归属由 campusId→campus.organizationId 推导）。纯字符串不建外键
+  /// （同 campusId 先例，组织生命周期独立于账号）。
+  organizationId String?
   createdAt    DateTime            @default(now())
   updatedAt    DateTime            @updatedAt
   accesses     AdminCampusAccess[]

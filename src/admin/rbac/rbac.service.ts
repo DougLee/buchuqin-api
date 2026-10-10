@@ -12,6 +12,7 @@ import { hash } from 'bcryptjs';
 import type { CreateAccountDto, UpdateAccountDto } from '../dto';
 import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../../database/prisma.service';
+import { HQ_CAMPUS_ID } from '../../common/campus';
 import { isSuperOnlyOperation, PLATFORM_PATTERNS } from './access-policy';
 import { ALL_PERM_PATTERNS, MENU_NODES, ROLE_TEMPLATES, SUPER_ROLE_CODE, LEGACY_ROLE_MAP } from './registry';
 
@@ -40,10 +41,35 @@ export interface RbacContext {
   /**
    * IKKRMM（ADR-0001）：上下文校区的组织归属——账号→campusId→campus.
    * organizationId 推导；平台账号（平台级授权）属平台层无组织（null）。
-   * 本阶段仅透出给后续 issue（IKKRMP 账号层级固定）消费，不参与任何
-   * 权限判定。可空：旧上下文（spec 夹具/缓存）缺省视为未知。
+   * IKKRMP 起：账号显式 organizationId（组织级固定组织）优先于推导。
+   * 可空：旧上下文（spec 夹具/缓存）缺省视为未知。
    */
   organizationId?: string | null;
+  /**
+   * IKKRMP（ADR-0001）：账号固定数据边界层级——'platform' 跨组织不受限 |
+   * 'org' 组织级（organizationId 固定组织，目标校区必须属于该组织）|
+   * 'campus' 校区级（恒本校区/授权集）。账号列 NULL=历史账号按 campusId
+   * 推导：空串或 campus-hq→platform，其余→campus。判权不受影响，仅
+   * campusScope/scopedCampus/assertCampusAllowed 消费（org 级）。
+   */
+  orgLevel?: 'platform' | 'org' | 'campus';
+}
+
+/**
+ * IKKRMP（ADR-0001）：历史账号（orgLevel 列 NULL）的层级推导——campusId
+ * 空串或 campus-hq（总部仓）视作平台级，其余校区级。推导式与存量行为
+ * 等价：组织 A 现有账号全部走推导=行为零变化。
+ */
+export function resolveOrgLevel(campusId: string): 'platform' | 'campus' {
+  return !campusId || campusId === HQ_CAMPUS_ID ? 'platform' : 'campus';
+}
+
+const ORG_LEVELS = ['platform', 'org', 'campus'] as const;
+type OrgLevel = (typeof ORG_LEVELS)[number];
+
+/** 列值归一：合法层级原样；NULL/非法值回落 campusId 推导（防御脏数据放大边界） */
+function normalizeOrgLevel(raw: string | null, campusId: string): OrgLevel {
+  return ORG_LEVELS.includes(raw as OrgLevel) ? (raw as OrgLevel) : resolveOrgLevel(campusId);
 }
 
 /** URL 模式匹配：模式 "METHOD /admin/x/:id" 与请求比对，:seg 通配单段 */
@@ -325,16 +351,24 @@ export class RbacService implements OnModuleInit {
       patterns,
       platformPatterns,
       menuCodes,
-      // IKKRMM：校区级账号=上下文校区的组织；平台级账号=平台层（无组织）。
-      // campusId 落不到真实校区（空串/已删）→ null。不参与判权（IKKRMP 的活）。
-      organizationId: platform
-        ? null
-        : (
-            await this.db.campus.findUnique({
-              where: { id: account.campusId },
-              select: { organizationId: true },
-            })
-          )?.organizationId ?? null,
+      // IKKRMP：organizationId 装载——账号显式固定组织优先（组织级账号）；
+      // 否则沿用 IKKRMM 推导：校区级账号=上下文校区的组织，平台级账号=
+      // 平台层（无组织）；campusId 落不到真实校区（空串/已删）→ null。
+      organizationId: account.organizationId
+        ? account.organizationId
+        : platform
+          ? null
+          : (
+              await this.db.campus.findUnique({
+                where: { id: account.campusId },
+                select: { organizationId: true },
+              })
+            )?.organizationId ?? null,
+      // IKKRMP：orgLevel 记入 ctx——显式列优先（非法值防御性回落推导）；
+      // 历史账号（NULL）按 campusId 推导：空串或 campus-hq（总部仓）视作
+      // 平台级，其余校区级。推导结果与存量行为等价（不改变 campusScope 等
+      // 既有分支，仅 org 级新增边界）。
+      orgLevel: normalizeOrgLevel(account.orgLevel, account.campusId),
     };
     this.cache.set(key, { ctx, expiresAt: Date.now() + RbacService.TTL_MS });
     return ctx;
@@ -347,6 +381,24 @@ export class RbacService implements OnModuleInit {
     if (matchUrl(PLATFORM_PATTERNS, method, path))
       return matchUrl(ctx.platformPatterns ?? [], method, path);
     return matchUrl(ctx.patterns, method, path);
+  }
+
+  /**
+   * IKKRMP（ADR-0001）数据边界：组织级账号的目标校区必须属于账号固定组织
+   * （campus.organizationId === ctx.organizationId）。平台级不受限；校区级
+   * 不走本方法（恒本校区/授权集，由 campusScope/scopedCampus/assertCampusAllowed
+   * 既有逻辑保证）。违者：校区不存在 400 / 越组织 403。每次请求实时查库
+   * （不走 15s 权限缓存）——校区换绑组织即刻生效，?campus= 切换不改变边界。
+   */
+  async assertCampusInScope(ctx: RbacContext, campusId: string): Promise<void> {
+    if (ctx.orgLevel !== 'org' || !ctx.organizationId) return;
+    const campus = await this.db.campus.findUnique({
+      where: { id: campusId },
+      select: { organizationId: true },
+    });
+    if (!campus) throw new BadRequestException('目标校区不存在');
+    if ((campus.organizationId ?? null) !== ctx.organizationId)
+      throw new ForbiddenException('目标校区不属于账号所属组织');
   }
 
   /* ==================== permmenu 契约（对齐蛋词 {perms, menus}） ==================== */
@@ -610,9 +662,43 @@ export class RbacService implements OnModuleInit {
       return { id: accountId, status };
   }
 
+  /**
+   * IKKRMP：账号固定层级/组织入参校验与归一（仅超管可达——accounts 写端点
+   * isSuperOnlyOperation 已拦截非超管）。合并语义：update 未传字段沿用现值，
+   * 显式 null=清除回历史推导。规则（issue 拍板）：
+   * - org 级必须指定组织，且组织须已存在；
+   * - platform 级不得指定组织；campus/未定级同理（归属恒由 campusId 推导）。
+   */
+  private async resolveAccountOrgFields(
+    input: { orgLevel?: 'platform' | 'org' | 'campus' | null; organizationId?: string | null },
+    existing?: { orgLevel: string | null; organizationId: string | null } | null,
+  ): Promise<{ orgLevel: string | null; organizationId: string | null }> {
+    const orgLevel =
+      input.orgLevel !== undefined
+        ? input.orgLevel ?? null
+        : existing?.orgLevel ?? null;
+    const organizationId =
+      input.organizationId !== undefined
+        ? input.organizationId?.trim() || null
+        : existing?.organizationId ?? null;
+    if (orgLevel === 'org') {
+      if (!organizationId)
+        throw new BadRequestException('组织级账号必须指定所属组织');
+      const org = await this.db.organization.findUnique({
+        where: { id: organizationId },
+        select: { id: true },
+      });
+      if (!org) throw new BadRequestException(`组织不存在: ${organizationId}`);
+    } else if (organizationId) {
+      throw new BadRequestException('仅组织级账号可固定组织（platform/campus 级归属由校区推导）');
+    }
+    return { orgLevel, organizationId };
+  }
+
   /** Account fields, grants and audit commit together; all super changes share one lock. */
   async createAccount(actor: { id: string; username: string }, input: CreateAccountDto) {
     const passwordHash = await hash(input.password, 10);
+    const org = await this.resolveAccountOrgFields(input);
     const account = await this.db.$transaction(async tx => {
       await this.lockSuperGuard(tx);
       if (await tx.adminAccount.findUnique({ where: { username: input.username } }))
@@ -621,11 +707,16 @@ export class RbacService implements OnModuleInit {
       const created = await tx.adminAccount.create({ data: {
         username: input.username, nickname: input.nickname ?? '', passwordHash,
         role: 'rbac', campusId, rbacMigrated: true,
+        orgLevel: org.orgLevel, organizationId: org.organizationId,
       } });
       await this.replaceAccountGrants(tx, actor, created.id, input.grants ?? []);
       await this.audit(tx, {
         operator: actor.username, action: 'rbac.account.create', entityType: 'admin-account',
-        entityId: created.id, campusId, after: { username: input.username, nickname: created.nickname },
+        entityId: created.id, campusId,
+        after: {
+          username: input.username, nickname: created.nickname,
+          orgLevel: org.orgLevel, organizationId: org.organizationId,
+        },
       });
       return { id: created.id, username: created.username, campusId };
     });
@@ -634,7 +725,10 @@ export class RbacService implements OnModuleInit {
   }
 
   async updateAccount(actor: { id: string; username: string }, accountId: string, input: UpdateAccountDto) {
-    if (input.nickname === undefined && !input.password && !input.status && !input.grants)
+    if (
+      input.nickname === undefined && !input.password && !input.status && !input.grants &&
+      input.orgLevel === undefined && input.organizationId === undefined
+    )
       throw new BadRequestException('没有可更新的字段');
     const passwordHash = input.password ? await hash(input.password, 10) : undefined;
     const account = await this.db.$transaction(async tx => {
@@ -644,13 +738,27 @@ export class RbacService implements OnModuleInit {
       // 内置超管（道哥 2026-09-22）：系统唯一身份，不可编辑
       if (before.username === 'admin')
         throw new BadRequestException('内置超级管理员账号不可编辑');
-      if (input.grants) await this.replaceAccountGrants(tx, actor, accountId, input.grants);
+      const org = await this.resolveAccountOrgFields(input, before);
+      const orgChanged =
+        org.orgLevel !== before.orgLevel || org.organizationId !== before.organizationId;
       if (input.grants) await this.replaceAccountGrants(tx, actor, accountId, input.grants);
       if (input.status) await this.changeAccountStatus(tx, actor, accountId, input.status);
       const updated = await tx.adminAccount.update({ where: { id: accountId }, data: {
         ...(input.nickname !== undefined ? { nickname: input.nickname } : {}),
-        ...(passwordHash ? { passwordHash, sessionVersion: { increment: 1 } } : {}),
+        ...(orgChanged ? { orgLevel: org.orgLevel, organizationId: org.organizationId } : {}),
+        ...(passwordHash ? { passwordHash } : {}),
+        // IKKRMP：数据边界变更即刻生效——bump 会话版本踢旧 token（同改密口径）
+        ...(orgChanged || passwordHash ? { sessionVersion: { increment: 1 } } : {}),
       }, select: { id: true, username: true, nickname: true, status: true, role: true } });
+      if (orgChanged) {
+        await this.bumpVersion(tx);
+        await this.audit(tx, {
+          operator: actor.username, action: 'rbac.account.update', entityType: 'admin-account',
+          entityId: accountId, campusId: before.campusId,
+          before: { orgLevel: before.orgLevel, organizationId: before.organizationId },
+          after: { orgLevel: org.orgLevel, organizationId: org.organizationId },
+        });
+      }
       if (input.nickname !== undefined || passwordHash) await this.audit(tx, {
         operator: actor.username, action: 'rbac.account.update', entityType: 'admin-account',
         entityId: accountId, campusId: before.campusId,

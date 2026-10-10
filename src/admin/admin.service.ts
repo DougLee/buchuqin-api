@@ -6410,6 +6410,9 @@ export class AdminService {
         campusId: true,
         status: true,
         createdAt: true,
+        // IKKRMP：账号固定数据边界（NULL=历史推导；组织 UI 属 IKKRMS）
+        orgLevel: true,
+        organizationId: true,
         rbacRoles: {
           include: {
             role: { select: { code: true, name: true, status: true } },

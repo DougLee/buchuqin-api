@@ -531,6 +531,15 @@ export class CreateAccountDto {
   @ValidateNested({ each: true })
   @Type(() => AccountGrantDto)
   grants?: AccountGrantDto[];
+  /**
+   * IKKRMP（ADR-0001）固定数据边界层级：platform 跨组织 | org 组织级 |
+   * campus 校区级。缺省 NULL=历史推导（campusId 空或 campus-hq→平台级，
+   * 其余→校区级）。仅超管可设（accounts 写端点 isSuperOnlyOperation 拦截）。
+   */
+  @IsOptional() @IsIn(['platform', 'org', 'campus'])
+  orgLevel?: 'platform' | 'org' | 'campus';
+  /** 组织级账号固定组织（orgLevel='org' 必填且须已存在；platform/campus 不得指定） */
+  @IsOptional() @IsString() organizationId?: string | null;
 }
 export class UpdateAccountDto {
   @IsOptional() @IsString() @MaxLength(30) nickname?: string;
@@ -547,6 +556,11 @@ export class UpdateAccountDto {
   @ValidateNested({ each: true })
   @Type(() => AccountGrantDto)
   grants?: AccountGrantDto[];
+  /** IKKRMP：改固定层级；显式 null=清除回历史推导 */
+  @IsOptional() @IsIn(['platform', 'org', 'campus'])
+  orgLevel?: 'platform' | 'org' | 'campus' | null;
+  /** IKKRMP：改固定组织；显式 null=清除（合并后状态校验见 RBAC 服务） */
+  @IsOptional() @IsString() organizationId?: string | null;
 }
 /** 商品类别（全局字典）：名称 + 排序 + 类别图 + 可见性开关（IKC9M4），
  *  删除时有关联商品拒绝。 */

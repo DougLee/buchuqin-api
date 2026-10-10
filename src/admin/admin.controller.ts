@@ -124,9 +124,20 @@ export class AdminController {
     return !!ctx && this.rbac.allow(ctx, method, path);
   }
   /**
+   * IKKRMP（ADR-0001）：组织级账号=固定组织数据边界（orgLevel='org' 且组织
+   * 已配置）。层级是账号属性，优先于角色推导的 platform 视角与校区授权集
+   * ——即便组织管理员持有平台级角色，目标校区仍必须属于其组织（fail closed；
+   * 未配置组织的 org 级账号回落既有校区级逻辑=更窄，不放大）。
+   */
+  private orgBounded(ctx: RbacContext): boolean {
+    return ctx.orgLevel === 'org' && !!ctx.organizationId;
+  }
+  /**
    * 多校区数据范围（RBAC V1 + IKJA7Y）：平台级授权 → ?campus= 可选聚焦（需真实
    * 存在的校区，服务端校验，空=跨校区全量）；校区级授权 → 参数在授权集内则用之
    * （页内校区下拉替代顶栏切换器），集外/缺省恒本上下文校区（杜绝越权校区）。
+   * IKKRMP：组织级账号 ?campus= 本组织任意校区（无需逐校区授权），缺省本
+   * 上下文校区；越组织 403。切换不改变数据边界（每次请求重新校验归属）。
    */
   private async campusScope(
     req: AuthRequest,
@@ -135,6 +146,12 @@ export class AdminController {
     const ctx = this.ctx(req);
     const c =
       (campus ?? (req.query?.campus as string | undefined))?.trim() ?? '';
+    if (this.orgBounded(ctx)) {
+      // 组织级不支持空串=跨校区全量（服务层尚无按组织集聚合），恒单校区落点
+      const target = c || ctx.campusId;
+      await this.rbac.assertCampusInScope(ctx, target);
+      return target;
+    }
     if (ctx.platform) {
       if (c && !(await this.rbac.knownCampusIds()).has(c))
         throw new BadRequestException('目标校区不存在');
@@ -152,6 +169,7 @@ export class AdminController {
    * 端点（券/楼栋/员工/打印机…）的校区维度取值。?campus= 优先（平台需真实
    * 存在；校区级需授权集内），缺省账号落点/本校区。未传参时与原
    * req.user.campusId 行为完全一致（向后兼容）。
+   * IKKRMP：组织级账号按组织边界取值（本组织任意校区/缺省落点），越组织 403。
    */
   private async scopedCampus(
     req: AuthRequest,
@@ -160,6 +178,11 @@ export class AdminController {
     const ctx = this.ctx(req);
     const c =
       (campus ?? (req.query?.campus as string | undefined))?.trim() ?? '';
+    if (this.orgBounded(ctx)) {
+      const target = c || ctx.campusId;
+      await this.rbac.assertCampusInScope(ctx, target);
+      return target;
+    }
     if (!c) return ctx.campusId;
     if (ctx.platform) {
       if (!(await this.rbac.knownCampusIds()).has(c))
@@ -170,7 +193,8 @@ export class AdminController {
       throw new ForbiddenException('未授权在该校区操作');
     return c;
   }
-  /** 校区级写入目标校验：目标校区必须在授权范围内（平台级=存在即可；校区级=授权集内） */
+  /** 校区级写入目标校验：目标校区必须在授权范围内（平台级=存在即可；校区级=授权集内；
+   *  IKKRMP 组织级=目标校区必须属于账号组织） */
   private async assertCampusAllowed(
     req: AuthRequest,
     campusId?: string,
@@ -178,6 +202,11 @@ export class AdminController {
     const ctx = this.ctx(req);
     const target = campusId?.trim() || ctx.campusId;
     if (!target) throw new BadRequestException('未指定校区');
+    if (this.orgBounded(ctx)) {
+      // assertCampusInScope 自带存在性校验（不存在 400 / 越组织 403）
+      await this.rbac.assertCampusInScope(ctx, target);
+      return target;
+    }
     if (!(await this.rbac.knownCampusIds()).has(target))
       throw new BadRequestException('校区不存在');
     if (!ctx.platform && !ctx.campuses.includes(target))
