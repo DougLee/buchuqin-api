@@ -9,6 +9,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
+import { hash } from 'bcryptjs';
 import ExcelJS from 'exceljs';
 import { PrismaService } from '../database/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -32,11 +33,14 @@ import type {
   BindPrinterDto,
   CreateDispatchInvitationDto,
   CreateLocationDto,
+  CreateOrganizationDto,
   CreateProductDto,
   CreatePromotionDto,
   CreateRestockBatchDto,
   CreateOrgProductDto,
+  OrganizationBootstrapDto,
   UpdateOrgProductDto,
+  UpdateOrganizationDto,
   UpdateRestockBatchDto,
   SaveRestockOrderDto,
   AuditRestockOrderDto,
@@ -6068,6 +6072,14 @@ export class AdminService {
           (n, c) => n + (usersByCampus.get(c.id) ?? 0),
           0,
         ),
+        // IKKRMS：列表补微信配置位（编辑抽屉直接用，不必逐行拉详情）
+        wxAppId: o.wxAppId,
+        mchId: o.mchId,
+        serialNo: o.serialNo,
+        notifyDomain: o.notifyDomain,
+        hasWxSecret: o.wxSecret != null,
+        hasMchApiV3Key: o.mchApiV3Key != null,
+        hasPrivateKey: o.privateKey != null,
       };
     });
   }
@@ -6113,14 +6125,360 @@ export class AdminService {
       userCount,
     };
   }
+
+  /* ---------- 组织 CRUD + 开通（IKKRMS，ADR-0001）：平台端开通组织 B ---------- */
+  // 全部写端点超管专属（access-policy isSuperOnlyOperation 拦截）；registry
+  // organizations.write 按钮节点仅供权限目录展示与角色编辑，判权不消费。
+
+  /** 组织行 → API 返回（敏感凭据只回布尔，与 organizationDetail 同口径）。 */
+  private organizationView(org: {
+    id: string; name: string; shortName: string; status: string;
+    createdAt: Date; wxAppId: string | null; mchId: string | null;
+    serialNo: string | null; notifyDomain: string | null;
+    wxSecret: string | null; mchApiV3Key: string | null; privateKey: string | null;
+  }) {
+    return {
+      id: org.id,
+      name: org.name,
+      shortName: org.shortName,
+      status: org.status,
+      createdAt: org.createdAt,
+      wxAppId: org.wxAppId,
+      mchId: org.mchId,
+      serialNo: org.serialNo,
+      notifyDomain: org.notifyDomain,
+      hasWxSecret: org.wxSecret != null,
+      hasMchApiV3Key: org.mchApiV3Key != null,
+      hasPrivateKey: org.privateKey != null,
+    };
+  }
+
+  /**
+   * 组织唯一性查重（name/shortName/wxAppId）。ADR 决策（IKKRMS 钉死）：
+   * wxAppId 一经登记，AppID→组织映射即生效（IKKRMO resolveOrganizationByAppId
+   * 命中即把该小程序的登录/注册/切校区限定进本组织校区集合）——登记与换绑
+   * 两个入口都必须查重，否则两个组织挂同一 AppID 时映射不确定（findFirst
+   * 谁先命中算谁）。组织 A 现状 wxAppId=NULL 不参与比较（NULL≠NULL）。
+   */
+  private async assertOrganizationUnique(
+    checks: Array<{
+      field: 'name' | 'shortName' | 'wxAppId';
+      label: string;
+      value?: string | null;
+    }>,
+    excludeId?: string,
+  ) {
+    for (const c of checks) {
+      const v = c.value?.trim();
+      if (!v) continue;
+      const hit = await this.db.organization.findFirst({
+        where: { [c.field]: v, ...(excludeId ? { id: { not: excludeId } } : {}) },
+        select: { id: true },
+      });
+      if (hit) throw new BadRequestException(`${c.label} 已被其他组织登记: ${v}`);
+    }
+  }
+
+  /** 组织新增（超管）：name/shortName/wxAppId 必填唯一；微信凭据可随后补。 */
+  async createOrganization(body: CreateOrganizationDto, operator: string) {
+    await this.assertOrganizationUnique([
+      { field: 'name', label: '组织名称', value: body.name },
+      { field: 'shortName', label: '组织简称', value: body.shortName },
+      { field: 'wxAppId', label: '小程序 AppID', value: body.wxAppId },
+    ]);
+    const org = await this.db.organization.create({
+      data: {
+        name: body.name.trim(),
+        shortName: body.shortName.trim(),
+        wxAppId: body.wxAppId.trim(),
+        ...(body.wxSecret ? { wxSecret: body.wxSecret } : {}),
+        ...(body.mchId ? { mchId: body.mchId } : {}),
+        ...(body.mchApiV3Key ? { mchApiV3Key: body.mchApiV3Key } : {}),
+        ...(body.serialNo ? { serialNo: body.serialNo } : {}),
+        ...(body.privateKey ? { privateKey: body.privateKey } : {}),
+        ...(body.notifyDomain ? { notifyDomain: body.notifyDomain.trim() } : {}),
+      },
+    });
+    await this.audit(
+      operator,
+      'organization.create',
+      'organization',
+      org.id,
+      null,
+      // 审计同样只留敏感字段布尔位（同改密 passwordReset 口径）
+      {
+        name: org.name,
+        shortName: org.shortName,
+        wxAppId: org.wxAppId,
+        wxSecretConfigured: org.wxSecret != null,
+        mchId: org.mchId,
+      },
+      '',
+    );
+    return this.organizationView(org);
+  }
+
+  /**
+   * 组织编辑（超管；含微信配置更新）。合并语义：未传不动；wxSecret/
+   * mchApiV3Key/privateKey 等只写不回读字段显式 null=清除、空串视同清除；
+   * wxAppId 换绑唯一性强校验（见 assertOrganizationUnique ADR 注释）。
+   */
+  async updateOrganization(
+    id: string,
+    body: UpdateOrganizationDto,
+    operator: string,
+  ) {
+    const before = await this.db.organization.findUnique({ where: { id } });
+    if (!before) throw new BadRequestException(`组织不存在: ${id}`);
+    await this.assertOrganizationUnique(
+      [
+        { field: 'name', label: '组织名称', value: body.name },
+        { field: 'shortName', label: '组织简称', value: body.shortName },
+        { field: 'wxAppId', label: '小程序 AppID', value: body.wxAppId },
+      ],
+      id,
+    );
+    const after = await this.db.organization.update({
+      where: { id },
+      data: {
+        ...(body.name !== undefined ? { name: body.name.trim() } : {}),
+        ...(body.shortName !== undefined
+          ? { shortName: body.shortName.trim() }
+          : {}),
+        ...(body.wxAppId !== undefined
+          ? { wxAppId: body.wxAppId?.trim() || null }
+          : {}),
+        ...(body.wxSecret !== undefined ? { wxSecret: body.wxSecret || null } : {}),
+        ...(body.mchId !== undefined ? { mchId: body.mchId || null } : {}),
+        ...(body.mchApiV3Key !== undefined
+          ? { mchApiV3Key: body.mchApiV3Key || null }
+          : {}),
+        ...(body.serialNo !== undefined ? { serialNo: body.serialNo || null } : {}),
+        ...(body.privateKey !== undefined
+          ? { privateKey: body.privateKey || null }
+          : {}),
+        ...(body.notifyDomain !== undefined
+          ? { notifyDomain: body.notifyDomain?.trim() || null }
+          : {}),
+      },
+    });
+    await this.audit(
+      operator,
+      'organization.update',
+      'organization',
+      id,
+      this.organizationAuditView(before),
+      this.organizationAuditView(after),
+      '',
+    );
+    return this.organizationView(after);
+  }
+
+  /** 审计快照（非敏感字段透出，敏感凭据只留布尔位）。 */
+  private organizationAuditView(org: {
+    name: string; shortName: string; wxAppId: string | null; mchId: string | null;
+    serialNo: string | null; notifyDomain: string | null;
+    wxSecret: string | null; mchApiV3Key: string | null; privateKey: string | null;
+  }) {
+    return {
+      name: org.name,
+      shortName: org.shortName,
+      wxAppId: org.wxAppId,
+      mchId: org.mchId,
+      serialNo: org.serialNo,
+      notifyDomain: org.notifyDomain,
+      hasWxSecret: org.wxSecret != null,
+      hasMchApiV3Key: org.mchApiV3Key != null,
+      hasPrivateKey: org.privateKey != null,
+    };
+  }
+
+  /** 组织启停（超管）。停用后组织校区/账号的联动处置属 IKKRMP，本阶段不消费。 */
+  async setOrganizationStatus(
+    id: string,
+    status: 'active' | 'disabled',
+    operator: string,
+  ) {
+    const before = await this.db.organization.findUnique({ where: { id } });
+    if (!before) throw new BadRequestException(`组织不存在: ${id}`);
+    const after = await this.db.organization.update({
+      where: { id },
+      data: { status },
+    });
+    await this.audit(
+      operator,
+      'organization.status',
+      'organization',
+      id,
+      { status: before.status },
+      { status },
+      '',
+    );
+    return this.organizationView(after);
+  }
+
+  /**
+   * 开通组织一条龙（IKKRMS，超管）：组织管理员账号 + 首个校区一次提交。
+   * - 管理员：orgLevel='org' + organizationId 绑定（IKKRMP 数据边界源头），
+   *   默认绑 org-admin 预设角色（IKKRMQ：平台级授权+org 级收口），运营
+   *   落点 campusId=本组织首个校区；
+   * - 校区：organizationId 归属 + 官方库模板类别集初始化（同 IKAJSL 建校区）；
+   * - 幂等：已有管理员或校区时返回现状不重复建（部分开通可续开——两段各自
+   *   判存在，重复提交零副作用）。
+   */
+  async bootstrapOrganization(
+    id: string,
+    body: OrganizationBootstrapDto,
+    operator: string,
+  ) {
+    const org = await this.db.organization.findUnique({ where: { id } });
+    if (!org) throw new BadRequestException(`组织不存在: ${id}`);
+    if (org.status !== 'active')
+      throw new BadRequestException('组织已停用，请先启用再开通');
+    // 幂等现状：管理员=orgLevel='org' 且固定本组织的最早账号（停用也算已建，
+    // 不静默另建二号管理员）；校区=本组织最早非官方库校区
+    let admin = await this.db.adminAccount.findFirst({
+      where: { orgLevel: 'org', organizationId: id },
+      orderBy: { createdAt: 'asc' },
+    });
+    let campus = await this.db.campus.findFirst({
+      where: { organizationId: id, status: { not: 'official' } },
+      orderBy: { createdAt: 'asc' },
+    });
+    let adminCreated = false;
+    let campusCreated = false;
+    if (!campus) {
+      campus = await this.createCampusWithTemplates(
+        {
+          name: body.campusName,
+          shortName: body.campusShortName,
+          warehouseName: body.campusWarehouseName,
+        },
+        operator,
+        id,
+      );
+      campusCreated = true;
+    }
+    if (!admin) {
+      // org-admin 预设角色（启动同步登记）：缺失/停用时明确报错而非静默裸建
+      const role = await this.db.adminRole.findUnique({
+        where: { code: 'org-admin' },
+      });
+      if (!role || role.status !== 'active')
+        throw new BadRequestException(
+          '预设角色 org-admin 缺失或已停用，无法开通组织管理员（重启服务触发启动同步可恢复）',
+        );
+      if (
+        await this.db.adminAccount.findUnique({
+          where: { username: body.adminUsername },
+          select: { id: true },
+        })
+      )
+        throw new BadRequestException('用户名已存在');
+      const passwordHash = await hash(body.adminPassword, 10);
+      admin = await this.db.$transaction(async (tx) => {
+        const acc = await tx.adminAccount.create({
+          data: {
+            username: body.adminUsername,
+            passwordHash,
+            nickname: body.adminNickname?.trim() ?? '',
+            role: 'rbac',
+            campusId: campus!.id,
+            rbacMigrated: true,
+            orgLevel: 'org',
+            organizationId: id,
+          },
+        });
+        // IKKRMQ 口径：org-admin 按平台级授权（组织域读+经营面），数据边界
+        // 由账号 orgLevel='org' 收口（层级优先于角色视角）
+        await tx.adminAccountRole.create({
+          data: {
+            accountId: acc.id,
+            roleId: role.id,
+            scope: 'platform',
+            campusId: null,
+            grantedBy: operator,
+          },
+        });
+        return acc;
+      });
+      adminCreated = true;
+    }
+    if (adminCreated || campusCreated)
+      await this.audit(
+        operator,
+        'organization.bootstrap',
+        'organization',
+        id,
+        null,
+        {
+          adminCreated,
+          campusCreated,
+          admin: { username: admin.username, nickname: admin.nickname },
+          campus: { name: campus.name, shortName: campus.shortName },
+        },
+        campus.id,
+      );
+    return {
+      organization: this.organizationView(org),
+      created: { admin: adminCreated, campus: campusCreated },
+      admin: {
+        id: admin.id,
+        username: admin.username,
+        nickname: admin.nickname,
+        status: admin.status,
+      },
+      campus: {
+        id: campus.id,
+        name: campus.name,
+        shortName: campus.shortName,
+        status: campus.status,
+      },
+    };
+  }
+
   /** 校区本体新增（IKAJSL）：新校区接入入口，仅总部长（controller 守卫）。 */
   async createCampus(body: CreateCampusDto, operator: string) {
+    return this.createCampusWithTemplates(
+      {
+        name: body.name,
+        shortName: body.shortName,
+        warehouseName: body.warehouseName,
+        address: body.address,
+        buildingManagerBaseSalary: body.buildingManagerBaseSalary,
+        deliveryFeeInstant: body.deliveryFeeInstant,
+        deliveryFeeScheduled: body.deliveryFeeScheduled,
+        deliveryThreshold: body.deliveryThreshold,
+      },
+      operator,
+    );
+  }
+
+  /**
+   * 建校区 + 官方库模板类别初始化（IKAJSL 建校区与 IKKRMS 开通首校区共用）。
+   * organizationId 缺省=平台层（现状语义零变化）。
+   */
+  private async createCampusWithTemplates(
+    body: {
+      name: string;
+      shortName: string;
+      warehouseName: string;
+      address?: string;
+      buildingManagerBaseSalary?: number;
+      deliveryFeeInstant?: number;
+      deliveryFeeScheduled?: number;
+      deliveryThreshold?: number;
+    },
+    operator: string,
+    organizationId?: string,
+  ) {
     const campus = await this.db.campus.create({
       data: {
         name: body.name,
         shortName: body.shortName,
         warehouseName: body.warehouseName,
         address: body.address ?? '',
+        ...(organizationId ? { organizationId } : {}),
         // IKDOIU：楼长月度底薪（分，0=无底薪），settlements 物化时读取
         ...(body.buildingManagerBaseSalary != null
           ? { buildingManagerBaseSalary: body.buildingManagerBaseSalary }

@@ -95,6 +95,10 @@ import {
   UpdateStaffDto,
   RefundAuditDto,
   AdminCreateRefundDto,
+  CreateOrganizationDto,
+  UpdateOrganizationDto,
+  OrganizationStatusDto,
+  OrganizationBootstrapDto,
 } from './dto';
 
 @ApiTags('PC 管理后台 MVP')
@@ -2193,6 +2197,67 @@ export class AdminController {
   })
   async organizationDetail(@Param('id') id: string) {
     return ok(await this.service.organizationDetail(id));
+  }
+
+  /* ---------- 组织维护 + 开通（IKKRMS，ADR-0001）：超管专属 ---------- */
+  // 写端点全部 isSuperOnlyOperation 拦截（同账号管理先例）：建组/微信配置/
+  // 启停/开通组织 B 是平台超管动作；registry organizations.write 按钮节点
+  // 仅供权限目录展示，非超管勾了也进不来。
+  @Post('organizations')
+  @ApiOperation({
+    summary:
+      '新建组织（IKKRMS：超管；name/shortName/wxAppId 必填唯一——wxAppId 登记后 AppID→组织映射即生效）',
+  })
+  async createOrganization(
+    @Req() req: AuthRequest,
+    @Body() body: CreateOrganizationDto,
+  ) {
+    return ok(
+      await this.service.createOrganization(body, req.user.id),
+      '组织已创建',
+    );
+  }
+  @Patch('organizations/:id')
+  @ApiOperation({
+    summary:
+      '编辑组织/微信配置（IKKRMS：超管；wxSecret/mchApiV3Key/privateKey 只写不回读，null=清除）',
+  })
+  async updateOrganization(
+    @Req() req: AuthRequest,
+    @Param('id') id: string,
+    @Body() body: UpdateOrganizationDto,
+  ) {
+    return ok(
+      await this.service.updateOrganization(id, body, req.user.id),
+      '组织已更新',
+    );
+  }
+  @Post('organizations/:id/status')
+  @ApiOperation({ summary: '组织启停（IKKRMS：超管）' })
+  async setOrganizationStatus(
+    @Req() req: AuthRequest,
+    @Param('id') id: string,
+    @Body() body: OrganizationStatusDto,
+  ) {
+    return ok(
+      await this.service.setOrganizationStatus(id, body.status, req.user.id),
+      body.status === 'active' ? '组织已启用' : '组织已停用',
+    );
+  }
+  @Post('organizations/:id/bootstrap')
+  @ApiOperation({
+    summary:
+      '开通组织一条龙（IKKRMS：超管；组织管理员+首校区，幂等——已有即返回现状不重复建）',
+  })
+  async bootstrapOrganization(
+    @Req() req: AuthRequest,
+    @Param('id') id: string,
+    @Body() body: OrganizationBootstrapDto,
+  ) {
+    return ok(
+      await this.service.bootstrapOrganization(id, body, req.user.id),
+      '开通完成',
+    );
   }
 
   /* ---------- IKHM1O/IKHM1P 校区配置聚合页：送达时段 + 公告 ---------- */

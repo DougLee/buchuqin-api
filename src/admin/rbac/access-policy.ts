@@ -1,7 +1,11 @@
 /** Non-delegable boundaries, independent of editable menu permissions. */
 export function isSuperOnlyOperation(method: string, path: string): boolean {
   if (/^\/admin\/rbac\/(menus|roles|permissions|catalog)(\/|$)/.test(path)) return true;
-  return method !== 'GET' && /^\/admin\/accounts(\/|$)/.test(path);
+  if (method !== 'GET' && /^\/admin\/accounts(\/|$)/.test(path)) return true;
+  // IKKRMS：组织维护与开通=平台超管动作（建组/微信配置/启停/开通组织 B）；
+  // registry organizations.write 按钮节点仅供目录展示与角色编辑，判权不消费
+  //（同账号管理先例）。读端点仍走菜单 perms（平台级能力）。
+  return method !== 'GET' && /^\/admin\/organizations(\/|$)/.test(path);
 }
 
 /** Platform operations cannot be granted through a campus-scoped role. */

@@ -147,6 +147,9 @@ export const MENU_NODES: MenuNodeDef[] = [
   // 校区级授予），页面组件属 IKKRMS（组织 B 开通一条龙），落地前该菜单对
   // 超管显示「页面尚未配置」占位。
   { code: 'organizations', name: '组织管理', type: 1, parent: 'g.sys', path: '/organizations', icon: 'campus', order: 2, perms: ['GET /admin/organizations', 'GET /admin/organizations/:id'], remark: '多租户组织列表/详情（IKKRMM 基线）' },
+  // IKKRMS：组织维护/开通按钮节点——判权恒走超管（isSuperOnlyOperation，
+  // 同 rbac.accounts.write 先例），本节点供权限目录展示与角色编辑勾选留痕
+  { code: 'organizations.write', name: '组织管理操作', type: 2, parent: 'organizations', order: 1, perms: ['POST /admin/organizations', 'PATCH /admin/organizations/:id', 'POST /admin/organizations/:id/status', 'POST /admin/organizations/:id/bootstrap'], remark: '组织 CRUD/启停/开通组织 B（IKKRMS，超管专属）' },
   { code: 'rbac.accounts.write', name: '账号管理操作', type: 2, parent: 'accounts', order: 1, perms: ['POST /admin/accounts', 'PATCH /admin/accounts/:id', 'DELETE /admin/accounts/:id'] },
   { code: 'rbac-roles', name: '角色管理', type: 1, parent: 'g.sys', path: '/rbac-roles', icon: 'accounts', order: 2, perms: ['GET /admin/rbac/roles', 'GET /admin/rbac/menus', 'GET /admin/rbac/permissions', 'GET /admin/rbac/catalog'] },
   { code: 'rbac.roles.write', name: '角色管理操作', type: 2, parent: 'rbac-roles', order: 1, perms: ['POST /admin/rbac/roles', 'PATCH /admin/rbac/roles/:id', 'DELETE /admin/rbac/roles/:id'] },

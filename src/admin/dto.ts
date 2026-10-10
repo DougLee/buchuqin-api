@@ -699,6 +699,77 @@ export class UpdateCampusDto {
   @IsOptional() @IsBoolean() manualClosed?: boolean;
 }
 
+/* ---------- 组织 CRUD + 开通（IKKRMS，ADR-0001）：平台端开通组织 B ---------- */
+
+/**
+ * 组织新增（超管）。name/shortName/wxAppId 三必填且全局唯一（服务层查重，
+ * 表层不加唯一索引——组织 A 基线 wxAppId=NULL 不参与比较）。
+ * wxAppId 是 ADR 决策锚点：一经登记，AppID→组织映射即生效（IKKRMO
+ * resolveOrganizationByAppId 命中即限定组织校区集合），错登记=组织 B
+ * 小程序登录直接串组织，故唯一性在登记/改配两个入口都强校验。
+ */
+export class CreateOrganizationDto {
+  @IsString() @MinLength(2) @MaxLength(50) name!: string;
+  @IsString() @MinLength(1) @MaxLength(20) shortName!: string;
+  /** 组织小程序 AppID（必填唯一；登记即生效，见类注释 ADR 锚点） */
+  @IsString() @Matches(/^wx[0-9a-f]{16}$/, { message: 'AppID 须为 wx 开头 18 位' })
+  wxAppId!: string;
+  /** 组织小程序 Secret（敏感，只写不回读） */
+  @IsOptional() @IsString() @MinLength(1) wxSecret?: string;
+  /** 微信支付商户号（ADR-0001 决策 1：组织 B 独立商户号） */
+  @IsOptional() @IsString() @MinLength(1) mchId?: string;
+  /** 商户 APIv3 密钥（敏感，只写不回读） */
+  @IsOptional() @IsString() @MinLength(1) mchApiV3Key?: string;
+  /** 商户证书序列号 */
+  @IsOptional() @IsString() @MinLength(1) serialNo?: string;
+  /** 商户私钥 PEM（敏感，只写不回读） */
+  @IsOptional() @IsString() @MinLength(1) privateKey?: string;
+  /** 回调域名（组织 B 独立回调，路由属 IKKRMT） */
+  @IsOptional() @IsString() @MinLength(1) notifyDomain?: string;
+}
+/**
+ * 组织编辑（超管；微信配置随 PATCH 一并更新）。合并语义：未传字段不动；
+ * wxSecret/mchApiV3Key/privateKey 三个敏感字段**只写不回读**——更新传值
+ * =覆盖，显式传 null =清除，不传 =保留；其余非敏感字段空串 =清空。
+ */
+export class UpdateOrganizationDto {
+  @IsOptional() @IsString() @MinLength(2) @MaxLength(50) name?: string;
+  @IsOptional() @IsString() @MinLength(1) @MaxLength(20) shortName?: string;
+  /** 换绑 AppID（唯一性强校验同创建；登记即生效） */
+  @IsOptional() @Matches(/^wx[0-9a-f]{16}$/, { message: 'AppID 须为 wx 开头 18 位' })
+  wxAppId?: string | null;
+  /** 传值=覆盖，显式 null=清除（wxAppId 清空=回落 env 单组织兼容路径） */
+  @IsOptional() @IsString() @MinLength(1) wxSecret?: string | null;
+  @IsOptional() @IsString() @MinLength(1) mchId?: string | null;
+  @IsOptional() @IsString() @MinLength(1) mchApiV3Key?: string | null;
+  @IsOptional() @IsString() @MinLength(1) serialNo?: string | null;
+  @IsOptional() @IsString() @MinLength(1) privateKey?: string | null;
+  @IsOptional() @IsString() @MinLength(1) notifyDomain?: string | null;
+}
+/** 组织启停（超管）：停用后该组织校区/账号的处置属 IKKRMP，本阶段不消费。 */
+export class OrganizationStatusDto {
+  @IsIn(['active', 'disabled']) status!: 'active' | 'disabled';
+}
+/**
+ * 开通组织一条龙（超管）：组织管理员账号 + 首个校区一次提交。幂等——
+ * 已有管理员或校区时返回现状不重复建（部分开通可续开，重复提交零副作用）。
+ */
+export class OrganizationBootstrapDto {
+  /** 组织管理员登录名（3-20 位字母/数字/下划线，全局唯一） */
+  @Matches(/^[a-zA-Z0-9_]{3,20}$/, { message: '用户名需为 3-20 位字母/数字/下划线' })
+  adminUsername!: string;
+  /** 组织管理员初始密码（≥8 位） */
+  @IsString() @MinLength(8, { message: '密码至少 8 位' }) adminPassword!: string;
+  /** 组织管理员昵称（缺省用登录名） */
+  @IsOptional() @IsString() @MaxLength(30) adminNickname?: string;
+  /** 首个校区全称 */
+  @IsString() @MinLength(2) @MaxLength(30) campusName!: string;
+  /** 首个校区简称 */
+  @IsString() @MinLength(2) @MaxLength(15) campusShortName!: string;
+  /** 首个校区仓库名 */
+  @IsString() @MinLength(2) @MaxLength(30) campusWarehouseName!: string;
+}
+
 /** 校区打印机绑定（IKBW0Q）：SN 在机身底部标签/自检页。
  *  IKC3FF：芯烨云无按台密钥，绑定只凭 SN（归属校验在云端）。
  *  copies（IKCZOX）：小票联数 1=单联无联名；2=商家联+骑手联；3=再加用户联。 */
