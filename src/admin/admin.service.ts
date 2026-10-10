@@ -638,6 +638,7 @@ export class AdminService {
     'product.create': '创建商品',
     'product.update': '更新商品',
     'product.import': '导入商品',
+    'product.procurement-switch': '切换采购来源',
     'product.pull-upstream': '同步官方商品',
     'promotion.create': '创建促销',
     'promotion.update': '更新促销',
@@ -1837,12 +1838,16 @@ export class AdminService {
       body.procurementMode !== undefined &&
       body.procurementMode !== before.procurementMode
     ) {
-      // null 是历史数据首次确认，并非采购方式切换，允许在有存量时认领来源。
-      if (
-        before.procurementMode != null &&
-        (before.stock !== 0 || before.lockedStock !== 0)
-      )
-        throw new BadRequestException('库存和锁定库存清零后才能切换采购方式');
+      // IKKRMZ / ADR-0001 决策 4：有剩余库存禁止切换采购来源——旧库存直接
+      // 套新成本会污染毛利口径，清零（盘点/出库）后才允许切。null 是历史数据
+      // 首次确认（认领来源），并非切换，允许有存量时认领。lockedStock 恒 0
+      // （IKJC1R 确认不再锁库存），存量脏数据的残余防御由下方条件 updateMany
+      // 的 stock:0+lockedStock:0 前置兜底。
+      if (before.procurementMode != null && before.stock > 0)
+        throw new BadRequestException(
+          `还有剩余库存 ${before.stock} 件，不能切换采购来源；` +
+            '请先清零库存（盘点/出库）后再切换',
+        );
       if (
         body.procurementMode === 'LOCAL' &&
         body.localPurchasePrice == null &&
@@ -1950,6 +1955,35 @@ export class AdminService {
       after,
       campusId,
     );
+    // IKKRMZ：采购来源切换专项留痕（ADR-0001 决策 4 验收：操作人+切换前后
+    // 来源+成本依据）。通用 product.update 已落全行快照；专项 action 让切换
+    // 流水可按动作直接检索（null→值 的首次认领同样落此 action，before 为
+    // null 可区分认领与切换）。
+    if (
+      body.procurementMode !== undefined &&
+      body.procurementMode !== before.procurementMode
+    )
+      await this.audit(
+        operator,
+        'product.procurement-switch',
+        'product',
+        id,
+        {
+          procurementMode: before.procurementMode,
+          localPurchasePrice: before.localPurchasePrice,
+          costPrice: before.costPrice,
+          wholesalePrice: before.wholesalePrice,
+          stock: before.stock,
+        },
+        {
+          procurementMode: after.procurementMode,
+          localPurchasePrice: after.localPurchasePrice,
+          costPrice: after.costPrice,
+          wholesalePrice: after.wholesalePrice,
+          stock: after.stock,
+        },
+        campusId,
+      );
     return after;
   }
   /** 批量放行/回收（IKCKX4）：作用域=campusId（官方库视角只动官方行，
