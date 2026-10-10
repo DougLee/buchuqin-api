@@ -116,7 +116,7 @@ export class UpdateRecruitIdcardDto {
   @IsOptional() @IsString() @MaxLength(30) idCardNo?: string;
   @IsOptional() @IsArray() @IsString({ each: true }) idCardImages?: string[];
 }
-/** 建自建菜单节点（builtin=false；code 后端生成，结构可后续调整）。 */
+/** 建菜单节点（code 后端生成，结构可后续调整）。 */
 export class CreateAdminMenuDto {
   @IsString() @MinLength(1) @MaxLength(30) name!: string;
   @IsIn([0, 1, 2]) type!: number;
@@ -131,7 +131,7 @@ export class CreateAdminMenuDto {
   @IsOptional() @IsString() @MaxLength(40) icon?: string;
   @IsOptional() @Type(() => Number) @IsInt() orderNum?: number;
 }
-/** 改菜单：builtin 行仅表现字段生效（结构字段 service 层拒绝）；自建行全可改。 */
+/** 修改菜单：所有菜单均可维护结构与表现字段。 */
 export class UpdateAdminMenuDto {
   @IsOptional() @IsString() @MaxLength(240) viewPath?: string;
   @IsOptional() @IsBoolean() keepAlive?: boolean;

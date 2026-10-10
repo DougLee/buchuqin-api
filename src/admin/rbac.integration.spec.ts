@@ -559,7 +559,7 @@ describe('RBAC 蛋词体系 integration (real PG + HTTP)', () => {
     await upload(token({ id: 'absent-user' }, campusA, 0, 'user'), 'app/idcard').expect(403);
   });
 
-  it('菜单管理：自建节点建改删；配置重启不覆盖，非法结构拒绝、内置节点不可删；role_menu 引用级联清', async () => {
+  it('菜单管理：节点建改删；配置重启不覆盖，非法结构拒绝；role_menu 引用级联清', async () => {
     const t = token(superAcc, '', await svOf(superAcc.id));
     const http = () => request(app.getHttpServer());
     // 建：目录 + 子按钮
@@ -584,7 +584,7 @@ describe('RBAC 蛋词体系 integration (real PG + HTTP)', () => {
       .set('Authorization', `Bearer ${t}`)
       .send({ name: '自建动作改', perms: ['POST /admin/coupons'] })
       .expect(200);
-    // builtin：表现字段可改（改完还原），结构字段 403、删除 403
+    // 初始模板菜单仍可修改；非法权限模式和不合法结构继续由通用校验拒绝。
     const menus = await http().get('/api/v1/admin/rbac/menus')
       .set('Authorization', `Bearer ${t}`).expect(200);
     const builtin = menus.body.data.find((m: { code: string }) => m.code === 'g.ops');
@@ -600,8 +600,13 @@ describe('RBAC 蛋词体系 integration (real PG + HTTP)', () => {
     await http().patch(`/api/v1/admin/rbac/menus/${builtin.id}`)
       .set('Authorization', `Bearer ${t}`)
       .send({ type: 2 }).expect(400);
-    await http().delete(`/api/v1/admin/rbac/menus/${builtin.id}`)
-      .set('Authorization', `Bearer ${t}`).expect(403);
+    // 初始模板与后台新建节点走同一删除路径，不再存在内置保护分支。
+    const deletableTemplate = await db.adminMenu.create({ data: {
+      code: `template-delete-${suffix}`, name: '可删除模板菜单', type: 0,
+    } });
+    await http().delete(`/api/v1/admin/rbac/menus/${deletableTemplate.id}`)
+      .set('Authorization', `Bearer ${t}`).expect(200);
+    expect(await db.adminMenu.findUnique({ where: { id: deletableTemplate.id } })).toBeNull();
     // role_menu 引用：角色勾自建按钮 → 删菜单级联清引用
     const role = await rbac.createRole(
       { username: 'spec' },
@@ -612,7 +617,7 @@ describe('RBAC 蛋词体系 integration (real PG + HTTP)', () => {
       .set('Authorization', `Bearer ${t}`).expect(200);
     const refRole = rolesAfter.body.data.find((r: { code: string }) => r.code === role.code);
     expect(refRole.menuCodes.sort()).toEqual([dir.body.data.code, btn.body.data.code].sort());
-    // 删目录级联删子按钮（递归非 builtin）
+    // 删目录级联删子按钮
     const del = await http().delete(`/api/v1/admin/rbac/menus/${dir.body.data.id}`)
       .set('Authorization', `Bearer ${t}`).expect(200);
     expect(del.body.data.deleted).toBe(2);

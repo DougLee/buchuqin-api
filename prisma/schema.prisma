@@ -310,14 +310,15 @@ model AdminAccountRole {
 model RbacState {
   id      String   @id @default("global")
   version Int      @default(0)
+  /// 菜单初始模板只灌入一次；之后删除的菜单不会在服务重启时被恢复。
+  menusSeeded Boolean @default(false)
   updatedAt DateTime @updatedAt
 }
 
 /* ---------- 蛋词体系对齐（2026-09-19 拍板 B）：菜单+按钮权限合一棵树 ---------- */
 
-/// 系统菜单（对齐蛋词 base_sys_menu）：type 0 目录/1 菜单/2 按钮；perms=URL 模式
-/// （"METHOD /admin/xxx/:seg" 逗号串）。code 为代码登记锚点：启动幂等 upsert——
-/// 代码仅登记缺失节点；后台保存的结构、接口权限和显示配置均不被启动同步覆盖。
+/// 系统菜单（对齐蛋词 base_sys_menu）：type 0 目录/1 菜单/2 按钮；perms=URL 模式。
+/// MENU_NODES 仅作为首次初始化模板，完成首灌后菜单全量由后台维护。
 /// parentId 为裸串不建外键（菜单树生命周期独立于关联行）。
 model AdminMenu {
   id        String   @id @default(cuid())
@@ -337,8 +338,6 @@ model AdminMenu {
   orderNum  Int      @default(0)
   isShow    Boolean  @default(true)
   status    String   @default("active")
-  /// 代码登记节点（启动同步维护）；后台自建节点 false
-  builtin   Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   roleMenus AdminRoleMenu[]

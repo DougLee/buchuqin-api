@@ -161,7 +161,7 @@ export class RbacService implements OnModuleInit {
 
   /**
    * 幂等启动同步：
-   * 1) MENU_NODES 按 code 首次登记，已有节点的结构/权限/显示配置不覆盖；
+   * 1) MENU_NODES 仅在菜单从未初始化时首灌；后续删除不会被启动同步恢复；
    * 2) 内置超管；模板角色首灌 role_menu（seeded 标记）；
    * 3) 存量角色迁移：未迁移且无 role_menu 行的角色，旧 role_permissions(权限码)+role.menus(菜单key)
    *    → role_menu（按 code 找行）；
@@ -184,33 +184,41 @@ export class RbacService implements OnModuleInit {
     let changed = false;
     await this.db.$transaction(async (tx) => {
       await this.lockSuperGuard(tx);
-      await tx.rbacState.upsert({
+      const rbacState = await tx.rbacState.upsert({
         where: { id: 'global' },
         update: {},
         create: { id: 'global', version: 0 },
       });
-      // 1) 菜单树 upsert（两轮：先目录后子节点，保证父行存在）
-      for (const pass of [0, 1]) {
-        for (const node of MENU_NODES.filter((n) =>
-          pass === 0 ? !n.parent : !!n.parent,
-        )) {
-          const parentId = node.parent
-            ? (await tx.adminMenu.findUnique({ where: { code: node.parent } }))?.id ?? null
-            : null;
-          const existing = await tx.adminMenu.findUnique({ where: { code: node.code } });
-          if (!existing) {
-            await tx.adminMenu.create({
-              data: {
-                code: node.code, name: node.name, type: node.type,
-                perms: (node.perms ?? []).join(','),
-                path: node.path ?? '', viewPath: node.type === 1 ? node.code : '',
-                icon: node.icon ?? '', orderNum: node.order,
-                parentId, builtin: true,
-              },
-            });
-            changed = true;
+      // 1) 菜单树只首灌一次（两轮：先目录后子节点，保证父行存在）。
+      // menusSeeded=true 后数据库成为唯一真源，管理员删除的节点不会在重启时复活。
+      if (!rbacState.menusSeeded) {
+        for (const pass of [0, 1]) {
+          for (const node of MENU_NODES.filter((n) =>
+            pass === 0 ? !n.parent : !!n.parent,
+          )) {
+            const parentId = node.parent
+              ? (await tx.adminMenu.findUnique({ where: { code: node.parent } }))?.id ?? null
+              : null;
+            const existing = await tx.adminMenu.findUnique({ where: { code: node.code } });
+            if (!existing) {
+              await tx.adminMenu.create({
+                data: {
+                  code: node.code, name: node.name, type: node.type,
+                  perms: (node.perms ?? []).join(','),
+                  path: node.path ?? '', viewPath: node.type === 1 ? node.code : '',
+                  icon: node.icon ?? '', orderNum: node.order,
+                  parentId,
+                },
+              });
+              changed = true;
+            }
           }
         }
+        await tx.rbacState.update({
+          where: { id: 'global' },
+          data: { menusSeeded: true },
+        });
+        changed = true;
       }
       // 2) 内置超管
       const superRole = await tx.adminRole.upsert({
@@ -962,7 +970,7 @@ export class RbacService implements OnModuleInit {
     });
   }
 
-  /* ==================== 菜单管理（自建节点；端点判权=rbac.menus.write 模式） ==================== */
+  /* ==================== 菜单管理（端点判权=rbac.menus.write 模式） ==================== */
 
   catalog() {
     return {
@@ -1000,7 +1008,7 @@ export class RbacService implements OnModuleInit {
     return [...new Set(perms)].join(',');
   }
 
-  /** 建自建节点（builtin=false；code 自动生成 custom-*，不与代码登记冲突） */
+  /** 建菜单节点（code 自动生成 custom-*，不与初始模板编码冲突） */
   async createMenu(
     actor: { username: string },
     input: {
@@ -1051,7 +1059,6 @@ export class RbacService implements OnModuleInit {
           isShow: input.isShow ?? true,
           icon: input.icon ?? '',
           orderNum: input.orderNum ?? 0,
-          builtin: false,
         },
       });
       await this.bumpVersion(tx);
@@ -1069,7 +1076,7 @@ export class RbacService implements OnModuleInit {
     return created;
   }
 
-  /** 改节点：builtin 行只许表现字段（name/icon/orderNum/isShow）；自建行结构字段可改 */
+  /** 改菜单节点：所有节点均允许维护结构与表现字段。 */
   async updateMenu(
     actor: { username: string },
     id: string,
@@ -1159,23 +1166,18 @@ export class RbacService implements OnModuleInit {
     return updated;
   }
 
-  /** 删自建节点（builtin 拒绝）：递归删非 builtin 子树；role_menu 引用由级联清 */
+  /** 删除菜单节点：递归删除整棵子树；role_menu 引用由级联清理。 */
   async deleteMenu(actor: { username: string }, id: string) {
     const result = await this.db.$transaction(async (tx) => {
       const menu = await tx.adminMenu.findUnique({ where: { id } });
       if (!menu) throw new BadRequestException('菜单节点不存在');
-      if (menu.builtin) throw new ForbiddenException('内置菜单节点不可删除');
-      // 递归收集子树；任何 builtin 后代 → 拒绝（不能拆代码登记的树）
+      // 递归收集整棵子树。
       const subtree = [menu];
       for (let i = 0; i < subtree.length; i++) {
         const children = await tx.adminMenu.findMany({
           where: { parentId: subtree[i].id },
         });
         for (const c of children) {
-          if (c.builtin)
-            throw new ForbiddenException(
-              `子树含内置节点 ${c.code}，不可级联删除`,
-            );
           if (!subtree.some((s) => s.id === c.id)) subtree.push(c);
         }
       }

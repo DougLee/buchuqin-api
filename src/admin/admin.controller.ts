@@ -2616,9 +2616,9 @@ export class AdminController {
   async rbacMenus() {
     return ok(await this.rbac.listMenus());
   }
-  /* ---------- 菜单管理（自建节点；判权=rbac.menus.write 按钮模式） ---------- */
+  /* ---------- 菜单管理（判权=rbac.menus.write 按钮模式） ---------- */
   @Post('rbac/menus')
-  @ApiOperation({ summary: '建自建菜单节点（builtin=false；code 后端生成）' })
+  @ApiOperation({ summary: '新建菜单节点（code 后端生成）' })
   async rbacCreateMenu(
     @Req() req: AuthRequest,
     @Body() body: CreateAdminMenuDto,
@@ -2648,7 +2648,7 @@ export class AdminController {
   @Delete('rbac/menus/:id')
   @ApiOperation({
     summary:
-      '删自建菜单节点（builtin 拒绝；子树递归删非 builtin；role_menu 引用级联清）',
+      '删除菜单节点（递归删除子树；role_menu 引用级联清理）',
   })
   async rbacDeleteMenu(@Req() req: AuthRequest, @Param('id') id: string) {
     return ok(
