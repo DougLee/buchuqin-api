@@ -36,6 +36,10 @@ model Organization {
   privateKey   String?
   /// 预留：回调域名（组织 B 独立回调，路由属 IKKRMT）
   notifyDomain String?
+  /// IKKRMU 功能授权（营销切片）：null=全开（组织 A 现状兼容）；JSON 数组=
+  /// 已开通能力白名单（如 ["marketing"]，空数组=全关）。能力开关只收窄不放大
+  /// ——组织关了校区不能显式开。
+  capabilities Json?
   createdAt    DateTime @default(now())
 }
 
@@ -74,6 +78,10 @@ model Campus {
   // org-a）。纯字符串不建外键（参照 AdminAccount.campusId 先例：生命周期独立），
   // 组织真源在 Organization 表。
   organizationId       String?
+  // IKKRMU 校区功能开关：null=继承组织 capabilities；JSON 数组=校区级已
+  // 开通能力白名单（空数组=全关）。语义=在组织授权之上**只能再收窄**
+  // （组织关→校区必关；组织开→校区可显式关）。
+  features             Json?
   createdAt            DateTime          @default(now())
   users                User[]
   products             Product[]

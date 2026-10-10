@@ -492,6 +492,8 @@ export class AdminController {
     @Req() req: AuthRequest,
     @Body() body: CreateBannerDto,
   ) {
+    // IKKRMU：营销写端点前置校验（组织/校区关营销 → 403）
+    await this.service.guardMarketingEnabled(this.bannerScope(req));
     return ok(
       await this.service.createBanner(body, req.user.id, this.bannerScope(req)),
       'Banner 已创建',
@@ -502,6 +504,7 @@ export class AdminController {
     @Param('id') id: string,
     @Body() body: UpdateBannerDto,
   ) {
+    await this.service.guardMarketingEnabled(this.bannerScope(req));
     return ok(
       await this.service.updateBanner(
         id,
@@ -515,6 +518,7 @@ export class AdminController {
     @Req() req: AuthRequest,
     @Param('id') id: string,
   ) {
+    await this.service.guardMarketingEnabled(this.bannerScope(req));
     return ok(
       await this.service.deleteBanner(id, req.user.id, this.bannerScope(req)),
       'Banner 已删除',
@@ -560,6 +564,8 @@ export class AdminController {
     summary: '保存推荐位（全量有序商品 id，事务清位重设；越界 id 静默剔除）',
   })
   async saveFeatured(@Req() req: AuthRequest, @Body() body: SaveFeaturedDto) {
+    // IKKRMU：营销写端点前置校验（组织/校区关营销 → 403）
+    await this.service.guardMarketingEnabled(await this.scopedCampus(req));
     return ok(
       await this.service.saveFeatured(
         body.productIds,
@@ -589,6 +595,8 @@ export class AdminController {
     @Req() req: AuthRequest,
     @Body() body: CreatePromotionDto,
   ) {
+    // IKKRMU：营销写端点前置校验（组织/校区关营销 → 403；秒杀同此）
+    await this.service.guardMarketingEnabled(await this.scopedCampus(req));
     return ok(
       await this.service.createPromotion(
         body,
@@ -603,6 +611,7 @@ export class AdminController {
     @Param('id') id: string,
     @Body() body: UpdatePromotionDto,
   ) {
+    await this.service.guardMarketingEnabled(await this.scopedCampus(req));
     return ok(
       await this.service.updatePromotion(
         id,
@@ -1622,6 +1631,8 @@ export class AdminController {
   @Put('wheel')
   @ApiOperation({ summary: '保存转盘配置（8 奖位 + 活动开关）' })
   async upsertWheel(@Req() req: AuthRequest, @Body() body: UpsertWheelDto) {
+    // IKKRMU：营销写端点前置校验（组织/校区关营销 → 403）
+    await this.service.guardMarketingEnabled(await this.scopedCampus(req));
     return ok(
       await this.service.upsertWheel(
         body,
@@ -2420,6 +2431,8 @@ export class AdminController {
     @Req() req: AuthRequest,
     @Body() body: CreateCouponDto,
   ) {
+    // IKKRMU：营销写端点前置校验（组织/校区关营销 → 403）
+    await this.service.guardMarketingEnabled(await this.scopedCampus(req));
     return ok(
       await this.service.createCoupon(
         body,
@@ -2434,6 +2447,7 @@ export class AdminController {
     @Param('id') id: string,
     @Body() body: UpdateCouponDto,
   ) {
+    await this.service.guardMarketingEnabled(await this.scopedCampus(req));
     return ok(
       await this.service.updateCoupon(
         id,
@@ -2448,6 +2462,7 @@ export class AdminController {
     @Req() req: AuthRequest,
     @Param('id') id: string,
   ) {
+    await this.service.guardMarketingEnabled(await this.scopedCampus(req));
     return ok(
       await this.service.deleteCoupon(
         id,
@@ -2462,6 +2477,7 @@ export class AdminController {
     @Param('id') id: string,
     @Body() body: IssueCouponDto,
   ) {
+    await this.service.guardMarketingEnabled(await this.scopedCampus(req));
     return ok(
       await this.service.issueCoupon(
         id,

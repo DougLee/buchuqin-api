@@ -79,6 +79,7 @@ import {
   type OrderStatus,
 } from '../common/order-state';
 import { HQ_CAMPUS_ID, OFFICIAL_CAMPUS_ID } from '../common/campus';
+import { assertMarketingEnabled } from '../common/capability';
 
 /* ==================== 成本 capability 输出裁剪（IKKRMY，2026-10-10） ====================
  * allowCapability(ctx,'cost.read')=false 的账号，商品/订单/报表响应统一剔除
@@ -7492,6 +7493,15 @@ export class AdminService {
   }
 
   /* ---------- 抽奖大转盘（IKD6FC）：单校区单配置 ---------- */
+
+  /**
+   * IKKRMU 营销能力写端点前置校验（优惠券/Banner/秒杀促销/转盘/推荐位写
+   * 入共用）：校区所属组织关营销或校区显式关 → 403「营销能力未开通」。
+   * 组织 A 现状（capabilities=null）恒放行，行为零变化。
+   */
+  async guardMarketingEnabled(campusId?: string | null): Promise<void> {
+    await assertMarketingEnabled(this.db, campusId);
+  }
 
   /** 奖位读视图：coupon 附带券名/余量（前端下拉回显与发完预警）。 */
   async wheel(campusId: string) {

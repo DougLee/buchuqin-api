@@ -1,15 +1,18 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   Logger,
   NotFoundException,
   Optional,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import type { Banner, Product } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../database/prisma.service';
 import { perRetailUnitCostFen } from '../common/product-units';
 import { campusOrganizationId } from '../common/organization';
+import { marketingEnabled } from '../common/capability';
 import { NotificationsService } from '../notifications/notifications.service';
 import {
   PrinterService,
@@ -440,6 +443,8 @@ export class BusinessService {
     };
   }
   async coupons(userId: string, campusId: string) {
+    // IKKRMU：营销关闭 → 领券中心可领列表置空（已持有券不受影响，静默降级）
+    const marketing = await marketingEnabled(this.db, campusId);
     const [items, mine] = await Promise.all([
       this.db.coupon.findMany({
         where: { campusId },
@@ -458,21 +463,23 @@ export class BusinessService {
     return {
       // IKDCVO：公开可领列表只出 manual 券（lottery/signup 券靠发放入账）。
       // IKKEWS：定向券不进公开列表；perUserLimit>1 时按「限领−已持有」允许多领。
-      claimable: items
-        .filter(
-          (c) =>
-            c.trigger === 'manual' &&
-            !c.targetedOnly &&
-            c.status === 'active' &&
-            (!c.expiresAt || c.expiresAt > now) &&
-            // IKDEN2：不限量券恒可领
-            (c.total === null || c.claimed < c.total) &&
-            // IKKEWS：0=不限领恒可领；>0 时按「限领−未使用持有」
-            ((c.perUserLimit ?? 1) === 0 ||
-              mine.filter((x) => x.couponId === c.id && x.status !== 'used')
-                .length < (c.perUserLimit ?? 1)),
-        )
-        .map((c) => this.couponView(c)),
+      claimable: marketing
+        ? items
+            .filter(
+              (c) =>
+                c.trigger === 'manual' &&
+                !c.targetedOnly &&
+                c.status === 'active' &&
+                (!c.expiresAt || c.expiresAt > now) &&
+                // IKDEN2：不限量券恒可领
+                (c.total === null || c.claimed < c.total) &&
+                // IKKEWS：0=不限领恒可领；>0 时按「限领−未使用持有」
+                ((c.perUserLimit ?? 1) === 0 ||
+                  mine.filter((x) => x.couponId === c.id && x.status !== 'used')
+                    .length < (c.perUserLimit ?? 1)),
+            )
+            .map((c) => this.couponView(c))
+        : [],
       mine: mine.map((x) => ({
         id: x.id,
         couponId: x.couponId,
@@ -483,6 +490,9 @@ export class BusinessService {
     };
   }
   async claimCoupon(userId: string, couponId: string, campusId: string) {
+    // IKKRMU：营销关闭校区不开放手动领券（写侧拒绝；列表侧已置空）
+    if (!(await marketingEnabled(this.db, campusId)))
+      throw new ForbiddenException('营销能力未开通');
     return this.db.$transaction(async (tx) => {
       const coupon = await tx.coupon.findUnique({ where: { id: couponId } });
       if (!coupon) throw new NotFoundException('优惠券不存在');
@@ -689,31 +699,40 @@ export class BusinessService {
     return `明天 (${d.toISOString().slice(5, 10).replace('-', '.')}) `;
   }
   async home(campusId: string) {
+    // IKKRMU 营销能力开关：组织/校区关闭营销 → 首页 Banner 与推荐位下发空
+    // （读侧静默降级，不报错；分类/公告/促销模块非营销切片，不受控）。
+    const marketing = await marketingEnabled(this.db, campusId);
     // IKH0EK 推荐位（2026-09-19 道哥定版）：运营勾选的 featured 商品按
     // featuredSort 优先展示，剩余位置按销量补满 18（去重）；未配置即纯销量。
     const onSale = { campusId, status: 'on-sale', category: { hidden: false } };
     const [campus, banners, categories, featured, rest] = await Promise.all([
       this.campus(campusId),
-      this.db.banner.findMany({
-        // IKA57F：placement 区分首页轮播 / 支付成功页广告位；
-        // IKAJSL：campusId 空串 = 总部全校区投放，与本校区 Banner 一起命中
-        where: {
-          campusId: { in: [campusId, ''] },
-          status: 'active',
-          placement: 'home',
-        },
-        orderBy: { sort: 'asc' },
-      }),
+      marketing
+        ? this.db.banner.findMany({
+            // IKA57F：placement 区分首页轮播 / 支付成功页广告位；
+            // IKAJSL：campusId 空串 = 总部全校区投放，与本校区 Banner 一起命中
+            where: {
+              campusId: { in: [campusId, ''] },
+              status: 'active',
+              placement: 'home',
+            },
+            orderBy: { sort: 'asc' },
+          })
+        : Promise.resolve([] as Banner[]),
       this.categories(campusId),
-      this.db.product.findMany({
-        where: { ...onSale, featured: true },
-        orderBy: { featuredSort: 'asc' },
-      }),
-      this.db.product.findMany({
-        where: onSale,
-        orderBy: { sales: 'desc' },
-        take: 36,
-      }),
+      marketing
+        ? this.db.product.findMany({
+            where: { ...onSale, featured: true },
+            orderBy: { featuredSort: 'asc' },
+          })
+        : Promise.resolve([] as Product[]),
+      marketing
+        ? this.db.product.findMany({
+            where: onSale,
+            orderBy: { sales: 'desc' },
+            take: 36,
+          })
+        : Promise.resolve([] as Product[]),
     ]);
     const seen = new Set(featured.map((p) => p.id));
     const products = [
@@ -772,8 +791,10 @@ export class BusinessService {
   /**
    * 按展示位取一条 Banner（IKA57F）：支付成功页广告位。取 sort 最小的一条，
    * 未配置返回 null（用户端该区域不渲染、不占位）。
+   * IKKRMU：营销关闭 → 空数组（支付后推荐不下发，静默降级）。
    */
   async bannerByPlacement(campusId: string, placement: string) {
+    if (!(await marketingEnabled(this.db, campusId))) return [];
     return this.db.banner.findMany({
       // IKAJSL：campusId 空串 = 总部全校区投放
       where: { campusId: { in: [campusId, ''] }, status: 'active', placement },
@@ -843,6 +864,8 @@ export class BusinessService {
    * clearance 等正常活动价照常生效。空列表时分类页不插段（同秒杀模式）。
    */
   async listFeatured(campusId: string) {
+    // IKKRMU：营销关闭 → 推荐专区下发空（分类页不插段，静默降级）
+    if (!(await marketingEnabled(this.db, campusId))) return [];
     const now = new Date();
     const rows = await this.db.product.findMany({
       where: {
@@ -2356,6 +2379,9 @@ export class BusinessService {
    * 概率只存在于服务端。drawnToday 供转盘页置灰中心钮。
    */
   async wheel(userId: string, campusId: string) {
+    // IKKRMU：营销关闭 → 转盘整体关闭（active=false 前端隐藏入口，静默降级）
+    if (!(await marketingEnabled(this.db, campusId)))
+      return { active: false, prizes: [], drawnToday: false };
     const row = await this.db.lotteryWheel.findUnique({
       where: { campusId },
     });
@@ -2383,6 +2409,9 @@ export class BusinessService {
    * 并发双击靠 LotteryDraw(userId, drawDate) 唯一键兜底。
    */
   async drawWheel(userId: string, campusId: string) {
+    // IKKRMU：营销关闭 → 抽奖入口拒绝（读侧 wheel 已隐藏，防直调）
+    if (!(await marketingEnabled(this.db, campusId)))
+      throw new BadRequestException('抽奖活动未开启');
     const wheel = await this.db.lotteryWheel.findUnique({
       where: { campusId },
     });
@@ -2555,6 +2584,8 @@ export class BusinessService {
    * 新人红包券）。幂等——已持有不重发；整批逐张尽力发，单张失败不影响其余。
    */
   async grantSignupCoupons(userId: string, campusId: string) {
+    // IKKRMU：营销关闭校区注册不发新人券（静默降级 granted=0，登录不受阻）
+    if (!(await marketingEnabled(this.db, campusId))) return { granted: 0 };
     const candidates = await this.db.coupon.findMany({
       where: {
         campusId,
