@@ -197,6 +197,27 @@ export class UpdateProductDto {
   /** 商品介绍（IKAHAU）：整段覆盖，空串清空。 */
   @IsOptional() @IsString() @MaxLength(2000) description?: string;
 }
+/**
+ * 组织商品目录（IKKRMX / ADR-0001 决策 4）：组织层建档/编辑。
+ * 字段语义与校区行不同：price=组织供货价（组织对内各校区供货）、
+ * costPrice=组织进货价（自主采购口径下必填）、wholesalePrice=平台批发价快照
+ * （平台供货口径的成本基数）；supplyMode=采购来源（'platform'=平台供货 /
+ * 'local'=自主采购，与校区行 procurementMode 正交）。
+ */
+export class CreateOrgProductDto extends CreateProductDto {
+  @IsOptional()
+  @IsIn(['platform', 'local'])
+  supplyMode?: 'platform' | 'local';
+}
+export class UpdateOrgProductDto extends UpdateProductDto {
+  @IsOptional()
+  @IsIn(['platform', 'local'])
+  supplyMode?: 'platform' | 'local';
+}
+/** 组织目录→组织内校区导入（IKKRMX）：目标校区必须属于该组织（service 校验）。 */
+export class ImportOrgProductDto {
+  @IsString() campusId!: string;
+}
 /** 首页 Banner（IK9RX2）：后台可管；color 为预置主题键（green/orange/dark）或自定义 hex。 */
 export class CreateBannerDto {
   @IsString() @MinLength(1) @MaxLength(30) title!: string;

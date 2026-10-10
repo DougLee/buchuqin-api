@@ -14,6 +14,12 @@ export const PLATFORM_PATTERNS = [
   // （组织从目录导入走 IKKRMX 的组织级端点）
   'GET /admin/platform-products', 'POST /admin/platform-products',
   'PATCH /admin/platform-products/:id',
+  // IKKRMX（ADR-0001 决策 4）：组织商品目录归平台/组织层——校区级角色不可
+  // 授予；组织级账号持平台级授权（org-admin 预设口径）可入。数据边界由控制
+  // 器 orgTarget 按 ctx.orgLevel/organizationId 收口：平台账号 ?organizationId
+  // 必填，组织级账号恒本组织（显式传参越组织 403）。
+  'GET /admin/org-products', 'POST /admin/org-products',
+  'PATCH /admin/org-products/:id', 'POST /admin/org-products/:id/import',
   'POST /admin/campuses', 'PATCH /admin/campuses/:id',
   'POST /admin/inventory/stock-in',
   'POST /admin/restock/batches', 'PATCH /admin/restock/batches/:id',

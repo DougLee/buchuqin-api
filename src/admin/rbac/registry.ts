@@ -61,6 +61,14 @@ export const MENU_NODES: MenuNodeDef[] = [
   // 落地前该菜单对超管显示「页面尚未配置」占位（同 organizations 先例）。
   { code: 'platform-products', name: '平台商品目录', type: 1, parent: 'g.wh', path: '/platform-products', icon: 'official-products', order: 8, perms: ['GET /admin/platform-products'] },
   { code: 'platform-products.write', name: '平台目录维护', type: 2, parent: 'platform-products', order: 1, perms: ['POST /admin/platform-products', 'PATCH /admin/platform-products/:id'], remark: '平台目录建档/编辑（IKKRMW 语义别名，复用官方库 service）' },
+  // IKKRMX（ADR-0001 决策 4）：组织商品目录——组织层的商品建档/组织供货价/
+  // 采购来源管理面。数据源=organizationId 非空且 catalogScope='org' 行（复用
+  // 校区模型不建新表）。平台级能力（PLATFORM_PATTERNS 拦校区级授予，组织级
+  // 账号持平台级授权可入）；数据边界由控制器按 ctx.orgLevel/organizationId
+  // 收口（平台 ?organizationId 必填 / 组织级恒本组织）。前端页面未落地前同
+  // organizations 先例对超管显示占位。
+  { code: 'org-products', name: '组织商品', type: 1, parent: 'g.wh', path: '/org-products', icon: 'official-products', order: 9, perms: ['GET /admin/org-products'] },
+  { code: 'org-products.write', name: '组织商品维护', type: 2, parent: 'org-products', order: 1, perms: ['POST /admin/org-products', 'PATCH /admin/org-products/:id', 'POST /admin/org-products/:id/import'], remark: '组织目录建档/编辑/导入组织内校区（IKKRMX）' },
   { code: 'products', name: '商品管理', type: 1, parent: 'g.wh', path: '/products', icon: 'products', order: 2, perms: ['GET /admin/products', 'GET /admin/products/status-counts', 'POST /admin/products/barcode/lookup'] },
   { code: 'products.write', name: '商品编辑', type: 2, parent: 'products', order: 1, perms: ['POST /admin/products', 'PATCH /admin/products/:id', 'POST /admin/products/import'], remark: '新建/普通编辑/官方库导入（不含改价与上下架）' },
   { code: 'products.price', name: '商品改价', type: 2, parent: 'products', order: 2, perms: ['PATCH /admin/products/:id/price'], remark: '价格字段修改（独立端点，字段级分权保留）' },

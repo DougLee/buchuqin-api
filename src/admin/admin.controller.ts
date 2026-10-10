@@ -54,6 +54,9 @@ import {
   CreateProductDto,
   ImportProductsDto,
   UpdateProductDto,
+  CreateOrgProductDto,
+  UpdateOrgProductDto,
+  ImportOrgProductDto,
   CreateRoomDto,
   CreateStaffDto,
   IssueCouponDto,
@@ -146,6 +149,36 @@ export class AdminController {
    */
   private orgBounded(ctx: RbacContext): boolean {
     return ctx.orgLevel === 'org' && !!ctx.organizationId;
+  }
+  /**
+   * IKKRMX 组织商品目录数据边界：解析本次操作的目标组织。
+   * - 组织级账号（orgBounded，含持平台级角色者——层级优先）：恒本组织，
+   *   显式 ?organizationId 必须一致，否则 403（防串目录）；
+   * - 平台级账号：?organizationId 必填（跨组织视角显式选定，存在性由
+   *   service 校验，缺参 400）；
+   * - 校区级账号：403（组织目录非校区能力，URL 判权之外的数据面收口）。
+   */
+  private async orgTarget(
+    req: AuthRequest,
+    organizationId?: string,
+  ): Promise<string> {
+    const ctx = this.ctx(req);
+    const q = (
+      organizationId ??
+      (req.query?.organizationId as string | undefined)
+    )?.trim() ?? '';
+    if (this.orgBounded(ctx)) {
+      // orgBounded 已保证非空（orgLevel='org' 且 organizationId 已配置）
+      const own = ctx.organizationId!;
+      if (q && q !== own)
+        throw new ForbiddenException('未授权管理该组织的商品目录');
+      return own;
+    }
+    if (ctx.platform || ctx.orgLevel === 'platform') {
+      if (!q) throw new BadRequestException('请指定目标组织（?organizationId=）');
+      return q;
+    }
+    throw new ForbiddenException('仅平台或组织级账号可管理组织商品目录');
   }
   /**
    * 多校区数据范围（RBAC V1 + IKJA7Y）：平台级授权 → ?campus= 可选聚焦（需真实
@@ -807,6 +840,98 @@ export class AdminController {
       ),
     );
   }
+  /* ---------- 组织商品目录（IKKRMX，ADR-0001 决策 4）---------- */
+  // 组织目录行=organizationId 非空且 catalogScope='org' 的 Product 行（复用
+  // 校区模型不建新表：行仍落 campus-official 伪校区，平台/官方库视角查询按
+  // organizationId IS NULL 排除）。组织供货价=price、组织进货价=costPrice、
+  // 采购来源=supplyMode（'platform'=平台供货 / 'local'=自主采购）；组织毛利
+  // 口径=组织供货价−当前明确成本（平台供货=平台批发价快照/自主采购=组织
+  // 进货价，注释钉死见 admin.service）。判权双层：PLATFORM_PATTERNS 拦校区
+  // 级授予（组织级账号持平台级授权可入，同 org-admin 预设口径）+ orgTarget
+  // 收口数据边界（平台 ?organizationId 必填 / 组织级恒本组织）。
+  @Get('org-products')
+  @ApiOperation({
+    summary:
+      '组织商品目录列表（IKKRMX：?organizationId 必填（组织级账号免传=本组织）；分页/关键词/类目/状态）',
+  })
+  async orgProducts(
+    @Req() req: AuthRequest,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+    @Query('keyword') keyword?: string,
+    @Query('status') status?: string,
+    @Query('categoryId') categoryId?: string,
+    @Query('organizationId') organizationId?: string,
+  ) {
+    return ok(
+      paginate(
+        await this.service.orgProducts(
+          await this.orgTarget(req, organizationId),
+          status && status !== 'all'
+            ? status
+                .split(',')
+                .map((s) => s.trim())
+                .filter(Boolean)
+            : undefined,
+          categoryId || undefined,
+        ),
+        page,
+        pageSize,
+        keyword,
+      ),
+    );
+  }
+  @Post('org-products') async createOrgProduct(
+    @Req() req: AuthRequest,
+    @Body() body: CreateOrgProductDto,
+    @Query('organizationId') organizationId?: string,
+  ) {
+    return ok(
+      await this.service.createOrgProduct(
+        body,
+        req.user.id,
+        await this.orgTarget(req, organizationId),
+      ),
+      '组织商品已创建',
+    );
+  }
+  @Patch('org-products/:id') async updateOrgProduct(
+    @Req() req: AuthRequest,
+    @Param('id') id: string,
+    @Body() body: UpdateOrgProductDto,
+    @Query('organizationId') organizationId?: string,
+  ) {
+    // 组织目录行不记库存（同官方库口径），库存字段防御性同构拒绝
+    if (body.stock !== undefined)
+      throw new BadRequestException('组织目录行不维护库存');
+    return ok(
+      await this.service.updateOrgProduct(
+        id,
+        body,
+        req.user.id,
+        await this.orgTarget(req, organizationId),
+      ),
+    );
+  }
+  /** 组织目录→组织内校区导入（IKKRMX）：副本行以 orgCatalogId 指回组织
+   *  目录行（三层来源链 platform←org←campus），校区售价/上下架/库存自管。 */
+  @Post('org-products/:id/import') async importOrgProduct(
+    @Req() req: AuthRequest,
+    @Param('id') id: string,
+    @Body() body: ImportOrgProductDto,
+    @Query('organizationId') organizationId?: string,
+  ) {
+    return ok(
+      await this.service.importOrgProduct(
+        id,
+        body.campusId,
+        req.user.id,
+        await this.orgTarget(req, organizationId),
+      ),
+      '已处理组织商品导入',
+    );
+  }
+
   @Get('inventory')
   @ApiOperation({ summary: '库存列表（?page&pageSize 统一分页包裹）' })
   async inventory(

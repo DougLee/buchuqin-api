@@ -35,6 +35,8 @@ import type {
   CreateProductDto,
   CreatePromotionDto,
   CreateRestockBatchDto,
+  CreateOrgProductDto,
+  UpdateOrgProductDto,
   UpdateRestockBatchDto,
   SaveRestockOrderDto,
   AuditRestockOrderDto,
@@ -668,6 +670,12 @@ export class AdminService {
         campusId,
         ...(categoryId ? { categoryId } : {}),
         ...(catalogScope ? { catalogScope } : {}),
+        // IKKRMX：组织目录行也落 campus-official 伪校区（复用校区模型不建
+        // 新表）——平台/官方库视角（未显式传 catalogScope 的调用方）一律排除
+        // 组织行，组织目录只经 /admin/org-products 数据面出入
+        ...(campusId === OFFICIAL_CAMPUS_ID && !catalogScope
+          ? { organizationId: null }
+          : {}),
         ...(importedSourceIds.length
           ? { id: { notIn: importedSourceIds } }
           : {}),
@@ -737,6 +745,326 @@ export class AdminService {
       undefined,
       'platform',
     );
+  }
+
+  /* ---------- 组织商品目录（IKKRMX，ADR-0001 决策 4）---------- */
+  // 组织目录行=organizationId 非空且 catalogScope='org' 的 Product 行（复用
+  // 校区模型不建新表：行物理上仍落 campus-official 伪校区，平台/官方库视角
+  // 查询一律 organizationId IS NULL 排除）。字段语义与校区行不同：
+  // price=组织供货价、costPrice=组织进货价、supplyMode=采购来源
+  // （'platform'=平台供货 / 'local'=自主采购）。
+  //
+  // 组织毛利口径钉死（本 issue 仅注释+字段，报表属后续 issue）：
+  //   组织毛利 = 组织供货价(price) − 当前明确成本
+  //     - 平台供货（supplyMode='platform'）：成本=平台批发价快照(wholesalePrice)
+  //     - 自主采购（supplyMode='local'）：成本=组织进货价(costPrice)
+
+  /** 目标组织存在性收口（平台账号 ?organizationId / 组织级账号固定组织）。 */
+  private async assertOrganization(organizationId: string) {
+    const org = await this.db.organization.findUnique({
+      where: { id: organizationId },
+      select: { id: true },
+    });
+    if (!org) throw new BadRequestException(`组织不存在: ${organizationId}`);
+  }
+
+  /** 组织目录列表：本组织 org 行全集（不依赖 campusId 维度）。 */
+  async orgProducts(
+    organizationId: string,
+    statuses?: string[],
+    categoryId?: string,
+  ) {
+    await this.assertOrganization(organizationId);
+    const xs = await this.db.product.findMany({
+      where: {
+        organizationId,
+        catalogScope: 'org',
+        ...(categoryId ? { categoryId } : {}),
+      },
+      orderBy: { sales: 'desc' },
+    });
+    // 目录行不记库存（同官方库口径，库存归校区副本），无售罄映射
+    const rows = xs.map((x) => ({
+      ...x,
+      price: this.num(x.price),
+      originalPrice: this.num(x.originalPrice),
+      costPrice: this.num(x.costPrice),
+      wholesalePrice: this.num(x.wholesalePrice),
+      weight: this.num(x.weight),
+      skuNo: `SKU-${x.id.toUpperCase()}`,
+      actualStock: x.stock + x.lockedStock,
+      availableStock: x.stock,
+    }));
+    return statuses?.length
+      ? rows.filter((x) => statuses.includes(x.status))
+      : rows;
+  }
+
+  /**
+   * 组织目录建档（IKKRMX）：默认不可售（IKC1AB 同口径——目录行核对后放行，
+   * 放行后方可导入校区）；组织供货价(price)/组织进货价(costPrice)/采购来源
+   * (supplyMode) 为组织层经营字段，毛利口径见本节注释钉死。
+   */
+  async createOrgProduct(
+    body: CreateOrgProductDto,
+    operator: string,
+    organizationId: string,
+  ) {
+    await this.assertOrganization(organizationId);
+    const supplyMode = body.supplyMode ?? 'platform';
+    if (supplyMode === 'local' && body.costPrice == null)
+      throw new BadRequestException('自主采购商品必须填写组织进货价');
+    // 条码在 campus-official 伪校区维度去重（@@unique[campusId,barcode]）：
+    // 组织行与平台行同落伪校区，撞码需换码或不填（跨组织/跨层撞码同理）
+    if (body.barcode != null) {
+      const duplicate = await this.db.product.findFirst({
+        where: { barcode: body.barcode, campusId: OFFICIAL_CAMPUS_ID },
+      });
+      if (duplicate) throw new BadRequestException('该条码已录入商品库');
+    }
+    const category = await this.db.category.findUnique({
+      where: { id: body.categoryId },
+    });
+    if (!category) throw new BadRequestException('商品分类不存在');
+    const product = await this.db.product.create({
+      data: {
+        // 复用校区模型不建新表：行落 campus-official 伪校区（schema campusId
+        // 仍 NOT NULL 的过渡口径），归属按 organizationId+catalogScope 圈定
+        campusId: OFFICIAL_CAMPUS_ID,
+        catalogScope: 'org',
+        organizationId,
+        supplyMode,
+        barcode: body.barcode,
+        name: body.name,
+        subtitle: body.subtitle ?? '',
+        categoryId: body.categoryId,
+        // price=组织供货价（组织层经营字段，非零售价）
+        price: body.price,
+        originalPrice: body.originalPrice ?? body.price,
+        // costPrice=组织进货价（自主采购口径的成本）；wholesalePrice=平台
+        // 批发价快照（平台供货口径的成本基数），毛利公式二选一按 supplyMode
+        costPrice: body.costPrice ?? 0,
+        wholesalePrice: body.wholesalePrice ?? 0,
+        stock: 0,
+        tag: body.tag ?? '新品',
+        image: body.image ?? '',
+        images: body.images,
+        location: body.location ?? '',
+        weight: body.weight ?? 0,
+        retailUnit: body.retailUnit?.trim() ?? '',
+        wholesaleUnit: body.wholesaleUnit?.trim() || '件',
+        unitsPerCase: body.unitsPerCase ?? 1,
+        sales: 0,
+        status: 'off-sale',
+      },
+    });
+    await this.audit(
+      operator,
+      'product.create',
+      'product',
+      product.id,
+      null,
+      product,
+      OFFICIAL_CAMPUS_ID,
+    );
+    return product;
+  }
+
+  /**
+   * 组织目录编辑（IKKRMX）：组织供货价/进货价/采购来源/资料/放行回收。
+   * 切换采购来源为自主采购必须显式带组织进货价（成本口径重新确认）；
+   * 校区行专属字段（库存/校区采购方式/本地进货价）不在组织端点可写集。
+   */
+  async updateOrgProduct(
+    id: string,
+    body: UpdateOrgProductDto,
+    operator: string,
+    organizationId: string,
+  ) {
+    // 行隔离按组织收口：越组织/已删/非 org 行一律 404（不泄露存在性）
+    const before = await this.db.product.findFirst({
+      where: { id, organizationId, catalogScope: 'org' },
+    });
+    if (!before) throw new NotFoundException('商品不存在');
+    if (
+      body.supplyMode !== undefined &&
+      body.supplyMode !== (before.supplyMode ?? 'platform') &&
+      body.supplyMode === 'local' &&
+      body.costPrice == null
+    )
+      throw new BadRequestException('自主采购商品必须填写组织进货价');
+    if (body.name !== undefined && !body.name.trim())
+      throw new BadRequestException('商品名称不能为空');
+    if (body.name !== undefined) body.name = body.name.trim();
+    if (
+      body.categoryId !== undefined &&
+      body.categoryId !== before.categoryId
+    ) {
+      const category = await this.db.category.findUnique({
+        where: { id: body.categoryId },
+      });
+      if (!category) throw new BadRequestException('分类不存在');
+    }
+    if (body.unitsPerCase != null && body.unitsPerCase < 1)
+      throw new BadRequestException('每件含量不能小于 1');
+    const after = await this.db.product.update({
+      where: { id },
+      data: {
+        ...(body.supplyMode !== undefined ? { supplyMode: body.supplyMode } : {}),
+        ...(body.price !== undefined ? { price: body.price } : {}),
+        ...(body.originalPrice !== undefined
+          ? { originalPrice: body.originalPrice }
+          : {}),
+        ...(body.costPrice !== undefined ? { costPrice: body.costPrice } : {}),
+        ...(body.wholesalePrice !== undefined
+          ? { wholesalePrice: body.wholesalePrice }
+          : {}),
+        ...(body.status !== undefined ? { status: body.status } : {}),
+        ...(body.name !== undefined ? { name: body.name } : {}),
+        ...(body.subtitle !== undefined ? { subtitle: body.subtitle } : {}),
+        ...(body.tag !== undefined ? { tag: body.tag } : {}),
+        ...(body.image !== undefined ? { image: body.image } : {}),
+        ...(body.images !== undefined ? { images: body.images } : {}),
+        ...(body.weight !== undefined ? { weight: body.weight } : {}),
+        ...(body.categoryId !== undefined ? { categoryId: body.categoryId } : {}),
+        ...(body.description !== undefined
+          ? { description: body.description }
+          : {}),
+        ...(body.location !== undefined ? { location: body.location } : {}),
+        ...(body.locationCode !== undefined
+          ? { locationCode: body.locationCode }
+          : {}),
+        ...(body.retailUnit !== undefined ? { retailUnit: body.retailUnit } : {}),
+        ...(body.wholesaleUnit !== undefined
+          ? { wholesaleUnit: body.wholesaleUnit }
+          : {}),
+        ...(body.unitsPerCase !== undefined
+          ? { unitsPerCase: body.unitsPerCase }
+          : {}),
+      },
+    });
+    await this.audit(
+      operator,
+      'product.update',
+      'product',
+      id,
+      before,
+      after,
+      OFFICIAL_CAMPUS_ID,
+    );
+    return after;
+  }
+
+  /**
+   * 组织目录→组织内校区导入（IKKRMX，复用 importProducts 模式）：复制组织
+   * 目录资料落目标校区，副本行以 orgCatalogId 指回组织目录行（三层来源链
+   * platform←org←campus 的第二跳），导入后即解耦——组织行调价/停用不连坐
+   * 校区副本；校区售价(price)/上下架(status)/库存(stock)自管，导入初始
+   * 下架+零库存。幂等：同 orgCatalogId 已导入/条码撞本校区商品时跳过并回因。
+   * 目标校区必须属于该组织（越组织 403）。
+   */
+  async importOrgProduct(
+    id: string,
+    campusId: string,
+    operator: string,
+    organizationId: string,
+  ) {
+    await this.assertOrganization(organizationId);
+    const campus = await this.db.campus.findUnique({
+      where: { id: campusId },
+      select: { id: true, organizationId: true },
+    });
+    if (!campus) throw new BadRequestException('目标校区不存在');
+    if ((campus.organizationId ?? null) !== organizationId)
+      throw new ForbiddenException('目标校区不属于该组织');
+    // IKC1AB 同口径：仅放行（on-sale）的组织商品可导入——双保险
+    const orgRow = await this.db.product.findFirst({
+      where: { id, organizationId, catalogScope: 'org', status: 'on-sale' },
+    });
+    if (!orgRow) {
+      const any = await this.db.product.findFirst({
+        where: { id, organizationId, catalogScope: 'org' },
+      });
+      if (!any) throw new NotFoundException('商品不存在');
+      throw new BadRequestException('仅放行（在售）的组织商品可导入');
+    }
+    const existing = await this.db.product.findFirst({
+      where: { campusId, orgCatalogId: id },
+      select: { id: true },
+    });
+    if (existing)
+      return {
+        imported: false,
+        reason: '已导入过，无需重复导入',
+        campusProductId: existing.id,
+      };
+    if (orgRow.barcode) {
+      const clash = await this.db.product.findFirst({
+        where: { campusId, barcode: orgRow.barcode },
+        select: { id: true },
+      });
+      if (clash)
+        return {
+          imported: false,
+          reason: `条码 ${orgRow.barcode} 与本校区现有商品冲突`,
+          campusProductId: null,
+        };
+    }
+    // IKKA1S：类别重映射到本校区副本（缺失自动建）
+    const campusCategoryId = await this.remapCategoryToCampus(
+      orgRow.categoryId,
+      campusId,
+    );
+    const created = await this.db.product.create({
+      data: {
+        campusId,
+        // 副本=组织校区行；组织归属走 campus.organizationId（不落组织字段），
+        // 上游关系走 orgCatalogId（sourceProductId 仍专属平台目录链，本副本无）
+        catalogScope: 'campus',
+        organizationId: null,
+        orgCatalogId: orgRow.id,
+        barcode: orgRow.barcode,
+        name: orgRow.name,
+        subtitle: orgRow.subtitle,
+        categoryId: campusCategoryId,
+        // 售价起步=组织供货价，校区可改；库存归校区，导入为 0
+        price: orgRow.price,
+        originalPrice: orgRow.originalPrice,
+        // 成本快照随导入落校区行：批发价快照=组织供货价、进货价留档=组织
+        // 进货价（口径同官方库导入的快照链）
+        costPrice: orgRow.costPrice,
+        wholesalePrice: orgRow.price,
+        // 校区从组织获得供货（非校区自主采购），procurementMode=HQ
+        procurementMode: 'HQ',
+        stock: 0,
+        tag: orgRow.tag,
+        image: orgRow.image,
+        images: (orgRow.images as Prisma.InputJsonValue) ?? undefined,
+        description: orgRow.description,
+        weight: orgRow.weight,
+        retailUnit: orgRow.retailUnit,
+        wholesaleUnit: orgRow.wholesaleUnit,
+        unitsPerCase: orgRow.unitsPerCase,
+        sales: 0,
+        status: 'off-sale',
+        sourceSyncedAt: orgRow.updatedAt,
+      },
+    });
+    await this.audit(
+      operator,
+      'product.import',
+      'product',
+      created.id,
+      null,
+      {
+        name: created.name,
+        orgCatalogId: orgRow.id,
+        organizationId,
+        orgName: orgRow.name,
+      },
+      campusId,
+    );
+    return { imported: true, reason: '', campusProductId: created.id };
   }
   /**
    * 商品类别管理（2026-08-19 grilling）：全局字典（无 campusId 维度），
@@ -1227,13 +1555,15 @@ export class AdminService {
         },
       };
     // IKAJSO：本校区未录入时先查官方库——命中即可一键导入，不再走人工建档。
-    // IKC1AB：与导入候选池同口径，仅命中总部放行（on-sale）的商品
+    // IKC1AB：与导入候选池同口径，仅命中总部放行（on-sale）的商品；
+    // IKKRMX：组织目录行（同落伪校区）不参与扫码命中
     if (campusId !== OFFICIAL_CAMPUS_ID) {
       const official = await this.db.product.findFirst({
         where: {
           barcode,
           campusId: OFFICIAL_CAMPUS_ID,
           status: 'on-sale',
+          organizationId: null,
         },
       });
       if (official)
@@ -1391,7 +1721,13 @@ export class AdminService {
     campusId: string,
   ) {
     const before = await this.db.product.findFirst({
-      where: { id, campusId },
+      where: {
+        id,
+        campusId,
+        // IKKRMX：平台端点不碰组织目录行（伪校区上的组织行走 org-products
+        // 链路，越层 id 一律 404 不泄露存在性）
+        ...(campusId === OFFICIAL_CAMPUS_ID ? { organizationId: null } : {}),
+      },
     });
     if (!before) throw new NotFoundException('商品不存在');
     if (
@@ -1523,7 +1859,12 @@ export class AdminService {
   ) {
     if (!ids.length) return { count: 0 };
     const result = await this.db.product.updateMany({
-      where: { id: { in: ids }, campusId },
+      where: {
+        id: { in: ids },
+        campusId,
+        // IKKRMX：官方库视角的批量放行/回收不连坐组织目录行（组织行自管）
+        ...(campusId === OFFICIAL_CAMPUS_ID ? { organizationId: null } : {}),
+      },
       data: { status },
     });
     await this.audit(
@@ -1671,6 +2012,12 @@ export class AdminService {
    * IKKRMW（ADR-0001 决策 3）钉死：上游=平台目录行；上层修改只产生
    * 「待同步」提示（列表 upstreamChanged 角标），永不自动覆盖下层经营
    * 字段（售价/库存/状态）——资料也只有校区显式拉取才同步。
+   *
+   * IKKRMX（ADR-0001 决策 4）上游同步保护钉死（三层来源链 platform←org←campus
+   * 逐层同口径）：组织目录行的 pullUpstream（后续 issue 落地）从平台目录行
+   * 拉资料时，同样**永不自动覆盖组织层的经营字段**——组织供货价(price)/
+   * 采购来源(supplyMode)/经营状态(status) 只由组织显式修改；组织行→校区
+   * 副本（orgCatalogId 链）亦然。上层变化一律只产生「待同步」提示。
    */
   async pullUpstream(id: string, operator: string, campusId: string) {
     const local = await this.db.product.findFirst({
@@ -1904,7 +2251,12 @@ export class AdminService {
   /** 官方库在售全集（IKFOQ0 第二轮：批次范围恒等此集合，不再勾选落快照）。 */
   private officialOnSaleProducts() {
     return this.db.product.findMany({
-      where: { campusId: OFFICIAL_CAMPUS_ID, status: 'on-sale' },
+      // IKKRMX：批次范围=平台目录在售行，组织目录行（同落伪校区）不入池
+      where: {
+        campusId: OFFICIAL_CAMPUS_ID,
+        status: 'on-sale',
+        organizationId: null,
+      },
       select: {
         id: true,
         name: true,
@@ -2270,6 +2622,8 @@ export class AdminService {
         id: { in: items.map((i) => i.productId) },
         campusId: OFFICIAL_CAMPUS_ID,
         status: 'on-sale',
+        // IKKRMX：订货范围=平台目录行，组织目录行（同落伪校区）不可订
+        organizationId: null,
       },
       select: { id: true, unitsPerCase: true },
     });
