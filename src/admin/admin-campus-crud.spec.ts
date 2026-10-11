@@ -81,4 +81,35 @@ describe('campus CRUD role gate (IKBWRT → 蛋词模式)', () => {
     expect(allow('warehouse', 'POST', '/admin/campuses')).toBe(false);
     expect(allow('finance', 'POST', '/admin/campuses')).toBe(false);
   });
+
+  it('校区级账号修改校区时只向服务层传递基础档案字段', async () => {
+    const updateCampus = jest.fn().mockResolvedValue({ id: 'campus-hbut' });
+    const assertCampusInScope = jest.fn().mockResolvedValue(undefined);
+    const scoped = new AdminController(
+      { updateCampus } as unknown as AdminService,
+      { assertCampusInScope } as unknown as RbacService,
+    );
+    const req = specReq('operations');
+    await scoped.updateCampus(req, 'campus-hbut', {
+      name: '新名称',
+      servicePhone: '4008002026',
+      organizationId: 'org-foreign',
+      status: 'inactive',
+      buildingManagerBaseSalary: 999,
+    });
+    expect(assertCampusInScope).toHaveBeenCalledWith(req.rbac, 'campus-hbut');
+    expect(updateCampus).toHaveBeenCalledWith(
+      'campus-hbut',
+      {
+        name: '新名称',
+        shortName: undefined,
+        warehouseName: undefined,
+        address: undefined,
+        servicePhone: '4008002026',
+        serviceQrcode: undefined,
+        buildingManagerBaseSalary: 999,
+      },
+      req.user.id,
+    );
+  });
 });

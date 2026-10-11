@@ -72,8 +72,14 @@ describe('role model (IKKRMQ)', () => {
       for (const c of operator.menuCodes) expect(admin.menuCodes).toContain(c);
       for (const c of [
         'campus-config',
+        'campus-config.profile',
         'campus-config.slots',
         'campus-config.notices',
+        'banners',
+        'banners.write',
+        'pay-ads',
+        'printers',
+        'printers.write',
       ])
         expect(admin.menuCodes).toContain(c);
     });
@@ -584,9 +590,11 @@ describe('role model (IKKRMQ)', () => {
       expect(row.seeded).toBe(true);
       expect(row.assignableBy).toBe(def.assignableBy);
       expect(row.applicableLevel).toBe(def.applicableLevel);
-      expect(await db.adminRoleMenu.count({ where: { roleId: row.id } })).toBe(
-        def.menuCodes.length,
-      );
+      // 首灌齐平在干净库成立；存量库允许超出（管理员可经角色管理页扩选，
+      // 启动同步不重置——见下一用例契约），故断言子集而非精确相等
+      expect(
+        await db.adminRoleMenu.count({ where: { roleId: row.id } }),
+      ).toBeGreaterThanOrEqual(def.menuCodes.length);
     }
     const superRow = await db.adminRole.findUnique({
       where: { code: SUPER_ROLE_CODE },

@@ -2296,6 +2296,20 @@ export class AdminController {
   ) {
     const ctx = this.ctx(req);
     await this.rbac.assertCampusInScope(ctx, id);
+    // 校区级账号只能维护本校区基础档案。校区启停、组织归属、配送配置和
+    // 楼长底薪仍由对应的组织/平台操作或专用配置接口负责。
+    const campusProfileUpdate =
+      !this.platformDataScope(ctx) && !this.orgBounded(ctx)
+        ? {
+            name: body.name,
+            shortName: body.shortName,
+            warehouseName: body.warehouseName,
+            address: body.address,
+            servicePhone: body.servicePhone,
+            serviceQrcode: body.serviceQrcode,
+            buildingManagerBaseSalary: body.buildingManagerBaseSalary,
+          }
+        : body;
     if (
       this.orgBounded(ctx) &&
       body.organizationId &&
@@ -2303,8 +2317,8 @@ export class AdminController {
     )
       throw new ForbiddenException('组织管理员不能将校区转移到其他组织');
     const update = this.orgBounded(ctx)
-      ? { ...body, organizationId: undefined }
-      : body;
+      ? { ...campusProfileUpdate, organizationId: undefined }
+      : campusProfileUpdate;
     return ok(
       await this.service.updateCampus(id, update, req.user.id),
       '校区已更新',

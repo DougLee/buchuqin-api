@@ -260,46 +260,47 @@ export class RbacService {
         });
         changed = true;
       }
-      // 3) 模板角色首灌 role_menu
+      // 3) 旧四类迁移角色已退役。ROLE_TEMPLATES 仅保留为旧权限语义和测试
+      // 兼容定义，绝不能再持久化；手动调用同步时也清理历史残留及其授权。
       const codeToId = new Map(
         (await tx.adminMenu.findMany({ select: { id: true, code: true } })).map(
           (m) => [m.code, m.id],
         ),
       );
-      for (const t of ROLE_TEMPLATES) {
-        const role = await tx.adminRole.upsert({
-          where: { code: t.code },
-          update: {},
-          create: {
-            code: t.code,
-            name: t.name,
-            remark: t.remark,
-            seeded: false,
-          },
+      const retiredRoleIds = (
+        await tx.adminRole.findMany({
+          where: { code: { in: ROLE_TEMPLATES.map((role) => role.code) } },
+          select: { id: true },
+        })
+      ).map((role) => role.id);
+      if (retiredRoleIds.length) {
+        await tx.adminAccountRole.deleteMany({
+          where: { roleId: { in: retiredRoleIds } },
         });
-        if (role.seeded || role.menusMigrated) continue;
-        await tx.adminRoleMenu.createMany({
-          data: t.menuCodes
-            .map((c) => codeToId.get(c))
-            .filter((id): id is string => !!id)
-            .map((menuId) => ({ roleId: role.id, menuId })),
-          skipDuplicates: true,
+        await tx.adminRoleMenu.deleteMany({
+          where: { roleId: { in: retiredRoleIds } },
         });
-        await tx.adminRole.update({
-          where: { id: role.id },
-          data: { seeded: true },
+        await tx.adminRolePermission.deleteMany({
+          where: { roleId: { in: retiredRoleIds } },
+        });
+        await tx.adminRole.deleteMany({
+          where: { id: { in: retiredRoleIds } },
         });
         changed = true;
       }
       // 3.5) 预设角色（IKKRMQ 统一角色管理）：org-admin / campus-admin /
       // campus-operator 首次登记（名称/说明/分配边界）并首灌菜单；已有行不
       // 覆盖后台修改（seeded 后不再重置）。super-admin 已由内置超管 upsert
-      // 维护（通配无菜单行），跳过。与旧迁移模板并存互不影响。
+      // 维护（通配无菜单行），跳过。
       for (const p of PRESET_ROLES) {
         if (p.code === SUPER_ROLE_CODE) continue;
         const preset = await tx.adminRole.upsert({
           where: { code: p.code },
-          update: {},
+          // 幂等同步=收敛到定义：存量行（如旧 assignableBy=platform）刷成预设边界
+          update: {
+            assignableBy: p.assignableBy,
+            applicableLevel: p.applicableLevel,
+          },
           create: {
             code: p.code,
             name: p.name,

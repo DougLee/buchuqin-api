@@ -128,6 +128,7 @@ export const MENU_NODES: MenuNodeDef[] = [
   { code: 'campus-config', name: '校区配置', type: 1, parent: 'g.org', path: '/campus-config', icon: 'campus', order: 5, perms: ['GET /admin/campus-config'] },
   { code: 'campus-config.slots', name: '送达时段维护', type: 2, parent: 'campus-config', order: 1, perms: ['POST /admin/delivery-slots', 'PATCH /admin/delivery-slots/:id', 'DELETE /admin/delivery-slots/:id'] },
   { code: 'campus-config.notices', name: '公告维护', type: 2, parent: 'campus-config', order: 2, perms: ['POST /admin/notices', 'PATCH /admin/notices/:id', 'DELETE /admin/notices/:id'] },
+  { code: 'campus-config.profile', name: '基础档案维护', type: 2, parent: 'campus-config', order: 3, perms: ['PATCH /admin/campuses/:id'], remark: '本校区名称、仓库、地址与客服资料' },
   { code: 'campuses.config.write', name: '校区配置', type: 2, parent: 'campuses', order: 1, perms: ['PATCH /admin/delivery-config'], remark: '本校区配送费/门槛/闭店窗' },
   { code: 'campuses.manage', name: '校区本体管理', type: 2, parent: 'campuses', order: 2, perms: ['POST /admin/campuses', 'PATCH /admin/campuses/:id'], remark: '新建校区/本体增改（平台）' },
   { code: 'users', name: 'C端用户', type: 1, parent: 'g.org', path: '/users', icon: 'staff', order: 5, perms: ['GET /admin/users', 'GET /admin/users/stats', 'GET /admin/users/:id/orders'] },
@@ -213,8 +214,8 @@ function withDirs(codes: string[]): string[] {
 }
 
 /**
- * 旧五角色迁移模板（对齐 RBAC V1 首版权限集，无缩水）：
- * menuCodes = 原 permissions ∪ menus（目录自动补齐父链）。
+ * 旧五角色权限快照，仅供兼容测试和正式预设角色复用。
+ * 这些 code 已退役，syncRegistry 不得再将它们写入 AdminRole。
  */
 export const ROLE_TEMPLATES: { code: string; name: string; remark: string; menuCodes: string[] }[] = [
   {
@@ -287,8 +288,8 @@ for (const t of ROLE_TEMPLATES)
     if (!MENU_NODE_CODES.has(c)) throw new Error(`模板 ${t.code} 引用未登记菜单节点: ${c}`);
 
 /* ==================== 预设角色（IKKRMQ，2026-10-10）：统一角色管理 ====================
- * 平台超管 / 组织管理员 / 校区管理员 / 校区运营四个官方预设，与旧五角色迁移
- * 模板（ROLE_TEMPLATES）并存且互不影响。启动同步按 code 幂等登记：首次落
+ * 平台超管 / 组织管理员 / 校区管理员 / 校区运营四个官方预设。旧五角色迁移
+ * 模板（ROLE_TEMPLATES）只作内存权限快照，不再落库。同步按 code 幂等登记：首次落
  * 名称/说明/分配边界并首灌菜单（seeded 标记），之后实际权限勾选仍走角色管
  * 管理页（超管可自由增删菜单）。super-admin 为内置通配（无菜单行、不可编辑
  * 不可删），登记仅为说明与校验锚点——同步时跳过。
@@ -318,8 +319,14 @@ const CAMPUS_OPERATOR_BASE = ROLE_TEMPLATES.find(
 const CAMPUS_ADMIN_MENUS = withDirs([
   ...CAMPUS_OPERATOR_BASE,
   'campus-config',
+  'campus-config.profile',
   'campus-config.slots',
   'campus-config.notices',
+  'banners',
+  'banners.write',
+  'pay-ads',
+  'printers',
+  'printers.write',
 ]);
 
 /**

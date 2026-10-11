@@ -24,7 +24,7 @@ export const PLATFORM_PATTERNS = [
   // 必填，组织级账号恒本组织（显式传参越组织 403）。
   'GET /admin/org-products', 'POST /admin/org-products',
   'PATCH /admin/org-products/:id', 'POST /admin/org-products/:id/import',
-  'POST /admin/campuses', 'PATCH /admin/campuses/:id',
+  'POST /admin/campuses',
   'POST /admin/inventory/stock-in',
   'POST /admin/restock/batches', 'PATCH /admin/restock/batches/:id',
   'POST /admin/restock/batches/:id/close',
