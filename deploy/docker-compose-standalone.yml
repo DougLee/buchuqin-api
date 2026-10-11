@@ -18,6 +18,10 @@
 # ⚠️ 指向的 1Panel PG 里需已建 buchuqin 角色 + buchuqinshishe 库并灌好数据
 #   （空库冷启动会卡在历史迁移依赖倒挂，见部署踩坑记录·坑4）。
 
+# 项目名显式钉死：不依赖部署目录名——派生网络 buchuqin_default、compose 命令
+# 作用域在任何目录部署都一致；与旧主编排同名，原地切换复用网络不留孤儿
+name: buchuqin
+
 services:
   api:
     build: ./buchuqin-api
