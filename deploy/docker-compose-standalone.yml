@@ -1,37 +1,37 @@
-# 不出寝食社·独立部署编排（api+admin 两容器，库用 1Panel 管的 PostgreSQL）
-# 参考 dancikeji 部署模板（道哥 2026-10-11）适配本项目：
-#   1) 无 redis——本项目 api 零 redis 引用（JWT 无状态会话）；
-#   2) 无 db 服务——数据库是 1Panel 应用商店装的 PostgreSQL（外部容器），
-#      经 external 网络 1panel-network 按容器名互访，与 /opt/buchuqin 主编排同一约定；
-#   3) admin 容器化（vue 服务）——不再依赖 openresty 站点目录，自带 nginx
-#      静态直出 + /api/v1 同源反代 nest，对外只发布 vue 一个端口；
-#   4) api 日志走 docker logs（stdout），无 LOG_DIR 文件落盘。
+# 不出寝食社·standalone 部署编排（api+admin 双容器，库用 1Panel 管的 PostgreSQL）
+# 2026-10-11 道哥拍板：测试环境切换到本形态部署；稳定后生产跟进。
 #
-# 用法（服务器上，与主编排同机共库时）：
-#   git clone git@gitee.com:buchuqin-group/buchuqin-api.git
-#   git clone git@gitee.com:buchuqin-group/buchuqin-admin.git
+# 与主编排（deploy/docker-compose.yml）的差异：
+#   1) admin 容器化（admin 服务）——不再依赖 openresty 站点目录/admin-dist 挂载，
+#      自带 nginx 静态直出 + /api/v1 同源反代 api 服务，更新=git pull+rebuild；
+#   2) api 不再对宿主发布 8080——唯一对外口是 admin 的 20010（域名/证书仍由
+#      openresty 终结，站点 conf 从「静态根+/api 反代」改为整站反代 127.0.0.1:20010）；
+#   3) DATABASE_URL/healthcheck/env_file 约定与主编排逐字一致，.env 可直接复用。
+#
+# 首次切换（在 /opt/buchuqin 原地换，防同库双写）：
+#   cd /opt/buchuqin && docker compose down            # 停旧 api（老 compose）
 #   cp buchuqin-api/deploy/docker-compose-standalone.yml docker-compose.yml
-#   cp buchuqin-api/.env.example .env && vim .env
-#     # 必填：POSTGRES_PASSWORD / JWT_SECRET / PSQL_HOST=<1Panel 的 PG 容器名> / COS_* / WX_*
-#   docker network create 1panel-network   # 已存在会报错，忽略
+#   # .env 需含：PSQL_HOST=<1Panel PG 容器名> POSTGRES_PASSWORD JWT_SECRET COS_* WX_* 等
 #   docker compose up -d --build
+#   # openresty 站点 conf 改整站反代 127.0.0.1:20010（单独步骤，见部署记录）
 #
 # ⚠️ 指向的 1Panel PG 里需已建 buchuqin 角色 + buchuqinshishe 库并灌好数据
 #   （空库冷启动会卡在历史迁移依赖倒挂，见部署踩坑记录·坑4）。
-version: "3.1"
 
 services:
-  nest:
+  api:
     build: ./buchuqin-api
+    container_name: buchuqin-api
     restart: always
     environment:
       TZ: Asia/Shanghai
       NODE_ENV: production
       PORT: 3000
-      # DATABASE_URL 单源化拼接（与主编排同一约定）：PSQL_HOST=1Panel 的 PG 容器名
-      DATABASE_URL: postgresql://buchuqin:${POSTGRES_PASSWORD}@${PSQL_HOST}:5432/buchuqinshishe?schema=public
+      # DATABASE_URL 单源化拼接（与主编排同一约定）；:? 语法让漏配在 compose 阶段
+      # 就报明确错误，而非容器内 P1013 空主机名 crash-loop（部署踩坑记录）
+      DATABASE_URL: postgresql://buchuqin:${POSTGRES_PASSWORD:?请在 .env 配置 POSTGRES_PASSWORD}@${PSQL_HOST:?请在 .env 配置 PSQL_HOST（1Panel 的 PG 容器名）}:5432/buchuqinshishe?schema=public
     env_file: .env
-    # 启动自动 migrate deploy（见 Dockerfile CMD）
+    # 启动自动 migrate deploy（见 Dockerfile CMD）；探活含数据库连通性检查
     healthcheck:
       test:
         [
@@ -44,20 +44,38 @@ services:
       timeout: 5s
       retries: 3
       start_period: 20s
+    # 日志轮转（这台机磁盘吃过 100% 的亏，json-file 默认无上限）
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
     networks:
       - default
       - 1panel-network
 
-  vue:
+  admin:
     build: ./buchuqin-admin
+    container_name: buchuqin-admin
     restart: always
     depends_on:
-      - nest
+      api:
+        condition: service_healthy
     environment:
       TZ: Asia/Shanghai
     ports:
-      # 对外发布端口，按机器规划改左侧（右侧 80 是容器内 nginx，/api/v1 内部反代 nest）
-      - 20010:80
+      # 仅本机——openresty（host 网络）整站反代此口；确需公网直连再改 0.0.0.0
+      - "127.0.0.1:20010:80"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:80/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "3"
     networks:
       - default
 
