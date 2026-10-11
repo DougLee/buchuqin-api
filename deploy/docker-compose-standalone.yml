@@ -1,0 +1,76 @@
+# 不出寝食社·独立部署编排（单机自包含：库+API+admin 一把梭）
+# 参考 dancikeji 部署模板（道哥 2026-10-11）适配本项目的差异：
+#   1) 未包含 redis——本项目 api 零 redis 引用（JWT 无状态会话），不硬塞空转组件；
+#   2) 补 postgres 服务——本项目唯一有状态依赖（Prisma+PG18，与 1Panel 环境同镜像）；
+#   3) api 日志走 docker logs（stdout），无 LOG_DIR 文件落盘，不挂假日志卷；
+#   4) admin 不再是 openresty 站点目录，而是自带 nginx 容器（静态+/api/v1 同源反代）。
+#
+# 用法（服务器上，目录约定同 1Panel 环境）：
+#   git clone git@gitee.com:buchuqin-group/buchuqin-api.git
+#   git clone git@gitee.com:buchuqin-group/buchuqin-admin.git
+#   cp buchuqin-api/deploy/docker-compose-standalone.yml docker-compose.yml
+#   cp buchuqin-api/.env.example .env && vim .env   # 必填 POSTGRES_PASSWORD/JWT_SECRET/COS_*/WX_*
+#   docker compose up -d --build
+#
+# ⚠️ 空库冷启动限制（部署踩坑记录·坑4）：迁移链有历史依赖倒挂
+#   （RestockOrder 建表不在任何迁移内），全新空库 migrate deploy 会在中途失败。
+#   首次启动二选一：a) 先 pg_restore 导入一份存量 dump 再补账；
+#   b) 修完 baseline 迁移欠账后再空库直起。容器会 crash-loop 重试，导入数据后自动恢复。
+version: "3.1"
+
+services:
+  db:
+    image: postgres:18.6-alpine
+    restart: always
+    environment:
+      TZ: Asia/Shanghai
+      POSTGRES_USER: buchuqin
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: buchuqinshishe
+    volumes:
+      # PG18 官方镜像 PGDATA=/var/lib/postgresql/18/docker，挂父目录（与 1Panel 同构）
+      - ./data/postgres/:/var/lib/postgresql/
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U buchuqin -d buchuqinshishe"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  nest:
+    build: ./buchuqin-api
+    restart: always
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      TZ: Asia/Shanghai
+      NODE_ENV: production
+      PORT: 3000
+      # DATABASE_URL 单源化拼接（与 1Panel 环境同一约定）：默认指向本编排 db 服务
+      DATABASE_URL: postgresql://buchuqin:${POSTGRES_PASSWORD}@${PSQL_HOST:-db}:5432/buchuqinshishe?schema=public
+    env_file: .env
+    # 启动自动 migrate deploy（见 Dockerfile CMD）；healthcheck 同 1Panel 编排
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/api/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  vue:
+    build: ./buchuqin-admin
+    restart: always
+    depends_on:
+      - nest
+    environment:
+      TZ: Asia/Shanghai
+    ports:
+      # 对外发布端口，按机器规划改左侧（右侧 80 是容器内 nginx）
+      - 20010:80
