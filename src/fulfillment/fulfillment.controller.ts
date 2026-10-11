@@ -84,6 +84,17 @@ export class FulfillmentController {
       throw new ForbiddenException('抢单池仅配送员可用');
     return ok(await this.service.availableTasks(id));
   }
+  /** IKKTTP 楼长作战地图：整栋三色格（绑定楼栋） */
+  @Get('battle-map') async battleMap(@Req() r: AuthRequest) {
+    return ok(await this.service.battleMap(r.user.id));
+  }
+  /** IKKTTP 楼长作战地图：寝室详情 */
+  @Get('battle-map/rooms/:roomId') async battleMapRoom(
+    @Req() r: AuthRequest,
+    @Param('roomId') roomId: string,
+  ) {
+    return ok(await this.service.battleMapRoom(r.user.id, roomId));
+  }
   @Get('tasks/:id') async task(@Req() r: AuthRequest, @Param('id') id: string) {
     return ok(await this.service.task(this.auth(r), id));
   }

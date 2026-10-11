@@ -166,6 +166,75 @@ describe('org boundary (IKKRMP / ADR-0001)', () => {
     expect(orgPlatformRoleCtx.organizationId).toBe(ORG_B);
   });
 
+  it('dashboard：组织级账号即使持平台角色，缺省也按本组织汇总', async () => {
+    const dashboard = jest.fn().mockResolvedValue({ campusRows: [] });
+    const scopedController = new AdminController(
+      { dashboard } as never,
+      { allowCapability: () => true } as never,
+    );
+    await scopedController.dashboard(reqOf(orgPlatformRoleCtx));
+    expect(dashboard).toHaveBeenCalledWith('', true, ORG_B);
+  });
+
+  it('校区管理：组织账号始终读取本组织全量校区，不受当前切换校区影响', async () => {
+    const campuses = jest.fn().mockResolvedValue([]);
+    const scopedController = new AdminController(
+      { campuses } as never,
+      {} as never,
+    );
+    await scopedController.campuses(reqOf(orgPlatformRoleCtx));
+    expect(campuses).toHaveBeenCalledWith(undefined, ORG_B);
+
+    await scopedController.campuses(
+      reqOf({ ...orgPlatformRoleCtx, campusId: CAMPUS_B2 }),
+    );
+    expect(campuses).toHaveBeenLastCalledWith(undefined, ORG_B);
+  });
+
+  it('校区管理写操作：组织管理员新建自动绑定本组织，编辑只能命中组织内校区', async () => {
+    const createCampus = jest.fn().mockResolvedValue({ id: 'new-campus' });
+    const updateCampus = jest.fn().mockResolvedValue({ id: CAMPUS_B2 });
+    const assertCampusInScope = jest.fn().mockResolvedValue(undefined);
+    const scopedController = new AdminController(
+      { createCampus, updateCampus } as never,
+      { assertCampusInScope } as never,
+    );
+    const req = reqOf(orgPlatformRoleCtx);
+    const createBody = {
+      name: '组织 B 新校区',
+      shortName: 'B 新校区',
+      warehouseName: 'B 新校区仓',
+    };
+
+    await scopedController.createCampus(req, createBody);
+    expect(createCampus).toHaveBeenCalledWith(
+      createBody,
+      orgPlatformRoleCtx.accountId,
+      ORG_B,
+    );
+
+    await scopedController.updateCampus(req, CAMPUS_B2, { shortName: 'B2 新简称' });
+    expect(assertCampusInScope).toHaveBeenCalledWith(orgPlatformRoleCtx, CAMPUS_B2);
+    expect(updateCampus).toHaveBeenCalledWith(
+      CAMPUS_B2,
+      { shortName: 'B2 新简称' },
+      orgPlatformRoleCtx.accountId,
+    );
+  });
+
+  it('通用业务页：组织账号未绑定默认校区时安全落到本组织校区', async () => {
+    const emptyLanding = { ...orgPlatformRoleCtx, campusId: '' };
+    await expect(rbac.resolveCampusInScope(emptyLanding)).resolves.toBe(
+      CAMPUS_B1,
+    );
+    await expect(
+      rbac.resolveCampusInScope(emptyLanding, CAMPUS_B2),
+    ).resolves.toBe(CAMPUS_B2);
+    await expect(
+      rbac.resolveCampusInScope(emptyLanding, 'campus-hbut'),
+    ).rejects.toThrow('目标校区不属于账号所属组织');
+  });
+
   it('历史账号推导回归：campus-hq/空 campusId→platform，真实校区→campus；organizationId 沿用 IKKRMM 推导', () => {
     expect(resolveOrgLevel('')).toBe('platform');
     expect(resolveOrgLevel('campus-hq')).toBe('platform');
@@ -215,6 +284,48 @@ describe('org boundary (IKKRMP / ADR-0001)', () => {
     await expect(
       controller['campusScope'](reqOf(orgPlatformRoleCtx, { campus: 'campus-hbut' })),
     ).rejects.toThrow(ForbiddenException);
+  });
+
+  it('订货操作使用顶部选中的本组织校区，而不是账号原始落点', async () => {
+    const saveRestockOrder = jest.fn().mockResolvedValue({ id: 'order-b2' });
+    const deleteRestockOrder = jest.fn().mockResolvedValue({ id: 'order-b2' });
+    const scopedController = new AdminController(
+      { saveRestockOrder, deleteRestockOrder } as never,
+      rbac,
+    );
+    const req = reqOf(orgPlatformRoleCtx, { campus: CAMPUS_B2 });
+
+    await scopedController.saveRestockOrder(
+      req,
+      'batch-1',
+      { items: [{ productId: 'product-1', cases: 1 }] },
+    );
+    expect(saveRestockOrder).toHaveBeenCalledWith(
+      'batch-1',
+      { items: [{ productId: 'product-1', cases: 1 }] },
+      orgPlatformRoleCtx.accountId,
+      CAMPUS_B2,
+    );
+
+    await scopedController.deleteRestockOrder(req, 'order-b2');
+    expect(deleteRestockOrder).toHaveBeenCalledWith(
+      'order-b2',
+      orgPlatformRoleCtx.accountId,
+      CAMPUS_B2,
+    );
+  });
+
+  it('平台菜单误授给组织账号时，采购数据面仍拒绝访问', async () => {
+    const purchaseOrders = jest.fn().mockResolvedValue([]);
+    const scopedController = new AdminController(
+      { purchaseOrders } as never,
+      {} as never,
+    );
+
+    await expect(
+      scopedController.purchaseOrders(reqOf(orgPlatformRoleCtx)),
+    ).rejects.toThrow(ForbiddenException);
+    expect(purchaseOrders).not.toHaveBeenCalled();
   });
 
   it('平台级账号不受限：跨组织校区均可聚焦/操作', async () => {

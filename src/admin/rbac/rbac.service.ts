@@ -517,6 +517,43 @@ export class RbacService implements OnModuleInit {
       throw new ForbiddenException('目标校区不属于账号所属组织');
   }
 
+  /**
+   * 组织级账号的单校区操作落点：显式目标优先；其次使用仍属于本组织的账号
+   * 落点；最后选择本组织最早启用的运营校区。绝不回退到其他组织。
+   */
+  async resolveCampusInScope(
+    ctx: RbacContext,
+    requestedCampus?: string,
+  ): Promise<string> {
+    const requested = requestedCampus?.trim() ?? '';
+    if (ctx.orgLevel !== 'org' || !ctx.organizationId)
+      return requested || ctx.campusId;
+    if (requested) {
+      await this.assertCampusInScope(ctx, requested);
+      return requested;
+    }
+    const campus = await this.db.campus.findFirst({
+      where: {
+        organizationId: ctx.organizationId,
+        status: { not: 'official' },
+        ...(ctx.campusId ? { id: ctx.campusId } : {}),
+      },
+      select: { id: true },
+      orderBy: { createdAt: 'asc' },
+    });
+    if (campus) return campus.id;
+    const fallback = await this.db.campus.findFirst({
+      where: {
+        organizationId: ctx.organizationId,
+        status: { not: 'official' },
+      },
+      select: { id: true },
+      orderBy: { createdAt: 'asc' },
+    });
+    if (!fallback) throw new BadRequestException('当前组织暂无可用校区');
+    return fallback.id;
+  }
+
   /* ==================== permmenu 契约（对齐蛋词 {perms, menus}） ==================== */
 
   async buildMeResponse(account: AdminAccount) {
@@ -558,6 +595,17 @@ export class RbacService implements OnModuleInit {
       account: {
         id: account.id, username: account.username, nickname: account.nickname,
         status: account.status, campusId: account.campusId,
+        // 显式账号层级优先；历史 NULL 账号继续按旧 platform 授权语义回退，
+        // 避免仅因 campus-hq 推导结果就在前端意外放大成全平台看板。
+        orgLevel:
+          account.orgLevel === 'platform' ||
+          account.orgLevel === 'org' ||
+          account.orgLevel === 'campus'
+            ? account.orgLevel
+            : ctx.platform
+              ? 'platform'
+              : 'campus',
+        organizationId: ctx.organizationId ?? null,
       },
       platform: ctx.platform,
       platformPerms: [...(ctx.platformPatterns ?? [])].sort(),
@@ -585,6 +633,17 @@ export class RbacService implements OnModuleInit {
 
   private async switchableCampuses(ctx: RbacContext): Promise<string[]> {
     if (ctx.super) return (await this.db.campus.findMany({ select: { id: true } })).map((c) => c.id);
+    if (ctx.orgLevel === 'org' && ctx.organizationId)
+      return (
+        await this.db.campus.findMany({
+          where: {
+            organizationId: ctx.organizationId,
+            status: { not: 'official' },
+          },
+          select: { id: true },
+          orderBy: { createdAt: 'asc' },
+        })
+      ).map((campus) => campus.id);
     return ctx.campuses;
   }
 
@@ -675,6 +734,21 @@ export class RbacService implements OnModuleInit {
         targetOrgLevel !== undefined ? targetOrgLevel : account.orgLevel,
         account.campusId,
       );
+      // 校区管理员是单校区岗位：角色仍只描述功能，但该内置角色的业务约束
+      // 要求账号数据边界为 campus，且本次所有角色授权都落在同一个校区。
+      // 服务端强制校验，避免绕过后台页面直接调用 API 创建多校区管理员。
+      if (grants.some((grant) => grant.roleCode === 'campus-admin')) {
+        const campusIds = new Set(
+          grants.flatMap((grant) => grant.scope === 'campus' && grant.campusId ? [grant.campusId] : []),
+        );
+        if (
+          targetLevel !== 'campus' ||
+          grants.some((grant) => grant.scope !== 'campus') ||
+          campusIds.size !== 1
+        ) {
+          throw new BadRequestException('校区管理员只能绑定一个校区');
+        }
+      }
       for (const g of grants) {
         if (g.scope !== 'platform' && g.scope !== 'campus')
           throw new BadRequestException('授权范围只允许 platform/campus');

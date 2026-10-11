@@ -189,39 +189,60 @@ export class AdminService {
    * exception 的未结单（不限当日，代表当前待处理）。轻量 groupBy，不复用
    * 单校区 dashboard 的重查询。
    */
-  private async hqDashboard(costRead = true) {
+  private async hqDashboard(
+    costRead = true,
+    organizationId?: string,
+  ) {
     const startOfToday = new Date();
     startOfToday.setHours(0, 0, 0, 0);
-    const [campuses, paidAgg, userAgg, exceptionAgg, buildingAgg, profitRows] =
+    // 组织级汇总必须先解析本组织校区集合，随后所有聚合查询都用同一集合
+    // 收口，不能先查全平台再在内存中过滤，否则既浪费资源也容易泄漏汇总值。
+    const campuses = await this.db.campus.findMany({
+      where: {
+        status: { not: 'official' },
+        ...(organizationId ? { organizationId } : {}),
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+    const campusIds = campuses.map((campus) => campus.id);
+    const campusWhere = organizationId ? { campusId: { in: campusIds } } : {};
+    const [paidAgg, userAgg, exceptionAgg, buildingAgg, profitRows] =
       await Promise.all([
-        // status=official 是官方商品库伪校区（IKAJSM），不进运营汇总
-        this.db.campus.findMany({
-          where: { status: { not: 'official' } },
-          orderBy: { createdAt: 'asc' },
-        }),
         this.db.order.groupBy({
           by: ['campusId'],
-          where: { createdAt: { gte: startOfToday }, paidAt: { not: null } },
+          where: {
+            ...campusWhere,
+            createdAt: { gte: startOfToday },
+            paidAt: { not: null },
+          },
           _count: { _all: true },
           _sum: { payableAmount: true },
         }),
         this.db.user.groupBy({
           by: ['campusId'],
-          where: { createdAt: { gte: startOfToday } },
+          where: { ...campusWhere, createdAt: { gte: startOfToday } },
           _count: { _all: true },
         }),
         this.db.order.groupBy({
           by: ['campusId'],
-          where: { status: 'exception' },
+          where: { ...campusWhere, status: 'exception' },
           _count: { _all: true },
         }),
-        this.db.building.groupBy({ by: ['campusId'], _count: { _all: true } }),
+        this.db.building.groupBy({
+          by: ['campusId'],
+          where: campusWhere,
+          _count: { _all: true },
+        }),
         // 校区概览毛利（2026-09-18 道哥）：口径与校区经营日报一致——
         // 综合毛利=实付−配送费 − 行级 unitWholesaleCost 快照×数量（IKJ92S：
         // 配送费交付配送员属配送成本，不进毛利；快照前历史单按 0 成本计）；
         // IKISZ2 增毛利（未扣券）=商品金额 − 同口径成本
         this.db.order.findMany({
-          where: { createdAt: { gte: startOfToday }, paidAt: { not: null } },
+          where: {
+            ...campusWhere,
+            createdAt: { gte: startOfToday },
+            paidAt: { not: null },
+          },
           select: {
             campusId: true,
             payableAmount: true,
@@ -319,12 +340,16 @@ export class AdminService {
       },
     };
   }
-  async dashboard(campusId: string, costRead = true) {
+  async dashboard(
+    campusId: string,
+    costRead = true,
+    organizationId?: string,
+  ) {
     // IKAJSL：总部账号 campusId 空 → 跨校区汇总；带 ?campus= 可看单校区明细
     // IKKRMY：总部汇总含校区毛利/综合毛利，无 cost.read 时裁剪（单校区看板
     // 无成本字段，天然干净）
     if (!campusId) {
-      const report = await this.hqDashboard();
+      const report = await this.hqDashboard(true, organizationId);
       return costRead ? report : trimReportCost(report);
     }
     const [campus, orders, buildings, trend, activities, staffRows, stageRows] =
@@ -6254,11 +6279,12 @@ export class AdminService {
     );
     return paid;
   }
-  async campuses(campusId?: string) {
+  async campuses(campusId?: string, organizationId?: string) {
     // status=official 是官方商品库伪校区（IKAJSM），不出现在校区列表
     const xs = await this.db.campus.findMany({
       where: {
         status: { not: 'official' },
+        ...(organizationId ? { organizationId } : {}),
         ...(campusId !== undefined ? { id: campusId } : {}),
       },
       orderBy: { createdAt: 'asc' },
@@ -6282,8 +6308,9 @@ export class AdminService {
   // 微信配置/开通组织 B）属 IKKRMS；权限为平台级（access-policy 拦校区授予）。
 
   /** 组织列表：每组织聚合校区数（不含平台伪校区）与用户数（经校区归属汇总）。 */
-  async organizations() {
+  async organizations(organizationId?: string) {
     const orgs = await this.db.organization.findMany({
+      where: organizationId ? { id: organizationId } : {},
       orderBy: { createdAt: 'asc' },
     });
     // 校区归属快照（organizationId 可空=平台层，不进聚合）
@@ -6677,7 +6704,11 @@ export class AdminService {
   }
 
   /** 校区本体新增（IKAJSL）：新校区接入入口，仅总部长（controller 守卫）。 */
-  async createCampus(body: CreateCampusDto, operator: string) {
+  async createCampus(
+    body: CreateCampusDto,
+    operator: string,
+    organizationId?: string,
+  ) {
     return this.createCampusWithTemplates(
       {
         name: body.name,
@@ -6690,6 +6721,7 @@ export class AdminService {
         deliveryThreshold: body.deliveryThreshold,
       },
       operator,
+      organizationId,
     );
   }
 

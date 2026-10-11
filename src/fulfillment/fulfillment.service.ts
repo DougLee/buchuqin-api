@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
+import { AdminService } from '../admin/admin.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { markTimelineStep } from '../common/order-state';
 import { campusStaffDelivery } from '../common/organization';
@@ -43,6 +44,9 @@ interface PushContext {
 export class FulfillmentService {
   constructor(
     private readonly db: PrismaService,
+    // IKKTTP 楼长作战地图：复用后台整栋三色格/寝室详情逻辑（AdminService 在
+    // AppModule providers，注入无环；Optional 兼容既有单测直接 new 的用法）
+    @Optional() private readonly admin?: AdminService,
     private readonly commissionService: CommissionService = new CommissionService(
       db,
     ),
@@ -114,6 +118,10 @@ export class FulfillmentService {
         completed: performance.completed,
         income: performance.income,
         onTimeRate: performance.onTimeRate,
+        // IKKTTP 首页金额四联（楼长推广激励看板）
+        todayGmv: performance.todayGmv,
+        todayIncome: performance.todayIncome,
+        monthGmv: performance.monthGmv,
       },
       announcement:
         profile.role === 'building-manager'
@@ -175,6 +183,13 @@ export class FulfillmentService {
       where: { staffId, period },
       _sum: { amount: true },
     });
+    // IKKTTP 今日收入：今日落账的 Commission 合计（含负向调整），与本月口径同源
+    const dayStart = new Date();
+    dayStart.setHours(0, 0, 0, 0);
+    const todayIncomeAgg = await this.db.commission.aggregate({
+      where: { staffId, createdAt: { gte: dayStart } },
+      _sum: { amount: true },
+    });
     return {
       period: 'today',
       pending: mine.filter((x) =>
@@ -194,6 +209,8 @@ export class FulfillmentService {
       monthGmv: gmvOf(completed.filter(inMonth)),
       monthOrders: completed.filter(inMonth).length,
       income: incomeAgg._sum.amount ?? 0,
+      // IKKTTP 首页金额四联：今日/本月 × 销售额/收入（income=本月佣金合计）
+      todayIncome: todayIncomeAgg._sum.amount ?? 0,
       onTimeRate: rate(onTime.length, completed.length),
       proofRate: rate(withProof.length, completed.length),
       exceptionRate: rate(
@@ -835,4 +852,24 @@ export class FulfillmentService {
       return viewerId && riderId === viewerId ? ['handover'] : [];
     return [];
   }
+  /** IKKTTP 楼长作战地图：整栋三色格（按楼长绑定楼栋） */
+  async battleMap(staffId: string) {
+    const staff = await this.db.staff.findUnique({ where: { id: staffId } });
+    if (!staff?.buildingId)
+      throw new NotFoundException('未绑定楼栋（作战地图仅楼长可用）');
+    if (!this.admin) throw new Error('AdminService 未注入');
+    return this.admin.battleMapBuilding(staff.campusId, staff.buildingId);
+  }
+  /** IKKTTP 楼长作战地图：寝室详情（校验归属楼长绑定楼栋） */
+  async battleMapRoom(staffId: string, roomId: string) {
+    const staff = await this.db.staff.findUnique({ where: { id: staffId } });
+    if (!staff?.buildingId)
+      throw new NotFoundException('未绑定楼栋（作战地图仅楼长可用）');
+    const room = await this.db.room.findUnique({ where: { id: roomId } });
+    if (!room || room.buildingId !== staff.buildingId)
+      throw new NotFoundException('寝室不存在');
+    if (!this.admin) throw new Error('AdminService 未注入');
+    return this.admin.battleMapRoom(staff.campusId, roomId);
+  }
+
 }

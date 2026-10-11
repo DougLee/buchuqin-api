@@ -369,6 +369,7 @@ const ORG_ADMIN_MENUS = withDirs([
   'buildings',
   'buildings.write',
   'campuses',
+  'campuses.manage',
   'users',
   'users.phone.reveal',
   'dispatch',

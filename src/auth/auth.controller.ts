@@ -562,9 +562,10 @@ export class AuthController {
     );
   }
 
-  /* ---------- 后台账号多校区切换（IKB3KG → RBAC V1 2026-09-19）：
-     可切校区=校区级角色授权集；超管=全部校区；纯平台级授权（总部长）跨校区视角不切换 ---------- */
-  /** 我的可运营校区（RBAC 校区级授权；超管全量）。 */
+  /* ---------- 后台账号校区上下文切换：
+     数据范围是唯一边界：平台账号可切全部校区，组织账号可切所属组织校区，
+     校区账号只能切账号明确授权的校区。角色只决定功能，不能放大数据范围。 ---------- */
+  /** 我的可运营校区（按账号数据范围返回；purpose=filter 同口径）。 */
   @Get('admin/campuses')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
@@ -578,13 +579,17 @@ export class AuthController {
     const ctx = await this.rbac.getEffective(account);
     // Filter options expose only campus labels, not management counts/configuration.
     // Platform accounts can filter all campuses without becoming campus-switch accounts.
-    const allCampuses = ctx.super || (purpose === 'filter' && ctx.platform);
-    if (!allCampuses && !ctx.campuses.length) return ok([]);
-    const ids = allCampuses
-      ? undefined
-      : { in: ctx.campuses };
+    const orgBounded = ctx.orgLevel === 'org' && !!ctx.organizationId;
+    const platformBounded = ctx.orgLevel === 'platform';
+    const allCampuses = !orgBounded && (ctx.super || platformBounded || (purpose === 'filter' && ctx.platform));
+    if (!allCampuses && !orgBounded && !ctx.campuses.length) return ok([]);
+    const ids = allCampuses || orgBounded ? undefined : { in: ctx.campuses };
     const campuses = await this.db.campus.findMany({
-      where: { ...(ids ? { id: ids } : {}), status: 'active' },
+      where: {
+        ...(orgBounded ? { organizationId: ctx.organizationId } : {}),
+        ...(ids ? { id: ids } : {}),
+        status: 'active',
+      },
       orderBy: { createdAt: 'asc' },
       // organizationId 供后台账号授权器按组织分组校区；新增只读字段对既有
       // 后台与小程序调用保持向后兼容。
@@ -617,7 +622,13 @@ export class AuthController {
       where: { id: campusId, status: 'active' },
     });
     if (!campus) throw new BadRequestException('目标校区不存在或未开放');
-    const allowed = ctx.super || ctx.campuses.includes(campusId);
+    const allowed =
+      ctx.super ||
+      ctx.orgLevel === 'platform' ||
+      ctx.campuses.includes(campusId) ||
+      (ctx.orgLevel === 'org' &&
+        !!ctx.organizationId &&
+        campus.organizationId === ctx.organizationId);
     if (!allowed)
       throw new ForbiddenException('未授权运营该校区，请联系超级管理员');
     if (campusId !== account.campusId) {

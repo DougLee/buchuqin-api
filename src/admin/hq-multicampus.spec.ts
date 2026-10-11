@@ -33,6 +33,7 @@ describe('hq role & cross-campus views (IKAJSL)', () => {
   const json = (value: unknown) =>
     JSON.parse(JSON.stringify(value)) as never;
   const tag = `hqspec-${Date.now()}`;
+  const ORG_B = `org-${tag}`;
   let CAMPUS_B = '';
   let userB = '';
   let orderB = '';
@@ -48,6 +49,9 @@ describe('hq role & cross-campus views (IKAJSL)', () => {
     } catch {
       await rbac.syncRegistry();
     }
+    await db.organization.create({
+      data: { id: ORG_B, name: '总部视角测试组织', shortName: '测试组织' },
+    });
     // 校区本体走 service.createCampus（顺带覆盖 IKAJSL 新增口径）
     CAMPUS_B = (
       await service.createCampus(
@@ -59,6 +63,10 @@ describe('hq role & cross-campus views (IKAJSL)', () => {
         'spec-hq',
       )
     ).id;
+    await db.campus.update({
+      where: { id: CAMPUS_B },
+      data: { organizationId: ORG_B },
+    });
     userB = (
       await db.user.create({
         data: {
@@ -105,6 +113,7 @@ describe('hq role & cross-campus views (IKAJSL)', () => {
     await db.adminAccount.deleteMany({ where: { id: { in: accountIds } } });
     await db.user.deleteMany({ where: { id: userB } });
     await db.campus.deleteMany({ where: { id: CAMPUS_B } });
+    await db.organization.deleteMany({ where: { id: ORG_B } });
     await db.$disconnect();
   });
 
@@ -139,6 +148,17 @@ describe('hq role & cross-campus views (IKAJSL)', () => {
     expect(summary.kpis.orders).toBeGreaterThanOrEqual(1);
     // 带具体校区 id 仍可看单校区明细（不进汇总分支）
     await expect(service.dashboard(CAMPUS_B)).resolves.toBeTruthy();
+  });
+
+  it('组织 dashboard：只汇总所属组织校区，不泄漏其他组织数据', async () => {
+    const summary = (await service.dashboard('', true, ORG_B)) as {
+      campusRows: Array<{ campusId: string; orders: number; revenue: number }>;
+      kpis: { campuses: number; orders: number; revenue: number };
+    };
+    expect(summary.campusRows.map((row) => row.campusId)).toEqual([CAMPUS_B]);
+    expect(summary.kpis.campuses).toBe(1);
+    expect(summary.kpis.orders).toBeGreaterThanOrEqual(1);
+    expect(summary.kpis.revenue).toBeGreaterThanOrEqual(1000);
   });
 
   it('hq 订单视角：空校区=全校区含 B 校；校区视角互相隔离', async () => {
@@ -200,15 +220,16 @@ describe('hq role & cross-campus views (IKAJSL)', () => {
   });
 
   it('账号管理（IKBFJ4→RBAC V1）：建号+授权分离；登录闭环与跨校区列表', async () => {
-    const actor = { id: 'spec-hq', username: 'spec-hq' };
-    // 平台超管 = super-admin 平台级授权（role 列只留 'rbac' 标记）
+    const actor = { id: 'spec-hq', username: 'spec-hq', super: true as const };
+    // 超级管理员不可复制；这里创建普通平台账号并授予总部角色，超管身份只由
+    // 经过守卫的 actor 上下文表达。
     const campusAdmin = await service.createAccount(
-      { username: `${tag}-a-admin`, password: 'campus-pass-1', nickname: '规格超管' },
+      { username: `${tag}-a-admin`, password: 'campus-pass-1', nickname: '规格平台账号' },
       'spec-hq',
     );
     accountIds.push(campusAdmin.id);
     await rbac.setAccountRoles(actor, campusAdmin.id, [
-      { roleCode: 'super-admin', scope: 'platform' },
+      { roleCode: 'hq-director', scope: 'platform' },
     ]);
     // 超管造总部长（hq-director 平台级授权；V1：role 字段不再入参）
     const adminMintedHq = await service.createAccount(
@@ -217,7 +238,7 @@ describe('hq role & cross-campus views (IKAJSL)', () => {
     );
     accountIds.push(adminMintedHq.id);
     await rbac.setAccountRoles(
-      { id: campusAdmin.id, username: `${tag}-a-admin` },
+      { id: campusAdmin.id, username: `${tag}-a-admin`, super: true },
       adminMintedHq.id,
       [{ roleCode: 'hq-director', scope: 'platform' }],
     );

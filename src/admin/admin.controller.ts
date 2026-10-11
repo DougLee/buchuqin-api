@@ -164,6 +164,18 @@ export class AdminController {
     return ctx.orgLevel === 'org' && !!ctx.organizationId;
   }
   /**
+   * 平台数据范围由账号层级决定，而不是由角色是否带有 platform scope 决定。
+   * 角色只负责“能不能进入”，不能把组织/校区账号提升成平台数据范围。
+   */
+  private platformDataScope(ctx: RbacContext): boolean {
+    return ctx.super || ctx.orgLevel === 'platform';
+  }
+  /** 平台采购、审单和发货属于平台数据面，菜单误授也不能突破账号层级。 */
+  private requirePlatformDataScope(req: AuthRequest) {
+    if (!this.platformDataScope(this.ctx(req)))
+      throw new ForbiddenException('该操作仅限平台级账号');
+  }
+  /**
    * IKKRMX 组织商品目录数据边界：解析本次操作的目标组织。
    * - 组织级账号（orgBounded，含持平台级角色者——层级优先）：恒本组织，
    *   显式 ?organizationId 必须一致，否则 403（防串目录）；
@@ -208,10 +220,8 @@ export class AdminController {
     const c =
       (campus ?? (req.query?.campus as string | undefined))?.trim() ?? '';
     if (this.orgBounded(ctx)) {
-      // 组织级不支持空串=跨校区全量（服务层尚无按组织集聚合），恒单校区落点
-      const target = c || ctx.campusId;
-      await this.rbac.assertCampusInScope(ctx, target);
-      return target;
+      // 通用业务页按单校区操作；未显式选择时安全落到本组织默认校区。
+      return this.rbac.resolveCampusInScope(ctx, c);
     }
     if (ctx.platform) {
       if (c && !(await this.rbac.knownCampusIds()).has(c))
@@ -240,9 +250,7 @@ export class AdminController {
     const c =
       (campus ?? (req.query?.campus as string | undefined))?.trim() ?? '';
     if (this.orgBounded(ctx)) {
-      const target = c || ctx.campusId;
-      await this.rbac.assertCampusInScope(ctx, target);
-      return target;
+      return this.rbac.resolveCampusInScope(ctx, c);
     }
     if (!c) return ctx.campusId;
     if (ctx.platform) {
@@ -261,11 +269,11 @@ export class AdminController {
     campusId?: string,
   ): Promise<string> {
     const ctx = this.ctx(req);
-    const target = campusId?.trim() || ctx.campusId;
+    const target = this.orgBounded(ctx)
+      ? await this.rbac.resolveCampusInScope(ctx, campusId)
+      : campusId?.trim() || ctx.campusId;
     if (!target) throw new BadRequestException('未指定校区');
     if (this.orgBounded(ctx)) {
-      // assertCampusInScope 自带存在性校验（不存在 400 / 越组织 403）
-      await this.rbac.assertCampusInScope(ctx, target);
       return target;
     }
     if (!(await this.rbac.knownCampusIds()).has(target))
@@ -279,10 +287,11 @@ export class AdminController {
    * 支付广告位（?campus= 选校区，与优惠券等营销板块同口径）；校区级授权集内
    * 可切，缺省本校区。
    */
-  private bannerScope(req: AuthRequest, campus?: string): string {
+  private async bannerScope(req: AuthRequest, campus?: string): Promise<string> {
     const ctx = this.ctx(req);
     const c =
       (campus ?? (req.query?.campus as string | undefined))?.trim() ?? '';
+    if (this.orgBounded(ctx)) return this.rbac.resolveCampusInScope(ctx, c);
     if (!c) return ctx.campusId;
     if (ctx.campuses.includes(c)) return c;
     // 平台账号：任意真实校区（与 scopedCampus 校验对齐，容错交由调用方）
@@ -320,6 +329,21 @@ export class AdminController {
       '履约超时=支付后超 90 分钟未送达；waitingHandover/lastMile 按 timeline 最后节点是否完成区分。',
   })
   async dashboard(@Req() req: AuthRequest, @Query('campus') campus?: string) {
+    const ctx = this.ctx(req);
+    const requestedCampus = (
+      campus ?? (req.query?.campus as string | undefined)
+    )?.trim();
+    // 组织级账号缺省进入“本组织全部校区”汇总；显式选择校区时仍复用
+    // campusScope 做实时归属校验，杜绝跨组织下钻。
+    if (this.orgBounded(ctx) && !requestedCampus) {
+      return ok(
+        await this.service.dashboard(
+          '',
+          this.costRead(req),
+          ctx.organizationId!,
+        ),
+      );
+    }
     return ok(
       await this.service.dashboard(
         await this.campusScope(req, campus),
@@ -481,7 +505,7 @@ export class AdminController {
       paginate(
         // IKB5PB：placement=pay-success 供「支付广告位」独立菜单；
         // IKB5PA：status 过滤（启用/隐藏 Tab）
-        await this.service.banners(this.bannerScope(req), placement, status),
+        await this.service.banners(await this.bannerScope(req), placement, status),
         page,
         pageSize,
         keyword,
@@ -492,10 +516,11 @@ export class AdminController {
     @Req() req: AuthRequest,
     @Body() body: CreateBannerDto,
   ) {
+    const campusId = await this.bannerScope(req);
     // IKKRMU：营销写端点前置校验（组织/校区关营销 → 403）
-    await this.service.guardMarketingEnabled(this.bannerScope(req));
+    await this.service.guardMarketingEnabled(campusId);
     return ok(
-      await this.service.createBanner(body, req.user.id, this.bannerScope(req)),
+      await this.service.createBanner(body, req.user.id, campusId),
       'Banner 已创建',
     );
   }
@@ -504,13 +529,14 @@ export class AdminController {
     @Param('id') id: string,
     @Body() body: UpdateBannerDto,
   ) {
-    await this.service.guardMarketingEnabled(this.bannerScope(req));
+    const campusId = await this.bannerScope(req);
+    await this.service.guardMarketingEnabled(campusId);
     return ok(
       await this.service.updateBanner(
         id,
         body,
         req.user.id,
-        this.bannerScope(req),
+        campusId,
       ),
     );
   }
@@ -518,9 +544,10 @@ export class AdminController {
     @Req() req: AuthRequest,
     @Param('id') id: string,
   ) {
-    await this.service.guardMarketingEnabled(this.bannerScope(req));
+    const campusId = await this.bannerScope(req);
+    await this.service.guardMarketingEnabled(campusId);
     return ok(
-      await this.service.deleteBanner(id, req.user.id, this.bannerScope(req)),
+      await this.service.deleteBanner(id, req.user.id, campusId),
       'Banner 已删除',
     );
   }
@@ -1037,7 +1064,7 @@ export class AdminController {
   @Get('restock/batches') async restockBatches(@Req() req: AuthRequest) {
     return ok(
       await this.service.restockBatches(
-        this.ctx(req).platform,
+        this.platformDataScope(this.ctx(req)),
         await this.scopedCampus(req),
       ),
     );
@@ -1047,6 +1074,7 @@ export class AdminController {
     @Body() body: CreateRestockBatchDto,
   ) {
     // 建批/改批/关批=平台动作（restock.manage 平台码，校区授权拿不到）
+    this.requirePlatformDataScope(req);
     return ok(
       await this.service.createRestockBatch(body, req.user.id),
       '批次已创建',
@@ -1057,6 +1085,7 @@ export class AdminController {
     @Param('id') id: string,
     @Body() body: UpdateRestockBatchDto,
   ) {
+    this.requirePlatformDataScope(req);
     return ok(
       await this.service.updateRestockBatch(id, body, req.user.id),
       '批次已更新',
@@ -1066,6 +1095,7 @@ export class AdminController {
     @Req() req: AuthRequest,
     @Param('id') id: string,
   ) {
+    this.requirePlatformDataScope(req);
     return ok(
       await this.service.closeRestockBatch(id, req.user.id),
       '批次已关闭',
@@ -1079,7 +1109,7 @@ export class AdminController {
     return ok(
       await this.service.restockBatchDetail(
         id,
-        this.ctx(req).platform,
+        this.platformDataScope(this.ctx(req)),
         await this.scopedCampus(req),
       ),
     );
@@ -1090,14 +1120,15 @@ export class AdminController {
     @Param('batchId') batchId: string,
     @Body() body: SaveRestockOrderDto,
   ) {
-    if (!req.user.campusId)
-      throw new BadRequestException('账号未绑定校区，无法订货');
+    const campusId = await this.scopedCampus(req);
+    if (!campusId)
+      throw new BadRequestException('请先在顶部选择订货校区');
     return ok(
       await this.service.saveRestockOrder(
         batchId,
         body,
         req.user.id,
-        await this.scopedCampus(req),
+        campusId,
       ),
       '订货单已提交，等待总部审核',
     );
@@ -1107,10 +1138,11 @@ export class AdminController {
     @Req() req: AuthRequest,
     @Param('id') id: string,
   ) {
-    if (!req.user.campusId)
-      throw new BadRequestException('账号未绑定校区，无法订货');
+    const campusId = await this.scopedCampus(req);
+    if (!campusId)
+      throw new BadRequestException('请先在顶部选择订货校区');
     return ok(
-      await this.service.deleteRestockOrder(id, req.user.id, req.user.campusId),
+      await this.service.deleteRestockOrder(id, req.user.id, campusId),
       '订货单已删除',
     );
   }
@@ -1122,7 +1154,7 @@ export class AdminController {
   ) {
     return ok(
       await this.service.restockOrders(
-        this.ctx(req).platform,
+        this.platformDataScope(this.ctx(req)),
         await this.scopedCampus(req),
         {
           batchId,
@@ -1138,7 +1170,7 @@ export class AdminController {
     return ok(
       await this.service.restockOrderDetail(
         id,
-        this.ctx(req).platform,
+        this.platformDataScope(this.ctx(req)),
         await this.scopedCampus(req),
       ),
     );
@@ -1150,6 +1182,7 @@ export class AdminController {
     @Body() body: AuditRestockOrderDto,
   ) {
     // 审单=平台动作（restock.manage）
+    this.requirePlatformDataScope(req);
     return ok(
       await this.service.auditRestockOrder(id, body, req.user.id),
       body.action === 'confirm'
@@ -1168,6 +1201,7 @@ export class AdminController {
     @Body() body: ShipRestockOrderDto,
   ) {
     // 发货=平台动作（restock.manage）
+    this.requirePlatformDataScope(req);
     return ok(
       await this.service.shipRestockOrder(
         id,
@@ -1198,7 +1232,7 @@ export class AdminController {
     return ok(
       await this.service.restockShipmentDetail(
         id,
-        this.ctx(req).platform,
+        this.platformDataScope(this.ctx(req)),
         await this.scopedCampus(req),
       ),
     );
@@ -1220,7 +1254,9 @@ export class AdminController {
       await this.service.hqDailyReport(
         start || yesterday,
         end || yesterday,
-        campusId || undefined,
+        this.orgBounded(this.ctx(req))
+          ? await this.scopedCampus(req, campusId)
+          : campusId || undefined,
         // IKKRMY：日报成本/毛利列按 cost.read 裁剪（本端点为授权锚点，
         // 可调用者必持 cost.read——分支为结构性防御）
         this.costRead(req),
@@ -1237,7 +1273,9 @@ export class AdminController {
     @Query('campusId') campusId?: string,
     @Query('buildingId') buildingId?: string,
   ) {
-    const hqScope = this.ctx(req).platform;
+    const ctx = this.ctx(req);
+    // 组织级账号即使持平台范围角色也不能进入全平台聚合分支。
+    const hqScope = ctx.platform && !this.orgBounded(ctx);
     if (!hqScope && !req.user.campusId)
       throw new ForbiddenException('账号未绑定校区');
     // 缺省=昨日（T+1 口径）
@@ -1252,7 +1290,7 @@ export class AdminController {
           campusId: campusId || undefined,
           buildingId: buildingId || undefined,
           hqScope,
-          userCampusId: await this.scopedCampus(req),
+          userCampusId: await this.scopedCampus(req, campusId),
           // IKKRMY：日报成本/毛利列按 cost.read 裁剪（结构性防御同 hq-daily）
           costRead: this.costRead(req),
         },
@@ -1293,12 +1331,14 @@ export class AdminController {
   // 全链总部动作（hq/admin）：生成聚合/验收入库/关闭重开；权限 purchase section。
   @Get('purchase/orders') async purchaseOrders(@Req() req: AuthRequest) {
     // 采购=平台码（purchase.read/write），校区授权天然拿不到，无需再判平台
+    this.requirePlatformDataScope(req);
     return ok(await this.service.purchaseOrders());
   }
   @Get('purchase/orders/:id') async purchaseOrderDetail(
     @Req() req: AuthRequest,
     @Param('id') id: string,
   ) {
+    this.requirePlatformDataScope(req);
     return ok(await this.service.purchaseOrderDetail(id));
   }
   /** 一键聚合生成（grilling #2）：行=批次全部已确认订货单按商品求和。 */
@@ -1307,6 +1347,7 @@ export class AdminController {
     @Param('batchId') batchId: string,
     @Body() body: CreatePurchaseOrderDto,
   ) {
+    this.requirePlatformDataScope(req);
     return ok(
       await this.service.createPurchaseOrder(batchId, body, req.user.id),
       '采购单已生成',
@@ -1318,6 +1359,7 @@ export class AdminController {
     @Param('id') id: string,
     @Body() body: ReceivePurchaseOrderDto,
   ) {
+    this.requirePlatformDataScope(req);
     return ok(
       await this.service.receivePurchaseOrder(id, body, req.user.id),
       '验收完成，库存已更新',
@@ -1328,6 +1370,7 @@ export class AdminController {
     @Param('id') id: string,
     @Body() body: ClosePurchaseOrderDto,
   ) {
+    this.requirePlatformDataScope(req);
     return ok(
       await this.service.closePurchaseOrder(id, body, req.user.id),
       '采购单已关闭，欠收作废',
@@ -1337,6 +1380,7 @@ export class AdminController {
     @Req() req: AuthRequest,
     @Param('id') id: string,
   ) {
+    this.requirePlatformDataScope(req);
     return ok(
       await this.service.reopenPurchaseOrder(id, req.user.id),
       '采购单已重开，可继续验收',
@@ -1804,6 +1848,7 @@ export class AdminController {
     @Param('id') id: string,
     @Body() body: UpdateStaffDto,
   ) {
+    const ctx = this.ctx(req);
     if (body.campusId !== undefined)
       body.campusId = await this.assertCampusAllowed(req, body.campusId);
     return ok(
@@ -1811,7 +1856,11 @@ export class AdminController {
         id,
         body,
         req.user.id,
-        this.ctx(req).platform ? undefined : this.ctx(req).campusId,
+        this.orgBounded(ctx)
+          ? await this.scopedCampus(req)
+          : ctx.platform
+            ? undefined
+            : ctx.campusId,
       ),
     );
   }
@@ -1819,11 +1868,16 @@ export class AdminController {
     @Req() req: AuthRequest,
     @Param('id') id: string,
   ) {
+    const ctx = this.ctx(req);
     return ok(
       await this.service.deleteStaff(
         id,
         req.user.id,
-        this.ctx(req).platform ? undefined : this.ctx(req).campusId,
+        this.orgBounded(ctx)
+          ? await this.scopedCampus(req)
+          : ctx.platform
+            ? undefined
+            : ctx.campusId,
       ),
       '员工已删除',
     );
@@ -2206,10 +2260,17 @@ export class AdminController {
     @Req() req: AuthRequest,
     @Query('keyword') keyword?: string,
   ) {
+    const ctx = this.ctx(req);
+    const organizationId = this.orgBounded(ctx)
+      ? ctx.organizationId!
+      : undefined;
     return ok(
       filterByKeyword(
         await this.service.campuses(
-          this.ctx(req).platform ? undefined : this.ctx(req).campusId,
+          // 校区管理是账号边界内的集合管理，不受顶部当前运营校区影响：
+          // 平台账号看全平台，组织账号看本组织，校区账号才收窄到本校区。
+          ctx.platform || organizationId ? undefined : ctx.campusId,
+          organizationId,
         ),
         keyword,
       ),
@@ -2220,7 +2281,15 @@ export class AdminController {
   @ApiOperation({ summary: '新建校区（平台级权限 campuses.manage）' })
   async createCampus(@Req() req: AuthRequest, @Body() body: CreateCampusDto) {
     // 本体增改=平台级动作（campuses.manage 平台码；旧手写 hq/admin 角色判断退役）
-    return ok(await this.service.createCampus(body, req.user.id), '校区已创建');
+    const ctx = this.ctx(req);
+    return ok(
+      await this.service.createCampus(
+        body,
+        req.user.id,
+        this.orgBounded(ctx) ? ctx.organizationId! : undefined,
+      ),
+      '校区已创建',
+    );
   }
   @Patch('campuses/:id')
   @ApiOperation({ summary: '修改校区信息/启停（平台级权限 campuses.manage）' })
@@ -2229,6 +2298,7 @@ export class AdminController {
     @Param('id') id: string,
     @Body() body: UpdateCampusDto,
   ) {
+    await this.rbac.assertCampusInScope(this.ctx(req), id);
     return ok(
       await this.service.updateCampus(id, body, req.user.id),
       '校区已更新',
@@ -2242,14 +2312,22 @@ export class AdminController {
   @ApiOperation({
     summary: '组织列表（IKKRMM 基线：含每组织校区数/用户数聚合）',
   })
-  async organizations() {
-    return ok(await this.service.organizations());
+  async organizations(@Req() req: AuthRequest) {
+    const ctx = this.ctx(req);
+    return ok(
+      await this.service.organizations(
+        this.orgBounded(ctx) ? ctx.organizationId! : undefined,
+      ),
+    );
   }
   @Get('organizations/:id')
   @ApiOperation({
     summary: '组织详情（IKKRMM 基线：校区清单+聚合，微信凭据只回已配置位）',
   })
-  async organizationDetail(@Param('id') id: string) {
+  async organizationDetail(@Req() req: AuthRequest, @Param('id') id: string) {
+    const ctx = this.ctx(req);
+    if (this.orgBounded(ctx) && id !== ctx.organizationId)
+      throw new ForbiddenException('未授权查看该组织');
     return ok(await this.service.organizationDetail(id));
   }
 

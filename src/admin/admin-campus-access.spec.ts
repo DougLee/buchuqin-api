@@ -95,7 +95,7 @@ describe('admin campus access (IKB3KG)', () => {
     ).toEqual([ADMIN_CAMPUS_ID, campusBId].sort());
   });
 
-  it('重设授权：全量替换语义；上下文校区不自动挪动（V1 变化）', async () => {
+  it('重设授权：全量替换语义；失配的上下文校区自动对齐', async () => {
     const account = await service.createAccount(
       {
         username: `${tag}-wh`,
@@ -118,15 +118,14 @@ describe('admin campus access (IKB3KG)', () => {
     });
     expect(rows).toHaveLength(1);
     expect(rows[0].campusId).toBe(campusBId);
-    // V1 变化：旧 replaceCampusAccess「移出当前校区自动挪到首个」退役——
-    // 上下文校区独立于授权，切换统一走 select（且受授权集约束）
+    // 防止登录上下文停在已移除授权的校区，自动对齐剩余的首个校区。
     const after = await db.adminAccount.findUniqueOrThrow({
       where: { id: account.id },
     });
-    expect(after.campusId).toBe(ADMIN_CAMPUS_ID);
+    expect(after.campusId).toBe(campusBId);
   });
 
-  it('非法授权被拒绝：校区级缺校区 / 校区不存在 / 角色不存在', async () => {
+  it('非法授权被拒绝：校区级缺校区 / 校区不存在 / 角色不存在 / 校区管理员多校区', async () => {
     const [, wh] = accountIds;
     await expect(
       rbac.setAccountRoles(actor, wh, [
@@ -141,6 +140,12 @@ describe('admin campus access (IKB3KG)', () => {
     await expect(
       rbac.setAccountRoles(actor, wh, [{ roleCode: 'no-such-role', scope: 'platform' }]),
     ).rejects.toThrow(BadRequestException);
+    await expect(
+      rbac.setAccountRoles(actor, wh, [
+        { roleCode: 'campus-admin', scope: 'campus', campusId: ADMIN_CAMPUS_ID },
+        { roleCode: 'campus-admin', scope: 'campus', campusId: campusBId },
+      ]),
+    ).rejects.toThrow('校区管理员只能绑定一个校区');
   });
 
   it('顶栏切换：未授权校区被拒；授权校区换发 token 且落库', async () => {
@@ -194,7 +199,7 @@ describe('admin campus access (IKB3KG)', () => {
     );
   });
 
-  it('纯平台级授权（总部长）与用户端角色不可切换', async () => {
+  it('平台数据范围账号可切任意校区，用户端角色不可使用后台切换', async () => {
     // C 端用户 token：无 AdminAccount → 不支持切换
     await expect(
       auth.selectAdminCampus(
@@ -202,27 +207,30 @@ describe('admin campus access (IKB3KG)', () => {
         { campusId: campusBId },
       ),
     ).rejects.toThrow(ForbiddenException);
-    // 纯平台级授权（总部长模板）：校区级授权集为空 → 跨校区视角不可切
+    // 平台数据范围账号：角色只决定功能，账号数据范围允许切换任意校区。
     const hqAccount = await service.createAccount(
       { username: `${tag}-hq`, password: 'hq-pass-1234', nickname: '规格总部长' },
       'spec-hq',
     );
     accountIds.push(hqAccount.id);
+    await db.adminAccount.update({
+      where: { id: hqAccount.id },
+      data: { orgLevel: 'platform' },
+    });
     await rbac.setAccountRoles(actor, hqAccount.id, [
       { roleCode: 'hq-director', scope: 'platform' },
     ]);
     const hqRow = await db.adminAccount.findUniqueOrThrow({ where: { id: hqAccount.id } });
-    await expect(
-      auth.selectAdminCampus(
-        { user: { sv: hqRow.sessionVersion, id: hqAccount.id, campusId: '', role: 'rbac' } } as never,
-        { campusId: campusBId },
-      ),
-    ).rejects.toThrow(ForbiddenException);
-    // 可切校区列表为空（纯平台级=跨校区视角）
+    const switched = await auth.selectAdminCampus(
+      { user: { sv: hqRow.sessionVersion, id: hqAccount.id, campusId: '', role: 'rbac' } } as never,
+      { campusId: campusBId },
+    );
+    expect(switched.data.user.campusId).toBe(campusBId);
+    // 可切校区列表按平台账号数据范围返回全量。
     const campuses = (await auth.adminCampuses({
-      user: { sv: hqRow.sessionVersion, id: hqAccount.id, campusId: '', role: 'rbac' },
+      user: { sv: hqRow.sessionVersion, id: hqAccount.id, campusId: campusBId, role: 'rbac' },
     } as never)) as unknown as { data: unknown[] };
-    expect(campuses.data).toEqual([]);
+    expect(campuses.data.map((campus: any) => campus.id)).toContain(campusBId);
     const filters = await auth.adminCampuses({
       user: { sv: hqRow.sessionVersion, id: hqAccount.id, campusId: '', role: 'rbac' },
     } as never, 'filter');
