@@ -6818,6 +6818,9 @@ export class AdminService {
         ...(body.servicePhone != null
           ? { servicePhone: body.servicePhone }
           : {}),
+        ...(body.serviceQrcode != null
+          ? { serviceQrcode: body.serviceQrcode }
+          : {}),
         // IKHMKR：无楼长提示（校区自定义，空串=回落默认文案）
         ...(body.noManagerTip != null
           ? { noManagerTip: body.noManagerTip }
@@ -8235,6 +8238,8 @@ export class AdminService {
           buildingManagerBaseSalary: true,
           // IKHMF1 客服电话：校区自定义，聚合页档案 Tab 编辑
           servicePhone: true,
+          // IKKTWM 客服二维码：同档案 Tab 编辑
+          serviceQrcode: true,
           // IKHMKR 无楼长提示：校区自定义，聚合页配送 Tab 编辑
           noManagerTip: true,
         },

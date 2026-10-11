@@ -682,6 +682,8 @@ export class UpdateCampusDto {
   @IsOptional()
   @Matches(/^[0-9-]{3,20}$/, { message: '客服电话格式不正确' })
   servicePhone?: string;
+  /** IKKTWM 校区客服微信二维码（COS 图；空串=未配置回落拨号） */
+  serviceQrcode?: string;
   /** 无楼长提示（IKHMKR 校区自定义）：空串=回落默认文案；≤60 字（弹窗一行） */
   @IsOptional()
   @IsString()
