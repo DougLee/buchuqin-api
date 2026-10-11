@@ -20,4 +20,4 @@ COPY --from=build /app/dist-seed ./dist-seed
 COPY --from=build /app/package.json ./package.json
 EXPOSE 3000
 # 启动即迁移；SEED_ON_BOOT=true 时首次灌入演示数据（幂等）
-CMD ["sh", "-c", "pnpm db:migrate && { [ \"$SEED_ON_BOOT\" = \"true\" ] && node dist-seed/prisma/seed.js || true; } && node dist/main"]
+CMD ["sh", "-c", "pnpm db:migrate && { [ \"$SEED_ON_BOOT\" = \"true\" ] && node dist-seed/prisma/seed.js || true; } && node dist/src/main"]
