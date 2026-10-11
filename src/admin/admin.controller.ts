@@ -188,10 +188,10 @@ export class AdminController {
     organizationId?: string,
   ): Promise<string> {
     const ctx = this.ctx(req);
-    const q = (
-      organizationId ??
-      (req.query?.organizationId as string | undefined)
-    )?.trim() ?? '';
+    const q =
+      (
+        organizationId ?? (req.query?.organizationId as string | undefined)
+      )?.trim() ?? '';
     if (this.orgBounded(ctx)) {
       // orgBounded 已保证非空（orgLevel='org' 且 organizationId 已配置）
       const own = ctx.organizationId!;
@@ -200,7 +200,8 @@ export class AdminController {
       return own;
     }
     if (ctx.platform || ctx.orgLevel === 'platform') {
-      if (!q) throw new BadRequestException('请指定目标组织（?organizationId=）');
+      if (!q)
+        throw new BadRequestException('请指定目标组织（?organizationId=）');
       return q;
     }
     throw new ForbiddenException('仅平台或组织级账号可管理组织商品目录');
@@ -287,7 +288,10 @@ export class AdminController {
    * 支付广告位（?campus= 选校区，与优惠券等营销板块同口径）；校区级授权集内
    * 可切，缺省本校区。
    */
-  private async bannerScope(req: AuthRequest, campus?: string): Promise<string> {
+  private async bannerScope(
+    req: AuthRequest,
+    campus?: string,
+  ): Promise<string> {
     const ctx = this.ctx(req);
     const c =
       (campus ?? (req.query?.campus as string | undefined))?.trim() ?? '';
@@ -505,7 +509,11 @@ export class AdminController {
       paginate(
         // IKB5PB：placement=pay-success 供「支付广告位」独立菜单；
         // IKB5PA：status 过滤（启用/隐藏 Tab）
-        await this.service.banners(await this.bannerScope(req), placement, status),
+        await this.service.banners(
+          await this.bannerScope(req),
+          placement,
+          status,
+        ),
         page,
         pageSize,
         keyword,
@@ -531,14 +539,7 @@ export class AdminController {
   ) {
     const campusId = await this.bannerScope(req);
     await this.service.guardMarketingEnabled(campusId);
-    return ok(
-      await this.service.updateBanner(
-        id,
-        body,
-        req.user.id,
-        campusId,
-      ),
-    );
+    return ok(await this.service.updateBanner(id, body, req.user.id, campusId));
   }
   @Delete('banners/:id') async deleteBanner(
     @Req() req: AuthRequest,
@@ -1121,15 +1122,9 @@ export class AdminController {
     @Body() body: SaveRestockOrderDto,
   ) {
     const campusId = await this.scopedCampus(req);
-    if (!campusId)
-      throw new BadRequestException('请先在顶部选择订货校区');
+    if (!campusId) throw new BadRequestException('请先在顶部选择订货校区');
     return ok(
-      await this.service.saveRestockOrder(
-        batchId,
-        body,
-        req.user.id,
-        campusId,
-      ),
+      await this.service.saveRestockOrder(batchId, body, req.user.id, campusId),
       '订货单已提交，等待总部审核',
     );
   }
@@ -1139,8 +1134,7 @@ export class AdminController {
     @Param('id') id: string,
   ) {
     const campusId = await this.scopedCampus(req);
-    if (!campusId)
-      throw new BadRequestException('请先在顶部选择订货校区');
+    if (!campusId) throw new BadRequestException('请先在顶部选择订货校区');
     return ok(
       await this.service.deleteRestockOrder(id, req.user.id, campusId),
       '订货单已删除',
@@ -2282,12 +2276,14 @@ export class AdminController {
   async createCampus(@Req() req: AuthRequest, @Body() body: CreateCampusDto) {
     // 本体增改=平台级动作（campuses.manage 平台码；旧手写 hq/admin 角色判断退役）
     const ctx = this.ctx(req);
+    // 组织账号只能建在本组织；平台账号必须明确选择组织。禁止创建无法确定
+    // 租户归属的真实校区，避免后续登录、商品和订单数据边界失效。
+    const organizationId = this.orgBounded(ctx)
+      ? ctx.organizationId!
+      : body.organizationId?.trim();
+    if (!organizationId) throw new BadRequestException('请选择校区所属组织');
     return ok(
-      await this.service.createCampus(
-        body,
-        req.user.id,
-        this.orgBounded(ctx) ? ctx.organizationId! : undefined,
-      ),
+      await this.service.createCampus(body, req.user.id, organizationId),
       '校区已创建',
     );
   }
@@ -2298,9 +2294,19 @@ export class AdminController {
     @Param('id') id: string,
     @Body() body: UpdateCampusDto,
   ) {
-    await this.rbac.assertCampusInScope(this.ctx(req), id);
+    const ctx = this.ctx(req);
+    await this.rbac.assertCampusInScope(ctx, id);
+    if (
+      this.orgBounded(ctx) &&
+      body.organizationId &&
+      body.organizationId !== ctx.organizationId
+    )
+      throw new ForbiddenException('组织管理员不能将校区转移到其他组织');
+    const update = this.orgBounded(ctx)
+      ? { ...body, organizationId: undefined }
+      : body;
     return ok(
-      await this.service.updateCampus(id, body, req.user.id),
+      await this.service.updateCampus(id, update, req.user.id),
       '校区已更新',
     );
   }
@@ -2725,8 +2731,7 @@ export class AdminController {
   }
   @Delete('rbac/menus/:id')
   @ApiOperation({
-    summary:
-      '删除菜单节点（递归删除子树；role_menu 引用级联清理）',
+    summary: '删除菜单节点（递归删除子树；role_menu 引用级联清理）',
   })
   async rbacDeleteMenu(@Req() req: AuthRequest, @Param('id') id: string) {
     return ok(

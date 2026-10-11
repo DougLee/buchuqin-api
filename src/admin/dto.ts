@@ -557,7 +557,8 @@ export class CreateAccountDto {
    * campus 校区级。缺省 NULL=历史推导（campusId 空或 campus-hq→平台级，
    * 其余→校区级）。仅超管可设（accounts 写端点 isSuperOnlyOperation 拦截）。
    */
-  @IsOptional() @IsIn(['platform', 'org', 'campus'])
+  @IsOptional()
+  @IsIn(['platform', 'org', 'campus'])
   orgLevel?: 'platform' | 'org' | 'campus';
   /** 组织级账号固定组织（orgLevel='org' 必填且须已存在；platform/campus 不得指定） */
   @IsOptional() @IsString() organizationId?: string | null;
@@ -578,7 +579,8 @@ export class UpdateAccountDto {
   @Type(() => AccountGrantDto)
   grants?: AccountGrantDto[];
   /** IKKRMP：改固定层级；显式 null=清除回历史推导 */
-  @IsOptional() @IsIn(['platform', 'org', 'campus'])
+  @IsOptional()
+  @IsIn(['platform', 'org', 'campus'])
   orgLevel?: 'platform' | 'org' | 'campus' | null;
   /** IKKRMP：改固定组织；显式 null=清除（合并后状态校验见 RBAC 服务） */
   @IsOptional() @IsString() organizationId?: string | null;
@@ -632,6 +634,10 @@ export class UpsertWechatGroupDto {
 }
 /** 校区本体管理（IKAJSL）：仅总部长可建/改校区（新校区接入入口）。 */
 export class CreateCampusDto {
+  /**
+   * 平台账号新建校区时必填；组织账号提交的值会被服务端忽略并强制使用账号所属组织。
+   */
+  @IsOptional() @IsString() @MinLength(1) organizationId?: string;
   @IsString() @MinLength(2) @MaxLength(30) name!: string;
   @IsString() @MinLength(2) @MaxLength(15) shortName!: string;
   @IsString() @MinLength(2) @MaxLength(30) warehouseName!: string;
@@ -656,6 +662,8 @@ export class CreateCampusDto {
   buildingManagerBaseSalary?: number;
 }
 export class UpdateCampusDto {
+  /** 仅平台账号可调整；组织账号由控制器锁定在本组织。 */
+  @IsOptional() @IsString() @MinLength(1) organizationId?: string;
   @IsOptional() @IsString() @MinLength(2) @MaxLength(30) name?: string;
   @IsOptional() @IsString() @MinLength(2) @MaxLength(15) shortName?: string;
   @IsOptional() @IsString() @MinLength(2) @MaxLength(30) warehouseName?: string;
@@ -714,7 +722,8 @@ export class CreateOrganizationDto {
   @IsString() @MinLength(2) @MaxLength(50) name!: string;
   @IsString() @MinLength(1) @MaxLength(20) shortName!: string;
   /** 组织小程序 AppID（必填唯一；登记即生效，见类注释 ADR 锚点） */
-  @IsString() @Matches(/^wx[0-9a-f]{16}$/, { message: 'AppID 须为 wx 开头 18 位' })
+  @IsString()
+  @Matches(/^wx[0-9a-f]{16}$/, { message: 'AppID 须为 wx 开头 18 位' })
   wxAppId!: string;
   /** 组织小程序 Secret（敏感，只写不回读） */
   @IsOptional() @IsString() @MinLength(1) wxSecret?: string;
@@ -738,7 +747,8 @@ export class UpdateOrganizationDto {
   @IsOptional() @IsString() @MinLength(2) @MaxLength(50) name?: string;
   @IsOptional() @IsString() @MinLength(1) @MaxLength(20) shortName?: string;
   /** 换绑 AppID（唯一性强校验同创建；登记即生效） */
-  @IsOptional() @Matches(/^wx[0-9a-f]{16}$/, { message: 'AppID 须为 wx 开头 18 位' })
+  @IsOptional()
+  @Matches(/^wx[0-9a-f]{16}$/, { message: 'AppID 须为 wx 开头 18 位' })
   wxAppId?: string | null;
   /** 传值=覆盖，显式 null=清除（wxAppId 清空=回落 env 单组织兼容路径） */
   @IsOptional() @IsString() @MinLength(1) wxSecret?: string | null;
@@ -758,10 +768,14 @@ export class OrganizationStatusDto {
  */
 export class OrganizationBootstrapDto {
   /** 组织管理员登录名（3-20 位字母/数字/下划线，全局唯一） */
-  @Matches(/^[a-zA-Z0-9_]{3,20}$/, { message: '用户名需为 3-20 位字母/数字/下划线' })
+  @Matches(/^[a-zA-Z0-9_]{3,20}$/, {
+    message: '用户名需为 3-20 位字母/数字/下划线',
+  })
   adminUsername!: string;
   /** 组织管理员初始密码（≥8 位） */
-  @IsString() @MinLength(8, { message: '密码至少 8 位' }) adminPassword!: string;
+  @IsString()
+  @MinLength(8, { message: '密码至少 8 位' })
+  adminPassword!: string;
   /** 组织管理员昵称（缺省用登录名） */
   @IsOptional() @IsString() @MaxLength(30) adminNickname?: string;
   /** 首个校区全称 */

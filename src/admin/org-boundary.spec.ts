@@ -220,6 +220,12 @@ describe('org boundary (IKKRMP / ADR-0001)', () => {
       { shortName: 'B2 新简称' },
       orgPlatformRoleCtx.accountId,
     );
+
+    await expect(
+      scopedController.updateCampus(req, CAMPUS_B2, {
+        organizationId: 'org-a',
+      }),
+    ).rejects.toThrow('组织管理员不能将校区转移到其他组织');
   });
 
   it('通用业务页：组织账号未绑定默认校区时安全落到本组织校区', async () => {

@@ -30,7 +30,12 @@ describe('campus CRUD role gate (IKBWRT → 蛋词模式)', () => {
   const rbac = new RbacService(new PrismaService());
   const allow = (role: string, method: string, path: string) =>
     rbac.allow(legacyRbacCtx(role), method, path);
-  const body = { name: '测试校区', shortName: '测', warehouseName: '测试仓' };
+  const body = {
+    organizationId: 'org-a',
+    name: '测试校区',
+    shortName: '测试',
+    warehouseName: '测试仓',
+  };
 
   it('admin（超管通配）可新建/修改校区', async () => {
     expect(allow('admin', 'POST', '/admin/campuses')).toBe(true);
@@ -40,9 +45,21 @@ describe('campus CRUD role gate (IKBWRT → 蛋词模式)', () => {
     ).resolves.toBeDefined();
     expect(calls).toContain('create');
     await expect(
-      controller.updateCampus(specReq('admin'), 'campus-hbut', { name: '改名' }),
+      controller.updateCampus(specReq('admin'), 'campus-hbut', {
+        name: '改名',
+      }),
     ).resolves.toBeDefined();
     expect(calls).toContain('update');
+  });
+
+  it('平台账号新建校区必须明确选择所属组织', async () => {
+    await expect(
+      controller.createCampus(specReq('admin'), {
+        name: '缺少组织的校区',
+        shortName: '缺组织',
+        warehouseName: '缺少组织测试仓',
+      }),
+    ).rejects.toThrow('请选择校区所属组织');
   });
 
   it('hq（总部长模板 campuses.manage 模式）同权新建/修改', async () => {

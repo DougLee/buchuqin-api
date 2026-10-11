@@ -136,15 +136,18 @@ export function trimProductCost<T extends object>(row: T): T {
 /** 订单行裁剪：剔除 items[].product 上的成本快照字段（快照属内部数据，
  *  与 C 端 stripCostSnapshot 同一黑名单再加列表估算字段）。 */
 export function trimOrderCost<T extends { items?: unknown }>(row: T): T {
-  const items = row.items as
-    | Array<{ product?: object } | null | undefined>
-    | null;
+  const items = row.items as Array<
+    { product?: object } | null | undefined
+  > | null;
   if (!Array.isArray(items)) return row;
   return {
     ...row,
     items: items.map((line) =>
       line?.product && typeof line.product === 'object'
-        ? { ...line, product: omitCostKeys(line.product, ORDER_ITEM_COST_FIELDS) }
+        ? {
+            ...line,
+            product: omitCostKeys(line.product, ORDER_ITEM_COST_FIELDS),
+          }
         : line,
     ),
   };
@@ -159,7 +162,8 @@ export function trimReportCost<T extends object>(report: T): T {
       out[key] = v.map((r) =>
         r && typeof r === 'object' ? omitCostKeys(r, REPORT_COST_FIELDS) : r,
       );
-    else if (v && typeof v === 'object') out[key] = omitCostKeys(v, REPORT_COST_FIELDS);
+    else if (v && typeof v === 'object')
+      out[key] = omitCostKeys(v, REPORT_COST_FIELDS);
   }
   return out as T;
 }
@@ -189,10 +193,7 @@ export class AdminService {
    * exception 的未结单（不限当日，代表当前待处理）。轻量 groupBy，不复用
    * 单校区 dashboard 的重查询。
    */
-  private async hqDashboard(
-    costRead = true,
-    organizationId?: string,
-  ) {
+  private async hqDashboard(costRead = true, organizationId?: string) {
     const startOfToday = new Date();
     startOfToday.setHours(0, 0, 0, 0);
     // 组织级汇总必须先解析本组织校区集合，随后所有聚合查询都用同一集合
@@ -340,11 +341,7 @@ export class AdminService {
       },
     };
   }
-  async dashboard(
-    campusId: string,
-    costRead = true,
-    organizationId?: string,
-  ) {
+  async dashboard(campusId: string, costRead = true, organizationId?: string) {
     // IKAJSL：总部账号 campusId 空 → 跨校区汇总；带 ?campus= 可看单校区明细
     // IKKRMY：总部汇总含校区毛利/综合毛利，无 cost.read 时裁剪（单校区看板
     // 无成本字段，天然干净）
@@ -1038,7 +1035,9 @@ export class AdminService {
     const after = await this.db.product.update({
       where: { id },
       data: {
-        ...(body.supplyMode !== undefined ? { supplyMode: body.supplyMode } : {}),
+        ...(body.supplyMode !== undefined
+          ? { supplyMode: body.supplyMode }
+          : {}),
         ...(body.price !== undefined ? { price: body.price } : {}),
         ...(body.originalPrice !== undefined
           ? { originalPrice: body.originalPrice }
@@ -1054,7 +1053,9 @@ export class AdminService {
         ...(body.image !== undefined ? { image: body.image } : {}),
         ...(body.images !== undefined ? { images: body.images } : {}),
         ...(body.weight !== undefined ? { weight: body.weight } : {}),
-        ...(body.categoryId !== undefined ? { categoryId: body.categoryId } : {}),
+        ...(body.categoryId !== undefined
+          ? { categoryId: body.categoryId }
+          : {}),
         ...(body.description !== undefined
           ? { description: body.description }
           : {}),
@@ -1062,7 +1063,9 @@ export class AdminService {
         ...(body.locationCode !== undefined
           ? { locationCode: body.locationCode }
           : {}),
-        ...(body.retailUnit !== undefined ? { retailUnit: body.retailUnit } : {}),
+        ...(body.retailUnit !== undefined
+          ? { retailUnit: body.retailUnit }
+          : {}),
         ...(body.wholesaleUnit !== undefined
           ? { wholesaleUnit: body.wholesaleUnit }
           : {}),
@@ -2234,7 +2237,14 @@ export class AdminService {
     // IKA0VB 去批次：合成批次号/有效期已移除（零食饮料初期不做效期批次管理）。
     const [items, campus] = await Promise.all([
       // IKKRMY：库存总览复用商品行——成本字段同口径裁剪
-      this.products(campusId, undefined, categoryId, undefined, undefined, costRead),
+      this.products(
+        campusId,
+        undefined,
+        categoryId,
+        undefined,
+        undefined,
+        costRead,
+      ),
       this.db.campus.findFirstOrThrow({ where: { id: campusId } }),
     ]);
     return items.map((x) => ({
@@ -6334,10 +6344,7 @@ export class AdminService {
         status: o.status,
         createdAt: o.createdAt,
         campusCount: own.length,
-        userCount: own.reduce(
-          (n, c) => n + (usersByCampus.get(c.id) ?? 0),
-          0,
-        ),
+        userCount: own.reduce((n, c) => n + (usersByCampus.get(c.id) ?? 0), 0),
         // IKKRMS：列表补微信配置位（编辑抽屉直接用，不必逐行拉详情）
         wxAppId: o.wxAppId,
         mchId: o.mchId,
@@ -6398,10 +6405,18 @@ export class AdminService {
 
   /** 组织行 → API 返回（敏感凭据只回布尔，与 organizationDetail 同口径）。 */
   private organizationView(org: {
-    id: string; name: string; shortName: string; status: string;
-    createdAt: Date; wxAppId: string | null; mchId: string | null;
-    serialNo: string | null; notifyDomain: string | null;
-    wxSecret: string | null; mchApiV3Key: string | null; privateKey: string | null;
+    id: string;
+    name: string;
+    shortName: string;
+    status: string;
+    createdAt: Date;
+    wxAppId: string | null;
+    mchId: string | null;
+    serialNo: string | null;
+    notifyDomain: string | null;
+    wxSecret: string | null;
+    mchApiV3Key: string | null;
+    privateKey: string | null;
   }) {
     return {
       id: org.id,
@@ -6438,10 +6453,14 @@ export class AdminService {
       const v = c.value?.trim();
       if (!v) continue;
       const hit = await this.db.organization.findFirst({
-        where: { [c.field]: v, ...(excludeId ? { id: { not: excludeId } } : {}) },
+        where: {
+          [c.field]: v,
+          ...(excludeId ? { id: { not: excludeId } } : {}),
+        },
         select: { id: true },
       });
-      if (hit) throw new BadRequestException(`${c.label} 已被其他组织登记: ${v}`);
+      if (hit)
+        throw new BadRequestException(`${c.label} 已被其他组织登记: ${v}`);
     }
   }
 
@@ -6462,7 +6481,9 @@ export class AdminService {
         ...(body.mchApiV3Key ? { mchApiV3Key: body.mchApiV3Key } : {}),
         ...(body.serialNo ? { serialNo: body.serialNo } : {}),
         ...(body.privateKey ? { privateKey: body.privateKey } : {}),
-        ...(body.notifyDomain ? { notifyDomain: body.notifyDomain.trim() } : {}),
+        ...(body.notifyDomain
+          ? { notifyDomain: body.notifyDomain.trim() }
+          : {}),
       },
     });
     await this.audit(
@@ -6514,12 +6535,16 @@ export class AdminService {
         ...(body.wxAppId !== undefined
           ? { wxAppId: body.wxAppId?.trim() || null }
           : {}),
-        ...(body.wxSecret !== undefined ? { wxSecret: body.wxSecret || null } : {}),
+        ...(body.wxSecret !== undefined
+          ? { wxSecret: body.wxSecret || null }
+          : {}),
         ...(body.mchId !== undefined ? { mchId: body.mchId || null } : {}),
         ...(body.mchApiV3Key !== undefined
           ? { mchApiV3Key: body.mchApiV3Key || null }
           : {}),
-        ...(body.serialNo !== undefined ? { serialNo: body.serialNo || null } : {}),
+        ...(body.serialNo !== undefined
+          ? { serialNo: body.serialNo || null }
+          : {}),
         ...(body.privateKey !== undefined
           ? { privateKey: body.privateKey || null }
           : {}),
@@ -6542,9 +6567,15 @@ export class AdminService {
 
   /** 审计快照（非敏感字段透出，敏感凭据只留布尔位）。 */
   private organizationAuditView(org: {
-    name: string; shortName: string; wxAppId: string | null; mchId: string | null;
-    serialNo: string | null; notifyDomain: string | null;
-    wxSecret: string | null; mchApiV3Key: string | null; privateKey: string | null;
+    name: string;
+    shortName: string;
+    wxAppId: string | null;
+    mchId: string | null;
+    serialNo: string | null;
+    notifyDomain: string | null;
+    wxSecret: string | null;
+    mchApiV3Key: string | null;
+    privateKey: string | null;
   }) {
     return {
       name: org.name,
@@ -6707,8 +6738,16 @@ export class AdminService {
   async createCampus(
     body: CreateCampusDto,
     operator: string,
-    organizationId?: string,
+    organizationId: string,
   ) {
+    const organization = await this.db.organization.findUnique({
+      where: { id: organizationId },
+      select: { id: true, status: true },
+    });
+    if (!organization)
+      throw new BadRequestException(`组织不存在: ${organizationId}`);
+    if (organization.status !== 'active')
+      throw new BadRequestException('停用组织不能新增校区');
     return this.createCampusWithTemplates(
       {
         name: body.name,
@@ -6721,7 +6760,7 @@ export class AdminService {
         deliveryThreshold: body.deliveryThreshold,
       },
       operator,
-      organizationId,
+      organization.id,
     );
   }
 
@@ -6800,9 +6839,20 @@ export class AdminService {
     // 授权切换/库存视角消失，中转链路断）；type 永不改（DTO 亦无此字段）
     if (before.type === 'hq' && body.status && body.status !== 'active')
       throw new BadRequestException('总部仓不可停用');
+    if (body.organizationId && body.organizationId !== before.organizationId) {
+      const organization = await this.db.organization.findUnique({
+        where: { id: body.organizationId },
+        select: { id: true, status: true },
+      });
+      if (!organization)
+        throw new BadRequestException(`组织不存在: ${body.organizationId}`);
+      if (organization.status !== 'active')
+        throw new BadRequestException('不能将校区转移到停用组织');
+    }
     const after = await this.db.campus.update({
       where: { id },
       data: {
+        ...(body.organizationId ? { organizationId: body.organizationId } : {}),
         ...(body.name != null ? { name: body.name } : {}),
         ...(body.shortName != null ? { shortName: body.shortName } : {}),
         ...(body.warehouseName != null
@@ -6847,8 +6897,16 @@ export class AdminService {
       'campus.update',
       'campus',
       id,
-      { name: before.name, status: before.status },
-      { name: after.name, status: after.status },
+      {
+        name: before.name,
+        status: before.status,
+        organizationId: before.organizationId,
+      },
+      {
+        name: after.name,
+        status: after.status,
+        organizationId: after.organizationId,
+      },
       id,
     );
     return after;

@@ -36,6 +36,7 @@ describe('official product library & campus import (IKAJSM/IKAJSO)', () => {
           warehouseName: '官方库测试仓',
         },
         'spec-offlib',
+        'org-a',
       )
     ).id;
   });
@@ -240,10 +241,11 @@ describe('official product library & campus import (IKAJSM/IKAJSO)', () => {
   });
 
   it('条码查询：本校区优先，未录入时命中官方库（IKAJSO 导入入口）', async () => {
-    const hit = (await service.lookupBarcode(
-      '6901234500001',
-      CAMPUS_A,
-    )) as { found: boolean; source: string; product: { name: string } };
+    const hit = (await service.lookupBarcode('6901234500001', CAMPUS_A)) as {
+      found: boolean;
+      source: string;
+      product: { name: string };
+    };
     expect(hit.found).toBe(true);
     expect(hit.source).toBe('product-database');
     // B 校无 ...0002（官方饮料只有官方库行 + A 校自建）→ 命中官方库
@@ -253,10 +255,10 @@ describe('official product library & campus import (IKAJSM/IKAJSO)', () => {
     )) as { found: boolean; source: string; product: { name: string } };
     expect(fromOfficial.source).toBe('official-library');
     // 未知条码：回落公共条码库/人工录入，found=false
-    const manual = (await service.lookupBarcode(
-      '6901234599999',
-      CAMPUS_B,
-    )) as { found: boolean; source: string };
+    const manual = (await service.lookupBarcode('6901234599999', CAMPUS_B)) as {
+      found: boolean;
+      source: string;
+    };
     expect(manual.found).toBe(false);
     expect(manual.source).toBe('manual');
   });
@@ -276,9 +278,9 @@ describe('official product library & campus import (IKAJSM/IKAJSO)', () => {
     const home = (await business.home(CAMPUS_B)) as {
       hotProducts: Array<{ id: string }>;
     };
-    expect(
-      home.hotProducts.every((x) => !officialIds.includes(x.id)),
-    ).toBe(true);
+    expect(home.hotProducts.every((x) => !officialIds.includes(x.id))).toBe(
+      true,
+    );
   });
 
   it('官方库行不可被当校区改档：updateProduct 按校区过滤天然隔离', async () => {

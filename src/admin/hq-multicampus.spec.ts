@@ -30,8 +30,7 @@ describe('hq role & cross-campus views (IKAJSL)', () => {
     rbac,
   );
   const CAMPUS_A = 'campus-hbut';
-  const json = (value: unknown) =>
-    JSON.parse(JSON.stringify(value)) as never;
+  const json = (value: unknown) => JSON.parse(JSON.stringify(value)) as never;
   const tag = `hqspec-${Date.now()}`;
   const ORG_B = `org-${tag}`;
   let CAMPUS_B = '';
@@ -61,12 +60,9 @@ describe('hq role & cross-campus views (IKAJSL)', () => {
           warehouseName: '总部视角仓',
         },
         'spec-hq',
+        ORG_B,
       )
     ).id;
-    await db.campus.update({
-      where: { id: CAMPUS_B },
-      data: { organizationId: ORG_B },
-    });
     userB = (
       await db.user.create({
         data: {
@@ -179,7 +175,7 @@ describe('hq role & cross-campus views (IKAJSL)', () => {
       number
     >;
     expect(countsB.paid ?? 0).toBeGreaterThanOrEqual(1);
-    expect((counts.paid ?? 0)).toBeGreaterThanOrEqual(countsB.paid ?? 0);
+    expect(counts.paid ?? 0).toBeGreaterThanOrEqual(countsB.paid ?? 0);
   });
 
   it('hq 用户视角：空校区列表含 B 校用户，A 校视角不可见', async () => {
@@ -224,7 +220,11 @@ describe('hq role & cross-campus views (IKAJSL)', () => {
     // 超级管理员不可复制；这里创建普通平台账号并授予总部角色，超管身份只由
     // 经过守卫的 actor 上下文表达。
     const campusAdmin = await service.createAccount(
-      { username: `${tag}-a-admin`, password: 'campus-pass-1', nickname: '规格平台账号' },
+      {
+        username: `${tag}-a-admin`,
+        password: 'campus-pass-1',
+        nickname: '规格平台账号',
+      },
       'spec-hq',
     );
     accountIds.push(campusAdmin.id);
@@ -233,7 +233,11 @@ describe('hq role & cross-campus views (IKAJSL)', () => {
     ]);
     // 超管造总部长（hq-director 平台级授权；V1：role 字段不再入参）
     const adminMintedHq = await service.createAccount(
-      { username: `${tag}-a-admin-hq`, password: 'hq-pass-12345', nickname: '规格总部长' },
+      {
+        username: `${tag}-a-admin-hq`,
+        password: 'hq-pass-12345',
+        nickname: '规格总部长',
+      },
       campusAdmin.id,
     );
     accountIds.push(adminMintedHq.id);
@@ -261,7 +265,11 @@ describe('hq role & cross-campus views (IKAJSL)', () => {
           username: `${tag}-bad-campus`,
           password: 'whatever-123',
           grants: [
-            { roleCode: 'campus-operations', scope: 'campus', campusId: 'campus-not-exist' },
+            {
+              roleCode: 'campus-operations',
+              scope: 'campus',
+              campusId: 'campus-not-exist',
+            },
           ],
         },
         'spec-hq',
@@ -283,7 +291,13 @@ describe('hq role & cross-campus views (IKAJSL)', () => {
         username: `${tag}-b-admin`,
         password: 'campus-pass-1',
         nickname: 'B校运营',
-        grants: [{ roleCode: 'campus-operations', scope: 'campus', campusId: CAMPUS_B }],
+        grants: [
+          {
+            roleCode: 'campus-operations',
+            scope: 'campus',
+            campusId: CAMPUS_B,
+          },
+        ],
       },
       'spec-hq',
     );
