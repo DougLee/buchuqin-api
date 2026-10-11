@@ -225,6 +225,8 @@ model AdminAccount {
   updatedAt    DateTime            @updatedAt
   accesses     AdminCampusAccess[]
   rbacRoles    AdminAccountRole[]
+
+  @@index([organizationId])
 }
 
 /* ---------- RBAC V1（2026-09-19 道哥 goal）：账号 → 角色 → 权限，按校区生效 ---------- */
@@ -409,6 +411,7 @@ model Category {
   products Product[]
 
   @@unique([campusId, name])
+  @@index([campusId])
 }
 
 model Product {
