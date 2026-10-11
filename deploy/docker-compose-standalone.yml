@@ -1,56 +1,37 @@
-# 不出寝食社·独立部署编排（单机自包含：库+API+admin 一把梭）
-# 参考 dancikeji 部署模板（道哥 2026-10-11）适配本项目的差异：
-#   1) 未包含 redis——本项目 api 零 redis 引用（JWT 无状态会话），不硬塞空转组件；
-#   2) 补 postgres 服务——本项目唯一有状态依赖（Prisma+PG18，与 1Panel 环境同镜像）；
-#   3) api 日志走 docker logs（stdout），无 LOG_DIR 文件落盘，不挂假日志卷；
-#   4) admin 不再是 openresty 站点目录，而是自带 nginx 容器（静态+/api/v1 同源反代）。
+# 不出寝食社·独立部署编排（api+admin 两容器，库用 1Panel 管的 PostgreSQL）
+# 参考 dancikeji 部署模板（道哥 2026-10-11）适配本项目：
+#   1) 无 redis——本项目 api 零 redis 引用（JWT 无状态会话）；
+#   2) 无 db 服务——数据库是 1Panel 应用商店装的 PostgreSQL（外部容器），
+#      经 external 网络 1panel-network 按容器名互访，与 /opt/buchuqin 主编排同一约定；
+#   3) admin 容器化（vue 服务）——不再依赖 openresty 站点目录，自带 nginx
+#      静态直出 + /api/v1 同源反代 nest，对外只发布 vue 一个端口；
+#   4) api 日志走 docker logs（stdout），无 LOG_DIR 文件落盘。
 #
-# 用法（服务器上，目录约定同 1Panel 环境）：
+# 用法（服务器上，与主编排同机共库时）：
 #   git clone git@gitee.com:buchuqin-group/buchuqin-api.git
 #   git clone git@gitee.com:buchuqin-group/buchuqin-admin.git
 #   cp buchuqin-api/deploy/docker-compose-standalone.yml docker-compose.yml
-#   cp buchuqin-api/.env.example .env && vim .env   # 必填 POSTGRES_PASSWORD/JWT_SECRET/COS_*/WX_*
+#   cp buchuqin-api/.env.example .env && vim .env
+#     # 必填：POSTGRES_PASSWORD / JWT_SECRET / PSQL_HOST=<1Panel 的 PG 容器名> / COS_* / WX_*
+#   docker network create 1panel-network   # 已存在会报错，忽略
 #   docker compose up -d --build
 #
-# ⚠️ 空库冷启动限制（部署踩坑记录·坑4）：迁移链有历史依赖倒挂
-#   （RestockOrder 建表不在任何迁移内），全新空库 migrate deploy 会在中途失败。
-#   首次启动二选一：a) 先 pg_restore 导入一份存量 dump 再补账；
-#   b) 修完 baseline 迁移欠账后再空库直起。容器会 crash-loop 重试，导入数据后自动恢复。
+# ⚠️ 指向的 1Panel PG 里需已建 buchuqin 角色 + buchuqinshishe 库并灌好数据
+#   （空库冷启动会卡在历史迁移依赖倒挂，见部署踩坑记录·坑4）。
 version: "3.1"
 
 services:
-  db:
-    image: postgres:18.6-alpine
-    restart: always
-    environment:
-      TZ: Asia/Shanghai
-      POSTGRES_USER: buchuqin
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: buchuqinshishe
-    volumes:
-      # PG18 官方镜像 PGDATA=/var/lib/postgresql/18/docker，挂父目录（与 1Panel 同构）
-      - ./data/postgres/:/var/lib/postgresql/
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U buchuqin -d buchuqinshishe"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 15s
-
   nest:
     build: ./buchuqin-api
     restart: always
-    depends_on:
-      db:
-        condition: service_healthy
     environment:
       TZ: Asia/Shanghai
       NODE_ENV: production
       PORT: 3000
-      # DATABASE_URL 单源化拼接（与 1Panel 环境同一约定）：默认指向本编排 db 服务
-      DATABASE_URL: postgresql://buchuqin:${POSTGRES_PASSWORD}@${PSQL_HOST:-db}:5432/buchuqinshishe?schema=public
+      # DATABASE_URL 单源化拼接（与主编排同一约定）：PSQL_HOST=1Panel 的 PG 容器名
+      DATABASE_URL: postgresql://buchuqin:${POSTGRES_PASSWORD}@${PSQL_HOST}:5432/buchuqinshishe?schema=public
     env_file: .env
-    # 启动自动 migrate deploy（见 Dockerfile CMD）；healthcheck 同 1Panel 编排
+    # 启动自动 migrate deploy（见 Dockerfile CMD）
     healthcheck:
       test:
         [
@@ -63,6 +44,9 @@ services:
       timeout: 5s
       retries: 3
       start_period: 20s
+    networks:
+      - default
+      - 1panel-network
 
   vue:
     build: ./buchuqin-admin
@@ -72,5 +56,11 @@ services:
     environment:
       TZ: Asia/Shanghai
     ports:
-      # 对外发布端口，按机器规划改左侧（右侧 80 是容器内 nginx）
+      # 对外发布端口，按机器规划改左侧（右侧 80 是容器内 nginx，/api/v1 内部反代 nest）
       - 20010:80
+    networks:
+      - default
+
+networks:
+  1panel-network:
+    external: true
