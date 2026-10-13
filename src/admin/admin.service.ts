@@ -214,8 +214,8 @@ export class AdminService {
           by: ['campusId'],
           where: {
             ...campusWhere,
-            createdAt: { gte: startOfToday },
-            paidAt: { not: null },
+            paidAt: { gte: startOfToday },
+            status: { notIn: ['pending-payment', 'cancelled'] },
           },
           _count: { _all: true },
           _sum: { payableAmount: true },
@@ -242,8 +242,8 @@ export class AdminService {
         this.db.order.findMany({
           where: {
             ...campusWhere,
-            createdAt: { gte: startOfToday },
-            paidAt: { not: null },
+            paidAt: { gte: startOfToday },
+            status: { notIn: ['pending-payment', 'cancelled'] },
           },
           select: {
             campusId: true,
@@ -488,6 +488,8 @@ export class AdminService {
       kpis: {
         // 金额单位:分——整数求和，无浮点误差（IK8W5K）。
         revenue: paidToday.reduce((s, x) => s + this.num(x.payableAmount), 0),
+        // 与多校区汇总同口径：今日已支付有效单的订单优惠抵扣合计。
+        coupon: paidToday.reduce((s, x) => s + this.num(x.discount), 0),
         orders: todayOrders.length,
         paidUsers: new Set(paidToday.map((x) => x.userId)).size,
         newUsers: await this.db.user.count({
@@ -505,6 +507,8 @@ export class AdminService {
       caliber: {
         revenue:
           '今日支付金额：paidAt 为今日的有效单（待支付/已取消排除），含今日退款单',
+        coupon:
+          '今日优惠券消耗：paidAt 为今日的有效单优惠券抵扣合计（订单 discount 字段，分）',
         refundedAmount: '今日退款金额：今日支付且当前状态为 refunded 的单',
         orders: '今日订单：createdAt >= 今日 0 点的有效单（待支付/已取消排除）',
         newUsers: '今日新用户：createdAt >= 今日 0 点',
