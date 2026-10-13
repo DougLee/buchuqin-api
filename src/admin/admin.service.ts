@@ -81,6 +81,7 @@ import {
 import { HQ_CAMPUS_ID, OFFICIAL_CAMPUS_ID } from '../common/campus';
 import { assertMarketingEnabled } from '../common/capability';
 import { campusStaffDelivery } from '../common/organization';
+import { approvedRefundAmount } from './refund-amount';
 
 /* ==================== 成本 capability 输出裁剪（IKKRMY，2026-10-10） ====================
  * allowCapability(ctx,'cost.read')=false 的账号，商品/订单/报表响应统一剔除
@@ -5567,59 +5568,69 @@ export class AdminService {
         if (a.amount < 0 || a.amount > item.unitPrice * item.quantity)
           throw new BadRequestException(`${item.productName} 金额超出该行上限`);
       }
-      await this.db.$transaction(
-        amounts.map((a) =>
-          this.db.refundItem.update({
-            where: { id: a.itemId },
-            data: { amount: Math.round(a.amount) },
-          }),
-        ),
-      );
     }
-    // 金额核定后重算合计，并做全局硬上限校验：累计已退 + 本次 ≤ 实付 − 配送费
-    const finalItems = await this.db.refundItem.findMany({
-      where: { refundId: id },
-    });
-    const finalAmount = finalItems.reduce(
-      (s, i) => s + Math.round(i.amount),
-      0,
-    );
-    const refundedBefore = await this.db.refund.aggregate({
-      where: { orderId: refund.orderId, status: 'refunded', id: { not: id } },
-      _sum: { amount: true },
-    });
-    const goodsPaid =
-      Number(refund.order.payableAmount) - Number(refund.order.deliveryFee);
-    if (finalAmount + Number(refundedBefore._sum.amount ?? 0) > goodsPaid)
-      throw new BadRequestException(
-        `超出可退上限：本单最多还可退 ¥${((goodsPaid - Number(refundedBefore._sum.amount ?? 0)) / 100).toFixed(2)}`,
+    // 抢占审核权、核定商品行、写最终金额必须在同一事务：并发双批只有获胜方
+    // 能改金额，避免失败方覆盖数据库金额而微信按另一金额退款。
+    const finalRefund = await this.db.$transaction(async (tx) => {
+      const claimed = await tx.refund.updateMany({
+        where: { id, status: refund.status },
+        data: {
+          status: 'approved',
+          auditBy: operator,
+          auditAt: new Date(),
+          auditRemark: remark,
+        },
+      });
+      if (!claimed.count)
+        throw new BadRequestException('申请状态已变化，请刷新');
+      if (amounts?.length)
+        await Promise.all(
+          amounts.map((a) =>
+            tx.refundItem.update({
+              where: { id: a.itemId },
+              data: { amount: Math.round(a.amount) },
+            }),
+          ),
+        );
+      // 金额核定后重算合计，并做全局硬上限校验：累计已退 + 本次 ≤ 实付 − 配送费
+      const finalItems = await tx.refundItem.findMany({
+        where: { refundId: id },
+      });
+      const finalAmount = approvedRefundAmount(
+        refund.source,
+        refund.amount,
+        finalItems,
       );
-    await this.db.refund.update({
-      where: { id },
-      data: { amount: finalAmount },
+      const refundedBefore = await tx.refund.aggregate({
+        where: {
+          orderId: refund.orderId,
+          status: 'refunded',
+          id: { not: id },
+        },
+        _sum: { amount: true },
+      });
+      const goodsPaid =
+        Number(refund.order.payableAmount) - Number(refund.order.deliveryFee);
+      if (finalAmount + Number(refundedBefore._sum.amount ?? 0) > goodsPaid)
+        throw new BadRequestException(
+          `超出可退上限：本单最多还可退 ¥${((goodsPaid - Number(refundedBefore._sum.amount ?? 0)) / 100).toFixed(2)}`,
+        );
+      return tx.refund.update({
+        where: { id },
+        data: { amount: finalAmount },
+      });
     });
-    // 条件更新抢占审核权：并发双批只有一笔进入退款
-    const claimed = await this.db.refund.updateMany({
-      where: { id, status: refund.status },
-      data: {
-        status: 'approved',
-        auditBy: operator,
-        auditAt: new Date(),
-        auditRemark: remark,
-      },
-    });
-    if (!claimed.count) throw new BadRequestException('申请状态已变化，请刷新');
     try {
       const applied = await this.payments.applyWechatRefund(
         refund.order.orderNo,
         Number(refund.order.payableAmount),
-        refund.amount,
+        finalRefund.amount,
         refund.id,
         remark || refund.description || refund.reason || '订单退款',
       );
       if (applied.status === 'SUCCESS')
         return await this.finishRefund(
-          refund,
+          finalRefund,
           applied.refundId,
           operator,
           campusId,

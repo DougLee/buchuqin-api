@@ -3,6 +3,7 @@ import { BusinessService } from './business.service';
 import { AdminService } from '../admin/admin.service';
 import type { ApplyPreDeliveryRefundDto } from './dto';
 import type { Prisma } from '@prisma/client';
+import type { PaymentsService } from '../payments/payments.service';
 
 /**
  * 退款功能 v1 集成测试（IKHZKA）：
@@ -23,8 +24,8 @@ describe('refund v1 (IKHZKA)', () => {
   const createdOrderIds: string[] = [];
 
   const makeOrder = async (status: string) => {
-    const product = await db.product.findUniqueOrThrow({
-      where: { id: 'p001' },
+    const product = await db.product.findFirstOrThrow({
+      where: { campusId: CAMPUS },
     });
     const order = await db.order.create({
       data: {
@@ -79,7 +80,9 @@ describe('refund v1 (IKHZKA)', () => {
   afterAll(async () => {
     // 先删退款申请（orderId 唯一外键），再删订单与用户
     await db.refund.deleteMany({ where: { orderId: { in: createdOrderIds } } });
-    await db.afterSale.deleteMany({ where: { orderId: { in: createdOrderIds } } });
+    await db.afterSale.deleteMany({
+      where: { orderId: { in: createdOrderIds } },
+    });
     await db.order.deleteMany({ where: { id: { in: createdOrderIds } } });
     await db.notification.deleteMany({ where: { userId } });
     await db.user.delete({ where: { id: userId } }).catch(() => undefined);
@@ -140,7 +143,9 @@ describe('refund v1 (IKHZKA)', () => {
       where: { id: order.id },
       data: { discount: 1200, payableAmount: 0 }, // 券超抵：实付 0
     });
-    const refund = await business.applyPreDeliveryRefund(userId, order.id, { reason: '测试退款' });
+    const refund = await business.applyPreDeliveryRefund(userId, order.id, {
+      reason: '测试退款',
+    });
     expect(refund.amount).toBe(0);
   });
 
@@ -182,7 +187,9 @@ describe('refund v1 (IKHZKA)', () => {
 
   test('approve 无支付通道：报「未就绪」且申请仍为 pending（不卡死）', async () => {
     const order = await makeOrder('paid');
-    const refund = await business.applyPreDeliveryRefund(userId, order.id, { reason: '测试退款' });
+    const refund = await business.applyPreDeliveryRefund(userId, order.id, {
+      reason: '测试退款',
+    });
     await expect(
       admin.auditRefund(refund.id, 'approve', 'tester', CAMPUS),
     ).rejects.toThrow('支付服务未就绪');
@@ -190,9 +197,60 @@ describe('refund v1 (IKHZKA)', () => {
     expect(row.status).toBe('pending');
   });
 
+  test.each([
+    ['即时成功', 'SUCCESS'],
+    ['异步同步成功', 'PROCESSING'],
+  ] as const)(
+    '未发货整单退款%s：保留锁定金额并将订单同步为已退款',
+    async (_label, applyStatus) => {
+      const order = await makeOrder('paid');
+      const refund = await business.applyPreDeliveryRefund(userId, order.id, {
+        reason: '下错单了',
+      });
+      // 本测试直接建单，没有真实扣减库存；清空快照避免回补共享测试商品。
+      await db.order.update({
+        where: { id: order.id },
+        data: { items: json([]) },
+      });
+      const payments = {
+        applyWechatRefund: jest.fn().mockResolvedValue({
+          status: applyStatus,
+          refundId: `wx-${applyStatus.toLowerCase()}`,
+        }),
+        queryWechatRefund: jest.fn().mockResolvedValue({
+          status: 'SUCCESS',
+          refundId: 'wx-synced',
+        }),
+      } as unknown as PaymentsService;
+      const refundAdmin = new AdminService(
+        db,
+        business,
+        undefined,
+        undefined,
+        undefined,
+        payments,
+      );
+
+      await refundAdmin.auditRefund(refund.id, 'approve', 'tester', CAMPUS);
+      if (applyStatus === 'PROCESSING')
+        await refundAdmin.syncRefund(refund.id, 'tester', CAMPUS);
+
+      const [afterRefund, afterOrder] = await Promise.all([
+        db.refund.findUniqueOrThrow({ where: { id: refund.id } }),
+        db.order.findUniqueOrThrow({ where: { id: order.id } }),
+      ]);
+      expect(afterRefund.amount).toBe(1000);
+      expect(afterRefund.status).toBe('refunded');
+      expect(afterOrder.status).toBe('refunded');
+      expect(afterOrder.statusText).toBe('已退款');
+    },
+  );
+
   test('校区隔离：跨校区审核不可见（NotFound）', async () => {
     const order = await makeOrder('paid');
-    const refund = await business.applyPreDeliveryRefund(userId, order.id, { reason: '测试退款' });
+    const refund = await business.applyPreDeliveryRefund(userId, order.id, {
+      reason: '测试退款',
+    });
     await expect(
       admin.auditRefund(refund.id, 'reject', 'tester', 'campus-other', ''),
     ).rejects.toThrow('退款申请不存在');
