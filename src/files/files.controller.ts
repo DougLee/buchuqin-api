@@ -149,7 +149,11 @@ export class FilesController {
         const separator = pattern.indexOf(' ');
         return this.rbac.allow(ctx, pattern.slice(0, separator), pattern.slice(separator + 1));
       })) throw new ForbiddenException('无该类图片的上传权限');
-    } else if (PRIVATE_FOLDERS.has(target)) {
+    } else if (target !== 'uploads') {
+      // IKLE75（审查报告 P0）：非账号（小程序端）仅放行默认 uploads/（售后/
+      // 交接凭证、头像按月归档——两端全部上传调用均不带 folder）；app/* 管理
+      // 素材目录对非账号一律 403，防素材污染与公开存储滥用。app/idcard 的
+      // 私有门控被本条件自然覆盖。
       throw new ForbiddenException('该目录仅后台账号可用');
     }
     if (!COS_BUCKET || !COS_REGION)
