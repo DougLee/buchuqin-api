@@ -1481,15 +1481,20 @@ export class BusinessService {
         },
       });
       if (!won.count) throw new BadRequestException('订单状态已变化');
-      for (const line of items)
-        await tx.product.update({
-          where: { id: line.product.id },
-          // IKH0EK：支付成功累计销量（首页推荐补齐位/分类页段内排序的口径）
-          data: {
-            stock: { decrement: line.quantity },
-            sales: { increment: line.quantity },
-          },
-        });
+      // IKLCXM（审查报告 P0）：查扣合一原子抢占——条件更新在加行锁的瞬间
+      // 完成可用库存判定，跨订单并发支付不再读到同一快照双双扣减（超卖）。
+      // 影响行数=0 → 抛库存不足 → 整个事务回滚（订单转 paid 一并回滚，
+      // 状态零污染）。销量累计（IKH0EK）合并同条 UPDATE：扣成功才计数。
+      for (const line of items) {
+        const decremented = await tx.$executeRaw`
+          UPDATE "Product"
+          SET stock = stock - ${line.quantity},
+              sales = sales + ${line.quantity}
+          WHERE id = ${line.product.id}
+            AND stock - "lockedStock" >= ${line.quantity}`;
+        if (!decremented)
+          throw new BadRequestException(`${line.product.name}库存不足`);
+      }
       const updated = await tx.order.findUniqueOrThrow({ where: { id } });
       if (raw.couponId) {
         // 支付成功：locked -> used，并累计券维度的已使用计数。
