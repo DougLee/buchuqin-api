@@ -4,7 +4,7 @@ import { BusinessService } from '../business/business.service';
 
 /**
  * 校区经营日报（IKFOPS，2026-09-16 道哥拍板口径）：
- * - paidAt 支付时间落日 + 只计 completed（paid/refunded 单天然剔除）
+ * - paidAt 支付时间落日 + 有效单口径（IKLEDG：除待付/取消；退款单单列 refundedTotal 不进销售额）
  * - 销售额=payableAmount 实付；成本=IKFOPQ 行级 unitWholesaleCost 快照×数量
  *   （行缺快照按 0 计，快照上线前历史单毛利虚高）
  * - hq 跨校区筛选；校区角色锁本校区；楼栋筛选用 address.buildingId
@@ -168,33 +168,43 @@ describe('campus daily report (IKFOPS)', () => {
     await db.$disconnect();
   });
 
-  it('hq 全部校区：昨日只计 completed，快照成本+无快照按 0', async () => {
+  it('hq 全部校区：昨日有效单口径（IKLEDG），快照成本+无快照按 0', async () => {
     const r = await admin.campusDailyReport(YD, YD, {
       hqScope: true,
     });
-    // 昨日 completed 只有 O1(2400)+O2(1100)；O3 未完成、O5 退款剔除
-    expect(r.totals.orders).toBe(2);
-    expect(r.totals.salesTotal).toBe(3500);
-    // O1 成本=3×20+0（无快照行），O2=2×20
+    // IKLEDG 有效单口径：O1(2400)+O2(1100)+O3 paid(999) 计入；O5 退款单列
+    expect(r.totals.orders).toBe(3);
+    expect(r.totals.salesTotal).toBe(4499);
+    // 退款单列：O5=888（不进销售额）。共享夹具库有其他套件残留的已退款单，
+    // totals 全库聚合会被污染（本套件历史失败根因）——按带 tag 的校区行聚合断言
+    const taggedRefunded = r.rows
+      .filter((x) => [CAMPUS_1, CAMPUS_2].includes(x.campusId))
+      .reduce((sum, x) => sum + x.refundedTotal, 0);
+    expect(taggedRefunded).toBe(888);
+    // O1 成本=3×20+0（无快照行），O2=2×20，O3 空行=0
     expect(r.totals.costTotal).toBe(100);
-    // 综合毛利=实付−配送费−成本=3500−300−100=3100（IKJ92S 剔除配送费）；
-    // 毛利=商品金额−成本=2340+1260=3600
-    expect(r.totals.gross).toBe(3100);
-    expect(r.totals.marginTotal).toBe(3600);
-    // 毛利率=3600/3700 商品金额=9730；综合毛利率=3100/3500 实付=8857
-    expect(r.totals.marginRawRate).toBe(9730);
-    expect(r.totals.marginRate).toBe(8857);
-    // 行=日期×校区，两行
-    expect(r.rows.length).toBe(2);
-    const c1 = r.rows.find((x) => x.campusId === CAMPUS_1)!;
-    expect(c1.orders).toBe(1);
-    expect(c1.salesTotal).toBe(2400);
+    // 综合毛利=实付−配送费−成本=4499−300−100=4099（IKJ92S 剔除配送费）；
+    // 毛利=商品金额−成本=4699−100=4599（O3 的 productAmount=999 也入账）
+    expect(r.totals.gross).toBe(4099);
+    expect(r.totals.marginTotal).toBe(4599);
+    // 毛利率=4599/4699 商品金额=9787；综合毛利率=4099/4499 实付=9111
+    expect(r.totals.marginRawRate).toBe(9787);
+    expect(r.totals.marginRate).toBe(9111);
+    // 行=日期×校区，两行（共享库有外来校区行，按 tag 过滤断言）
+    const taggedRows = r.rows.filter((x) =>
+      [CAMPUS_1, CAMPUS_2].includes(x.campusId),
+    );
+    expect(taggedRows.length).toBe(2);
+    const c1 = taggedRows.find((x) => x.campusId === CAMPUS_1)!;
+    expect(c1.orders).toBe(2);
+    expect(c1.salesTotal).toBe(3399);
+    expect(c1.refundedTotal).toBe(888);
     expect(c1.costTotal).toBe(60);
-    // O1 无券：毛利=综合毛利=2340
-    expect(c1.marginTotal).toBe(2340);
-    expect(c1.gross).toBe(2340);
-    expect(c1.marginRate).toBe(9750);
-    const c2 = r.rows.find((x) => x.campusId === CAMPUS_2)!;
+    // O1 无券+O3 空行（productAmount=999）：毛利=综合毛利=3339
+    expect(c1.marginTotal).toBe(3339);
+    expect(c1.gross).toBe(3339);
+    expect(c1.marginRate).toBe(9823);
+    const c2 = taggedRows.find((x) => x.campusId === CAMPUS_2)!;
     expect(c2.salesTotal).toBe(1100);
     // O2 券+配送费单：毛利 1260；综合毛利=1100−300−40=760（差=券 200+配送费 300）
     expect(c2.marginTotal).toBe(1260);
@@ -209,8 +219,9 @@ describe('campus daily report (IKFOPS)', () => {
       hqScope: true,
       campusId: CAMPUS_1,
     });
-    expect(r.totals.orders).toBe(1);
-    expect(r.totals.salesTotal).toBe(2400);
+    expect(r.totals.orders).toBe(2);
+    expect(r.totals.salesTotal).toBe(3399);
+    expect(r.totals.refundedTotal).toBe(888);
     expect(r.rows.length).toBe(1);
   });
 
@@ -230,12 +241,12 @@ describe('campus daily report (IKFOPS)', () => {
       userCampusId: CAMPUS_1,
       campusId: CAMPUS_2, // 越权参数应被忽略
     });
-    expect(r.totals.orders).toBe(1);
-    expect(r.totals.salesTotal).toBe(2400);
+    expect(r.totals.orders).toBe(2);
+    expect(r.totals.salesTotal).toBe(3399);
     expect(r.rows.every((x) => x.campusId === CAMPUS_1)).toBe(true);
   });
 
-  it('日期窗：前日日报只含前日 completed 订单', async () => {
+  it('日期窗：前日日报只含前日有效订单', async () => {
     const r = await admin.campusDailyReport(DBY, DBY, { hqScope: true });
     expect(r.totals.orders).toBe(1);
     expect(r.totals.salesTotal).toBe(500);

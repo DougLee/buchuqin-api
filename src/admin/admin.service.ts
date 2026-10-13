@@ -3883,12 +3883,17 @@ export class AdminService {
     const campusId = opts.hqScope ? opts.campusId : opts.userCampusId;
     const orders = await this.db.order.findMany({
       where: {
-        status: 'completed',
+        // IKLEDG（道哥 2026-10-13 拍板）：有效单口径——排除待支付/已取消；
+        // 退款单按 paidAt 落日单列 refundedTotal（销售额为净额）。原只计
+        // completed，用户不点「确认收货」的单（大多数）永远进不了日报，
+        // 系统性少报且数字随确认收货漂移（实测 10-10 湖工大漏 85% 金额）。
+        status: { notIn: ['pending-payment', 'cancelled'] },
         paidAt: { gte: startAt, lte: endAt },
         ...(campusId ? { campusId } : {}),
       },
       select: {
         campusId: true,
+        status: true,
         paidAt: true,
         payableAmount: true,
         productAmount: true,
@@ -3918,6 +3923,8 @@ export class AdminService {
         productTotal: number;
         deliveryTotal: number;
         costTotal: number;
+        /** IKLEDG：当日支付且已退款合计（分），不进销售额 */
+        refundedTotal: number;
       }
     >();
     for (const o of scoped) {
@@ -3935,7 +3942,14 @@ export class AdminService {
         productTotal: 0,
         deliveryTotal: 0,
         costTotal: 0,
+        refundedTotal: 0,
       };
+      // IKLEDG：退款单只入退款列，不计订单数/销售额（净额口径）
+      if (o.status === 'refunded') {
+        cur.refundedTotal += o.payableAmount;
+        agg.set(k, cur);
+        continue;
+      }
       cur.orders += 1;
       cur.salesTotal += o.payableAmount;
       // IKISZ2 商品金额合计（毛利未扣券口径的分母项）
@@ -3988,6 +4002,7 @@ export class AdminService {
     const tSales = rows.reduce((s, r) => s + r.salesTotal, 0);
     const tCost = rows.reduce((s, r) => s + r.costTotal, 0);
     const tDelivery = rows.reduce((s, r) => s + r.deliveryTotal, 0);
+    const tRefunded = rows.reduce((s, r) => s + r.refundedTotal, 0);
     const tGross = tSales - tDelivery - tCost;
     const tMargin = rows.reduce((s, r) => s + r.marginTotal, 0);
     // IKISZ2+：合计毛利率按合计金额重算（非行均值），productTotal 随 rows 带出
@@ -4002,6 +4017,7 @@ export class AdminService {
           productTotal: tProduct,
           marginTotal: tMargin,
           gross: tGross,
+          refundedTotal: tRefunded,
           marginRawRate: tProduct
             ? Math.round((tMargin / tProduct) * 10000)
             : 0,
@@ -4017,6 +4033,7 @@ export class AdminService {
         productTotal: tProduct,
         marginTotal: tMargin,
         gross: tGross,
+        refundedTotal: tRefunded,
         marginRawRate: tProduct ? Math.round((tMargin / tProduct) * 10000) : 0,
         marginRate: tSales ? Math.round((tGross / tSales) * 10000) : 0,
       },
