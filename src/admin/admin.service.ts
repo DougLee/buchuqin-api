@@ -4739,6 +4739,12 @@ export class AdminService {
     const before = await this.order(id, campusId);
     if (!ORDER_STATUSES.includes(body.status as OrderStatus))
       throw new BadRequestException(`未知订单状态：${body.status}`);
+    // delivered 必须由配送端提交送达凭证产生；completed 必须由用户确认收货产生。
+    // 通用运营兜底不能绕过这两条证据链。
+    if (body.status === 'delivered')
+      throw new BadRequestException('待用户确认状态必须由配送端提交送达凭证');
+    if (body.status === 'completed')
+      throw new BadRequestException('已完成状态必须由用户确认收货');
     if (before.status === body.status) return before;
     const after = await this.db.order.update({
       where: { id },

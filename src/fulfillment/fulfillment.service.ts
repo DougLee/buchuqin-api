@@ -246,7 +246,9 @@ export class FulfillmentService {
     // ——订单出库后不进骑手任务池（不入池不通知），配送与送达由后台订单
     // 动作（staff-deliver/staff-complete）推进；rider_delivery 校区不变。
     if (await campusStaffDelivery(this.db, staff.campusId)) return [];
-    const manager = staff.role === 'building-manager';
+    const manager = ['building-manager', 'intern-building-manager'].includes(
+      staff.role,
+    );
     const orders = this.attributedOrders(
       staff,
       await this.db.order.findMany({
@@ -260,6 +262,10 @@ export class FulfillmentService {
         },
         orderBy: { createdAt: 'desc' },
       }),
+    ).filter(
+      (order) =>
+        !manager ||
+        (order.package as JsonMap | null)?.lastMileMode !== 'customer-pickup',
     );
     // 提成展示口径统一（IK8W5L）：已生成的 Commission 记录优先，未送达单按规则预览。
     const [rules, records] = await Promise.all([
@@ -347,7 +353,13 @@ export class FulfillmentService {
           where: { id: orderId, campusId: staff.campusId },
         });
         if (!order) throw new NotFoundException('履约任务不存在');
-        const manager = staff.role === 'building-manager';
+        const manager = [
+          'building-manager',
+          'intern-building-manager',
+        ].includes(staff.role);
+        const packageSnapshot = (order.package as JsonMap | null) ?? {};
+        const customerPickup =
+          packageSnapshot.lastMileMode === 'customer-pickup';
         // IKAFP4：楼长动作校验楼栋归属——列表过滤只是展示口径，
         // 这里堵住直调接口对他楼订单 receive/delivered 的横向越权。
         if (manager && !this.isOwnBuilding(staff, order.address as JsonMap))
@@ -410,6 +422,15 @@ export class FulfillmentService {
                 text: '转单申请处理中',
                 from: ['waiting-first-mile', 'first-mile', 'waiting-handover'],
               },
+              ...(customerPickup
+                ? {
+                    delivered: {
+                      status: 'delivered',
+                      text: '已送到楼下，待用户确认',
+                      from: ['first-mile'],
+                    },
+                  }
+                : {}),
             };
         const next = maps[action];
         if (!next || !next.from.includes(order.status))
@@ -433,6 +454,12 @@ export class FulfillmentService {
           !payload.reason
         )
           throw new BadRequestException('请上传送达凭证或填写备注');
+        if (
+          action === 'delivered' &&
+          customerPickup &&
+          !payload.images?.length
+        )
+          throw new BadRequestException('用户楼下取货必须上传送达凭证照片');
         // 进入目标状态时点亮对应 timeline 节点（楼下待交接节点由 arrive 写入）。
         const timeline = markTimelineStep(order.timeline, next.status);
         // delivered 时把送达凭证（照片/定位/坐标/备注）写入包裹信息，供绩效凭证完整率统计；
@@ -716,7 +743,7 @@ export class FulfillmentService {
   ) {
     const a = order.address as JsonMap,
       items = order.items as JsonMap[],
-      manager = role === 'building-manager';
+      manager = ['building-manager', 'intern-building-manager'].includes(role);
     const pkg = order.package as JsonMap | null;
     // 12 态状态机的任务视图（IK93GQ）：
     // available 仅保留给无归属的待一级配送单（waiting-first-mile/paid/picking）。
@@ -724,7 +751,11 @@ export class FulfillmentService {
     if (['completed', 'delivered'].includes(order.status)) {
       status = 'completed';
       statusText =
-        order.status === 'delivered' ? '已送达，待确认收货' : '已完成';
+        order.status === 'delivered'
+          ? pkg?.lastMileMode === 'customer-pickup'
+            ? '已送到楼下，待用户确认'
+            : '已送达，待确认收货'
+          : '已完成';
     } else if (['exception', 'after-sales'].includes(order.status)) {
       status = 'exception';
       statusText = '异常处理中';
@@ -788,6 +819,10 @@ export class FulfillmentService {
       ),
       mode: order.deliveryMode,
       modeText: order.deliveryMode === 'instant' ? '立即配送' : '预约配送',
+      lastMileMode:
+        pkg?.lastMileMode === 'customer-pickup'
+          ? 'customer-pickup'
+          : 'building-manager',
       // IKI7LZ：deadline（estimatedArrival 纯时段文案跨天歧义）退出骑手端，
       // 改展示「下单时间（北京时间）」——客观数据零歧义
       orderedAt: (() => {
@@ -819,6 +854,7 @@ export class FulfillmentService {
         order.riderId as string | null,
         viewerId,
         Boolean(pkg?.handoverProof),
+        pkg?.lastMileMode,
       ),
     };
   }
@@ -828,8 +864,9 @@ export class FulfillmentService {
     riderId?: string | null,
     viewerId?: string,
     handedOver = false,
+    lastMileMode?: string,
   ) {
-    if (role === 'building-manager') {
+    if (['building-manager', 'intern-building-manager'].includes(role)) {
       if (status === 'waiting-handover') return ['receive'];
       // IKA580：接货后直达「已送到寝室」（去 start-delivery），异常分支保留。
       if (status === 'last-mile') return ['delivered', 'absent'];
@@ -842,7 +879,10 @@ export class FulfillmentService {
       if (viewerId && riderId !== viewerId) return [];
       return ['depart', 'transfer'];
     }
-    if (status === 'first-mile') return ['arrive', 'transfer'];
+    if (status === 'first-mile')
+      return lastMileMode === 'customer-pickup'
+        ? ['delivered', 'transfer']
+        : ['arrive', 'transfer'];
     if (status === 'waiting-handover') {
       if (!(viewerId && riderId === viewerId)) return [];
       // IKA57T：已交接（凭证已传）就不再显示「拍照交接」，避免看起来卡死。

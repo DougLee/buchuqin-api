@@ -1228,20 +1228,27 @@ export class BusinessService {
   /** IKHMKR：无楼长默认提示——校区自定义文案（noManagerTip）为空时的兜底 */
   static readonly DEFAULT_NO_MANAGER_TIP =
     '本楼栋正在招募楼长，暂时需要您到寝室楼下取货，感谢理解～';
+  private async hasManagerFor(address: {
+    buildingId?: string | null;
+  }): Promise<boolean> {
+    if (!address.buildingId) return false;
+    return Boolean(
+      await this.db.staff.findFirst({
+        where: {
+          buildingId: address.buildingId,
+          role: { in: ['building-manager', 'intern-building-manager'] },
+          status: { not: 'deleted' },
+        },
+        select: { id: true },
+      }),
+    );
+  }
   private async managerTipFor(address: {
     buildingId?: string | null;
     campusId?: string | null;
   }): Promise<string | undefined> {
     if (!address.buildingId) return undefined;
-    const manager = await this.db.staff.findFirst({
-      where: {
-        buildingId: address.buildingId,
-        role: { in: ['building-manager', 'intern-building-manager'] },
-        status: { not: 'deleted' },
-      },
-      select: { id: true },
-    });
-    if (manager) return undefined;
+    if (await this.hasManagerFor(address)) return undefined;
     // IKHMKR 校区自定义：空串回落默认文案（防误清空丢提示）
     const campus = address.campusId
       ? await this.db.campus.findUnique({
@@ -1610,8 +1617,6 @@ export class BusinessService {
     'waiting-first-mile': ['first-mile', '配送中，骑手送往楼下'],
     'first-mile': ['waiting-handover', '已到楼下，等待楼长交接'],
     'waiting-handover': ['last-mile', '楼长送往寝室'],
-    'last-mile': ['delivered', '已送达寝室'],
-    delivered: ['completed', '已确认收货'],
   };
   async advance(userId: string, id: string) {
     const raw = await this.db.order.findFirst({ where: { id, userId } });
@@ -1667,6 +1672,36 @@ export class BusinessService {
         product?: { id?: string };
         quantity: number;
       }>) ?? [];
+    const address = raw.address as {
+      buildingId?: string | null;
+    };
+    // 出库时固化末端路线，后续楼长增删不自动改变在途订单。
+    const lastMileMode = (await this.hasManagerFor(address))
+      ? 'building-manager'
+      : 'customer-pickup';
+    const packageSnapshot = {
+      ...((raw.package as Record<string, unknown> | null) ?? {}),
+      lastMileMode,
+    };
+    // 无楼长路线不经过交接/楼长配送，用户时间线只保留真实发生的节点。
+    const timeline =
+      lastMileMode === 'customer-pickup' && Array.isArray(raw.timeline)
+        ? raw.timeline
+            .filter(
+              (step) =>
+                !['waiting-handover', 'ready-to-deliver'].includes(
+                  String((step as Record<string, unknown>).key ?? ''),
+                ),
+            )
+            .map((step) => {
+              const copy = { ...(step as Record<string, unknown>) };
+              if (copy.key === 'last-mile') {
+                copy.title = '楼下取货';
+                copy.description = '配送员送达楼下后，等待您确认收货';
+              }
+              return copy;
+            })
+        : raw.timeline;
     const updated = await this.db.$transaction(async (tx) => {
       // 条件更新：与后台改状态/另一管理员同时出库并发时仅一笔生效。
       const won = await tx.order.updateMany({
@@ -1674,7 +1709,8 @@ export class BusinessService {
         data: {
           status: 'waiting-first-mile',
           statusText: '已出库，待配送员接单',
-          timeline: markTimelineStep(raw.timeline, 'waiting-first-mile'),
+          timeline: markTimelineStep(timeline, 'waiting-first-mile'),
+          package: packageSnapshot as Prisma.InputJsonValue,
         },
       });
       if (!won.count) throw new BadRequestException('订单状态已变化');

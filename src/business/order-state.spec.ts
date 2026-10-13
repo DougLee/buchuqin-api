@@ -251,4 +251,86 @@ describe('order state machine full chain (IK93GQ)', () => {
       '当前状态不可确认收货',
     );
   });
+
+  it('generic advance cannot bypass delivery proof or user confirmation', async () => {
+    const order = await makeOrder();
+    await db.order.update({
+      where: { id: order.id },
+      data: { status: 'last-mile', statusText: '楼长送往寝室' },
+    });
+    await expect(service.advance(userId, order.id)).rejects.toThrow(
+      '当前状态不可推进履约',
+    );
+
+    await db.order.update({
+      where: { id: order.id },
+      data: { status: 'delivered', statusText: '已送达寝室' },
+    });
+    await expect(service.advance(userId, order.id)).rejects.toThrow(
+      '当前状态不可推进履约',
+    );
+  });
+
+  it('routes an order without a building manager to downstairs customer pickup', async () => {
+    const order = await makeOrder();
+    const address = addressSnapshot as Record<string, unknown>;
+    await db.order.update({
+      where: { id: order.id },
+      data: {
+        address: json({
+          ...address,
+          buildingId: `building-without-manager-${order.id}`,
+          buildingName: '无楼长测试楼栋',
+        }),
+      },
+    });
+    await service.pay(userId, order.id);
+    await service.outbound(order.id, 'tester');
+
+    const outbound = await db.order.findUniqueOrThrow({
+      where: { id: order.id },
+    });
+    expect(
+      (outbound.package as { lastMileMode?: string }).lastMileMode,
+    ).toBe('customer-pickup');
+    expect(
+      (outbound.timeline as Array<{ key: string }>).some((item) =>
+        ['waiting-handover', 'ready-to-deliver'].includes(item.key),
+      ),
+    ).toBe(false);
+
+    await fulfillment.updateTask(
+      RIDER,
+      `task-fulltime-rider-${order.id}`,
+      'accept',
+    );
+    await fulfillment.updateTask(
+      RIDER,
+      `task-fulltime-rider-${order.id}`,
+      'depart',
+    );
+    await expect(
+      fulfillment.updateTask(
+        RIDER,
+        `task-fulltime-rider-${order.id}`,
+        'delivered',
+        { reason: '已放楼下' },
+      ),
+    ).rejects.toThrow('用户楼下取货必须上传送达凭证照片');
+
+    const delivered = await fulfillment.updateTask(
+      RIDER,
+      `task-fulltime-rider-${order.id}`,
+      'delivered',
+      { images: ['https://cos.example/downstairs-proof.jpg'] },
+    );
+    // 配送端任务视图会把送达后的任务归档为 completed；订单真实状态仍须
+    // 停留在 delivered，等待用户确认收货。
+    expect(delivered.status).toBe('completed');
+    expect(await statusOf(order.id)).toBe('delivered');
+    expect(delivered.statusText).toBe('已送到楼下，待用户确认');
+
+    const completed = await service.confirmReceipt(userId, order.id);
+    expect(completed.status).toBe('completed');
+  });
 });

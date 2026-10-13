@@ -110,4 +110,26 @@ describe('Admin orders status tabs (IKAJSP)', () => {
       cancelled: 1,
     });
   });
+
+  it('rejects manual delivered/completed states that bypass proof or user confirmation', async () => {
+    const order = await db.order.findFirstOrThrow({
+      where: { orderNo: 'BCQTAB1' },
+    });
+    await expect(
+      service.updateOrderStatus(
+        order.id,
+        { status: 'delivered', reason: '测试送达' },
+        'tester',
+        CAMPUS,
+      ),
+    ).rejects.toThrow('待用户确认状态必须由配送端提交送达凭证');
+    await expect(
+      service.updateOrderStatus(
+        order.id,
+        { status: 'completed', reason: '测试完成' },
+        'tester',
+        CAMPUS,
+      ),
+    ).rejects.toThrow('已完成状态必须由用户确认收货');
+  });
 });
