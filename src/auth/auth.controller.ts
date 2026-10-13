@@ -161,11 +161,18 @@ export class AuthController {
     if (process.env.ADMIN_SINGLE_SESSION === 'true') {
       try {
         account = await this.db.adminAccount.update({
-          where: { id: account.id, passwordHash: account.passwordHash, status: 'active' },
+          where: {
+            id: account.id,
+            passwordHash: account.passwordHash,
+            status: 'active',
+          },
           data: { sessionVersion: { increment: 1 } },
         });
       } catch (error) {
-        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025')
+        if (
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === 'P2025'
+        )
           throw new UnauthorizedException('账号状态已改变，请重新登录');
         throw error;
       }
@@ -176,7 +183,11 @@ export class AuthController {
     let loginCampusId = account.campusId;
     if (account.role === 'rbac') {
       const campusGrants = await this.db.adminAccountRole.findMany({
-        where: { accountId: account.id, scope: 'campus', campusId: { not: null } },
+        where: {
+          accountId: account.id,
+          scope: 'campus',
+          campusId: { not: null },
+        },
         orderBy: { createdAt: 'asc' },
         select: { campusId: true },
       });
@@ -281,7 +292,8 @@ export class AuthController {
     if (adminAccount) {
       return ok({
         ...req.user,
-        nickname: adminAccount.nickname || adminAccount.username || '平台管理员',
+        nickname:
+          adminAccount.nickname || adminAccount.username || '平台管理员',
         phone: '',
       });
     }
@@ -306,7 +318,7 @@ export class AuthController {
    * 双小程序凭证路由（IK8W5Q）：用户端/履约端各一对 appid+secret，
    * 客户端登录时带 appid 挑选对应凭证；未传 appid 用第一对配好的（兼容旧单对部署）。
    */
-  private wechatCredentials(
+  private envWechatCredentials(
     appid?: string,
   ): { appid: string; secret: string } | undefined {
     const pairs = [
@@ -322,9 +334,32 @@ export class AuthController {
     return appid ? pairs.find((p) => p.appid === appid) : pairs[0];
   }
 
+  /** 用户端多租户凭证：env 保留组织 A 兼容，其他组织从组织配置读取。 */
+  private async wechatCredentials(
+    appid?: string,
+  ): Promise<{ appid: string; secret: string } | undefined> {
+    const env = this.envWechatCredentials(appid);
+    if (env || !appid) return env;
+    const organization = await this.db.organization.findFirst({
+      where: { wxAppId: appid, wxSecret: { not: null } },
+      select: { wxAppId: true, wxSecret: true },
+    });
+    const orgAppId = organization?.wxAppId?.trim();
+    const orgSecret = organization?.wxSecret?.trim();
+    return orgAppId && orgSecret
+      ? { appid: orgAppId, secret: orgSecret }
+      : undefined;
+  }
+
   /** 微信登录环境是否已配置（任一对 WX_*_APPID/WX_*_SECRET 齐备）。 */
-  private wechatConfigured() {
-    return Boolean(this.wechatCredentials());
+  private async wechatConfigured() {
+    if (this.envWechatCredentials()) return true;
+    return Boolean(
+      await this.db.organization.findFirst({
+        where: { wxAppId: { not: null }, wxSecret: { not: null } },
+        select: { id: true },
+      }),
+    );
   }
 
   /** wx.code2session 换 openid（双小程序共用，凭证由 appid 路由） */
@@ -367,11 +402,11 @@ export class AuthController {
   })
   async wechatLogin(@Body() body: WechatLoginDto) {
     // env 门控：未配置微信凭证直接 501，不回退 test-login 演示通道。
-    if (!this.wechatConfigured())
-      throw new HttpException('微信登录未配置', HttpStatus.NOT_IMPLEMENTED);
     if (!body.code?.trim())
       throw new BadRequestException('缺少微信登录凭证 code');
-    const credentials = this.wechatCredentials(body.appid?.trim());
+    const credentials = await this.wechatCredentials(body.appid?.trim());
+    if (!credentials && !(await this.wechatConfigured()))
+      throw new HttpException('微信登录未配置', HttpStatus.NOT_IMPLEMENTED);
     if (!credentials)
       throw new BadRequestException('该小程序未配置微信登录凭证');
     const session = await this.code2Session(credentials, body.code.trim());
@@ -570,7 +605,10 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: '我的可运营校区列表（后台账号，RBAC 授权集）' })
-  async adminCampuses(@Req() req: AuthRequest, @Query('purpose') purpose?: string) {
+  async adminCampuses(
+    @Req() req: AuthRequest,
+    @Query('purpose') purpose?: string,
+  ) {
     const account = await this.db.adminAccount.findUnique({
       where: { id: req.user.id },
     });
@@ -581,7 +619,9 @@ export class AuthController {
     // Platform accounts can filter all campuses without becoming campus-switch accounts.
     const orgBounded = ctx.orgLevel === 'org' && !!ctx.organizationId;
     const platformBounded = ctx.orgLevel === 'platform';
-    const allCampuses = !orgBounded && (ctx.super || platformBounded || (purpose === 'filter' && ctx.platform));
+    const allCampuses =
+      !orgBounded &&
+      (ctx.super || platformBounded || (purpose === 'filter' && ctx.platform));
     if (!allCampuses && !orgBounded && !ctx.campuses.length) return ok([]);
     const ids = allCampuses || orgBounded ? undefined : { in: ctx.campuses };
     const campuses = await this.db.campus.findMany({
@@ -605,7 +645,9 @@ export class AuthController {
   @HttpCode(200)
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: '切换后台账号运营校区（RBAC 授权校验，换发 token）' })
+  @ApiOperation({
+    summary: '切换后台账号运营校区（RBAC 授权校验，换发 token）',
+  })
   async selectAdminCampus(
     @Req() req: AuthRequest,
     @Body() body: SelectCampusDto,
@@ -613,8 +655,7 @@ export class AuthController {
     const account = await this.db.adminAccount.findUnique({
       where: { id: req.user.id },
     });
-    if (!account)
-      throw new ForbiddenException('该账号不支持切换校区');
+    if (!account) throw new ForbiddenException('该账号不支持切换校区');
     this.rbac.assertSession(account, req.user.sv);
     const ctx = await this.rbac.getEffective(account);
     const campusId = body.campusId.trim();
@@ -664,7 +705,7 @@ export class AuthController {
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @ApiOperation({ summary: '员工绑定微信（工号+姓名换绑 openid，绑定即登录）' })
   async staffBind(@Body() body: StaffBindDto) {
-    const credentials = this.wechatCredentials(
+    const credentials = await this.wechatCredentials(
       body.appid?.trim() || process.env.WX_APPID_DELIVERY,
     );
     if (!credentials || credentials.appid !== process.env.WX_APPID_DELIVERY)
@@ -690,8 +731,7 @@ export class AuthController {
     // IKKRMO：工号属于它组织校区 → 拒绝绑定（工号+姓名双因子在前，防枚举）
     if (
       organization &&
-      (await campusOrganizationId(this.db, staff.campusId)) !==
-        organization.id
+      (await campusOrganizationId(this.db, staff.campusId)) !== organization.id
     )
       throw new BadRequestException('该工号不属于当前小程序所在组织');
     // IKJ9LR：openid 自动换绑迁移——同微信换绑工号时，先摘旧员工上的 openid
@@ -756,18 +796,17 @@ export class AuthController {
   }
 
   /** 用户端小程序 access_token 内存缓存（IK9SO4）：7200s 失效，提前 5 分钟刷新 */
-  private userAccessToken?: { token: string; expiresAt: number };
+  private readonly userAccessTokens = new Map<
+    string,
+    { token: string; expiresAt: number }
+  >();
 
-  private async getUserAccessToken() {
-    // 手机号解析只走用户端凭证（getPhoneNumber code 由用户端小程序下发）
-    const credentials = this.wechatCredentials(process.env.WX_APPID_USER);
-    if (!credentials || credentials.appid !== process.env.WX_APPID_USER)
-      throw new HttpException(
-        '微信手机号服务未配置',
-        HttpStatus.NOT_IMPLEMENTED,
-      );
-    if (this.userAccessToken && this.userAccessToken.expiresAt > Date.now())
-      return this.userAccessToken.token;
+  private async getUserAccessToken(credentials: {
+    appid: string;
+    secret: string;
+  }) {
+    const cached = this.userAccessTokens.get(credentials.appid);
+    if (cached && cached.expiresAt > Date.now()) return cached.token;
     let data: {
       access_token?: string;
       expires_in?: number;
@@ -800,16 +839,19 @@ export class AuthController {
       throw new BadRequestException(
         `获取 access_token 失败：${data.errmsg ?? '微信未返回凭证'}`,
       );
-    this.userAccessToken = {
+    this.userAccessTokens.set(credentials.appid, {
       token: data.access_token,
       expiresAt: Date.now() + ((data.expires_in ?? 7200) - 300) * 1000,
-    };
+    });
     return data.access_token;
   }
 
   /** getPhoneNumber 动态令牌换手机号（IK9SO4），取纯号码（无区号）。 */
-  private async phoneFromWechatCode(code: string) {
-    const accessToken = await this.getUserAccessToken();
+  private async phoneFromWechatCode(
+    code: string,
+    credentials: { appid: string; secret: string },
+  ) {
+    const accessToken = await this.getUserAccessToken(credentials);
     let data: {
       phone_info?: { purePhoneNumber?: string; phoneNumber?: string };
       errcode?: number;
@@ -848,19 +890,42 @@ export class AuthController {
     summary: '绑定手机号（IK9SO4：优先微信授权码换号，直传号码兼容）',
   })
   async bindPhone(@Req() req: AuthRequest, @Body() body: PhoneDto) {
+    const user = await this.db.user.findUnique({
+      where: { id: req.user.id },
+      select: { id: true, campusId: true },
+    });
+    if (!user) throw new NotFoundException('用户不存在');
+    const campus = await this.db.campus.findUnique({
+      where: { id: user.campusId },
+      select: { organizationId: true },
+    });
+    const organization = campus?.organizationId
+      ? await this.db.organization.findUnique({
+          where: { id: campus.organizationId },
+          select: { wxAppId: true, wxSecret: true },
+        })
+      : null;
+    const orgAppId = organization?.wxAppId?.trim();
+    const orgSecret = organization?.wxSecret?.trim();
+    const credentials =
+      orgAppId && orgSecret
+        ? { appid: orgAppId, secret: orgSecret }
+        : await this.wechatCredentials(process.env.WX_APPID_USER);
     // IK9SO4：授权码优先——号码由微信侧解析，不可伪造；
     // 无 code 时回退直传（演示通道），仍走格式复核。
     const phone = body.code?.trim()
-      ? await this.phoneFromWechatCode(body.code.trim())
+      ? credentials
+        ? await this.phoneFromWechatCode(body.code.trim(), credentials)
+        : (() => {
+            throw new HttpException(
+              '微信手机号服务未配置',
+              HttpStatus.NOT_IMPLEMENTED,
+            );
+          })()
       : body.phone;
     // service 层防御性复核：绕过管道的调用也不允许脏号落库。
     if (!/^1\d{10}$/.test(phone ?? ''))
       throw new BadRequestException('手机号格式不正确');
-    const user = await this.db.user.findUnique({
-      where: { id: req.user.id },
-      select: { id: true },
-    });
-    if (!user) throw new NotFoundException('用户不存在');
     const after = await this.db.user.update({
       where: { id: req.user.id },
       // IKA090：落库用解析后的号码——授权码路径 body.phone 为 undefined，

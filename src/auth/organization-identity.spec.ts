@@ -41,6 +41,7 @@ describe('organization identity (IKKRMO / ADR-0001)', () => {
   const STAFF_NO_A = `staff-speca-${tag}`;
   const userIds: string[] = [];
   const staffIds: string[] = [];
+  let orgCredentialUserId = '';
 
   const WX_ENV_KEYS = [
     'WX_APPID',
@@ -50,7 +51,9 @@ describe('organization identity (IKKRMO / ADR-0001)', () => {
     'WX_APPID_DELIVERY',
     'WX_SECRET_DELIVERY',
   ] as const;
-  const hadEnv = Object.fromEntries(WX_ENV_KEYS.map((k) => [k, process.env[k]]));
+  const hadEnv = Object.fromEntries(
+    WX_ENV_KEYS.map((k) => [k, process.env[k]]),
+  );
 
   /** mock code2session：按 openid 回包（无 unionid，避开员工 unionId 补录链路） */
   const mockCode2Session = (openid: string) =>
@@ -65,6 +68,7 @@ describe('organization identity (IKKRMO / ADR-0001)', () => {
         name: '规格组织B',
         shortName: '规格B',
         wxAppId: ORG_B_APPID,
+        wxSecret: 'spec-org-b-secret',
       },
     });
     for (const [id, name] of [
@@ -94,7 +98,12 @@ describe('organization identity (IKKRMO / ADR-0001)', () => {
       [CAMPUS_B2, `staff-specb2-${tag}`, '规格骑手B2', `openid-staffb2-${tag}`],
       [CAMPUS_B1, STAFF_NO_B, '规格骑手B', null],
       ['campus-hbut', STAFF_NO_A, '规格骑手A', null],
-      ['campus-hbut', `staff-speca2-${tag}`, '规格骑手A2', `openid-staffa2-${tag}`],
+      [
+        'campus-hbut',
+        `staff-speca2-${tag}`,
+        '规格骑手A2',
+        `openid-staffa2-${tag}`,
+      ],
     ] as const) {
       staffIds.push(
         (
@@ -155,7 +164,9 @@ describe('organization identity (IKKRMO / ADR-0001)', () => {
     });
 
     it('未登记的 AppID（组织 A 现状 env WX_APPID_USER）返回 null=兼容路径', async () => {
-      expect(await resolveOrganizationByAppId(db, 'wx-never-registered')).toBeNull();
+      expect(
+        await resolveOrganizationByAppId(db, 'wx-never-registered'),
+      ).toBeNull();
     });
 
     it('空值返回 null（不误伤未配置部署）', async () => {
@@ -176,12 +187,72 @@ describe('organization identity (IKKRMO / ADR-0001)', () => {
       process.env.WX_SECRET_USER = 'spec-secret';
     });
 
+    it('组织小程序可直接使用组织表中的 AppID/AppSecret 登录', async () => {
+      delete process.env.WX_APPID_USER;
+      delete process.env.WX_SECRET_USER;
+      mockCode2Session(`openid-b-db-credentials-${tag}`);
+      try {
+        const result = (await controller.wechatLogin({
+          code: 'spec-code',
+          appid: ORG_B_APPID,
+        })) as { data: { token: string; user: { campusId: string } } };
+        orgCredentialUserId = jwtSubject(result);
+        userIds.push(orgCredentialUserId);
+        expect(result.data.user.campusId).toBe(CAMPUS_B1);
+      } finally {
+        process.env.WX_APPID_USER = ORG_B_APPID;
+        process.env.WX_SECRET_USER = 'spec-secret';
+      }
+    });
+
+    it('手机号授权按用户所属组织使用对应 AppID/AppSecret', async () => {
+      const fetchMock = jest
+        .spyOn(global, 'fetch')
+        .mockImplementation(async (input, init) => {
+          const url = String(input);
+          if (url.includes('/cgi-bin/stable_token')) {
+            expect(JSON.parse(String(init?.body))).toMatchObject({
+              appid: ORG_B_APPID,
+              secret: 'spec-org-b-secret',
+            });
+            return new Response(
+              JSON.stringify({
+                access_token: `token-${tag}`,
+                expires_in: 7200,
+              }),
+            );
+          }
+          expect(url).toContain(`access_token=token-${tag}`);
+          expect(JSON.parse(String(init?.body))).toEqual({
+            code: 'phone-code',
+          });
+          return new Response(
+            JSON.stringify({ phone_info: { purePhoneNumber: '13800138000' } }),
+          );
+        });
+      fetchMock.mockClear();
+
+      const result = (await controller.bindPhone(
+        { user: { id: orgCredentialUserId } } as never,
+        { code: 'phone-code' },
+      )) as { data: { phone: string } };
+
+      expect(result.data.phone).toBe('13800138000');
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
     it('组织小程序新用户自然流量：fallback 落该组织最早开放校区', async () => {
       mockCode2Session(`openid-b-fallback-${tag}`);
       const result = (await controller.wechatLogin({
         code: 'spec-code',
         appid: ORG_B_APPID,
-      })) as { data: { token: string; isNewUser?: boolean; user: { campusId: string } } };
+      })) as {
+        data: {
+          token: string;
+          isNewUser?: boolean;
+          user: { campusId: string };
+        };
+      };
       userIds.push(jwtSubject(result));
       expect(result.data.isNewUser).toBe(true);
       expect(result.data.user.campusId).toBe(CAMPUS_B1);
@@ -247,7 +318,13 @@ describe('organization identity (IKKRMO / ADR-0001)', () => {
       const result = (await controller.wechatLogin({
         code: 'spec-code',
         appid: COMPAT_APPID,
-      })) as { data: { token: string; isNewUser?: boolean; user: { campusId: string } } };
+      })) as {
+        data: {
+          token: string;
+          isNewUser?: boolean;
+          user: { campusId: string };
+        };
+      };
       userIds.push(jwtSubject(result));
       expect(result.data.isNewUser).toBe(true);
       expect(earliest).not.toBeNull();
@@ -391,9 +468,8 @@ describe('organization identity (IKKRMO / ADR-0001)', () => {
       })) as { data: { user: { campusId: string } } };
       expect(result.data.user.campusId).toBe(CAMPUS_B1);
       expect(
-        (
-          await db.staff.findUniqueOrThrow({ where: { staffNo: STAFF_NO_B } })
-        ).openid,
+        (await db.staff.findUniqueOrThrow({ where: { staffNo: STAFF_NO_B } }))
+          .openid,
       ).toBe(`openid-bindb-${tag}`);
     });
 
