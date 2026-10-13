@@ -1462,6 +1462,24 @@ export class BusinessService {
       const timeline = raw.timeline as unknown as TimelineStep[],
         paidAt = new Date();
       timeline[0] = { ...timeline[0], done: true, time: paidAt.toISOString() };
+      // IKLDHI（审查报告 P0）：秒杀限购支付复核——下单时刻的校验会被
+      // "双设备先下单后支付"绕过，支付是资源落定的最后关口。复核放在
+      // 抢占之前：本单仍为 pending-payment，判定查询天然不把自己算进去。
+      // 行锁串行化同用户并发支付（防复核自身 TOCTOU：后到者必见先到者
+      // 已付单）；不同用户互不阻塞——限购本来就按人。
+      const seckillLineProducts = [
+        ...new Set(
+          items
+            .filter((l) => (l.product as { promotion?: { id?: string } }).promotion?.id)
+            .map((l) => l.product.id),
+        ),
+      ];
+      if (seckillLineProducts.length) {
+        await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${userId} FOR UPDATE`;
+        const purchased = await this.seckillPurchased(userId, seckillLineProducts);
+        if (seckillLineProducts.some((id) => purchased.has(id)))
+          throw new BadRequestException('该秒杀商品每人限购 1 件，您已抢购过');
+      }
       // 条件更新抢占支付权：并发的第二笔支付 count=0 直接失败，
       // 库存扣减与后续副作用都移到抢占成功之后，防止双扣。
       const won = await tx.order.updateMany({
