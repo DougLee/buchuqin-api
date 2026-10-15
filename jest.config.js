@@ -9,5 +9,6 @@ module.exports = {
   testTimeout: 20000,
   moduleFileExtensions: ['js', 'json', 'ts'],
   rootDir: 'src',
+  setupFiles: ['<rootDir>/test-database-guard.ts'],
   testRegex: '.*\\.spec\\.ts$',
 };

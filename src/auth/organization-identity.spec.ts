@@ -32,6 +32,8 @@ describe('organization identity (IKKRMO / ADR-0001)', () => {
   const tag = `ikkrmo-${Date.now()}`;
   const ORG_B_ID = `org-specb-${tag}`;
   const ORG_B_APPID = `wx-specb-user-${tag}`;
+  const ORG_EMPTY_ID = `org-empty-${tag}`;
+  const ORG_EMPTY_APPID = `wx-empty-user-${tag}`;
   const STAFF_B_APPID = `wx-specb-staff-${tag}`;
   const COMPAT_APPID = `wx-specb-compat-${tag}`;
   const CAMPUS_B1 = `campus-specb1-${tag}`;
@@ -69,6 +71,15 @@ describe('organization identity (IKKRMO / ADR-0001)', () => {
         shortName: '规格B',
         wxAppId: ORG_B_APPID,
         wxSecret: 'spec-org-b-secret',
+      },
+    });
+    await db.organization.create({
+      data: {
+        id: ORG_EMPTY_ID,
+        name: '规格无校区组织',
+        shortName: '无校区',
+        wxAppId: ORG_EMPTY_APPID,
+        wxSecret: 'spec-empty-secret',
       },
     });
     for (const [id, name] of [
@@ -152,7 +163,9 @@ describe('organization identity (IKKRMO / ADR-0001)', () => {
     await db.campus.deleteMany({
       where: { id: { in: [CAMPUS_B1, CAMPUS_B2, CAMPUS_X] } },
     });
-    await db.organization.deleteMany({ where: { id: ORG_B_ID } });
+    await db.organization.deleteMany({
+      where: { id: { in: [ORG_B_ID, ORG_EMPTY_ID] } },
+    });
     await db.$disconnect();
   });
 
@@ -256,6 +269,20 @@ describe('organization identity (IKKRMO / ADR-0001)', () => {
       userIds.push(jwtSubject(result));
       expect(result.data.isNewUser).toBe(true);
       expect(result.data.user.campusId).toBe(CAMPUS_B1);
+    });
+
+    it('组织没有开放校区时明确拒绝，且不回落到其他组织建档', async () => {
+      const openid = `openid-empty-org-${tag}`;
+      mockCode2Session(openid);
+      await expect(
+        controller.wechatLogin({
+          code: 'spec-code',
+          appid: ORG_EMPTY_APPID,
+        }),
+      ).rejects.toThrow(
+        new BadRequestException('当前小程序所属组织暂无开放校区'),
+      );
+      expect(await db.user.findUnique({ where: { openid } })).toBeNull();
     });
 
     it('组织小程序新用户 + 分享本组织校区：采纳分享校区', async () => {

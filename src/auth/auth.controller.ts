@@ -510,6 +510,10 @@ export class AuthController {
           orderBy: { createdAt: 'asc' },
         })) ??
         null;
+      // 已识别组织的小程序绝不能回落到平台默认校区，否则会先创建跨组织
+      // 脏账号，并在下一次登录时被上方组织隔离校验永久拒绝。
+      if (organization && !campus)
+        throw new BadRequestException('当前小程序所属组织暂无开放校区');
       try {
         user = await this.db.user.create({
           data: {
