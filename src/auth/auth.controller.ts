@@ -396,7 +396,8 @@ export class AuthController {
   @Post('wechat-login')
   @HttpCode(200)
   @UseGuards(ThrottlerGuard)
-  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  // 道哥 2026-10-16：10→30/分——多品牌测试期同 IP 多设备反复冷启动误伤限流
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
   @ApiOperation({
     summary: '微信小程序登录（wx.code2Session，未配置 WX_* 时返回 501）',
   })
