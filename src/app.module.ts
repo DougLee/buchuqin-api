@@ -23,6 +23,8 @@ import { CommissionService } from './commission/commission.service';
 import { PaymentsController } from './payments/payments.controller';
 import { PaymentsService } from './payments/payments.service';
 import { OrderTimeoutService } from './payments/order-timeout.service';
+// IKM55A 订单自动出库：校区开启后 paid 单 N 秒 Cron 自动出库
+import { AutoOutboundService } from './business/auto-outbound.service';
 import { FilesController } from './files/files.controller';
 import { NotificationsService } from './notifications/notifications.service';
 import { GzhController } from './notifications/gzh.controller';
@@ -79,6 +81,8 @@ const adminDistDir = process.env.ADMIN_DIST_DIR ?? '';
     CommissionService,
     PaymentsService,
     OrderTimeoutService,
+    // IKM55A 订单自动出库（30s 精度扫描，校区开关默认关）
+    AutoOutboundService,
     // 消息渠道扇出（IK8W5M）：订阅消息/短信/企微，env 门控静默降级。
     NotificationsService,
     // 芯烨云小票打印（IKBT6N）：出库自动出票 + 订单补打，env 门控静默降级。

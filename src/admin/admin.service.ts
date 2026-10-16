@@ -5107,6 +5107,9 @@ export class AdminService {
         closeStart: true,
         closeEnd: true,
         manualClosed: true,
+        // IKM55A 订单自动出库：配送与营业 tab 同区配置
+        autoOutboundEnabled: true,
+        autoOutboundDelaySeconds: true,
       },
     });
     return campus;
@@ -5134,6 +5137,14 @@ export class AdminService {
         ...(body.noManagerTip != null
           ? { noManagerTip: body.noManagerTip }
           : {}),
+        // IKM55A 订单自动出库：开关+秒数，可选不传不动
+        ...(body.autoOutboundEnabled === undefined ||
+        body.autoOutboundEnabled === null
+          ? {}
+          : { autoOutboundEnabled: body.autoOutboundEnabled }),
+        ...(body.autoOutboundDelaySeconds != null
+          ? { autoOutboundDelaySeconds: body.autoOutboundDelaySeconds }
+          : {}),
       },
       select: {
         deliveryFeeInstant: true,
@@ -5143,6 +5154,8 @@ export class AdminService {
         closeEnd: true,
         manualClosed: true,
         noManagerTip: true,
+        autoOutboundEnabled: true,
+        autoOutboundDelaySeconds: true,
       },
     });
     await this.audit(
@@ -6909,6 +6922,14 @@ export class AdminService {
         ...(body.serviceQrcode != null
           ? { serviceQrcode: body.serviceQrcode }
           : {}),
+        // IKM55A 订单自动出库：平台/组织角色经 campuses/:id 全量更新
+        ...(body.autoOutboundEnabled === undefined ||
+        body.autoOutboundEnabled === null
+          ? {}
+          : { autoOutboundEnabled: body.autoOutboundEnabled }),
+        ...(body.autoOutboundDelaySeconds != null
+          ? { autoOutboundDelaySeconds: body.autoOutboundDelaySeconds }
+          : {}),
         // IKHMKR：无楼长提示（校区自定义，空串=回落默认文案）
         ...(body.noManagerTip != null
           ? { noManagerTip: body.noManagerTip }
@@ -8336,6 +8357,9 @@ export class AdminService {
           servicePhone: true,
           // IKKTWM 客服二维码：同档案 Tab 编辑
           serviceQrcode: true,
+          // IKM55A 订单自动出库：配送与营业 Tab 编辑
+          autoOutboundEnabled: true,
+          autoOutboundDelaySeconds: true,
           // IKHMKR 无楼长提示：校区自定义，聚合页配送 Tab 编辑
           noManagerTip: true,
         },

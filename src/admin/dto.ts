@@ -321,6 +321,17 @@ export class UpdateDeliveryConfigDto {
   @IsString()
   @MaxLength(60, { message: '提示文案最多 60 字' })
   noManagerTip?: string;
+  /** 订单自动出库开关（IKM55A）：可选不传不动；开启=paid 单 N 秒后 Cron 自动出库 */
+  @IsOptional()
+  @IsBoolean()
+  autoOutboundEnabled?: boolean;
+  /** 自动出库延迟秒数（IKM55A）：10~600，默认 60 */
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(10, { message: '自动出库延迟至少 10 秒' })
+  @Max(600, { message: '自动出库延迟最多 600 秒' })
+  autoOutboundDelaySeconds?: number;
 }
 export class CreateCouponDto {
   @IsString() @MaxLength(40) name!: string;
@@ -697,6 +708,16 @@ export class UpdateCampusDto {
   @IsString()
   @MaxLength(500, { message: '二维码地址过长' })
   serviceQrcode?: string;
+  /** 订单自动出库（IKM55A）：校区级开关+延迟秒数，可选不传不动 */
+  @IsOptional()
+  @IsBoolean()
+  autoOutboundEnabled?: boolean;
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(10, { message: '自动出库延迟至少 10 秒' })
+  @Max(600, { message: '自动出库延迟最多 600 秒' })
+  autoOutboundDelaySeconds?: number;
   /** 无楼长提示（IKHMKR 校区自定义）：空串=回落默认文案；≤60 字（弹窗一行） */
   @IsOptional()
   @IsString()

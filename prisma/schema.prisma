@@ -81,6 +81,11 @@ model Campus {
   // 无楼长提示（IKHMKR 道哥 2026-09-21）：结算/下单时楼栋无在职楼长的弹窗
   // 提示，校区自定义；空=回落默认文案（防误清空丢提示）
   noManagerTip         String            @default("")
+  // 订单自动出库（IKM55A 道哥 2026-10-16）：开启后已支付订单 N 秒自动出库
+  // （含预约达；picking 人工介入不抢跑）。Cron 30s 精度扫描，实际出库
+  // 落在 N~N+30s。关闭=完全人工节奏。
+  autoOutboundEnabled  Boolean           @default(false)
+  autoOutboundDelaySeconds Int           @default(60)
   // 多租户归属（IKKRMM/ADR-0001）：可空且本阶段不收紧 NOT NULL——campus-official
   // 平台伪校区永属平台层留空；campus-hq 与全部真实校区归组织 A（迁移回填
   // org-a）。纯字符串不建外键（参照 AdminAccount.campusId 先例：生命周期独立），
