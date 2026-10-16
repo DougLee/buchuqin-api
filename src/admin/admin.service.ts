@@ -4739,20 +4739,48 @@ export class AdminService {
     const before = await this.order(id, campusId);
     if (!ORDER_STATUSES.includes(body.status as OrderStatus))
       throw new BadRequestException(`未知订单状态：${body.status}`);
-    // delivered 必须由配送端提交送达凭证产生；completed 必须由用户确认收货产生。
-    // 通用运营兜底不能绕过这两条证据链。
-    if (body.status === 'delivered')
-      throw new BadRequestException('待用户确认状态必须由配送端提交送达凭证');
-    if (body.status === 'completed')
-      throw new BadRequestException('已完成状态必须由用户确认收货');
+    // 2026-10-16 道哥拍板：delivered/completed 开放运营补录（线下送达/骑手
+    // 不用小程序/楼长失联的兜底）。守三条换证据链：
+    // ① 原因后端强制必填（前端 reason 校验只是第一道）；
+    // ② 前置态守卫——待支付/已取消/已退款/售后审核中不可补录（钱货不清
+    //    或会把退款流程卡死：Refund 落账条件 status='after-sales'）；
+    // ③ delivered 补录与履约端 delivered 钩子同口径：同事务生成提成快照
+    //    （@@unique 幂等，跳档直达 completed 也补——钩子没跑过）+ 用户收货
+    //    通知（orderStatusPush 订阅消息带短信兜底）。
+    if (body.status === 'delivered' || body.status === 'completed') {
+      if (!body.reason?.trim())
+        throw new BadRequestException('补录已送达/已完成必须填写变更原因');
+      if (
+        ['pending-payment', 'cancelled', 'refunded', 'after-sales'].includes(
+          before.status,
+        )
+      )
+        throw new BadRequestException(
+          `当前状态（${before.statusText}）不可补录送达/完成`,
+        );
+    }
     if (before.status === body.status) return before;
-    const after = await this.db.order.update({
-      where: { id },
-      data: {
-        status: body.status,
-        statusText: ORDER_STATUS_TEXT[body.status as OrderStatus],
-        timeline: markTimelineStep(before.timeline, body.status),
-      },
+    // 条件更新+提成同事务：与并发推进（骑手动作/用户确认/另一管理员）互斥
+    const after = await this.db.$transaction(async (tx) => {
+      const won = await tx.order.updateMany({
+        where: { id, status: before.status },
+        data: {
+          status: body.status,
+          // delivered 补录文案与履约端 customer-pickup 分支同款（普适楼下/寝室）
+          statusText:
+            body.status === 'delivered'
+              ? '已送达，待确认收货'
+              : ORDER_STATUS_TEXT[body.status as OrderStatus],
+          timeline: markTimelineStep(before.timeline, body.status),
+        },
+      });
+      if (!won.count) throw new BadRequestException('订单状态已变化，请刷新重试');
+      if (body.status === 'delivered' || body.status === 'completed')
+        await this.commissions.recordForDelivered(tx, {
+          ...before,
+          status: body.status,
+        });
+      return tx.order.findUniqueOrThrow({ where: { id } });
     });
     await this.audit(
       operator,
@@ -4763,6 +4791,20 @@ export class AdminService {
       { status: after.status, reason: body.reason ?? '' },
       campusId,
     );
+    // 用户收货通知（fire-and-forget 静默）：delivered 补录必推；completed
+    // 仅跳档直达时推（从 delivered 正常确认来的已推过，不重复打扰）
+    if (
+      body.status === 'delivered' ||
+      (body.status === 'completed' && before.status !== 'delivered')
+    )
+      void this.push?.orderStatusPush({
+        id: after.id,
+        userId: after.userId,
+        orderNo: after.orderNo,
+        status: after.status,
+        statusText: after.statusText,
+        payableAmount: after.payableAmount,
+      });
     // 2026-09-09：手动置「已到楼下待交接」与履约端 arrive 同口径——补推该楼栋
     // 全部楼长/实习楼长订阅消息（fire-and-forget 静默；上方同态早退已兜住幂等）。
     // 道哥 2026-09-09：配送中（first-mile）同样补推，双时点与履约端一致。
