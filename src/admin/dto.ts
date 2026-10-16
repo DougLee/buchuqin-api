@@ -763,6 +763,8 @@ export class CreateOrganizationDto {
   @IsOptional() @IsString() @MinLength(1) privateKey?: string;
   /** 回调域名（组织 B 独立回调，路由属 IKKRMT） */
   @IsOptional() @IsString() @MinLength(1) notifyDomain?: string;
+  /** 微信支付公钥 PEM（2024+ 新商户回调验签；非敏感可回读） */
+  @IsOptional() @IsString() @MinLength(1) wxPayPublicKey?: string;
 }
 /**
  * 组织编辑（超管；微信配置随 PATCH 一并更新）。合并语义：未传字段不动；
@@ -783,6 +785,8 @@ export class UpdateOrganizationDto {
   @IsOptional() @IsString() @MinLength(1) serialNo?: string | null;
   @IsOptional() @IsString() @MinLength(1) privateKey?: string | null;
   @IsOptional() @IsString() @MinLength(1) notifyDomain?: string | null;
+  /** 微信支付公钥 PEM（非敏感，空串=清除；2024+ 新商户回调验签信任锚） */
+  @IsOptional() @IsString() wxPayPublicKey?: string | null;
 }
 /** 组织启停（超管）：停用后该组织校区/账号的处置属 IKKRMP，本阶段不消费。 */
 export class OrganizationStatusDto {

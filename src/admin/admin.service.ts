@@ -6524,6 +6524,7 @@ export class AdminService {
     mchId: string | null;
     serialNo: string | null;
     notifyDomain: string | null;
+    wxPayPublicKey: string | null;
     wxSecret: string | null;
     mchApiV3Key: string | null;
     privateKey: string | null;
@@ -6538,6 +6539,8 @@ export class AdminService {
       mchId: org.mchId,
       serialNo: org.serialNo,
       notifyDomain: org.notifyDomain,
+      // 微信支付公钥非敏感（公钥本就是对外信任锚），回读供编辑表单回显
+      wxPayPublicKey: org.wxPayPublicKey,
       hasWxSecret: org.wxSecret != null,
       hasMchApiV3Key: org.mchApiV3Key != null,
       hasPrivateKey: org.privateKey != null,
@@ -6660,6 +6663,10 @@ export class AdminService {
           : {}),
         ...(body.notifyDomain !== undefined
           ? { notifyDomain: body.notifyDomain?.trim() || null }
+          : {}),
+        // 微信支付公钥（非敏感，空串=清除）：2024+ 新商户回调验签信任锚
+        ...(body.wxPayPublicKey !== undefined
+          ? { wxPayPublicKey: body.wxPayPublicKey?.trim() || null }
           : {}),
       },
     });

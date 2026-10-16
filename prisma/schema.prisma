@@ -36,6 +36,10 @@ model Organization {
   privateKey   String?
   /// 预留：回调域名（组织 B 独立回调，路由属 IKKRMT）
   notifyDomain String?
+  /// 微信支付公钥 PEM（2024+ 新入驻商户无平台证书，回调验签用；非敏感可回读）。
+  /// 验签发生在解密前、报文不含组织信息——按候选钥遍历匹配（serial 仅是
+  /// PUB_KEY_ID_ 模式信号，公钥本身才是信任锚）。
+  wxPayPublicKey String?
   /// IKKRMU 功能授权（营销切片）：null=全开（组织 A 现状兼容）；JSON 数组=
   /// 已开通能力白名单（如 ["marketing"]，空数组=全关）。能力开关只收窄不放大
   /// ——组织关了校区不能显式开。

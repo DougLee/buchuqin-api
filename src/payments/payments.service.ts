@@ -17,6 +17,21 @@ import { campusWechatConfig, normalizePem } from '../common/wechat-org';
 const WX_PAY_HOST = 'https://api.mch.weixin.qq.com';
 
 /**
+ * 微信支付公钥 PEM 清理（2026-10-16）：trim + 剥 compose env_file 残留的
+ * 首尾引号 + 单行 \n 转义还原。清理后不含 BEGIN 行的（抄错文件/空占位）
+ * 返回 null——残留引号的 PEM 喂 createPublicKey 会炸 ERR_OSSL_UNSUPPORTED
+ * （测试环境实证，原实现组织 A 回调同样被炸）。
+ */
+function cleanWxPayPublicKey(raw?: string | null): string | null {
+  if (!raw) return null;
+  let key = raw.trim();
+  if (key.startsWith('"') && key.endsWith('"')) key = key.slice(1, -1);
+  if (key.includes('\\n')) key = key.replaceAll('\\n', '\n');
+  key = key.trim();
+  return key.includes('BEGIN PUBLIC KEY') ? key : null;
+}
+
+/**
  * 微信支付凭证统一形态（IKKRMT 按组织路由）：
  * - 组织 B：Organization 行微信 7 字段齐备 → 独立商户号 + 独立 AppID
  *   （ADR-0001 决策 1 钉死：独立经营主体，资金彻底隔离，组织 A env 冻结）
@@ -591,48 +606,60 @@ export class PaymentsService {
     if (!signature || !timestamp || !nonce || !serial)
       throw new UnauthorizedException('回调缺少验签头');
     // IK9SO7 排查：serial 只用于「选哪把钥」，真正的信任锚是验签本身。
-    // 记录 incoming serial 与配置的公钥 ID 对比，配置抄录有误时一眼可辨。
-    this.logger.debug(
-      `回调验签头 serial=${serial} 配置公钥ID=${process.env.WX_WXPAY_PUBLIC_KEY_ID ?? '未配置'}`,
-    );
+    this.logger.debug(`回调验签头 serial=${serial}`);
     if (Math.abs(Math.floor(Date.now() / 1000) - Number(timestamp)) > 300)
       throw new UnauthorizedException('回调时间戳超出容差');
-    // 验签钥二选一：微信支付公钥（2024+ 新商户，WX_WXPAY_PUBLIC_KEY[_ID] 配置）
-    // 或平台证书（老商户，GET /v3/certificates 下载缓存）。
-    const cert =
-      this.wechatPayPublicKey(serial) ??
-      (await this.platformCertificate(serial));
-    const verifier = createVerify('RSA-SHA256');
-    verifier.update(`${timestamp}\n${nonce}\n${rawBody}\n`);
-    if (!verifier.verify(cert, signature, 'base64')) {
-      // IK9SO7：验签失败要区分「选错钥」还是「伪造回调」——serial 与选钥
-      // 来源都在日志里，公钥配置错误（下载错文件/复制错行）可当场定位
-      this.logger.error(
-        `回调验签失败 serial=${serial}（配置公钥ID=${process.env.WX_WXPAY_PUBLIC_KEY_ID ?? '未配置'}）`,
-      );
-      throw new UnauthorizedException('回调验签失败');
+    // 候选钥遍历（2026-10-16 小满回调实锤多组织公钥场景）：验签发生在解密
+    // 前、报文不含组织信息——逐把试验签，本地 RSA 运算无成本，任一命中即过。
+    // 坏 PEM 候选（配置漂移/引号残留）在 try 里跳过不炸整个回调。
+    const signed = `${timestamp}\n${nonce}\n${rawBody}\n`;
+    for (const keyPem of await this.notifyVerifyKeys(serial)) {
+      try {
+        const verifier = createVerify('RSA-SHA256');
+        verifier.update(signed);
+        if (verifier.verify(keyPem, signature, 'base64')) return;
+      } catch {
+        // 该候选不是可解析公钥（或格式坏），试下一把
+      }
     }
+    this.logger.error(`回调验签失败 serial=${serial}`);
+    throw new UnauthorizedException('回调验签失败');
   }
 
   /**
-   * 微信支付公钥验签（2024 年后新入驻商户：无平台证书，只有公钥）：
-   * 配置 WX_WXPAY_PUBLIC_KEY（PEM，可单行 \n 转义）+ WX_WXPAY_PUBLIC_KEY_ID
-   * （PUB_KEY_ID_…，商户平台 API 安全页下载公钥时同页展示）。
-   * IK9SO7：serial 仅是选钥索引，公钥本身才是信任锚——微信回调 serial 与配置
-   * ID 不完全相等（抄录有误/商户侧换了公钥）但同为 PUB_KEY_ID_ 前缀时，仍选
-   * 公钥验签。否则会错误回落平台证书模式，公钥商户调 /v3/certificates 微信
-   * 返回 406 → 抛 502 → 微信无限重试，真实回调永远进不来（生产已发生）。
-   * 老商户（平台证书模式）回调 serial 是 hex 序列号，不带该前缀，不受影响。
+   * 回调验签候选钥（组织级路由，2026-10-16）：
+   * - 公钥模式（serial=PUB_KEY_ID_*，2024+ 新入驻商户）：候选 = 全部配置了
+   *   wxPayPublicKey 的组织行 + env 公钥（组织 A 兜底）。serial 仅是模式
+   *   信号，公钥本身才是信任锚——不能按 serial 选单把钥（组织行无 ID 字段，
+   *   且 IK9SO7 已证 serial 可能与配置 ID 不完全一致）。
+   * - 平台证书模式（hex 序列号，老商户）：单候选 = 下载缓存的平台证书，现状。
+   * env 公钥做 robust 清理（剥引号/还原 \n）——compose env_file 注入不剥
+   * 引号，残留引号会让 createPublicKey 解析炸 ERR_OSSL_UNSUPPORTED（测试
+   * 环境实证），顺带修复组织 A 回调。
    */
-  private wechatPayPublicKey(serial: string): string | null {
-    const key = process.env.WX_WXPAY_PUBLIC_KEY,
-      id = process.env.WX_WXPAY_PUBLIC_KEY_ID;
-    if (!key || !id) return null;
-    if (serial !== id && !serial.startsWith('PUB_KEY_ID_')) return null;
-    return key.includes('\\n')
-      ? key.replaceAll('\\n', '\n') // .env 单行转义还原为多行 PEM
-      : key;
+  private async notifyVerifyKeys(serial: string): Promise<string[]> {
+    if (!serial.startsWith('PUB_KEY_ID_')) {
+      const cert = await this.platformCertificate(serial);
+      return [cert];
+    }
+    const orgs = await this.db.organization.findMany({
+      where: { wxPayPublicKey: { not: null } },
+      select: { wxPayPublicKey: true },
+    });
+    const candidates = orgs
+      .map((o) => cleanWxPayPublicKey(o.wxPayPublicKey ?? ''))
+      .filter((k): k is string => Boolean(k));
+    const envKey = cleanWxPayPublicKey(process.env.WX_WXPAY_PUBLIC_KEY);
+    if (envKey) candidates.push(envKey);
+    if (!candidates.length)
+      this.logger.error('公钥模式回调但无任何候选公钥（组织行/env 均未配置）');
+    return candidates;
   }
+
+  /**
+   * 微信支付公钥验签（2024 年后新入驻商户）已并入 notifyVerifyKeys 候选钥
+   * 遍历——env 单把钥升级为「组织行公钥 + env 兜底」多组织路由。
+   */
 
   /** 取指定序列号的微信平台证书（缓存 miss 先刷新一次再判定）。 */
   private async platformCertificate(serial: string): Promise<string> {
