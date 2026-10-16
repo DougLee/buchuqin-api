@@ -4751,7 +4751,7 @@ export class AdminService {
     ];
     if (FROZEN_BEFORE_STATUSES.includes(before.status))
       throw new BadRequestException(
-        `订单当前状态（${before.statusText}）不可修改状态：未支付单走支付/超时关闭，已取消/已退款/已完成/售后中的单请联系客服人工处理`,
+        `订单当前状态（${before.statusText}）不可修改`,
       );
     // 2026-10-16 道哥拍板：delivered/completed 开放运营补录（线下送达/骑手
     // 不用小程序/楼长失联的兜底）。守三条换证据链：
@@ -4780,7 +4780,8 @@ export class AdminService {
           timeline: markTimelineStep(before.timeline, body.status),
         },
       });
-      if (!won.count) throw new BadRequestException('订单状态已变化，请刷新重试');
+      if (!won.count)
+        throw new BadRequestException('订单状态已变化，请刷新重试');
       // 运营强制取消（履约中→cancelled）补券释放：与用户自助 cancel 同款
       // （locked/used→released）。原实现裸改状态不释放，券永久锁死。
       if (body.status === 'cancelled' && before.couponId)
