@@ -4739,33 +4739,32 @@ export class AdminService {
     const before = await this.order(id, campusId);
     if (!ORDER_STATUSES.includes(body.status as OrderStatus))
       throw new BadRequestException(`未知订单状态：${body.status}`);
-    // 2026-10-16 道哥：未实际支付的单禁改状态——pending-payment 的正规
-    // 出口只有支付/超时关单/用户取消；运营手动推进会造成「未收款先发货」
-    // （改 paid 可直接出库），且用户后续真支付时回调会被状态机拒绝、钱挂起
-    if (before.status === 'pending-payment')
+    // 2026-10-16 道哥定稿（A 方案）：钱货不清/已完结五态禁改——本弹窗只管
+    // 履约中的单（paid→delivered 各态可改，→异常是送达纠纷的兜底）。
+    // 未支付走支付/超时；取消/退款/完成走逆向专案（客服人工），复活即双花。
+    const FROZEN_BEFORE_STATUSES = [
+      'pending-payment', // 未实际支付（改 paid=未收款先发货，且真支付回调会被拒、钱挂起）
+      'cancelled', // 用户取消/支付超时（DB 同状态仅文案区分）
+      'refunded', // 已退款，复活=双花
+      'completed', // 已完成（提成已结算），改异常无回滚
+      'after-sales', // 售后审核中——Refund 落账条件 status='after-sales'，改走卡死退款流程
+    ];
+    if (FROZEN_BEFORE_STATUSES.includes(before.status))
       throw new BadRequestException(
-        '订单尚未支付，不可修改状态（等待支付/超时自动关闭/用户取消）',
+        `订单当前状态（${before.statusText}）不可修改状态：未支付单走支付/超时关闭，已取消/已退款/已完成/售后中的单请联系客服人工处理`,
       );
     // 2026-10-16 道哥拍板：delivered/completed 开放运营补录（线下送达/骑手
     // 不用小程序/楼长失联的兜底）。守三条换证据链：
     // ① 原因后端强制必填（前端 reason 校验只是第一道）；
-    // ② 前置态守卫——待支付/已取消/已退款/售后审核中不可补录（钱货不清
-    //    或会把退款流程卡死：Refund 落账条件 status='after-sales'）；
+    // ② 前置态由五态冻结守卫统一把关（钱货不清/已完结不可改入）；
     // ③ delivered 补录与履约端 delivered 钩子同口径：同事务生成提成快照
     //    （@@unique 幂等，跳档直达 completed 也补——钩子没跑过）+ 用户收货
     //    通知（orderStatusPush 订阅消息带短信兜底）。
-    if (body.status === 'delivered' || body.status === 'completed') {
-      if (!body.reason?.trim())
-        throw new BadRequestException('补录已送达/已完成必须填写变更原因');
-      if (
-        ['pending-payment', 'cancelled', 'refunded', 'after-sales'].includes(
-          before.status,
-        )
-      )
-        throw new BadRequestException(
-          `当前状态（${before.statusText}）不可补录送达/完成`,
-        );
-    }
+    if (
+      (body.status === 'delivered' || body.status === 'completed') &&
+      !body.reason?.trim()
+    )
+      throw new BadRequestException('补录已送达/已完成必须填写变更原因');
     if (before.status === body.status) return before;
     // 条件更新+提成同事务：与并发推进（骑手动作/用户确认/另一管理员）互斥
     const after = await this.db.$transaction(async (tx) => {
@@ -4782,6 +4781,16 @@ export class AdminService {
         },
       });
       if (!won.count) throw new BadRequestException('订单状态已变化，请刷新重试');
+      // 运营强制取消（履约中→cancelled）补券释放：与用户自助 cancel 同款
+      // （locked/used→released）。原实现裸改状态不释放，券永久锁死。
+      if (body.status === 'cancelled' && before.couponId)
+        await tx.userCoupon.updateMany({
+          where: {
+            id: before.couponId,
+            status: { in: ['locked', 'used'] },
+          },
+          data: { status: 'released' },
+        });
       if (body.status === 'delivered' || body.status === 'completed')
         await this.commissions.recordForDelivered(tx, {
           ...before,
