@@ -690,7 +690,12 @@ export class UpdateCampusDto {
   @IsOptional()
   @Matches(/^[0-9-]{3,20}$/, { message: '客服电话格式不正确' })
   servicePhone?: string;
-  /** IKKTWM 校区客服微信二维码（COS 图；空串=未配置回落拨号） */
+  /** IKKTWM 校区客服微信二维码（COS 图；空串=未配置回落拨号）。
+   *  必须带装饰器：全局 ValidationPipe whitelist 会剥离无装饰器字段
+   *  （2026-10-16 道哥反馈保存不生效的根因——接口报成功但静默丢） */
+  @IsOptional()
+  @IsString()
+  @MaxLength(500, { message: '二维码地址过长' })
   serviceQrcode?: string;
   /** 无楼长提示（IKHMKR 校区自定义）：空串=回落默认文案；≤60 字（弹窗一行） */
   @IsOptional()
