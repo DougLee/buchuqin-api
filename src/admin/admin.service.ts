@@ -4739,6 +4739,13 @@ export class AdminService {
     const before = await this.order(id, campusId);
     if (!ORDER_STATUSES.includes(body.status as OrderStatus))
       throw new BadRequestException(`未知订单状态：${body.status}`);
+    // 2026-10-16 道哥：未实际支付的单禁改状态——pending-payment 的正规
+    // 出口只有支付/超时关单/用户取消；运营手动推进会造成「未收款先发货」
+    // （改 paid 可直接出库），且用户后续真支付时回调会被状态机拒绝、钱挂起
+    if (before.status === 'pending-payment')
+      throw new BadRequestException(
+        '订单尚未支付，不可修改状态（等待支付/超时自动关闭/用户取消）',
+      );
     // 2026-10-16 道哥拍板：delivered/completed 开放运营补录（线下送达/骑手
     // 不用小程序/楼长失联的兜底）。守三条换证据链：
     // ① 原因后端强制必填（前端 reason 校验只是第一道）；
