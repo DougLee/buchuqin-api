@@ -1407,8 +1407,16 @@ export class BusinessService {
   async order(userId: string, id: string) {
     await this.expirePendingOrders(userId);
     const item = await this.db.order.findFirst({ where: { id, userId } });
-    if (!item) throw new NotFoundException('订单不存在');
-    return this.orderView(item);
+    if (item) return this.orderView(item);
+    // 订单管理详情页回跳（2026-10-17 微信订单中心接入）：微信「小程序购物
+    // 订单」只认支付时传的 out_trade_no（=orderNo，BCQ…），配置 path 的
+    // ${商品订单号} 占位符回填的就是它——id 未命中时按 orderNo 兜底解析。
+    // userId 约束保留：仍只能查到本人的单。
+    const byNo = await this.db.order.findFirst({
+      where: { orderNo: id, userId },
+    });
+    if (!byNo) throw new NotFoundException('订单不存在');
+    return this.orderView(byNo);
   }
   async pay(userId: string, id: string) {
     return this.db.$transaction(async (tx) => {
