@@ -284,6 +284,7 @@ export class FulfillmentService {
         staff.id,
         commissionByOrder,
         rules,
+        staff.campusWarehouseName,
       ),
     );
     return result.filter(
@@ -323,6 +324,7 @@ export class FulfillmentService {
         staff.id,
         undefined,
         rules,
+        staff.campusWarehouseName,
       ),
     );
   }
@@ -740,6 +742,10 @@ export class FulfillmentService {
     viewerId?: string,
     commissionByOrder?: Map<string, number>,
     rules?: Array<Parameters<typeof bestMatch>[0][number]>,
+    /** 任务所属校区仓库名（2026-10-19 道哥：多组织后硬编码「湖工大校园仓」
+     *  串味——武工院楼长任务卡显示湖工大仓库。profile 的 campusWarehouseName
+     *  早已接口化（IKAJT4），此处补齐同源取值。 */
+    warehouseName?: string,
   ) {
     const a = order.address as JsonMap,
       items = order.items as JsonMap[],
@@ -834,7 +840,7 @@ export class FulfillmentService {
         // 道哥 2026-09-24：带年份（YYYY-MM-DD HH:mm）
         return `${iso.slice(0, 10)} ${iso.slice(11, 16)}`;
       })(),
-      warehouse: '湖北工业大学校园仓',
+      warehouse: warehouseName ?? '',
       // 金额口径统一（IK8W5L）：Commission 记录优先，未送达按规则预览，兜底常量（单位:分）。
       commission:
         commissionByOrder?.get(String(order.id)) ??
