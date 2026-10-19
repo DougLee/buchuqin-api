@@ -753,6 +753,14 @@ export class CreateOrganizationDto {
   wxAppId!: string;
   /** 组织小程序 Secret（敏感，只写不回读） */
   @IsOptional() @IsString() @MinLength(1) wxSecret?: string;
+  /** 组织履约端小程序 AppID（可随后补配；全平台唯一） */
+  @IsOptional()
+  @Matches(/^wx[0-9a-f]{16}$/, { message: '履约端 AppID 须为 wx 开头 18 位' })
+  deliveryWxAppId?: string;
+  /** 组织履约端小程序 Secret（敏感，只写不回读） */
+  @IsOptional() @IsString() @MinLength(1) deliveryWxSecret?: string;
+  /** 履约端新订单提醒模板 ID（模板归属于履约端 AppID） */
+  @IsOptional() @IsString() @MinLength(1) deliveryNotifyTemplateId?: string;
   /** 微信支付商户号（ADR-0001 决策 1：组织 B 独立商户号） */
   @IsOptional() @IsString() @MinLength(1) mchId?: string;
   /** 商户 APIv3 密钥（敏感，只写不回读） */
@@ -780,6 +788,13 @@ export class UpdateOrganizationDto {
   wxAppId?: string | null;
   /** 传值=覆盖，显式 null=清除（wxAppId 清空=回落 env 单组织兼容路径） */
   @IsOptional() @IsString() @MinLength(1) wxSecret?: string | null;
+  @IsOptional()
+  @Matches(/^wx[0-9a-f]{16}$/, { message: '履约端 AppID 须为 wx 开头 18 位' })
+  deliveryWxAppId?: string | null;
+  @IsOptional() @IsString() @MinLength(1) deliveryWxSecret?: string | null;
+  @IsOptional()
+  @IsString()
+  deliveryNotifyTemplateId?: string | null;
   @IsOptional() @IsString() @MinLength(1) mchId?: string | null;
   @IsOptional() @IsString() @MinLength(1) mchApiV3Key?: string | null;
   @IsOptional() @IsString() @MinLength(1) serialNo?: string | null;

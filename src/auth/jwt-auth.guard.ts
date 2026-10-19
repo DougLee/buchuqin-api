@@ -23,6 +23,10 @@ export interface AuthUser {
     | 'finance';
   /** RBAC V1 会话版本（仅后台账号签发）：AdminAccount.sessionVersion，bump 即旧 token 失效 */
   sv?: number;
+  /** 小程序组织身份由服务端按实际 code2session AppID 推导，客户端无权指定。 */
+  organizationId?: string;
+  /** 区分用户端与履约端令牌；旧令牌缺省兼容。 */
+  appKind?: 'user' | 'delivery';
 }
 export interface AuthRequest extends Request {
   user: AuthUser;

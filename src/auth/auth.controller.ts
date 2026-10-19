@@ -34,7 +34,8 @@ import { ok } from '../common/api-response';
 import { ADMIN_CAMPUS_ID } from '../common/campus';
 import {
   campusOrganizationId,
-  resolveOrganizationByAppId,
+  resolveMiniProgramOrganization,
+  type MiniProgramKind,
 } from '../common/organization';
 import { PrismaService } from '../database/prisma.service';
 import { JwtAuthGuard } from './jwt-auth.guard';
@@ -118,6 +119,12 @@ class StaffBindDto {
 class SelectCampusDto {
   @IsString()
   campusId!: string;
+}
+
+interface WechatCredentials {
+  appid: string;
+  secret: string;
+  kind: MiniProgramKind;
 }
 
 @ApiTags('认证')
@@ -318,36 +325,74 @@ export class AuthController {
    * 双小程序凭证路由（IK8W5Q）：用户端/履约端各一对 appid+secret，
    * 客户端登录时带 appid 挑选对应凭证；未传 appid 用第一对配好的（兼容旧单对部署）。
    */
-  private envWechatCredentials(
-    appid?: string,
-  ): { appid: string; secret: string } | undefined {
+  private envWechatCredentials(appid?: string): WechatCredentials | undefined {
     const pairs = [
-      { appid: process.env.WX_APPID_USER, secret: process.env.WX_SECRET_USER },
+      {
+        appid: process.env.WX_APPID_USER,
+        secret: process.env.WX_SECRET_USER,
+        kind: 'user' as const,
+      },
       {
         appid: process.env.WX_APPID_DELIVERY,
         secret: process.env.WX_SECRET_DELIVERY,
+        kind: 'delivery' as const,
       },
-      { appid: process.env.WX_APPID, secret: process.env.WX_SECRET }, // 旧单对配置
-    ].filter((p): p is { appid: string; secret: string } =>
-      Boolean(p.appid && p.secret),
-    );
+      {
+        appid: process.env.WX_APPID,
+        secret: process.env.WX_SECRET,
+        kind: 'user' as const,
+      }, // 旧单对配置
+    ].filter((p): p is WechatCredentials => Boolean(p.appid && p.secret));
     return appid ? pairs.find((p) => p.appid === appid) : pairs[0];
   }
 
-  /** 用户端多租户凭证：env 保留组织 A 兼容，其他组织从组织配置读取。 */
+  /**
+   * 多租户凭证：env 保留组织 A 兼容；其他组织分别从用户端/履约端配置读取。
+   * 返回 kind 作为登录分流唯一依据，不能再用“是否等于全局履约 AppID”判断。
+   */
   private async wechatCredentials(
     appid?: string,
-  ): Promise<{ appid: string; secret: string } | undefined> {
+    expectedKind?: MiniProgramKind,
+  ): Promise<WechatCredentials | undefined> {
     const env = this.envWechatCredentials(appid);
-    if (env || !appid) return env;
+    if (env || !appid)
+      return env && (!expectedKind || env.kind === expectedKind)
+        ? env
+        : undefined;
     const organization = await this.db.organization.findFirst({
-      where: { wxAppId: appid, wxSecret: { not: null } },
-      select: { wxAppId: true, wxSecret: true },
+      where: {
+        OR: [
+          { wxAppId: appid, wxSecret: { not: null } },
+          { deliveryWxAppId: appid, deliveryWxSecret: { not: null } },
+        ],
+      },
+      select: {
+        wxAppId: true,
+        wxSecret: true,
+        deliveryWxAppId: true,
+        deliveryWxSecret: true,
+      },
     });
-    const orgAppId = organization?.wxAppId?.trim();
-    const orgSecret = organization?.wxSecret?.trim();
-    return orgAppId && orgSecret
-      ? { appid: orgAppId, secret: orgSecret }
+    const delivery =
+      organization?.deliveryWxAppId?.trim() === appid &&
+      organization.deliveryWxSecret?.trim()
+        ? {
+            appid,
+            secret: organization.deliveryWxSecret.trim(),
+            kind: 'delivery' as const,
+          }
+        : undefined;
+    const user =
+      organization?.wxAppId?.trim() === appid && organization.wxSecret?.trim()
+        ? {
+            appid,
+            secret: organization.wxSecret.trim(),
+            kind: 'user' as const,
+          }
+        : undefined;
+    const resolved = delivery ?? user;
+    return resolved && (!expectedKind || resolved.kind === expectedKind)
+      ? resolved
       : undefined;
   }
 
@@ -356,7 +401,15 @@ export class AuthController {
     if (this.envWechatCredentials()) return true;
     return Boolean(
       await this.db.organization.findFirst({
-        where: { wxAppId: { not: null }, wxSecret: { not: null } },
+        where: {
+          OR: [
+            { wxAppId: { not: null }, wxSecret: { not: null } },
+            {
+              deliveryWxAppId: { not: null },
+              deliveryWxSecret: { not: null },
+            },
+          ],
+        },
         select: { id: true },
       }),
     );
@@ -364,7 +417,7 @@ export class AuthController {
 
   /** wx.code2session 换 openid（双小程序共用，凭证由 appid 路由） */
   private async code2Session(
-    credentials: { appid: string; secret: string },
+    credentials: Pick<WechatCredentials, 'appid' | 'secret'>,
     code: string,
   ) {
     let session: {
@@ -416,12 +469,13 @@ export class AuthController {
     // 登记 wxAppId 的现状）→ null，走 env 单组织兼容路径，现有行为一字不变。
     // 安全铁律：组织身份只认服务端凭证路由后的 credentials.appid，不接受
     // 客户端传 organizationId 等组织参数。
-    const organization = await resolveOrganizationByAppId(
+    const organization = await resolveMiniProgramOrganization(
       this.db,
       credentials.appid,
+      credentials.kind,
     );
     // 履约端小程序 → 员工通道：openid 必须已绑定 Staff，未绑定引导走 staff-bind
-    if (credentials.appid === process.env.WX_APPID_DELIVERY) {
+    if (credentials.kind === 'delivery') {
       const staff = await this.db.staff.findUnique({
         where: { openid: session.openid },
       });
@@ -430,10 +484,19 @@ export class AuthController {
       // IKKRMO 跨组织员工：登录小程序解析到组织而员工校区不属该组织 →
       // 拒绝（openid per-app 隔离，正常不会发生，防运营迁移校区后的串号）。
       // 组织未登记 wxAppId 现状解析 null 不校验，行为不变。
+      const staffOrganizationId = await campusOrganizationId(
+        this.db,
+        staff.campusId,
+      );
+      const expectedOrganizationId =
+        organization?.id ??
+        (credentials.appid === process.env.WX_APPID_DELIVERY ? 'org-a' : null);
       if (
-        organization &&
-        (await campusOrganizationId(this.db, staff.campusId)) !==
-          organization.id
+        (organization && staffOrganizationId !== expectedOrganizationId) ||
+        (!organization &&
+          expectedOrganizationId &&
+          staffOrganizationId &&
+          staffOrganizationId !== expectedOrganizationId)
       )
         throw new ForbiddenException('该账号不属于当前小程序所在组织');
       // IKI3ZP：登录侧写补录 unionId（服务号关注事件按 unionid 自动绑定派单通道）
@@ -455,6 +518,9 @@ export class AuthController {
         id: staff.id,
         campusId: staff.campusId,
         role: staff.role as AuthUser['role'],
+        organizationId:
+          expectedOrganizationId ?? staffOrganizationId ?? undefined,
+        appKind: 'delivery',
       };
       return ok({
         token: this.jwt.sign(claims),
@@ -554,6 +620,11 @@ export class AuthController {
       id: user.id,
       campusId: user.campusId,
       role: 'user',
+      organizationId:
+        organization?.id ??
+        (await campusOrganizationId(this.db, user.campusId)) ??
+        undefined,
+      appKind: 'user',
     };
     return ok({
       token: this.jwt.sign(claims),
@@ -587,6 +658,9 @@ export class AuthController {
       id: user.id,
       campusId: user.campusId,
       role: 'user',
+      organizationId:
+        (await campusOrganizationId(this.db, user.campusId)) ?? undefined,
+      appKind: 'user',
     };
     return ok(
       {
@@ -712,8 +786,9 @@ export class AuthController {
   async staffBind(@Body() body: StaffBindDto) {
     const credentials = await this.wechatCredentials(
       body.appid?.trim() || process.env.WX_APPID_DELIVERY,
+      'delivery',
     );
-    if (!credentials || credentials.appid !== process.env.WX_APPID_DELIVERY)
+    if (!credentials)
       throw new HttpException('员工微信登录未配置', HttpStatus.NOT_IMPLEMENTED);
     if (!body.code?.trim() || !body.staffNo?.trim() || !body.name?.trim())
       throw new BadRequestException('缺少微信凭证/工号/姓名');
@@ -721,9 +796,10 @@ export class AuthController {
     // IKKRMO（ADR-0001）：按履约端 AppID 解析组织——组织小程序只能绑定本
     // 组织校区的员工；组织身份只认服务端 AppID，不接受客户端组织参数。
     // 未命中（组织 A 未登记 wxAppId 现状）→ null 不校验，行为不变。
-    const organization = await resolveOrganizationByAppId(
+    const organization = await resolveMiniProgramOrganization(
       this.db,
       credentials.appid,
+      'delivery',
     );
     const staff = await this.db.staff.findUnique({
       where: { staffNo: body.staffNo.trim() },
@@ -734,9 +810,19 @@ export class AuthController {
     if (staff.name !== body.name.trim())
       throw new BadRequestException('工号与姓名不匹配');
     // IKKRMO：工号属于它组织校区 → 拒绝绑定（工号+姓名双因子在前，防枚举）
+    const staffOrganizationId = await campusOrganizationId(
+      this.db,
+      staff.campusId,
+    );
+    const expectedOrganizationId =
+      organization?.id ??
+      (credentials.appid === process.env.WX_APPID_DELIVERY ? 'org-a' : null);
     if (
-      organization &&
-      (await campusOrganizationId(this.db, staff.campusId)) !== organization.id
+      (organization && staffOrganizationId !== expectedOrganizationId) ||
+      (!organization &&
+        expectedOrganizationId &&
+        staffOrganizationId &&
+        staffOrganizationId !== expectedOrganizationId)
     )
       throw new BadRequestException('该工号不属于当前小程序所在组织');
     // IKJ9LR：openid 自动换绑迁移——同微信换绑工号时，先摘旧员工上的 openid
@@ -768,6 +854,9 @@ export class AuthController {
       id: after.id,
       campusId: after.campusId,
       role: after.role as AuthUser['role'],
+      organizationId:
+        expectedOrganizationId ?? staffOrganizationId ?? undefined,
+      appKind: 'delivery',
     };
     return ok(
       {

@@ -16,6 +16,8 @@ export interface ResolvedOrganization {
   status: string;
 }
 
+export type MiniProgramKind = 'user' | 'delivery';
+
 /**
  * 按小程序 AppID 解析组织：
  * - 命中 Organization.wxAppId → 返回该组织：登录/注册/切校区/校区列表全部
@@ -40,6 +42,34 @@ export async function resolveOrganizationByAppId(
     select: { id: true, name: true, status: true },
   });
   return org ?? null;
+}
+
+/**
+ * 履约端 AppID → 组织。与用户端 wxAppId 分列，防止组织 B 的骑手小程序
+ * 被误判为用户端。组织 A 未登记时返回 null，继续兼容 env 单履约端配置。
+ */
+export async function resolveOrganizationByDeliveryAppId(
+  db: PrismaService,
+  appId?: string | null,
+): Promise<ResolvedOrganization | null> {
+  const appid = appId?.trim();
+  if (!appid) return null;
+  const org = await db.organization.findFirst({
+    where: { deliveryWxAppId: appid },
+    select: { id: true, name: true, status: true },
+  });
+  return org ?? null;
+}
+
+/** AppID 的组织解析必须同时携带端类型，不能仅凭 AppID 猜用户端/履约端。 */
+export function resolveMiniProgramOrganization(
+  db: PrismaService,
+  appId: string | null | undefined,
+  kind: MiniProgramKind,
+) {
+  return kind === 'delivery'
+    ? resolveOrganizationByDeliveryAppId(db, appId)
+    : resolveOrganizationByAppId(db, appId);
 }
 
 /**

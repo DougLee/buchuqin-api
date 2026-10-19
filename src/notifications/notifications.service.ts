@@ -17,6 +17,13 @@ export interface OrderPushContext {
   address?: unknown;
 }
 
+interface DeliveryWechatConfig {
+  appId: string;
+  secret: string;
+  templateId: string;
+  brandName: string;
+}
+
 /**
  * 消息通知渠道扇出（IK8W5M，PRD §15.1 矩阵）。
  *
@@ -207,7 +214,12 @@ export class NotificationsService {
       const row = order.id
         ? await this.db.order.findUnique({
             where: { id: order.id },
-            select: { items: true, address: true, createdAt: true, paidAt: true },
+            select: {
+              items: true,
+              address: true,
+              createdAt: true,
+              paidAt: true,
+            },
           })
         : null;
       const items = Array.isArray(row?.items)
@@ -283,24 +295,71 @@ export class NotificationsService {
   }
 
   /* ---------- 履约端订阅消息（IKDQP9 骑手/楼长通知，2026-09-07 道哥拍板） ---------- */
-  /** 履约端 access_token 缓存（与用户端独立：不同 appid 各自缓存） */
-  private deliveryToken: { token: string; expiresAt: number } | null = null;
-  /** 「新订单提醒」模板（真机验证过字段：thing6/thing5/thing9/name7/time8） */
-  private static readonly DELIVERY_TMPL =
-    process.env.DELIVERY_NOTIFY_TEMPLATE_ID ??
-    'uqDmjNXOnCQH-QCfLE6ch8vTaDfXtiIxfklqmVv026M';
+  /** 履约端 access_token 必须按 AppID 隔离，多个组织不能共享同一张票。 */
+  private deliveryTokens = new Map<
+    string,
+    { token: string; expiresAt: number }
+  >();
 
-  private async deliveryAccessToken(): Promise<string> {
-    if (this.deliveryToken && this.deliveryToken.expiresAt > Date.now())
-      return this.deliveryToken.token;
+  /** 校区 → 组织履约端配置；组织 A 未登记时兼容原 env 配置。 */
+  private async deliveryWechatConfig(
+    campusId: string,
+  ): Promise<DeliveryWechatConfig | null> {
+    const organizationId = await campusOrganizationId(this.db, campusId);
+    const org = organizationId
+      ? await this.db.organization.findUnique({
+          where: { id: organizationId },
+          select: {
+            id: true,
+            name: true,
+            shortName: true,
+            deliveryWxAppId: true,
+            deliveryWxSecret: true,
+            deliveryNotifyTemplateId: true,
+          },
+        })
+      : null;
+    if (org?.deliveryWxAppId && org.deliveryWxSecret) {
+      const templateId = org.deliveryNotifyTemplateId?.trim();
+      if (!templateId) return null;
+      return {
+        appId: org.deliveryWxAppId,
+        secret: org.deliveryWxSecret,
+        templateId,
+        brandName: org.shortName || org.name,
+      };
+    }
+    // 历史 env 只属于旧平台组织。其他组织未完整登记履约端凭证时必须停发，
+    // 不能拿平台 AppID 给另一个组织的骑手推送消息。
+    if (org && org.id !== 'org-a') return null;
+    const appId = process.env.WX_APPID_DELIVERY?.trim();
+    const secret = process.env.WX_SECRET_DELIVERY?.trim();
+    const templateId =
+      process.env.DELIVERY_NOTIFY_TEMPLATE_ID?.trim() ||
+      'uqDmjNXOnCQH-QCfLE6ch8vTaDfXtiIxfklqmVv026M';
+    return appId && secret
+      ? {
+          appId,
+          secret,
+          templateId,
+          brandName: org?.shortName || org?.name || '不出寝食社',
+        }
+      : null;
+  }
+
+  private async deliveryAccessToken(
+    config: DeliveryWechatConfig,
+  ): Promise<string> {
+    const cached = this.deliveryTokens.get(config.appId);
+    if (cached && cached.expiresAt > Date.now()) return cached.token;
     // IKG9J2：stable_token 有效期内返回同一张票——测试/生产同 appid 不再互踩
     const res = await fetch('https://api.weixin.qq.com/cgi-bin/stable_token', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         grant_type: 'client_credential',
-        appid: process.env.WX_APPID_DELIVERY,
-        secret: process.env.WX_SECRET_DELIVERY,
+        appid: config.appId,
+        secret: config.secret,
         force_refresh: false,
       }),
     });
@@ -312,10 +371,10 @@ export class NotificationsService {
     };
     if (!body.access_token)
       throw new Error(`delivery token ${body.errcode} ${body.errmsg}`);
-    this.deliveryToken = {
+    this.deliveryTokens.set(config.appId, {
       token: body.access_token,
       expiresAt: Date.now() + ((body.expires_in ?? 7200) - 300) * 1000,
-    };
+    });
     return body.access_token;
   }
 
@@ -328,9 +387,10 @@ export class NotificationsService {
     staffId: string,
     openid: string,
     data: Record<string, { value: string }>,
+    config: DeliveryWechatConfig,
   ): Promise<'ok' | 'no-quota' | 'fail'> {
     try {
-      const token = await this.deliveryAccessToken();
+      const token = await this.deliveryAccessToken(config);
       const res = await fetch(
         `https://api.weixin.qq.com/cgi-bin/message/subscribe/send?access_token=${token}`,
         {
@@ -338,7 +398,7 @@ export class NotificationsService {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             touser: openid,
-            template_id: NotificationsService.DELIVERY_TMPL,
+            template_id: config.templateId,
             page: 'pages/tasks/index',
             data,
           }),
@@ -390,6 +450,13 @@ export class NotificationsService {
   }): Promise<void> {
     if (await campusStaffDelivery(this.db, order.campusId)) return;
     try {
+      const deliveryConfig = await this.deliveryWechatConfig(order.campusId);
+      if (!deliveryConfig) {
+        this.logger.debug(
+          `校区履约端消息配置不完整，跳过派单通知 campus=${order.campusId}`,
+        );
+        return;
+      }
       const riders = await this.db.staff.findMany({
         where: {
           campusId: order.campusId,
@@ -410,7 +477,7 @@ export class NotificationsService {
           value: `待骑手接单 · ${order.deliveryMode === 'instant' ? '即时达' : '2小时达'}`,
         },
         thing9: { value: `${building} ${room}`.trim().slice(0, 20) },
-        name7: { value: '不出寝食社' },
+        name7: { value: deliveryConfig.brandName.slice(0, 20) },
         time8: { value: NotificationsService.fmtCn(new Date()) },
       };
       const gzhReady = this.gzhConfigured();
@@ -421,6 +488,7 @@ export class NotificationsService {
               await this.sendGzhTemplate(
                 r.gzhOpenid,
                 this.gzhDispatchData(order),
+                deliveryConfig.appId,
               );
               return; // 服务号成功即触达，不发订阅消息
             } catch (error) {
@@ -430,7 +498,12 @@ export class NotificationsService {
               );
             }
           }
-          await this.sendStaffSubscribe(r.id, r.openid as string, data);
+          await this.sendStaffSubscribe(
+            r.id,
+            r.openid as string,
+            data,
+            deliveryConfig,
+          );
         }),
       );
     } catch (error) {
@@ -483,6 +556,8 @@ export class NotificationsService {
         select: { campusId: true, address: true },
       });
       if (!order) return;
+      const deliveryConfig = await this.deliveryWechatConfig(order.campusId);
+      if (!deliveryConfig) return;
       const addr = (order.address ?? {}) as Record<string, unknown>;
       const buildingId = String(addr.buildingId ?? '');
       const buildingName = String(addr.buildingName ?? '');
@@ -506,12 +581,17 @@ export class NotificationsService {
         thing6: { value: headline(buildingName).slice(0, 20) },
         thing5: { value: subText },
         thing9: { value: `${buildingName} ${room}`.trim().slice(0, 20) },
-        name7: { value: '不出寝食社' },
+        name7: { value: deliveryConfig.brandName.slice(0, 20) },
         time8: { value: NotificationsService.fmtCn(new Date()) },
       };
       await Promise.all(
         managers.map((m) =>
-          this.sendStaffSubscribe(m.id, m.openid as string, data),
+          this.sendStaffSubscribe(
+            m.id,
+            m.openid as string,
+            data,
+            deliveryConfig,
+          ),
         ),
       );
     } catch (error) {
@@ -526,7 +606,9 @@ export class NotificationsService {
   private static fmtCn(date: Date, withSeconds = false): string {
     const t = new Date(date.getTime() + 8 * 3600_000);
     const iso = t.toISOString();
-    return withSeconds ? iso.slice(0, 19).replace('T', ' ') : iso.slice(0, 16).replace('T', ' ');
+    return withSeconds
+      ? iso.slice(0, 19).replace('T', ' ')
+      : iso.slice(0, 16).replace('T', ' ');
   }
 
   /**
@@ -592,9 +674,9 @@ export class NotificationsService {
   gzhConfigured(): boolean {
     return Boolean(
       process.env.WX_GZH_APPID &&
-        process.env.WX_GZH_SECRET &&
-        process.env.WX_GZH_TOKEN &&
-        process.env.WX_GZH_TEMPLATE_ID,
+      process.env.WX_GZH_SECRET &&
+      process.env.WX_GZH_TOKEN &&
+      process.env.WX_GZH_TEMPLATE_ID,
     );
   }
 
@@ -639,8 +721,7 @@ export class NotificationsService {
   ): Promise<string> {
     const token = process.env.WX_GZH_TOKEN;
     const { signature, timestamp, nonce, echostr } = query;
-    if (!token || !signature || !timestamp || !nonce)
-      return 'bad request';
+    if (!token || !signature || !timestamp || !nonce) return 'bad request';
     const expected = createHash('sha1')
       .update([token, timestamp, nonce].sort().join(''))
       .digest('hex');
@@ -702,6 +783,7 @@ export class NotificationsService {
   private async sendGzhTemplate(
     openid: string,
     data: Record<string, { value: string }>,
+    deliveryAppId: string,
   ): Promise<void> {
     const token = await this.gzhAccessToken();
     const res = await fetch(
@@ -714,7 +796,7 @@ export class NotificationsService {
           template_id: process.env.WX_GZH_TEMPLATE_ID,
           data,
           miniprogram: {
-            appid: process.env.WX_APPID_DELIVERY,
+            appid: deliveryAppId,
             pagepath: 'pages/tasks/index',
           },
         }),
@@ -769,7 +851,10 @@ export class NotificationsService {
           `https://api.weixin.qq.com/cgi-bin/user/info?access_token=${token}&openid=${openid}&lang=zh_CN`,
           { signal: AbortSignal.timeout(5000) },
         );
-        const info = (await res.json()) as { unionid?: string; subscribe?: number };
+        const info = (await res.json()) as {
+          unionid?: string;
+          subscribe?: number;
+        };
         if (!info.unionid || info.subscribe !== 1) continue;
         const staff = await this.db.staff.findUnique({
           where: { unionId: info.unionid },
@@ -782,9 +867,13 @@ export class NotificationsService {
         bound++;
       }
       if (bound)
-        this.logger.log(`服务号绑定对账完成：关注者 ${openids.length}，新补绑 ${bound}`);
+        this.logger.log(
+          `服务号绑定对账完成：关注者 ${openids.length}，新补绑 ${bound}`,
+        );
     } catch (error) {
-      this.logger.warn(`服务号绑定对账失败（已忽略）: ${(error as Error).message}`);
+      this.logger.warn(
+        `服务号绑定对账失败（已忽略）: ${(error as Error).message}`,
+      );
     }
   }
 

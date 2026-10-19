@@ -6457,10 +6457,13 @@ export class AdminService {
         userCount: own.reduce((n, c) => n + (usersByCampus.get(c.id) ?? 0), 0),
         // IKKRMS：列表补微信配置位（编辑抽屉直接用，不必逐行拉详情）
         wxAppId: o.wxAppId,
+        deliveryWxAppId: o.deliveryWxAppId,
+        deliveryNotifyTemplateId: o.deliveryNotifyTemplateId,
         mchId: o.mchId,
         serialNo: o.serialNo,
         notifyDomain: o.notifyDomain,
         hasWxSecret: o.wxSecret != null,
+        hasDeliveryWxSecret: o.deliveryWxSecret != null,
         hasMchApiV3Key: o.mchApiV3Key != null,
         hasPrivateKey: o.privateKey != null,
       };
@@ -6497,10 +6500,13 @@ export class AdminService {
       createdAt: org.createdAt,
       // 微信配置（ADR-0001 决策 2 预留）：非敏感位透出，敏感凭据只回布尔
       wxAppId: org.wxAppId,
+      deliveryWxAppId: org.deliveryWxAppId,
+      deliveryNotifyTemplateId: org.deliveryNotifyTemplateId,
       mchId: org.mchId,
       serialNo: org.serialNo,
       notifyDomain: org.notifyDomain,
       hasWxSecret: org.wxSecret != null,
+      hasDeliveryWxSecret: org.deliveryWxSecret != null,
       hasMchApiV3Key: org.mchApiV3Key != null,
       hasPrivateKey: org.privateKey != null,
       campuses,
@@ -6521,6 +6527,9 @@ export class AdminService {
     status: string;
     createdAt: Date;
     wxAppId: string | null;
+    deliveryWxAppId: string | null;
+    deliveryWxSecret: string | null;
+    deliveryNotifyTemplateId: string | null;
     mchId: string | null;
     serialNo: string | null;
     notifyDomain: string | null;
@@ -6536,12 +6545,15 @@ export class AdminService {
       status: org.status,
       createdAt: org.createdAt,
       wxAppId: org.wxAppId,
+      deliveryWxAppId: org.deliveryWxAppId,
+      deliveryNotifyTemplateId: org.deliveryNotifyTemplateId,
       mchId: org.mchId,
       serialNo: org.serialNo,
       notifyDomain: org.notifyDomain,
       // 微信支付公钥非敏感（公钥本就是对外信任锚），回读供编辑表单回显
       wxPayPublicKey: org.wxPayPublicKey,
       hasWxSecret: org.wxSecret != null,
+      hasDeliveryWxSecret: org.deliveryWxSecret != null,
       hasMchApiV3Key: org.mchApiV3Key != null,
       hasPrivateKey: org.privateKey != null,
     };
@@ -6556,7 +6568,7 @@ export class AdminService {
    */
   private async assertOrganizationUnique(
     checks: Array<{
-      field: 'name' | 'shortName' | 'wxAppId';
+      field: 'name' | 'shortName' | 'wxAppId' | 'deliveryWxAppId';
       label: string;
       value?: string | null;
     }>,
@@ -6565,9 +6577,12 @@ export class AdminService {
     for (const c of checks) {
       const v = c.value?.trim();
       if (!v) continue;
+      const appIdField = c.field === 'wxAppId' || c.field === 'deliveryWxAppId';
       const hit = await this.db.organization.findFirst({
         where: {
-          [c.field]: v,
+          ...(appIdField
+            ? { OR: [{ wxAppId: v }, { deliveryWxAppId: v }] }
+            : { [c.field]: v }),
           ...(excludeId ? { id: { not: excludeId } } : {}),
         },
         select: { id: true },
@@ -6579,10 +6594,20 @@ export class AdminService {
 
   /** 组织新增（超管）：name/shortName/wxAppId 必填唯一；微信凭据可随后补。 */
   async createOrganization(body: CreateOrganizationDto, operator: string) {
+    if (
+      body.deliveryWxAppId?.trim() &&
+      body.deliveryWxAppId.trim() === body.wxAppId.trim()
+    )
+      throw new BadRequestException('用户端与履约端不能登记相同 AppID');
     await this.assertOrganizationUnique([
       { field: 'name', label: '组织名称', value: body.name },
       { field: 'shortName', label: '组织简称', value: body.shortName },
       { field: 'wxAppId', label: '小程序 AppID', value: body.wxAppId },
+      {
+        field: 'deliveryWxAppId',
+        label: '履约端 AppID',
+        value: body.deliveryWxAppId,
+      },
     ]);
     const org = await this.db.organization.create({
       data: {
@@ -6590,6 +6615,17 @@ export class AdminService {
         shortName: body.shortName.trim(),
         wxAppId: body.wxAppId.trim(),
         ...(body.wxSecret ? { wxSecret: body.wxSecret } : {}),
+        ...(body.deliveryWxAppId
+          ? { deliveryWxAppId: body.deliveryWxAppId.trim() }
+          : {}),
+        ...(body.deliveryWxSecret
+          ? { deliveryWxSecret: body.deliveryWxSecret }
+          : {}),
+        ...(body.deliveryNotifyTemplateId
+          ? {
+              deliveryNotifyTemplateId: body.deliveryNotifyTemplateId.trim(),
+            }
+          : {}),
         ...(body.mchId ? { mchId: body.mchId } : {}),
         ...(body.mchApiV3Key ? { mchApiV3Key: body.mchApiV3Key } : {}),
         ...(body.serialNo ? { serialNo: body.serialNo } : {}),
@@ -6611,6 +6647,8 @@ export class AdminService {
         shortName: org.shortName,
         wxAppId: org.wxAppId,
         wxSecretConfigured: org.wxSecret != null,
+        deliveryWxAppId: org.deliveryWxAppId,
+        deliveryWxSecretConfigured: org.deliveryWxSecret != null,
         mchId: org.mchId,
       },
       '',
@@ -6630,11 +6668,26 @@ export class AdminService {
   ) {
     const before = await this.db.organization.findUnique({ where: { id } });
     if (!before) throw new BadRequestException(`组织不存在: ${id}`);
+    const nextUserAppId =
+      body.wxAppId === undefined
+        ? before.wxAppId
+        : body.wxAppId?.trim() || null;
+    const nextDeliveryAppId =
+      body.deliveryWxAppId === undefined
+        ? before.deliveryWxAppId
+        : body.deliveryWxAppId?.trim() || null;
+    if (nextUserAppId && nextUserAppId === nextDeliveryAppId)
+      throw new BadRequestException('用户端与履约端不能登记相同 AppID');
     await this.assertOrganizationUnique(
       [
         { field: 'name', label: '组织名称', value: body.name },
         { field: 'shortName', label: '组织简称', value: body.shortName },
         { field: 'wxAppId', label: '小程序 AppID', value: body.wxAppId },
+        {
+          field: 'deliveryWxAppId',
+          label: '履约端 AppID',
+          value: body.deliveryWxAppId,
+        },
       ],
       id,
     );
@@ -6650,6 +6703,18 @@ export class AdminService {
           : {}),
         ...(body.wxSecret !== undefined
           ? { wxSecret: body.wxSecret || null }
+          : {}),
+        ...(body.deliveryWxAppId !== undefined
+          ? { deliveryWxAppId: body.deliveryWxAppId?.trim() || null }
+          : {}),
+        ...(body.deliveryWxSecret !== undefined
+          ? { deliveryWxSecret: body.deliveryWxSecret || null }
+          : {}),
+        ...(body.deliveryNotifyTemplateId !== undefined
+          ? {
+              deliveryNotifyTemplateId:
+                body.deliveryNotifyTemplateId?.trim() || null,
+            }
           : {}),
         ...(body.mchId !== undefined ? { mchId: body.mchId || null } : {}),
         ...(body.mchApiV3Key !== undefined
@@ -6687,6 +6752,9 @@ export class AdminService {
     name: string;
     shortName: string;
     wxAppId: string | null;
+    deliveryWxAppId: string | null;
+    deliveryWxSecret: string | null;
+    deliveryNotifyTemplateId: string | null;
     mchId: string | null;
     serialNo: string | null;
     notifyDomain: string | null;
@@ -6698,10 +6766,13 @@ export class AdminService {
       name: org.name,
       shortName: org.shortName,
       wxAppId: org.wxAppId,
+      deliveryWxAppId: org.deliveryWxAppId,
+      deliveryNotifyTemplateId: org.deliveryNotifyTemplateId,
       mchId: org.mchId,
       serialNo: org.serialNo,
       notifyDomain: org.notifyDomain,
       hasWxSecret: org.wxSecret != null,
+      hasDeliveryWxSecret: org.deliveryWxSecret != null,
       hasMchApiV3Key: org.mchApiV3Key != null,
       hasPrivateKey: org.privateKey != null,
     };

@@ -5,7 +5,10 @@ import { AdminController } from './admin.controller';
 import { AdminService } from './admin.service';
 import { RbacService } from './rbac/rbac.service';
 import type { RbacContext } from './rbac/rbac.service';
-import { resolveOrganizationByAppId } from '../common/organization';
+import {
+  resolveOrganizationByAppId,
+  resolveOrganizationByDeliveryAppId,
+} from '../common/organization';
 import type { AuthRequest } from '../auth/jwt-auth.guard';
 
 /**
@@ -27,10 +30,13 @@ describe('organization bootstrap (IKKRMS / ADR-0001)', () => {
   const controller = new AdminController(service, rbac);
   const ts = String(Date.now());
   // wxAppId 须 wx+16 位十六进制（CreateOrganizationDto 口径），时间戳+随机转 hex 保证唯一
-  const hex = (Date.now().toString(16) + Math.floor(Math.random() * 1e6).toString(16))
+  const hex = (
+    Date.now().toString(16) + Math.floor(Math.random() * 1e6).toString(16)
+  )
     .padEnd(16, '0')
     .slice(0, 16);
   const WX_APPID = `wx${hex}`;
+  const DELIVERY_WX_APPID = `wx${hex.split('').reverse().join('')}`;
   const ORG_NAME = `开通测试组织${ts.slice(-6)}`;
   const ORG_SHORT = `开通${ts.slice(-4)}`;
   const ADMIN_USERNAME = `obt${ts}`; // 3-20 位字母/数字/下划线
@@ -44,7 +50,10 @@ describe('organization bootstrap (IKKRMS / ADR-0001)', () => {
   let campusCountBefore = -1;
 
   /** 守卫等价请求夹具（org-boundary.spec 同款：ctx 挂 req.rbac） */
-  const reqOf = (ctx: RbacContext, query: Record<string, string> = {}): AuthRequest =>
+  const reqOf = (
+    ctx: RbacContext,
+    query: Record<string, string> = {},
+  ): AuthRequest =>
     ({
       rbac: ctx,
       query,
@@ -97,6 +106,9 @@ describe('organization bootstrap (IKKRMS / ADR-0001)', () => {
         shortName: ORG_SHORT,
         wxAppId: WX_APPID,
         wxSecret: 'spec-secret',
+        deliveryWxAppId: DELIVERY_WX_APPID,
+        deliveryWxSecret: 'spec-delivery-secret',
+        deliveryNotifyTemplateId: 'spec-delivery-template',
         mchId: 'spec-mch',
       },
       OPERATOR,
@@ -107,45 +119,88 @@ describe('organization bootstrap (IKKRMS / ADR-0001)', () => {
       shortName: ORG_SHORT,
       status: 'active',
       wxAppId: WX_APPID,
+      deliveryWxAppId: DELIVERY_WX_APPID,
+      deliveryNotifyTemplateId: 'spec-delivery-template',
       mchId: 'spec-mch',
       hasWxSecret: true,
+      hasDeliveryWxSecret: true,
       hasMchApiV3Key: false,
     });
     // 只写不回读：响应体不得出现敏感明文字段
-    for (const leak of ['wxSecret', 'mchApiV3Key', 'privateKey'])
+    for (const leak of [
+      'wxSecret',
+      'deliveryWxSecret',
+      'mchApiV3Key',
+      'privateKey',
+    ])
       expect(view).not.toHaveProperty(leak);
     // 唯一性：name / shortName / wxAppId 任一撞车即 400
     await expect(
       service.createOrganization(
-        { name: ORG_NAME, shortName: `他组${ts.slice(-4)}`, wxAppId: `wx${'a'.repeat(16)}` },
+        {
+          name: ORG_NAME,
+          shortName: `他组${ts.slice(-4)}`,
+          wxAppId: `wx${'a'.repeat(16)}`,
+        },
         OPERATOR,
       ),
     ).rejects.toThrow('组织名称 已被其他组织登记');
     await expect(
       service.createOrganization(
-        { name: `他名${ts.slice(-6)}`, shortName: ORG_SHORT, wxAppId: `wx${'b'.repeat(16)}` },
+        {
+          name: `他名${ts.slice(-6)}`,
+          shortName: ORG_SHORT,
+          wxAppId: `wx${'b'.repeat(16)}`,
+        },
         OPERATOR,
       ),
     ).rejects.toThrow('组织简称 已被其他组织登记');
     await expect(
       service.createOrganization(
-        { name: `他名${ts.slice(-6)}`, shortName: `他组${ts.slice(-4)}`, wxAppId: WX_APPID },
+        {
+          name: `他名${ts.slice(-6)}`,
+          shortName: `他组${ts.slice(-4)}`,
+          wxAppId: WX_APPID,
+        },
         OPERATOR,
       ),
     ).rejects.toThrow('小程序 AppID 已被其他组织登记');
     // ADR 锚点：登记即生效——AppID→组织映射立即可解析（IKKRMO）
-    await expect(resolveOrganizationByAppId(db, WX_APPID)).resolves.toMatchObject({
+    await expect(
+      resolveOrganizationByAppId(db, WX_APPID),
+    ).resolves.toMatchObject({
       id: orgId,
       name: ORG_NAME,
     });
+    await expect(
+      resolveOrganizationByDeliveryAppId(db, DELIVERY_WX_APPID),
+    ).resolves.toMatchObject({ id: orgId, name: ORG_NAME });
     // 换绑唯一性：改配到已被登记的 AppID 同样拒绝（exclude 自身后查重）
     const other = await service.createOrganization(
-      { name: `邻组${ts.slice(-6)}`, shortName: `邻组${ts.slice(-4)}`, wxAppId: `wx${'c'.repeat(16)}` },
+      {
+        name: `邻组${ts.slice(-6)}`,
+        shortName: `邻组${ts.slice(-4)}`,
+        wxAppId: `wx${'c'.repeat(16)}`,
+      },
       OPERATOR,
     );
     await expect(
       service.updateOrganization(orgId, { wxAppId: other.wxAppId! }, OPERATOR),
     ).rejects.toThrow('小程序 AppID 已被其他组织登记');
+    await expect(
+      service.updateOrganization(
+        orgId,
+        { deliveryWxAppId: other.wxAppId! },
+        OPERATOR,
+      ),
+    ).rejects.toThrow('履约端 AppID 已被其他组织登记');
+    await expect(
+      service.updateOrganization(
+        orgId,
+        { deliveryWxAppId: WX_APPID },
+        OPERATOR,
+      ),
+    ).rejects.toThrow('用户端与履约端不能登记相同 AppID');
     // 显式 null=清除（回落 env 单组织兼容路径），清除后可再登记回自己
     await service.updateOrganization(orgId, { wxAppId: null }, OPERATOR);
     await expect(resolveOrganizationByAppId(db, WX_APPID)).resolves.toBeNull();
@@ -205,9 +260,9 @@ describe('organization bootstrap (IKKRMS / ADR-0001)', () => {
       where: { campusId: 'campus-official' },
     });
     if (officialTemplates > 0)
-      expect(
-        await db.category.count({ where: { campusId } }),
-      ).toBe(officialTemplates);
+      expect(await db.category.count({ where: { campusId } })).toBe(
+        officialTemplates,
+      );
 
     // 审计留痕（开通一条龙）
     const auditRow = await db.auditLog.findFirst({
@@ -246,13 +301,19 @@ describe('organization bootstrap (IKKRMS / ADR-0001)', () => {
     expect(again.admin.id).toBe(adminAccountId);
     expect(again.campus.id).toBe(campusId);
     await expect(
-      db.adminAccount.count({ where: { orgLevel: 'org', organizationId: orgId } }),
+      db.adminAccount.count({
+        where: { orgLevel: 'org', organizationId: orgId },
+      }),
     ).resolves.toBe(adminCount);
     expect(await db.campus.count()).toBe(campusCountBefore + 1);
 
     // 部分开通续开：新组织先手建校区（无管理员），bootstrap 只补管理员
     const partialOrg = await service.createOrganization(
-      { name: `续开组织${ts.slice(-6)}`, shortName: `续开${ts.slice(-4)}`, wxAppId: `wx${'d'.repeat(16)}` },
+      {
+        name: `续开组织${ts.slice(-6)}`,
+        shortName: `续开${ts.slice(-4)}`,
+        wxAppId: `wx${'d'.repeat(16)}`,
+      },
       OPERATOR,
     );
     const partialCampus = await db.campus.create({
@@ -290,7 +351,9 @@ describe('organization bootstrap (IKKRMS / ADR-0001)', () => {
 
   it('数据边界抽验（IKKRMP 模式）：组织 B 管理员本组织校区可聚焦，组织 A 校区 403', async () => {
     // 缺省=本组织运营落点（首校区）
-    await expect(controller['campusScope'](reqOf(orgBCtx))).resolves.toBe(campusId);
+    await expect(controller['campusScope'](reqOf(orgBCtx))).resolves.toBe(
+      campusId,
+    );
     // 本组织校区显式指定 OK（组织内切换无需逐校区授权）
     await expect(
       controller['campusScope'](reqOf(orgBCtx, { campus: campusId })),

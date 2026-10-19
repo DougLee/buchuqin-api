@@ -7,6 +7,7 @@ import { AuthController } from './auth.controller';
 import {
   campusOrganizationId,
   resolveOrganizationByAppId,
+  resolveOrganizationByDeliveryAppId,
 } from '../common/organization';
 
 /**
@@ -71,6 +72,9 @@ describe('organization identity (IKKRMO / ADR-0001)', () => {
         shortName: '规格B',
         wxAppId: ORG_B_APPID,
         wxSecret: 'spec-org-b-secret',
+        deliveryWxAppId: STAFF_B_APPID,
+        deliveryWxSecret: 'spec-org-b-delivery-secret',
+        deliveryNotifyTemplateId: `tmpl-${tag}`,
       },
     });
     await db.organization.create({
@@ -180,6 +184,20 @@ describe('organization identity (IKKRMO / ADR-0001)', () => {
       expect(
         await resolveOrganizationByAppId(db, 'wx-never-registered'),
       ).toBeNull();
+    });
+
+    it('履约端 AppID 独立解析到同一组织，不覆盖用户端映射', async () => {
+      await expect(
+        resolveOrganizationByDeliveryAppId(db, STAFF_B_APPID),
+      ).resolves.toMatchObject({ id: ORG_B_ID, name: '规格组织B' });
+      await expect(
+        resolveOrganizationByAppId(db, ORG_B_APPID),
+      ).resolves.toMatchObject({
+        id: ORG_B_ID,
+      });
+      await expect(
+        resolveOrganizationByAppId(db, STAFF_B_APPID),
+      ).resolves.toBeNull();
     });
 
     it('空值返回 null（不误伤未配置部署）', async () => {
@@ -475,17 +493,7 @@ describe('organization identity (IKKRMO / ADR-0001)', () => {
   });
 
   describe('员工端 staff-bind / 静默登录：组织校验', () => {
-    beforeAll(async () => {
-      // 员工端换用组织 B 的履约 AppID（同一组织登记另一小程序）
-      await db.organization.update({
-        where: { id: ORG_B_ID },
-        data: { wxAppId: STAFF_B_APPID },
-      });
-      process.env.WX_APPID_DELIVERY = STAFF_B_APPID;
-      process.env.WX_SECRET_DELIVERY = 'spec-secret';
-    });
-
-    it('组织 B 履约小程序绑定本组织员工：成功', async () => {
+    it('组织 B 履约小程序使用组织表凭证绑定本组织员工：成功', async () => {
       mockCode2Session(`openid-bindb-${tag}`);
       const result = (await controller.staffBind({
         code: 'spec-code',
@@ -493,7 +501,11 @@ describe('organization identity (IKKRMO / ADR-0001)', () => {
         name: '规格骑手B',
         appid: STAFF_B_APPID,
       })) as { data: { user: { campusId: string } } };
-      expect(result.data.user.campusId).toBe(CAMPUS_B1);
+      expect(result.data.user).toMatchObject({
+        campusId: CAMPUS_B1,
+        organizationId: ORG_B_ID,
+        appKind: 'delivery',
+      });
       expect(
         (await db.staff.findUniqueOrThrow({ where: { staffNo: STAFF_NO_B } }))
           .openid,
@@ -520,7 +532,11 @@ describe('organization identity (IKKRMO / ADR-0001)', () => {
         code: 'spec-code',
         appid: STAFF_B_APPID,
       })) as { data: { user: { campusId: string } } };
-      expect(result.data.user.campusId).toBe(CAMPUS_B2);
+      expect(result.data.user).toMatchObject({
+        campusId: CAMPUS_B2,
+        organizationId: ORG_B_ID,
+        appKind: 'delivery',
+      });
     });
 
     it('组织 B 履约小程序静默登录它组织员工：403 拒绝', async () => {

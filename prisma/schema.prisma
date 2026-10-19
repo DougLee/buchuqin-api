@@ -26,6 +26,13 @@ model Organization {
   wxAppId      String?
   /// 预留：组织小程序 Secret（敏感，端点只回「已配置」位不回明文）
   wxSecret     String?
+  /// 组织履约端小程序 AppID（一个组织一套用户端+一套履约端；为空时仅组织 A
+  /// 继续走 WX_APPID_DELIVERY 环境变量兼容路径）
+  deliveryWxAppId String? @unique
+  /// 组织履约端小程序 Secret（敏感，只写不回读）
+  deliveryWxSecret String?
+  /// 履约端「新订单提醒」订阅消息模板 ID（模板归 AppID，必须按组织隔离）
+  deliveryNotifyTemplateId String?
   /// 预留：微信支付商户号（ADR-0001 决策 1：组织 B 独立商户号）
   mchId        String?
   /// 预留：商户 APIv3 密钥（敏感，同 wxSecret 口径）
