@@ -781,6 +781,18 @@ export class CreateOrganizationDto {
   @IsOptional() @IsString() @MinLength(1) notifyDomain?: string;
   /** 微信支付公钥 PEM（2024+ 新商户回调验签；非敏感可回读） */
   @IsOptional() @IsString() @MinLength(1) wxPayPublicKey?: string;
+  /** IKP34J 组织服务号 AppID（gzh 四项配齐才按组织路由服务号消息） */
+  @IsOptional()
+  @Matches(/^wx[0-9a-f]{16}$/, { message: '服务号 AppID 须为 wx 开头 18 位' })
+  gzhAppId?: string;
+  /** 组织服务号 AppSecret（敏感，只写不回读） */
+  @IsOptional() @IsString() @MinLength(1) gzhSecret?: string;
+  /** 服务号回调验签 Token（与微信公众平台服务器配置一致） */
+  @IsOptional() @IsString() @MinLength(1) gzhToken?: string;
+  /** 服务号模板消息模板 ID（模板归服务号 AppID） */
+  @IsOptional() @IsString() @MinLength(1) gzhTemplateId?: string;
+  /** 服务号关注引导二维码 URL（履约端 profile 下发；非敏感可回读） */
+  @IsOptional() @IsString() @MinLength(1) gzhQrcodeUrl?: string;
 }
 /**
  * 组织编辑（超管；微信配置随 PATCH 一并更新）。合并语义：未传字段不动；
@@ -810,6 +822,18 @@ export class UpdateOrganizationDto {
   @IsOptional() @IsString() @MinLength(1) notifyDomain?: string | null;
   /** 微信支付公钥 PEM（非敏感，空串=清除；2024+ 新商户回调验签信任锚） */
   @IsOptional() @IsString() wxPayPublicKey?: string | null;
+  /** IKP34J 服务号 AppID（null=清除，清后该校区的服务号路由按 gzhConfig 口径回落/停发） */
+  @IsOptional()
+  @Matches(/^wx[0-9a-f]{16}$/, { message: '服务号 AppID 须为 wx 开头 18 位' })
+  gzhAppId?: string | null;
+  /** 服务号 Secret（同 wxSecret 口径：传值=覆盖，显式 null=清除，不传=保留） */
+  @IsOptional() @IsString() @MinLength(1) gzhSecret?: string | null;
+  /** 回调验签 Token（非敏感，null=清除） */
+  @IsOptional() @IsString() gzhToken?: string | null;
+  /** 服务号模板 ID（非敏感，null=清除） */
+  @IsOptional() @IsString() gzhTemplateId?: string | null;
+  /** 引导二维码 URL（非敏感，null=清除） */
+  @IsOptional() @IsString() gzhQrcodeUrl?: string | null;
 }
 /** 组织启停（超管）：停用后该组织校区/账号的处置属 IKKRMP，本阶段不消费。 */
 export class OrganizationStatusDto {

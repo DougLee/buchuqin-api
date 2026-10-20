@@ -10,7 +10,10 @@ import { PrismaService } from '../database/prisma.service';
 import { AdminService } from '../admin/admin.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { markTimelineStep } from '../common/order-state';
-import { campusStaffDelivery } from '../common/organization';
+import {
+  campusOrganizationId,
+  campusStaffDelivery,
+} from '../common/organization';
 import {
   bestMatch,
   COMMISSION_PER_ORDER,
@@ -62,8 +65,18 @@ export class FulfillmentService {
     });
     if (!s) throw new NotFoundException('履约人员不存在');
     const { campus, ...rest } = s;
+    // IKP34J：服务号关注引导二维码按校区组织下发（组织未配/无归属=空串，
+    // 前端隐藏入口）；仅配送端需要，用户端 gzh 引导不在本 issue 范围
+    const organizationId = await campusOrganizationId(this.db, s.campusId);
+    const org = organizationId
+      ? await this.db.organization.findUnique({
+          where: { id: organizationId },
+          select: { gzhQrcodeUrl: true },
+        })
+      : null;
     return {
       ...rest,
+      gzhQrcodeUrl: org?.gzhQrcodeUrl ?? '',
       campusName: campus?.name ?? '',
       campusWarehouseName: campus?.warehouseName ?? '',
       onTimeRate: Number(s.onTimeRate),

@@ -6522,6 +6522,12 @@ export class AdminService {
         hasDeliveryWxSecret: o.deliveryWxSecret != null,
         hasMchApiV3Key: o.mchApiV3Key != null,
         hasPrivateKey: o.privateKey != null,
+        // IKP34J 服务号（组织级路由）：非敏感位透出，Secret 只回布尔
+        gzhAppId: o.gzhAppId,
+        gzhToken: o.gzhToken,
+        gzhTemplateId: o.gzhTemplateId,
+        gzhQrcodeUrl: o.gzhQrcodeUrl,
+        hasGzhSecret: o.gzhSecret != null,
       };
     });
   }
@@ -6565,6 +6571,12 @@ export class AdminService {
       hasDeliveryWxSecret: org.deliveryWxSecret != null,
       hasMchApiV3Key: org.mchApiV3Key != null,
       hasPrivateKey: org.privateKey != null,
+      // IKP34J 服务号（组织级路由）：非敏感位透出，Secret 只回布尔
+      gzhAppId: org.gzhAppId,
+      gzhToken: org.gzhToken,
+      gzhTemplateId: org.gzhTemplateId,
+      gzhQrcodeUrl: org.gzhQrcodeUrl,
+      hasGzhSecret: org.gzhSecret != null,
       campuses,
       campusCount: campuses.length,
       userCount,
@@ -6590,6 +6602,11 @@ export class AdminService {
     serialNo: string | null;
     notifyDomain: string | null;
     wxPayPublicKey: string | null;
+    gzhAppId: string | null;
+    gzhSecret: string | null;
+    gzhToken: string | null;
+    gzhTemplateId: string | null;
+    gzhQrcodeUrl: string | null;
     wxSecret: string | null;
     mchApiV3Key: string | null;
     privateKey: string | null;
@@ -6608,10 +6625,16 @@ export class AdminService {
       notifyDomain: org.notifyDomain,
       // 微信支付公钥非敏感（公钥本就是对外信任锚），回读供编辑表单回显
       wxPayPublicKey: org.wxPayPublicKey,
+      // IKP34J 服务号（组织级路由）：非敏感位透出，Secret 只回布尔
+      gzhAppId: org.gzhAppId,
+      gzhToken: org.gzhToken,
+      gzhTemplateId: org.gzhTemplateId,
+      gzhQrcodeUrl: org.gzhQrcodeUrl,
       hasWxSecret: org.wxSecret != null,
       hasDeliveryWxSecret: org.deliveryWxSecret != null,
       hasMchApiV3Key: org.mchApiV3Key != null,
       hasPrivateKey: org.privateKey != null,
+      hasGzhSecret: org.gzhSecret != null,
     };
   }
 
@@ -6689,6 +6712,14 @@ export class AdminService {
         ...(body.notifyDomain
           ? { notifyDomain: body.notifyDomain.trim() }
           : {}),
+        // IKP34J 服务号（组织级路由）：Secret 只写不回读，其余随组织行落库
+        ...(body.gzhAppId ? { gzhAppId: body.gzhAppId.trim() } : {}),
+        ...(body.gzhSecret ? { gzhSecret: body.gzhSecret } : {}),
+        ...(body.gzhToken ? { gzhToken: body.gzhToken.trim() } : {}),
+        ...(body.gzhTemplateId
+          ? { gzhTemplateId: body.gzhTemplateId.trim() }
+          : {}),
+        ...(body.gzhQrcodeUrl ? { gzhQrcodeUrl: body.gzhQrcodeUrl.trim() } : {}),
       },
     });
     await this.audit(
@@ -6789,6 +6820,22 @@ export class AdminService {
         ...(body.wxPayPublicKey !== undefined
           ? { wxPayPublicKey: body.wxPayPublicKey?.trim() || null }
           : {}),
+        // IKP34J 服务号：Secret 同 wxSecret 口径（显式 null=清除），其余非敏感
+        ...(body.gzhAppId !== undefined
+          ? { gzhAppId: body.gzhAppId?.trim() || null }
+          : {}),
+        ...(body.gzhSecret !== undefined
+          ? { gzhSecret: body.gzhSecret || null }
+          : {}),
+        ...(body.gzhToken !== undefined
+          ? { gzhToken: body.gzhToken?.trim() || null }
+          : {}),
+        ...(body.gzhTemplateId !== undefined
+          ? { gzhTemplateId: body.gzhTemplateId?.trim() || null }
+          : {}),
+        ...(body.gzhQrcodeUrl !== undefined
+          ? { gzhQrcodeUrl: body.gzhQrcodeUrl?.trim() || null }
+          : {}),
       },
     });
     await this.audit(
@@ -6814,6 +6861,11 @@ export class AdminService {
     mchId: string | null;
     serialNo: string | null;
     notifyDomain: string | null;
+    gzhAppId: string | null;
+    gzhSecret: string | null;
+    gzhToken: string | null;
+    gzhTemplateId: string | null;
+    gzhQrcodeUrl: string | null;
     wxSecret: string | null;
     mchApiV3Key: string | null;
     privateKey: string | null;
@@ -6827,10 +6879,15 @@ export class AdminService {
       mchId: org.mchId,
       serialNo: org.serialNo,
       notifyDomain: org.notifyDomain,
+      gzhAppId: org.gzhAppId,
+      gzhToken: org.gzhToken,
+      gzhTemplateId: org.gzhTemplateId,
+      gzhQrcodeUrl: org.gzhQrcodeUrl,
       hasWxSecret: org.wxSecret != null,
       hasDeliveryWxSecret: org.deliveryWxSecret != null,
       hasMchApiV3Key: org.mchApiV3Key != null,
       hasPrivateKey: org.privateKey != null,
+      hasGzhSecret: org.gzhSecret != null,
     };
   }
 

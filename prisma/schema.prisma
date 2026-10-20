@@ -47,6 +47,17 @@ model Organization {
   /// 验签发生在解密前、报文不含组织信息——按候选钥遍历匹配（serial 仅是
   /// PUB_KEY_ID_ 模式信号，公钥本身才是信任锚）。
   wxPayPublicKey String?
+  /// IKP34J 服务号组织级路由：组织自有服务号 AppID（gzhAppId/gzhSecret/
+  /// gzhToken/gzhTemplateId 四项齐备才按组织路由，缺任一且非 org-a 停发）
+  gzhAppId     String?
+  /// 组织服务号 AppSecret（敏感，端点只回「已配置」位不回明文）
+  gzhSecret    String?
+  /// 服务号回调验签 Token（与微信公众平台服务器配置一致；回调按候选遍历对签）
+  gzhToken     String?
+  /// 服务号模板消息模板 ID（模板归服务号 AppID，必须按组织隔离）
+  gzhTemplateId String?
+  /// 服务号关注引导二维码图片 URL（履约端 profile 下发；非敏感可回读）
+  gzhQrcodeUrl String?
   /// IKKRMU 功能授权（营销切片）：null=全开（组织 A 现状兼容）；JSON 数组=
   /// 已开通能力白名单（如 ["marketing"]，空数组=全关）。能力开关只收窄不放大
   /// ——组织关了校区不能显式开。

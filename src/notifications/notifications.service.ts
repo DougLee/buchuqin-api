@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { ForbiddenException, Injectable, Logger } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import { PrismaService } from '../database/prisma.service';
 import {
@@ -22,6 +22,18 @@ interface DeliveryWechatConfig {
   secret: string;
   templateId: string;
   brandName: string;
+}
+
+/**
+ * IKP34J 服务号组织级配置：组织行 gzh 四项（gzhAppId/gzhSecret/gzhToken/
+ * gzhTemplateId）齐备才按组织路由；token 用于回调验签，templateId 用于
+ * 模板消息发送，appId/secret 用于 access_token。env 兜底配置同构。
+ */
+interface GzhWechatConfig {
+  appId: string;
+  secret: string;
+  token: string;
+  templateId: string;
 }
 
 /**
@@ -511,14 +523,18 @@ export class NotificationsService {
         name7: { value: deliveryConfig.brandName.slice(0, 20) },
         time8: { value: NotificationsService.fmtCn(new Date()) },
       };
-      const gzhReady = this.gzhConfigured();
+      // IKP34J：服务号按订单校区组织路由——组织四项配齐走组织自有服务号，
+      // org-a/无归属走 env（现状）；非 org-a 未配齐 → null = 跳过服务号通道，
+      // 骑手静默降级订阅消息兜底。
+      const gzhCfg = await this.gzhConfig(order.campusId);
       await Promise.all(
         riders.map(async (r) => {
-          if (gzhReady && r.gzhOpenid) {
+          if (gzhCfg && r.gzhOpenid) {
             try {
               await this.sendGzhTemplate(
                 r.gzhOpenid,
                 this.gzhDispatchData(order),
+                gzhCfg,
                 deliveryConfig.appId,
               );
               return; // 服务号成功即触达，不发订阅消息
@@ -699,29 +715,74 @@ export class NotificationsService {
 
   /* ---------- 服务号派单推送（IKI3ZP）：关注即可推，订阅消息兜底 ---------- */
 
-  private gzhToken: { token: string; expiresAt: number } | null = null;
+  /**
+   * IKP34J：服务号 access_token 按 appId 分桶（照 deliveryTokens 模式）——
+   * 组织自有服务号与 env 服务号（组织 A 历史配置）各持各的票，互不驱逐。
+   */
+  private gzhTokens = new Map<string, { token: string; expiresAt: number }>();
 
-  /** 服务号配置是否齐备（模板 ID 可后补——未配置时服务号通道整体关闭）。 */
-  gzhConfigured(): boolean {
-    return Boolean(
-      process.env.WX_GZH_APPID &&
-      process.env.WX_GZH_SECRET &&
-      process.env.WX_GZH_TOKEN &&
-      process.env.WX_GZH_TEMPLATE_ID,
-    );
+  /** env 服务号配置（WX_GZH_* 四项齐备才非 null）——组织 A 历史兼容路径。 */
+  private envGzhConfig(): GzhWechatConfig | null {
+    const appId = process.env.WX_GZH_APPID?.trim();
+    const secret = process.env.WX_GZH_SECRET?.trim();
+    const token = process.env.WX_GZH_TOKEN?.trim();
+    const templateId = process.env.WX_GZH_TEMPLATE_ID?.trim();
+    return appId && secret && token && templateId
+      ? { appId, secret, token, templateId }
+      : null;
   }
 
-  /** 服务号 access_token（stable_token，与小程序票互不干扰）。 */
-  private async gzhAccessToken(): Promise<string> {
-    if (this.gzhToken && this.gzhToken.expiresAt > Date.now())
-      return this.gzhToken.token;
+  /**
+   * 服务号配置按组织路由（IKP34J）：campusId → 校区组织 → 组织行 gzh 四项
+   * （gzhAppId/gzhSecret/gzhToken/gzhTemplateId）齐备 → 组织自有服务号；
+   * 无组织归属或组织 A（env WX_GZH_* 本就属于旧平台组织）→ 回落 env，现状
+   * 行为一字不变；**非 org-a 组织登记不全（四项缺任一）→ null**——服务号
+   * 通道整体停发、静默降级订阅消息，绝不能拿组织 A 的服务号给组织 B 的
+   * 骑手推送（同 deliveryWechatConfig 的停发铁律）。发送方 null 时跳过
+   * 服务号通道，骑手仍走订阅消息兜底。
+   */
+  private async gzhConfig(
+    campusId: string | null | undefined,
+  ): Promise<GzhWechatConfig | null> {
+    const organizationId = await campusOrganizationId(this.db, campusId);
+    const org = organizationId
+      ? await this.db.organization.findUnique({
+          where: { id: organizationId },
+          select: {
+            id: true,
+            gzhAppId: true,
+            gzhSecret: true,
+            gzhToken: true,
+            gzhTemplateId: true,
+          },
+        })
+      : null;
+    if (org?.gzhAppId && org.gzhSecret && org.gzhToken && org.gzhTemplateId) {
+      return {
+        appId: org.gzhAppId,
+        secret: org.gzhSecret,
+        token: org.gzhToken,
+        templateId: org.gzhTemplateId,
+      };
+    }
+    if (org && org.id !== 'org-a') return null;
+    return this.envGzhConfig();
+  }
+
+  /** 服务号 access_token（stable_token，按 appId 分桶缓存；与小程序票互不干扰）。 */
+  private async gzhAccessToken(config: {
+    appId: string;
+    secret: string;
+  }): Promise<string> {
+    const cached = this.gzhTokens.get(config.appId);
+    if (cached && cached.expiresAt > Date.now()) return cached.token;
     const res = await fetch('https://api.weixin.qq.com/cgi-bin/stable_token', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         grant_type: 'client_credential',
-        appid: process.env.WX_GZH_APPID,
-        secret: process.env.WX_GZH_SECRET,
+        appid: config.appId,
+        secret: config.secret,
         force_refresh: false,
       }),
     });
@@ -733,30 +794,81 @@ export class NotificationsService {
     };
     if (!body.access_token)
       throw new Error(`gzh token ${body.errcode} ${body.errmsg}`);
-    this.gzhToken = {
+    this.gzhTokens.set(config.appId, {
       token: body.access_token,
       expiresAt: Date.now() + ((body.expires_in ?? 7200) - 300) * 1000,
-    };
+    });
     return body.access_token;
   }
 
   /**
-   * 服务号回调入口（IKI3ZP）：
-   * - GET：URL 有效性验证（sha1(token,timestamp,nonce) 对签，原样回 echostr）
+   * 回调候选 Token 遍历（IKP34J 多租户）：env WX_GZH_TOKEN（组织 A 历史配置）
+   * + 全部组织行非空 gzhToken。对签 = sha1(sort(token,timestamp,nonce))，本地
+   * 哈希零成本——谁命中谁的配置生效（拿命中者的 appId/secret 换 access_token
+   * 拉 unionid）；组织行只配了 Token 未配齐 appId/secret 时仅参与验签，命中后
+   * 无法换取票据（记 warn 跳过 user/info）。DB 异常降级为仅 env 候选。
+   */
+  private async gzhTokenCandidates(): Promise<
+    Array<{ token: string; appId: string | null; secret: string | null }>
+  > {
+    const candidates: Array<{
+      token: string;
+      appId: string | null;
+      secret: string | null;
+    }> = [];
+    const envToken = process.env.WX_GZH_TOKEN?.trim();
+    if (envToken)
+      candidates.push({
+        token: envToken,
+        appId: process.env.WX_GZH_APPID?.trim() ?? null,
+        secret: process.env.WX_GZH_SECRET?.trim() ?? null,
+      });
+    try {
+      const orgs = await this.db.organization.findMany({
+        where: { gzhToken: { not: null } },
+        select: {
+          gzhToken: true,
+          gzhAppId: true,
+          gzhSecret: true,
+        },
+      });
+      for (const o of orgs) {
+        if (o.gzhToken)
+          candidates.push({
+            token: o.gzhToken,
+            appId: o.gzhAppId,
+            secret: o.gzhSecret,
+          });
+      }
+    } catch (error) {
+      this.logger.warn(
+        `回调候选组织 Token 加载失败（仅 env 兜底）: ${(error as Error).message}`,
+      );
+    }
+    return candidates;
+  }
+
+  /**
+   * 服务号回调入口（IKI3ZP；IKP34J 多租户）：
+   * - GET：URL 有效性验证——候选 Token（env + 全组织 gzhToken）逐个对签
+   *   sha1(sort(token,timestamp,nonce))，命中即原样回 echostr，全部不中 403
    * - POST：事件推送 XML——subscribe/unsubscribe 按 openid 查 unionid 匹配
-   *   Staff.unionId 自动绑定/解绑 gzhOpenid。始终回 'success'（非 200 微信会重试）。
+   *   Staff.unionId 自动绑定/解绑 gzhOpenid（unionid 跨服务号通用，同开放
+   *   平台）。命中后始终回 'success'（非 200 微信会重试）。
    */
   async handleGzhCallback(
     query: Record<string, string>,
     rawBody: string,
   ): Promise<string> {
-    const token = process.env.WX_GZH_TOKEN;
     const { signature, timestamp, nonce, echostr } = query;
-    if (!token || !signature || !timestamp || !nonce) return 'bad request';
-    const expected = createHash('sha1')
-      .update([token, timestamp, nonce].sort().join(''))
-      .digest('hex');
-    if (expected !== signature) return 'signature mismatch';
+    if (!signature || !timestamp || !nonce) return 'bad request';
+    const hit = (await this.gzhTokenCandidates()).find(
+      (c) =>
+        createHash('sha1')
+          .update([c.token, timestamp, nonce].sort().join(''))
+          .digest('hex') === signature,
+    );
+    if (!hit) throw new ForbiddenException('signature mismatch');
     if (echostr) return echostr; // GET 验证
     // POST 事件：固定结构 XML，正则提取（不引 XML 依赖）
     const pick = (tag: string) => {
@@ -770,7 +882,12 @@ export class NotificationsService {
     if (!openid) return 'success';
     if (event === 'subscribe') {
       try {
-        const token_ = await this.gzhAccessToken();
+        if (!hit.appId || !hit.secret)
+          throw new Error('命中组织的 gzhAppId/gzhSecret 未配齐，无法换票');
+        const token_ = await this.gzhAccessToken({
+          appId: hit.appId,
+          secret: hit.secret,
+        });
         const res = await fetch(
           `https://api.weixin.qq.com/cgi-bin/user/info?access_token=${token_}&openid=${openid}&lang=zh_CN`,
           { signal: AbortSignal.timeout(5000) },
@@ -808,15 +925,17 @@ export class NotificationsService {
   }
 
   /**
-   * 服务号模板消息发送（IKI3ZP）：关注即可推，无额度概念；miniprogram 字段
-   * 跳履约小程序任务页（要求同开放平台，已确认）。失败抛错由调用方回退。
+   * 服务号模板消息发送（IKI3ZP；IKP34J 按组织路由）：关注即可推，无额度
+   * 概念；模板取命中配置（组织行或 env），miniprogram 字段跳履约小程序
+   * 任务页（要求同开放平台，已确认）。失败抛错由调用方回退。
    */
   private async sendGzhTemplate(
     openid: string,
     data: Record<string, { value: string }>,
+    config: GzhWechatConfig,
     deliveryAppId: string,
   ): Promise<void> {
-    const token = await this.gzhAccessToken();
+    const token = await this.gzhAccessToken(config);
     const res = await fetch(
       `https://api.weixin.qq.com/cgi-bin/message/template/send?access_token=${token}`,
       {
@@ -824,7 +943,7 @@ export class NotificationsService {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           touser: openid,
-          template_id: process.env.WX_GZH_TEMPLATE_ID,
+          template_id: config.templateId,
           data,
           miniprogram: {
             appid: deliveryAppId,
@@ -850,7 +969,11 @@ export class NotificationsService {
   async syncGzhBindings(): Promise<void> {
     if (!process.env.WX_GZH_APPID || !process.env.WX_GZH_SECRET) return;
     try {
-      const token = await this.gzhAccessToken();
+      // IKP34J：对账与发送无关，仍走 env 服务号（组织 A 现状，一字不变）
+      const token = await this.gzhAccessToken({
+        appId: process.env.WX_GZH_APPID,
+        secret: process.env.WX_GZH_SECRET,
+      });
       const openids: string[] = [];
       let next = '';
       // 分页拉全量关注者（每页最多 10000）
