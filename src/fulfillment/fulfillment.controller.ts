@@ -22,6 +22,7 @@ import {
   StaffStatusDto,
   TaskActionDto,
   UpdateProfileDto,
+  WechatPhoneCodeDto,
 } from './dto';
 
 @ApiTags('履约端 MVP')
@@ -52,6 +53,15 @@ export class FulfillmentController {
     @Body() d: UpdateProfileDto,
   ) {
     return ok(await this.service.updateProfile(this.auth(r), d), '已更新');
+  }
+  /** 一键获取本机手机号（道哥 2026-10-20）：wx getPhoneNumber code 换号
+   *  并直写本人 phone——失败抛业务错，前端引导手输兜底 */
+  @Post('profile/wechat-phone')
+  async wechatPhone(@Req() r: AuthRequest, @Body() d: WechatPhoneCodeDto) {
+    return ok(
+      await this.service.updateProfilePhoneByWechat(this.auth(r), d.code),
+      '手机号已更新',
+    );
   }
   @Patch('profile/status') async status(
     @Req() r: AuthRequest,

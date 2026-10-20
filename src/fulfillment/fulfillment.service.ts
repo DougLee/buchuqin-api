@@ -87,6 +87,27 @@ export class FulfillmentService {
       });
     return this.profile(staffId);
   }
+  /** 一键获取本机手机号并落档（道哥 2026-10-20 自助改号增强）：wx
+   *  getPhoneNumber code → 组织履约凭证换手机号 → 直写本人 phone。
+   *  push 未注入（部分单测）或微信侧失败抛错，前端引导手输兜底。 */
+  async updateProfilePhoneByWechat(staffId: string, code: string) {
+    if (!this.push)
+      throw new BadRequestException('手机号获取通道未启用');
+    const s = await this.profile(staffId);
+    let phone: string;
+    try {
+      phone = await this.push.fetchDeliveryPhoneNumber(s.campusId, code);
+    } catch (e) {
+      throw new BadRequestException(
+        e instanceof Error ? e.message : '获取手机号失败，请手动输入',
+      );
+    }
+    await this.db.staff.update({
+      where: { id: staffId },
+      data: { phone },
+    });
+    return this.profile(staffId);
+  }
   async currentShift(staffId: string) {
     const s = await this.profile(staffId);
     return {

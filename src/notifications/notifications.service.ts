@@ -383,6 +383,37 @@ export class NotificationsService {
    * 43101 清零并记 failedAt（驱动骑手端低水位提示）；记账只做展示，
    * 不做推送门控（永远尝试发送）。
    */
+  /**
+   * 一键获取本机手机号（道哥 2026-10-20 骑手端自助改号增强）：wx button
+   * open-type=getPhoneNumber 的 code 换真实手机号——按员工校区走组织履约
+   * 凭证路由（deliveryWechatConfig），调 getuserphonenumber。微信对该接口
+   * 按次计费且需认证小程序，失败抛业务错由前端引导手输兜底。
+   */
+  async fetchDeliveryPhoneNumber(campusId: string, code: string): Promise<string> {
+    const config = await this.deliveryWechatConfig(campusId);
+    if (!config)
+      throw new Error('履约端微信凭证未配置，无法获取手机号');
+    const token = await this.deliveryAccessToken(config);
+    const res = await fetch(
+      `https://api.weixin.qq.com/wxa/business/getuserphonenumber?access_token=${token}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code }),
+        signal: AbortSignal.timeout(6000),
+      },
+    );
+    const result = (await res.json()) as {
+      errcode?: number;
+      errmsg?: string;
+      phone_info?: { phoneNumber?: string; purePhoneNumber?: string };
+    };
+    const phone = result.phone_info?.purePhoneNumber || result.phone_info?.phoneNumber;
+    if (!res.ok || result.errcode !== 0 || !phone)
+      throw new Error(result.errmsg || `获取手机号失败（${result.errcode ?? res.status}）`);
+    return phone;
+  }
+
   private async sendStaffSubscribe(
     staffId: string,
     openid: string,

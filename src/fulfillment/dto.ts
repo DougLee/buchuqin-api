@@ -7,6 +7,7 @@ import {
   IsString,
   Matches,
   MaxLength,
+  MinLength,
 } from 'class-validator';
 
 export class TaskActionDto {
@@ -33,6 +34,13 @@ export class UpdateProfileDto {
   @IsOptional()
   @Matches(/^[0-9-]{3,20}$/, { message: '联系电话格式不正确' })
   phone?: string;
+}
+
+/** 一键获取本机手机号（道哥 2026-10-20）：wx getPhoneNumber 回调 code */
+export class WechatPhoneCodeDto {
+  @IsString()
+  @MinLength(1)
+  code!: string;
 }
 
 export class LeaveRequestDto {
