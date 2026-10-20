@@ -76,6 +76,17 @@ export class FulfillmentService {
     await this.db.staff.update({ where: { id: staffId }, data: { status } });
     return this.profile(staffId);
   }
+  /** 骑手/楼长自助改号（IKP0AP）：履约端 token 即本人凭证（controller auth()
+   *  已锁 staffId=req.user.id），只更新 phone；格式校验在 UpdateProfileDto。
+   *  返回最新档案，前端直接回显。 */
+  async updateProfile(staffId: string, d: { phone?: string }) {
+    if (d.phone !== undefined)
+      await this.db.staff.update({
+        where: { id: staffId },
+        data: { phone: d.phone },
+      });
+    return this.profile(staffId);
+  }
   async currentShift(staffId: string) {
     const s = await this.profile(staffId);
     return {
@@ -268,14 +279,33 @@ export class FulfillmentService {
         (order.package as JsonMap | null)?.lastMileMode !== 'customer-pickup',
     );
     // 提成展示口径统一（IK8W5L）：已生成的 Commission 记录优先，未送达单按规则预览。
-    const [rules, records] = await Promise.all([
+    const riderIds = [
+      ...new Set(
+        orders
+          .map((o) => o.riderId)
+          .filter((v): v is string => Boolean(v)),
+      ),
+    ];
+    const [rules, records, riders] = await Promise.all([
       this.commissionService.loadRules(this.db, staff.campusId),
       this.db.commission.findMany({
         where: { staffId, orderId: { in: orders.map((o) => o.id) } },
       }),
+      // 骑手信息（IKP0AP）：楼长/骑手任务卡带配送员姓名+电话，一条 in 批查防 N+1
+      riderIds.length
+        ? this.db.staff.findMany({
+            where: { id: { in: riderIds } },
+            select: { id: true, name: true, phone: true },
+          })
+        : Promise.resolve(
+            [] as Array<{ id: string; name: string; phone: string }>,
+          ),
     ]);
     const commissionByOrder = new Map(
       records.map((r) => [r.orderId, r.amount]),
+    );
+    const riderById = new Map(
+      riders.map((r) => [r.id, { name: r.name, phone: r.phone }]),
     );
     const result = orders.map((o) =>
       this.toTask(
@@ -285,6 +315,7 @@ export class FulfillmentService {
         commissionByOrder,
         rules,
         staff.campusWarehouseName,
+        riderById,
       ),
     );
     return result.filter(
@@ -746,6 +777,9 @@ export class FulfillmentService {
      *  串味——武工院楼长任务卡显示湖工大仓库。profile 的 campusWarehouseName
      *  早已接口化（IKAJT4），此处补齐同源取值。 */
     warehouseName?: string,
+    /** 骑手信息表（IKP0AP）：staffId → {name, phone}，tasks() 一条 in 批查预载；
+     *  未传/未接单/抢单池（riderId 恒空）时 rider 为 null。 */
+    riderById?: Map<string, { name: string; phone: string }>,
   ) {
     const a = order.address as JsonMap,
       items = order.items as JsonMap[],
@@ -841,6 +875,11 @@ export class FulfillmentService {
         return `${iso.slice(0, 10)} ${iso.slice(11, 16)}`;
       })(),
       warehouse: warehouseName ?? '',
+      // 骑手联系信息（IKP0AP）：任务卡展示接单配送员姓名+电话（交接场景楼长
+      // 可直接联系骑手）；未接单/抢单池为 null。
+      rider: order.riderId
+        ? (riderById?.get(String(order.riderId)) ?? null)
+        : null,
       // 金额口径统一（IK8W5L）：Commission 记录优先，未送达按规则预览，兜底常量（单位:分）。
       commission:
         commissionByOrder?.get(String(order.id)) ??

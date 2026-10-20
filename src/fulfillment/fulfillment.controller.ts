@@ -21,6 +21,7 @@ import {
   RejectDto,
   StaffStatusDto,
   TaskActionDto,
+  UpdateProfileDto,
 } from './dto';
 
 @ApiTags('履约端 MVP')
@@ -44,6 +45,13 @@ export class FulfillmentController {
   }
   @Get('profile') async profile(@Req() r: AuthRequest) {
     return ok(await this.service.profile(this.auth(r)));
+  }
+  /** 自助改号（IKP0AP）：骑手/楼长更新本人联系电话（只动 phone，返回最新档案） */
+  @Patch('profile') async updateProfile(
+    @Req() r: AuthRequest,
+    @Body() d: UpdateProfileDto,
+  ) {
+    return ok(await this.service.updateProfile(this.auth(r), d), '已更新');
   }
   @Patch('profile/status') async status(
     @Req() r: AuthRequest,

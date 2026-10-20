@@ -4460,14 +4460,66 @@ export class AdminService {
     ]);
     return { todayPaid: count, latest };
   }
-  async order(id: string, campusId: string, costRead = true) {
+  async order(
+    id: string,
+    campusId: string,
+    costRead = true,
+    withDeliveryChain = false,
+  ) {
     const x = await this.db.order.findFirst({
       where: { id, ...(campusId ? { campusId } : {}) },
     });
     if (!x) throw new NotFoundException('订单不存在');
     // IKKRMY：订单详情同列表口径——无 cost.read 剔除行内成本快照（内部
     // 调用方（orderAction/补打小票）走缺省 true，不受影响）
-    return costRead ? x : trimOrderCost(x);
+    const base = costRead ? x : trimOrderCost(x);
+    // 配送链（IKP0AP）：仅后台订单详情端点开启——内部调用（orderAction/
+    // 手动改状态/补打小票）复用本方法做审计 before 快照，带链会污染 diff。
+    if (!withDeliveryChain) return base;
+    return { ...base, deliveryChain: await this.deliveryChain(id, x.riderId) };
+  }
+  /**
+   * 配送链（IKP0AP）：订单详情组装骑手/楼长的姓名+电话+工号，后台可直接拨号。
+   * - rider：order.riderId → Staff（接单配送员；未接单为 null）；
+   * - manager：Commission 按 orderId 反查楼长角色（building-manager/
+   *   intern-building-manager）取最近一条——订单无楼长列，送达时落库的提成
+   *   快照是唯一可靠的「本单楼长」凭证；customer-pickup/员工配送组织无楼长
+   *   链路时为 null。骑手/楼长按 staff.role 天然区分，各取其一（详情页单查，
+   *   性能无虞）。
+   */
+  private async deliveryChain(orderId: string, riderId: string | null) {
+    const [rider, managerRows] = await Promise.all([
+      riderId
+        ? this.db.staff.findUnique({
+            where: { id: riderId },
+            select: { name: true, phone: true, staffNo: true },
+          })
+        : Promise.resolve(null),
+      this.db.commission.findMany({
+        where: {
+          orderId,
+          staff: {
+            role: { in: ['building-manager', 'intern-building-manager'] },
+          },
+        },
+        select: {
+          staff: { select: { name: true, phone: true, staffNo: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 1,
+      }),
+    ]);
+    const manager = managerRows[0]?.staff ?? null;
+    return {
+      rider: rider ? { name: rider.name, phone: rider.phone, staffNo: rider.staffNo } : null,
+      manager: manager
+        ? {
+            name: manager.name,
+            phone: manager.phone,
+            staffNo: manager.staffNo,
+          }
+        : null,
+    };
   }
   /**
    * IKKRMV 后台员工配送动作迁移表（组织 B，Organization.deliveryMode=
@@ -5000,6 +5052,8 @@ export class AdminService {
         role: body.role,
         roleText,
         staffNo: body.staffNo,
+        // 联系电话（IKP0AP）：可选收，缺省空串=未录入（骑手端可自助补录）
+        phone: body.phone ?? '',
         buildingId: body.buildingId ?? null,
         building: buildingName,
         status: body.status ?? 'online',
@@ -5052,6 +5106,8 @@ export class AdminService {
     if (body.name !== undefined) data.name = body.name;
     if (body.role !== undefined) data.role = body.role;
     if (body.staffNo !== undefined) data.staffNo = body.staffNo;
+    // 联系电话（IKP0AP）：员工编辑透传（未传不动）
+    if (body.phone !== undefined) data.phone = body.phone;
     if (body.status !== undefined) data.status = body.status;
     if (campusChanged) data.campus = { connect: { id: target.id } };
     let buildingName = before.building;

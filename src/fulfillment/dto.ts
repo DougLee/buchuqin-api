@@ -5,6 +5,7 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  Matches,
   MaxLength,
 } from 'class-validator';
 
@@ -23,6 +24,15 @@ export class TaskActionDto {
 export class StaffStatusDto {
   @IsIn(['online', 'paused', 'offline']) status!:
     'online' | 'paused' | 'offline';
+}
+
+/** 骑手/楼长自助改号（IKP0AP）：只允许更新本人联系电话，格式同后台
+ *  servicePhone/CreateStaffDto.phone（3-20 位数字与-）。字段必挂装饰器——
+ *  全局 ValidationPipe whitelist 会静默剥离无装饰器字段。 */
+export class UpdateProfileDto {
+  @IsOptional()
+  @Matches(/^[0-9-]{3,20}$/, { message: '联系电话格式不正确' })
+  phone?: string;
 }
 
 export class LeaveRequestDto {

@@ -492,6 +492,11 @@ export class CreateStaffDto {
   @IsString() @MaxLength(20) name!: string;
   @IsIn(STAFF_ROLES) role!: string;
   @IsString() @MaxLength(20) staffNo!: string;
+  /** 联系电话（IKP0AP）：后台联系配送员/楼长端拨号用，格式同 servicePhone。
+   *  道哥定稿「新建必填」：API 层可选收（强制必填破坏存量调用），必填校验由
+   *  admin 前端承担；空/缺省落空串=未录入，骑手端可自助补录。 */
+  @IsOptional() @Matches(/^[0-9-]{3,20}$/, { message: '联系电话格式不正确' })
+  phone?: string;
   @IsOptional() @IsString() buildingId?: string;
   @IsOptional() @IsIn(STAFF_STATUSES) status?: string;
   /** 服务范围（IKGVOO，2026-09-18 道哥）：可选所属校区，缺省回落账号绑定校区 */
@@ -503,6 +508,9 @@ export class UpdateStaffDto {
   @IsIn(STAFF_ROLES)
   role?: string;
   @IsOptional() @IsString() @MaxLength(20) staffNo?: string;
+  /** 联系电话（IKP0AP）：员工编辑透传，格式同 servicePhone（3-20 位数字与-） */
+  @IsOptional() @Matches(/^[0-9-]{3,20}$/, { message: '联系电话格式不正确' })
+  phone?: string;
   @IsOptional() @IsString() buildingId?: string | null;
   @IsOptional() @IsIn(STAFF_STATUSES) status?: string;
   /** 改派服务范围（IKGVOO）：改派时已绑楼栋自动清空为「待分配」 */

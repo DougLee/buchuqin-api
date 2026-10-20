@@ -1484,6 +1484,8 @@ export class AdminController {
         await this.scopedCampus(req),
         // IKKRMY：订单详情毛利行口径来源（行内成本快照）同列表裁剪
         this.costRead(req),
+        // IKP0AP：详情端点带配送链（骑手/楼长姓名+电话+工号，供后台拨号）
+        true,
       ),
     );
   }
