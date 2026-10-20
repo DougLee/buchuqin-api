@@ -60,6 +60,9 @@ const monthlyFolder = () => {
 // Uploading is a prerequisite of the corresponding write action, not a new global capability.
 const PUBLIC_UPLOAD_PERMISSIONS: Record<string, string[]> = {
   app: ['POST /admin/banners', 'PATCH /admin/banners/:id'],
+  // app/banner：BannerPage 主图目录（道哥 2026-10-20 报不支持——白名单漏了
+  // 该目录，banner 上传一直只能走 app/ 混放）
+  'app/banner': ['POST /admin/banners', 'PATCH /admin/banners/:id'],
   'app/banner-detail': ['POST /admin/banners', 'PATCH /admin/banners/:id'],
   'app/product': ['POST /admin/products', 'PATCH /admin/products/:id'],
   'app/category': ['POST /admin/categories', 'PATCH /admin/categories/:id'],
