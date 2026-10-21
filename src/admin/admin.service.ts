@@ -6513,6 +6513,10 @@ export class AdminService {
         userCount: own.reduce((n, c) => n + (usersByCampus.get(c.id) ?? 0), 0),
         // IKKRMS：列表补微信配置位（编辑抽屉直接用，不必逐行拉详情）
         wxAppId: o.wxAppId,
+        // wxPayPublicKey 非敏感回读（2026-10-20 道哥实锤的覆盖 bug）：列表行
+        // 缺此字段会让编辑表单回填空串、保存时提交空串=清空公钥——支付回调
+        // 验签静默失效。此处必须与 organizationView 同源透出。
+        wxPayPublicKey: o.wxPayPublicKey,
         deliveryWxAppId: o.deliveryWxAppId,
         deliveryNotifyTemplateId: o.deliveryNotifyTemplateId,
         mchId: o.mchId,
