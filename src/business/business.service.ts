@@ -1777,6 +1777,16 @@ export class BusinessService {
       deliveryMode: updated.deliveryMode,
       address: updated.address,
     });
+    // IKPNZJ：微信小程序发货信息自动上报（资金解冻前置）。此时事务已固化
+    // package.lastMileMode，fire-and-forget，失败/幂等冲突内部仅 warn 不阻断。
+    void this.push?.uploadShippingInfo({
+      id: updated.id,
+      userId: updated.userId,
+      orderNo: updated.orderNo,
+      status: updated.status,
+      statusText: updated.statusText,
+      campusId: updated.campusId,
+    });
     return this.orderView(updated);
   }
 

@@ -5,6 +5,7 @@ import {
   campusOrganizationId,
   campusStaffDelivery,
 } from '../common/organization';
+import { campusWechatConfig } from '../common/wechat-org';
 
 /** 订单最小形态（渠道推送只需这些字段，避免服务间循环依赖具体类型）。 */
 export interface OrderPushContext {
@@ -88,6 +89,144 @@ export class NotificationsService {
     };
     await this.sendSubscribeMessage(order, 'refund');
     await this.sendSms(order, order.statusText);
+  }
+
+  /* ---------- IKPNZJ 微信小程序发货信息自动上报（资金解冻前置） ---------- */
+
+  /**
+   * IKPNZJ：微信资金管控——支付成功货款进冻结池，商家须上报发货信息、用户
+   * 确认收货后才解冻（小满 39 笔被通知）。出库节点（business.outbound 成功
+   * 后）fire-and-forget 调用；任何失败仅 warn，绝不阻断出库主流程。
+   *
+   * 凭证与商户号同口径路由：上报 order_key 的 mchid 必须等于**收款商户号**
+   * （错配微信按支付单不存在拒收），而收款走 campusWechatConfig 严格 7 字段
+   * 口径（组织齐备 → 组织 AppID + 组织 mchId；否则 env 全套）——故上报照抄
+   * 收款口径取凭证，不能复用 orderWxCredentials 的宽松口径（wxAppId+wxSecret
+   * 两字段即命中），否则会出现「组织 appid + env mchid」的跨口径组合。
+   * order_key 用 order_number_type=1（mchid + out_trade_no，out_trade_no 即
+   * orderNo，与 payments 下单一致）：Order 表未持久化微信 transaction_id
+   * （回调仅进异常日志），商户侧单号是唯一稳定键。
+   * access_token 复用 wechatAccessToken（stable_token，按 appid 分桶缓存）。
+   */
+  async uploadShippingInfo(
+    order: OrderPushContext & { campusId?: string },
+  ): Promise<void> {
+    try {
+      const row = await this.db.order.findUnique({
+        where: { id: order.id },
+        select: { campusId: true, package: true, items: true },
+      });
+      const org = await campusWechatConfig(
+        this.db,
+        order.campusId ?? row?.campusId,
+      );
+      const appId = org?.appId ?? process.env.WX_APPID_USER;
+      const secret = org?.secret ?? process.env.WX_SECRET_USER;
+      const mchId = org?.mchId ?? process.env.WX_MCH_ID;
+      if (!appId || !secret || !mchId) {
+        this.logger.warn(
+          `发货信息上报跳过（组织凭证/商户号未配置）→ ${order.orderNo}`,
+        );
+        return;
+      }
+      const user = await this.db.user.findUnique({
+        where: { id: order.userId },
+        select: { openid: true },
+      });
+      if (!user?.openid) {
+        this.logger.warn(`发货信息上报跳过（用户无 openid）→ ${order.orderNo}`);
+        return;
+      }
+      // 出库事务已固化 package.lastMileMode：customer-pickup=用户到楼下自取
+      // → 4 用户自提；building-manager（骑手/员工送寝室）→ 2 同城配送。
+      // 1 实体物流（需快递单号+物流公司编码）与 3 虚拟商品不适用本系统。
+      const pkg = (row?.package ?? {}) as Record<string, unknown>;
+      const logisticsType = pkg.lastMileMode === 'customer-pickup' ? 4 : 2;
+      const items = Array.isArray(row?.items)
+        ? (row.items as Array<{
+            product?: { name?: string };
+            quantity?: number;
+            name?: string;
+          }>)
+        : [];
+      const token = await this.wechatAccessToken(appId, secret);
+      const res = await fetch(
+        `https://api.weixin.qq.com/wxa/sec/order/upload_shipping_info?access_token=${token}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            order_key: {
+              order_number_type: 1,
+              mchid: mchId,
+              out_trade_no: order.orderNo,
+            },
+            logistics_type: logisticsType,
+            delivery_mode: 1, // 统一发货（本系统一单一包裹，非分拆）
+            shipping_list: [
+              { item_desc: NotificationsService.shippingItemDesc(items) },
+            ],
+            upload_time: NotificationsService.rfc3339Cn(new Date()),
+            payer: { openid: user.openid },
+          }),
+          signal: AbortSignal.timeout(8000),
+        },
+      );
+      const body = (await res.json()) as { errcode?: number; errmsg?: string };
+      if (
+        body.errcode === 10060002 ||
+        body.errcode === 10060003 ||
+        body.errcode === 10060023
+      ) {
+        // 微信幂等：已发货再报会消耗该支付单唯一一次「重新发货」机会，停手。
+        this.logger.warn(
+          `发货信息重复上报，微信幂等拒绝（已忽略，勿重试）→ ${order.orderNo}: ${body.errcode} ${body.errmsg}`,
+        );
+        return;
+      }
+      if (body.errcode) throw new Error(`${body.errcode} ${body.errmsg}`);
+      this.logger.log(
+        `发货信息上报成功 → ${order.orderNo} logistics_type=${logisticsType}`,
+      );
+    } catch (error) {
+      this.logger.warn(
+        `发货信息上报失败（已忽略，不阻断出库）: order=${order.orderNo} ${(error as Error).message}`,
+      );
+    }
+  }
+
+  /**
+   * IKPNZJ item_desc 组装：商品名*数量 拼接（文档样式「微信红包抱枕*1个」，
+   * 必填，限 120 字以内——超长微信 10060009 拒收）。items 为支付时快照
+   * OrderLine[]（product.name）；老数据顶层 name 兼容。空兜底「校园好物」。
+   */
+  private static shippingItemDesc(
+    items: Array<{
+      product?: { name?: string };
+      quantity?: number;
+      name?: string;
+    }>,
+  ): string {
+    const text =
+      items
+        .map((item) => {
+          const name = item.product?.name ?? item.name ?? '';
+          return name ? `${name}*${item.quantity ?? 1}个` : '';
+        })
+        .filter(Boolean)
+        .join('、') || '校园好物';
+    return text.length > 120 ? `${text.slice(0, 119)}…` : text;
+  }
+
+  /**
+   * IKPNZJ upload_time：RFC3339 格式（微信 268485216 校验，非时间戳）。
+   * 容器跑 UTC、订单客群在国内——按北京时间 +8 偏移拼接 +08:00 尾缀
+   * （fmtCn 同款思路，避免引时区库）。
+   */
+  private static rfc3339Cn(date: Date): string {
+    return new Date(date.getTime() + 8 * 3600_000)
+      .toISOString()
+      .replace('Z', '+08:00');
   }
 
   /**
