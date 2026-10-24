@@ -199,6 +199,13 @@ export function markTimelineStep(
   if (step && !step.done) {
     step.done = true;
     step.time = new Date().toISOString();
+  } else if (!step && steps.length) {
+    // 补录兜底（2026-10-24 大雄实锤）：目标节点在该配送链进度条上不存在
+    // （无楼长链无 last-mile 节点，改状态补录送达时找不到节点）——此前
+    // 什么都不写，送达时间恒空，售后 24h 判定误拒。兜底把操作时刻写到
+    // 末节点（未写过时间才写），送达时间恒有记录。
+    const last = steps[steps.length - 1] as Record<string, unknown>;
+    if (last && !last.time) last.time = new Date().toISOString();
   }
   return json(steps);
 }
