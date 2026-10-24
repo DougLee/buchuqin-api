@@ -2109,11 +2109,15 @@ export class BusinessService {
     // delivered（已送达待确认）即可申请售后，不必等用户确认收货。
     if (!['delivered', 'completed'].includes(order.status))
       throw new BadRequestException('订单送达后才能申请售后');
-    // 送达时间优先取送达凭证时间（delivered 动作写入），历史单回退 timeline 末节点。
+    // 送达时间回退链（2026-10-24 道哥实锤补录单 bug）：送达凭证时间 →
+    // timeline 末节点时间 → paidAt。补录送达（改状态弹窗）的单可能两个
+    // 来源都没有——无楼长链 timeline 无 last-mile 节点，markTimelineStep
+    // 找不到节点不写时间——此前误入「超 24h」拒绝分支，补录单永远申请不了
+    // 售后。回退 paidAt：补录单窗口从支付时刻起算 24h（Order 表无 updatedAt）。
     const proof = (order.package as unknown as Record<string, any> | null)
       ?.proof;
     const timeline = order.timeline as unknown as TimelineStep[];
-    const deliveredAt = proof?.time ?? timeline.at(-1)?.time;
+    const deliveredAt = proof?.time ?? timeline.at(-1)?.time ?? order.paidAt;
     if (
       !deliveredAt ||
       Date.now() - new Date(deliveredAt).getTime() > 24 * 60 * 60 * 1000
