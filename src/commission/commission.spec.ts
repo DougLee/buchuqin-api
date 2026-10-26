@@ -115,6 +115,9 @@ describe('commission & settlement (IK8W5L)', () => {
         warehouseName: '提成测试校园仓',
         // IKDOIU：楼长底薪改校区维度配置（分），本 spec 显式配 50000 覆盖底薪入账单口径
         buildingManagerBaseSalary: 50000,
+        // IKQFG4：提成=校区配送费直取，显式配 400/200 作为断言基准
+        deliveryFeeInstant: 400,
+        deliveryFeeScheduled: 200,
       },
     });
     const x = await db.building.create({
@@ -183,19 +186,7 @@ describe('commission & settlement (IK8W5L)', () => {
         },
       ],
     });
-    // 规则（金额单位:分）：楼栋 350、楼栋+6 层 460（楼 Y 无规则 → 走兜底常量）。
-    await db.commissionRule.create({
-      data: { campusId: CAMPUS, buildingId: buildingX, price: 350, version: 1 },
-    });
-    await db.commissionRule.create({
-      data: {
-        campusId: CAMPUS,
-        buildingId: buildingX,
-        floor: 6,
-        price: 460,
-        version: 2,
-      },
-    });
+    // IKQFG4：提成规则表废弃——送达提成=校区配送费直取（instant 400/scheduled 200）。
   });
 
   afterAll(async () => {
@@ -212,7 +203,7 @@ describe('commission & settlement (IK8W5L)', () => {
   });
 
   it('delivered generates rule-snapshot commissions for rider and manager', async () => {
-    // 楼 X 6 层：命中"楼栋+楼层"规则（460 分）
+    // 楼 X 6 层：即时达 → 配送费 400 分
     const orderA = await makeOrder(buildingX, '提成楼 X', 6);
     await fulfillment.updateTask(
       MANAGER,
@@ -225,12 +216,12 @@ describe('commission & settlement (IK8W5L)', () => {
     });
     expect(recordsA).toHaveLength(2); // 骑手 + 楼长
     for (const record of recordsA) {
-      expect(record.amount).toBe(460);
+      expect(record.amount).toBe(400);
       expect(record.status).toBe('pending');
       expect(record.fallback).toBe(false);
-      expect(record.ruleVersion).toBe(2);
+      expect(record.ruleVersion).toBeNull(); // IKQFG4：规则废弃，快照字段置空
     }
-    // 楼 Y（无规则）：兜底 COMMISSION_PER_ORDER（骑手 + 本楼楼长各一条）。
+    // 楼 Y：配送费口径与 X 楼一致（按校区配置，无规则/兜底差异）。
     // IKAFP4：楼栋口径收紧，X 楼长不能再代送 Y 楼订单，由 Y 楼本楼长送达。
     const orderB = await makeOrder(buildingY, '提成楼 Y', 2);
     await fulfillment.updateTask(
@@ -244,8 +235,8 @@ describe('commission & settlement (IK8W5L)', () => {
     });
     expect(recordsB).toHaveLength(2);
     for (const record of recordsB) {
-      expect(record.amount).toBe(COMMISSION_PER_ORDER);
-      expect(record.fallback).toBe(true);
+      expect(record.amount).toBe(400);
+      expect(record.fallback).toBe(false);
       expect(record.ruleId).toBeNull();
     }
     expect(new Set(recordsB.map((x) => x.staffId))).toEqual(
@@ -276,16 +267,16 @@ describe('commission & settlement (IK8W5L)', () => {
     const manager = bills.find((x) => x.staffId === MANAGER)!;
     const managerY = bills.find((x) => x.staffId === MANAGER_Y)!;
     billIds.push(rider.id, manager.id);
-    // 骑手：460 + 300 = 760 分，无底薪；X 楼长：460 + 50000 分底薪；Y 楼长：300 + 50000
+    // 骑手：400 + 400 = 800 分，无底薪；X 楼长：400 + 50000 分底薪；Y 楼长：400 + 50000
     expect(rider.baseSalary).toBe(0);
-    expect(rider.commissionTotal).toBe(760);
-    expect(rider.payable).toBe(760);
+    expect(rider.commissionTotal).toBe(800);
+    expect(rider.payable).toBe(800);
     expect(manager.baseSalary).toBe(50000);
-    expect(manager.commissionTotal).toBe(460);
-    expect(manager.payable).toBe(50460);
+    expect(manager.commissionTotal).toBe(400);
+    expect(manager.payable).toBe(50400);
     expect(managerY.baseSalary).toBe(50000);
-    expect(managerY.commissionTotal).toBe(300);
-    expect(managerY.payable).toBe(50300);
+    expect(managerY.commissionTotal).toBe(400);
+    expect(managerY.payable).toBe(50400);
     expect(bills.every((x) => x.status === 'pending-review')).toBe(true);
     // 未确认不可支付
     await expect(
@@ -329,7 +320,7 @@ describe('commission & settlement (IK8W5L)', () => {
       where: { orderId: orderA, staffId: RIDER },
     });
     expect(
-      riderRecords.filter((x) => x.status === 'adjusted' && x.amount === -460),
+      riderRecords.filter((x) => x.status === 'adjusted' && x.amount === -400),
     ).toHaveLength(1);
     // 楼长（pending）→ 原地翻负为 adjusted
     const managerRecords = await db.commission.findMany({
@@ -337,10 +328,10 @@ describe('commission & settlement (IK8W5L)', () => {
     });
     expect(managerRecords).toHaveLength(1);
     expect(managerRecords[0].status).toBe('adjusted');
-    expect(managerRecords[0].amount).toBe(-460);
-    // 负向调整计入当月聚合：楼长提成合计 460 - 460 = 0
+    expect(managerRecords[0].amount).toBe(-400);
+    // 负向调整计入当月聚合：楼长提成合计 400 - 400 = 0
     const mine = await fulfillment.commissions(MANAGER, month);
-    expect(mine.adjustment).toBe(-460);
+    expect(mine.adjustment).toBe(-400);
     expect(mine.deliveryIncome).toBe(0);
   });
 });

@@ -147,9 +147,17 @@ export class CommissionService {
     order: JsonMap,
   ): Promise<number> {
     const dims = dimsOfOrder(order);
-    const rules = await this.loadRules(tx, String(order.campusId));
-    const rule = bestMatch(rules, dims);
-    const amount = rule ? rule.price : COMMISSION_PER_ORDER;
+    // IKQFG4（道哥 2026-10-26 B 方案）：配送员报酬=校区配送费直取——
+    // 按订单配送模式取即时达/预约达配送费配置，与用户支付口径一比一。
+    // 提成规则表（loadRules/bestMatch）废弃不再匹配；ruleId/version 置空。
+    const campus = await tx.campus.findUnique({
+      where: { id: String(order.campusId) },
+      select: { deliveryFeeInstant: true, deliveryFeeScheduled: true },
+    });
+    const amount =
+      order.deliveryMode === 'scheduled'
+        ? (campus?.deliveryFeeScheduled ?? 0)
+        : (campus?.deliveryFeeInstant ?? 0);
     const period = new Date().toISOString().slice(0, 7);
     // 楼长归属：优先 buildingId 关联，历史地址回退楼栋名。
     const manager =
@@ -186,14 +194,14 @@ export class CommissionService {
           staffId,
           orderId: String(order.id),
           campusId: String(order.campusId),
-          ruleId: rule?.id ?? null,
-          ruleVersion: rule?.version ?? null,
+          ruleId: null,
+          ruleVersion: null,
           amount,
           kind: 'commission',
           status: 'pending',
-          fallback: !rule,
+          fallback: false,
           period,
-          remark: '订单送达提成',
+          remark: '订单送达配送费',
         },
         update: {},
       });

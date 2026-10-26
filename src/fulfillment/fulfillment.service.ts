@@ -14,12 +14,7 @@ import {
   campusOrganizationId,
   campusStaffDelivery,
 } from '../common/organization';
-import {
-  bestMatch,
-  COMMISSION_PER_ORDER,
-  CommissionService,
-  dimsOfOrder,
-} from '../commission/commission.service';
+import { CommissionService } from '../commission/commission.service';
 import type { LeaveRequestDto, TaskActionDto } from './dto';
 
 export type StaffRole =
@@ -320,8 +315,12 @@ export class FulfillmentService {
           .filter((v): v is string => Boolean(v)),
       ),
     ];
-    const [rules, records, riders] = await Promise.all([
-      this.commissionService.loadRules(this.db, staff.campusId),
+    // IKQFG4：提成预览改校区配送费直取（规则表废弃），不再 loadRules
+    const [campusFees, records, riders] = await Promise.all([
+      this.db.campus.findUnique({
+        where: { id: staff.campusId },
+        select: { deliveryFeeInstant: true, deliveryFeeScheduled: true },
+      }),
       this.db.commission.findMany({
         where: { staffId, orderId: { in: orders.map((o) => o.id) } },
       }),
@@ -347,7 +346,7 @@ export class FulfillmentService {
         staff.role as StaffRole,
         staff.id,
         commissionByOrder,
-        rules,
+        campusFees ?? { deliveryFeeInstant: 0, deliveryFeeScheduled: 0 },
         staff.campusWarehouseName,
         riderById,
       ),
@@ -378,17 +377,17 @@ export class FulfillmentService {
       },
       orderBy: { createdAt: 'asc' },
     });
-    const rules = await this.commissionService.loadRules(
-      this.db,
-      staff.campusId,
-    );
+    const campusFees = await this.db.campus.findUnique({
+      where: { id: staff.campusId },
+      select: { deliveryFeeInstant: true, deliveryFeeScheduled: true },
+    });
     return orders.map((o) =>
       this.toTask(
         o as unknown as JsonMap,
         staff.role as StaffRole,
         staff.id,
         undefined,
-        rules,
+        campusFees ?? { deliveryFeeInstant: 0, deliveryFeeScheduled: 0 },
         staff.campusWarehouseName,
       ),
     );
@@ -806,7 +805,8 @@ export class FulfillmentService {
     role: StaffRole,
     viewerId?: string,
     commissionByOrder?: Map<string, number>,
-    rules?: Array<Parameters<typeof bestMatch>[0][number]>,
+    /** IKQFG4：提成预览改校区配送费直取（规则表废弃） */
+    campusFees?: { deliveryFeeInstant: number; deliveryFeeScheduled: number },
     /** 任务所属校区仓库名（2026-10-19 道哥：多组织后硬编码「湖工大校园仓」
      *  串味——武工院楼长任务卡显示湖工大仓库。profile 的 campusWarehouseName
      *  早已接口化（IKAJT4），此处补齐同源取值。 */
@@ -914,13 +914,13 @@ export class FulfillmentService {
       rider: order.riderId
         ? (riderById?.get(String(order.riderId)) ?? null)
         : null,
-      // 金额口径统一（IK8W5L）：Commission 记录优先，未送达按规则预览，兜底常量（单位:分）。
+      // 金额口径（IK8W5L→IKQFG4）：Commission 记录优先，未送达按校区
+      // 配送费直取预览（即时达/预约达），与送达落账同源（单位:分）。
       commission:
         commissionByOrder?.get(String(order.id)) ??
-        (rules
-          ? (bestMatch(rules, dimsOfOrder(order))?.price ??
-            COMMISSION_PER_ORDER)
-          : COMMISSION_PER_ORDER),
+        (order.deliveryMode === 'scheduled'
+          ? (campusFees?.deliveryFeeScheduled ?? 0)
+          : (campusFees?.deliveryFeeInstant ?? 0)),
       items: items.map((x: JsonMap) => ({
         name: x.product?.name ?? x.name,
         quantity: x.quantity,
