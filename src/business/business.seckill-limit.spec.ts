@@ -223,7 +223,7 @@ describe('seckill per-user limit (IKG8FF)', () => {
     const secs = (await service.listSeckill(CAMPUS, USER)) as any[];
     const inSecs = secs.find((p) => p.id === SKU);
     expect(inSecs.price).toBe(1500);
-    expect(inSecs.seckillLimit).toEqual({ limit: 1, purchased: false });
+    expect(inSecs.seckillLimit).toBeUndefined(); // IKQZOB：限购状态已拆
   });
 
   it('秒杀行加购数量上限 1 件；原价行不限购（IKHL6Y）', async () => {
@@ -258,25 +258,22 @@ describe('seckill per-user limit (IKG8FF)', () => {
     await service.setCartItem(USER, SKU, 0);
   });
 
-  it('已购（已支付订单）后：秒杀行拒绝 + 正常渠道照常原价购买', async () => {
+  it('IKQZOB：已购后秒杀行可重复购买（跨订单）+ 结算通过', async () => {
     await service.setCartItem(USER, SKU, 1, true); // 秒杀行入车（此时未购，合法）
     const order = await makePaidOrder(SKU, PROMO); // 另一单已支付
+    // 限购已拆：已购后秒杀行再加不被拒
     await expect(
       service.setCartItem(USER, SKU, 1, true),
-    ).rejects.toThrow('您已抢购过该商品');
+    ).resolves.toBeTruthy();
     const detail = (await service.product(SKU, CAMPUS, USER)) as any;
-    expect(detail.seckillLimit).toBeUndefined(); // 正常渠道无秒杀痕迹
-    // 同商品已有秒杀行：原价入口撞身份冲突（先移除）
-    await expect(service.setCartItem(USER, SKU, 1)).rejects.toThrow(
-      '已按秒杀价加购',
-    );
-    // 车里还是秒杀行：结算兜底拦（名额被上面订单占掉）
+    expect(detail.seckillLimit).toBeUndefined(); // 视图不再挂限购状态
+    // 车里秒杀行结算不再被「已购」拦（一单一品满足）
     await expect(
       service.checkout(USER, CAMPUS, {
         addressId: ADDR,
         deliveryMode: 'instant',
       } as any),
-    ).rejects.toThrow('每人限购 1 件');
+    ).resolves.toBeTruthy();
     await service.setCartItem(USER, SKU, 0);
     // 移除秒杀行后：已购状态下原价通道畅通（买过秒杀也能按原价买，双渠道）
     await expect(service.setCartItem(USER, SKU, 1)).resolves.toBeTruthy();
@@ -299,7 +296,7 @@ describe('seckill per-user limit (IKG8FF)', () => {
       service.updateCart(USER, {
         items: [{ productId: SKU, quantity: 2, asSeckill: true }],
       } as any),
-    ).rejects.toThrow('每人限购 1 件');
+    ).rejects.toThrow('每单限购 1 件');
   });
 
   it('窗外订单不占名额：paidAt 早于活动开始可正常加购', async () => {
@@ -321,18 +318,20 @@ describe('seckill per-user limit (IKG8FF)', () => {
     await service.setCartItem(USER, SKU, 0);
   });
 
-  it('退款释放名额：refunded 后可重新加购 + purchased:false', async () => {
+  it('IKQZOB：退款后专区视图照常（限购已拆，无 purchased 字段）', async () => {
     const order = await makePaidOrder(SKU, PROMO);
+    // IKQZOB：已购不再拦截（退款前即可重复加购）
     await expect(
       service.setCartItem(USER, SKU, 1, true),
-    ).rejects.toThrow('您已抢购过该商品');
+    ).resolves.toBeTruthy();
+    await service.setCartItem(USER, SKU, 0);
     await db.order.update({
       where: { id: order.id },
       data: { status: 'refunded', statusText: '已退款' },
     });
     await expect(service.setCartItem(USER, SKU, 1, true)).resolves.toBeTruthy();
     const secs = (await service.listSeckill(CAMPUS, USER)) as any[];
-    expect(secs.find((p) => p.id === SKU).seckillLimit.purchased).toBe(false);
+    expect(secs.find((p) => p.id === SKU).seckillLimit).toBeUndefined();
     await db.order.delete({ where: { id: order.id } });
     await service.setCartItem(USER, SKU, 0);
   });
@@ -346,7 +345,7 @@ describe('seckill per-user limit (IKG8FF)', () => {
     );
     // 同秒杀品自身超量加购走 IKG8FF 上限文案，不误报一单一秒杀
     await expect(service.setCartItem(USER, SKU, 2, true)).rejects.toThrow(
-      '秒杀商品每人限购 1 件',
+      '秒杀商品每单限购 1 件',
     );
     await service.setCartItem(USER, SKU, 0);
   });
@@ -411,14 +410,14 @@ describe('seckill per-user limit (IKG8FF)', () => {
     await db.cartItem.deleteMany({ where: { userId: USER } });
   });
 
-  it('IKGNMV：秒杀 B 已购过时优先报已购（文案优先级在品种拦截之前）', async () => {
-    await service.setCartItem(USER, SKU, 1, true);
-    const order = await makePaidOrder(SKU2, PROMO2);
-    await expect(service.setCartItem(USER, SKU2, 1, true)).rejects.toThrow(
-      '您已抢购过该商品',
-    );
+  it('IKQZOB：秒杀 B 已购过仍可再加购（人均限购已拆，只受品种拦截）', async () => {
+    await service.setCartItem(USER, SKU2, 1, true); // B 先入车（清空车）
+    await service.setCartItem(USER, SKU2, 0);
+    const order = await makePaidOrder(SKU2, PROMO2); // B 已购
+    // 车里无其他秒杀行：B 再加购成功（品种=1 且无限购）
+    await expect(service.setCartItem(USER, SKU2, 1, true)).resolves.toBeTruthy();
     await db.order.delete({ where: { id: order.id } });
-    await service.setCartItem(USER, SKU, 0);
+    await service.setCartItem(USER, SKU2, 0);
   });
 
   it('IKHL6Y：秒杀行跟活动窗走——窗外回落原价（展示=结算一致）', async () => {

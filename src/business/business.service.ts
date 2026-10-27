@@ -196,63 +196,6 @@ export class BusinessService {
   }
 
   /**
-   * 秒杀限购资格（IKG8FF）：动态判定——当前生效秒杀活动窗内「已支付且未退款/
-   * 未取消」订单的 items 快照含该 promotionId 即已抢购；退款后订单落出判定
-   * 口径，名额天然释放（道哥拍板：退款返还名额，无需回补动作）。
-   * 返回已抢购的 productId 集合；资格按活动行算，下场活动重置。
-   */
-  private async seckillPurchased(
-    userId: string,
-    productIds: string[],
-    now = new Date(),
-  ): Promise<Set<string>> {
-    const hit = new Set<string>();
-    if (!userId || !productIds.length) return hit;
-    const byProduct = await this.activeSeckillMap(productIds, now);
-    if (!byProduct.size) return hit;
-    const productByPromo = new Map<string, string>();
-    const starts: number[] = [];
-    const ends: number[] = [];
-    for (const [productId, p] of byProduct) {
-      productByPromo.set(p.id, productId);
-      starts.push(p.startsAt.getTime());
-      ends.push(p.endsAt.getTime());
-    }
-    const orders = await this.db.order.findMany({
-      where: {
-        userId,
-        paidAt: {
-          gte: new Date(Math.min(...starts)),
-          lt: new Date(Math.max(...ends)),
-        },
-        status: { notIn: ['refunded', 'cancelled'] },
-      },
-      select: { items: true },
-    });
-    for (const o of orders)
-      for (const line of o.items as Array<{
-        product?: { promotion?: { id?: string } };
-      }>) {
-        const productId = line.product?.promotion?.id
-          ? productByPromo.get(line.product.promotion.id)
-          : undefined;
-        if (productId) hit.add(productId);
-      }
-    return hit;
-  }
-
-  /**
-   * 视图挂限购状态（IKG8FF）：仅生效秒杀商品带 seckillLimit，C 端据此置灰
-   * 「已抢购」/数量上限 1；非秒杀商品不带字段，响应结构不变。
-   */
-  private attachSeckillLimit(views: any[], purchased: Set<string>) {
-    for (const v of views)
-      if (v.promotion?.type === 'seckill')
-        v.seckillLimit = { limit: 1, purchased: purchased.has(v.id) };
-    return views;
-  }
-
-  /**
    * 商品视图（ADR-0006）：活动期 price=促销价（生效价单一事实，所有金额出口
    * 读 .price 即正确），划线位 originalPrice 让给 product.price；promotion 块
    * 供 C 端角标/倒计时与订单快照审计（含 promotionId，下单锁价）。
@@ -862,14 +805,8 @@ export class BusinessService {
       orderBy: [{ endsAt: 'asc' }, { createdAt: 'asc' }],
       include: { product: true },
     });
-    const views = rows.map((x) => this.productView(x.product, false, x));
-    return this.attachSeckillLimit(
-      views,
-      await this.seckillPurchased(
-        userId ?? '',
-        rows.map((x) => x.productId),
-      ),
-    );
+    // IKQZOB：人均限购已拆（跨订单可重复购买）——不再挂 seckillLimit
+    return rows.map((x) => this.productView(x.product, false, x));
   }
   /**
    * 推荐专区商品（道哥 2026-09-24）：仅运营勾选的 featured 商品（featuredSort
@@ -969,21 +906,12 @@ export class BusinessService {
       new Date(),
       true,
     );
-    // IKG8FF：仅秒杀行挂限购资格（购物车页置灰/文案）；原价行不挂
-    const purchased = await this.seckillPurchased(
-      userId,
-      rows.filter((r) => r.asSeckill).map((r) => r.productId),
-    );
+    // IKQZOB：人均限购已拆——不再查已购集合
     const items = rows.map((row) => {
       // 秒杀行跟活动窗走：窗内秒杀价，窗外自动回落正常渠道价
       const seckill = row.asSeckill ? seckillMap.get(row.productId) : undefined;
       const promo = seckill ?? normalPromoMap.get(row.productId);
       const product = this.productView(row.product, false, promo);
-      if (seckill)
-        product.seckillLimit = {
-          limit: 1,
-          purchased: purchased.has(row.productId),
-        };
       return { product, quantity: row.quantity, asSeckill: row.asSeckill };
     });
     // 金额单位:分——全整数运算，无浮点误差（IK8W5K）。
@@ -1032,9 +960,7 @@ export class BusinessService {
           await this.activeSeckillMap(seckillLines.map((l) => l.productId))
         ).keys(),
       );
-      const purchased = seckillIds.size
-        ? await this.seckillPurchased(userId, [...seckillIds])
-        : new Set<string>();
+      // IKQZOB：人均限购已拆——品种守卫照旧
       // IKGNMV（一单一秒杀）：全量替换语义下，保存后的秒杀身份行品种
       // >1 整批拒绝（保留哪个由用户回购物车调整）；原价行不受此限
       if (seckillLines.length > 1) {
@@ -1062,12 +988,9 @@ export class BusinessService {
         if (line.asSeckill && !seckillIds.has(line.productId))
           throw new BadRequestException(`「${p.name}」秒杀活动未开始或已结束`);
         if (seckillIds.has(line.productId)) {
+          // IKQZOB：数量锁保留；已购拦截已拆（跨订单可重复购买）
           if (line.quantity > 1)
-            throw new BadRequestException(`秒杀商品「${p.name}」每人限购 1 件`);
-          if (purchased.has(line.productId))
-            throw new BadRequestException(
-              `您已抢购过「${p.name}」，每人限购 1 件`,
-            );
+            throw new BadRequestException(`秒杀商品「${p.name}」每单限购 1 件`);
         }
         if (
           line.quantity > (oldQty.get(line.productId) ?? 0) &&
@@ -1115,10 +1038,8 @@ export class BusinessService {
     if (quantity > 0 && asSeckill) {
       const seckill = (await this.activeSeckillMap([productId])).get(productId);
       if (!seckill) throw new BadRequestException('秒杀活动未开始或已结束');
-      if (quantity > 1) throw new BadRequestException('秒杀商品每人限购 1 件');
-      const hit = await this.seckillPurchased(userId, [productId]);
-      if (hit.has(productId))
-        throw new BadRequestException('您已抢购过该商品，每人限购 1 件');
+      // IKQZOB：数量锁保留（一单一品一件）；已购拦截已拆（可重复购买）
+      if (quantity > 1) throw new BadRequestException('秒杀商品每单限购 1 件');
       // IKGNMV（一单一秒杀）：已有**其他**秒杀身份行时拒加（品种 ≤1/单）；
       // 原价行不受此限
       const others = await this.db.cartItem.findMany({
@@ -1183,18 +1104,8 @@ export class BusinessService {
       if (!p || line.quantity > p.stock - p.lockedStock)
         throw new BadRequestException(`${line.product.name}库存不足`);
     }
-    // IKG8FF：结算兜底——加购到支付之间名额可能被同活动订单占掉；
-    // IKHL6Y 秒杀双渠道：只拦秒杀身份行（原价行不限购，买过秒杀也照常买）
+    // IKQZOB：人均限购结算兜底已拆（跨订单可重复购买）
     const seckillRows = cart.items.filter((i) => i.asSeckill);
-    const seckillBought = await this.seckillPurchased(
-      userId,
-      seckillRows.map((i) => i.product.id),
-    );
-    for (const line of seckillRows)
-      if (seckillBought.has(line.product.id))
-        throw new BadRequestException(
-          `您已抢购过「${line.product.name}」，每人限购 1 件`,
-        );
     // IKGNMV（一单一秒杀）结算兜底：绕过加购拦截的脏数据（并发/历史存量）
     // 在结算时把关——秒杀身份行品种 >1 拒单，引导回购物车调整
     const cartSeckillIds = new Set(
@@ -1496,19 +1407,8 @@ export class BusinessService {
       // 抢占之前：本单仍为 pending-payment，判定查询天然不把自己算进去。
       // 行锁串行化同用户并发支付（防复核自身 TOCTOU：后到者必见先到者
       // 已付单）；不同用户互不阻塞——限购本来就按人。
-      const seckillLineProducts = [
-        ...new Set(
-          items
-            .filter((l) => (l.product as { promotion?: { id?: string } }).promotion?.id)
-            .map((l) => l.product.id),
-        ),
-      ];
-      if (seckillLineProducts.length) {
-        await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${userId} FOR UPDATE`;
-        const purchased = await this.seckillPurchased(userId, seckillLineProducts);
-        if (seckillLineProducts.some((id) => purchased.has(id)))
-          throw new BadRequestException('该秒杀商品每人限购 1 件，您已抢购过');
-      }
+      // IKQZOB：秒杀人均限购支付复核已拆（跨订单可重复购买）——库存
+      // 原子抢占在下方条件更新独立保留，超卖防护不受影响。
       // 条件更新抢占支付权：并发的第二笔支付 count=0 直接失败，
       // 库存扣减与后续副作用都移到抢占成功之后，防止双扣。
       const won = await tx.order.updateMany({
