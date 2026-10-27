@@ -144,6 +144,93 @@ export class BusinessService {
     instant: 400,
     scheduled: 200,
   } as const;
+  /* ---------- IKQZY7 商品周期限购：once/weekly/monthly ---------- */
+
+  /** 周期窗口起点：once=epoch（终身）、weekly=本周一、monthly=本月 1 号（中国习惯）。 */
+  private static limitWindowStart(kind: string, now = new Date()): Date {
+    if (kind === 'once') return new Date(0);
+    const d = new Date(now);
+    d.setHours(0, 0, 0, 0);
+    if (kind === 'weekly') {
+      // JS getDay: 0=周日 → 周一起算回退 (day+6)%7 天
+      d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+      return d;
+    }
+    if (kind === 'monthly') {
+      d.setDate(1);
+      return d;
+    }
+    return new Date(0);
+  }
+
+  /**
+   * 限购已购计数（IKQZY7）：窗口内「已支付且未退款/未取消」订单的 items 快照
+   * 含该商品即计 1 次（每件数累计件数，qty 并入）。返回 productId → 已购件数。
+   * 不分价格身份（原价/秒杀/清仓都计），退款落出窗口自然释放。
+   */
+  private async purchaseLimitBought(
+    userId: string,
+    productIds: string[],
+  ): Promise<Map<string, number>> {
+    const kinds = await this.db.product.findMany({
+      where: { id: { in: productIds }, purchaseLimit: { not: 'none' } },
+      select: { id: true, purchaseLimit: true },
+    });
+    const byStart = new Map<string, Date>();
+    for (const k of kinds) byStart.set(k.id, BusinessService.limitWindowStart(k.purchaseLimit));
+    const bought = new Map<string, number>();
+    if (!byStart.size) return bought;
+    const earliest = new Date(
+      Math.min(...[...byStart.values()].map((x) => x.getTime())),
+    );
+    const orders = await this.db.order.findMany({
+      where: {
+        userId,
+        paidAt: { gte: earliest },
+        status: { notIn: ['refunded', 'cancelled'] },
+      },
+      select: { items: true, paidAt: true },
+    });
+    for (const o of orders) {
+      const paidAt = o.paidAt ? new Date(o.paidAt) : null;
+      for (const line of o.items as Array<{
+        product?: { id?: string };
+        quantity?: number;
+      }>) {
+        const pid = line.product?.id;
+        if (!pid || !byStart.has(pid)) continue;
+        if (paidAt && paidAt >= byStart.get(pid)!)
+          bought.set(pid, (bought.get(pid) ?? 0) + (line.quantity ?? 1));
+      }
+    }
+    return bought;
+  }
+
+  /** 限购违规商品名列表（加购/结算共用）：bought ≥ qty 即达限。 */
+  private async assertPurchaseLimit(userId: string, productIds: string[]) {
+    const rows = await this.db.product.findMany({
+      where: { id: { in: productIds }, purchaseLimit: { not: 'none' } },
+      select: {
+        id: true,
+        name: true,
+        purchaseLimit: true,
+        purchaseLimitQty: true,
+      },
+    });
+    if (!rows.length) return;
+    const bought = await this.purchaseLimitBought(userId, rows.map((r) => r.id));
+    const label: Record<string, string> = {
+      once: '每人限购一次，已购过',
+      weekly: '每周限购一次，本周已购',
+      monthly: '每月限购一次，本月已购',
+    };
+    for (const r of rows)
+      if ((bought.get(r.id) ?? 0) >= (r.purchaseLimitQty || 1))
+        throw new BadRequestException(
+          `「${r.name}」${label[r.purchaseLimit] ?? '已达限购'}`,
+        );
+  }
+
   /**
    * 限时特价解析（ADR-0006）：窗口内 active 活动按 productId 取生效促销。
    * 同商品多活动兜底取 endsAt 最近者（确定性，清仓优先）；建/改时的重叠
@@ -201,6 +288,12 @@ export class BusinessService {
    * 供 C 端角标/倒计时与订单快照审计（含 promotionId，下单锁价）。
    */
   private productView(product: any, withDescription = false, promotion?: any) {
+    // IKQZY7：限购元信息（none 不挂字段，响应结构不变）——C 端商品卡/详情
+    // 据此显示「每人限购一次/每周一次/每月一次」标签；reached 由详情单独判
+    const _limitMeta =
+      product.purchaseLimit && product.purchaseLimit !== 'none'
+        ? { kind: product.purchaseLimit, qty: product.purchaseLimitQty ?? 1 }
+        : undefined;
     // IKC1AC：进货价/批发价是内部价格，绝不进 C 端响应；
     // IKKRMY：supplyMode（IKKRMX 新列，组织目录采购来源）同口径剔除——
     // 校区行恒 null 但列随 rest 展开，采购来源不进 C 端
@@ -230,6 +323,8 @@ export class BusinessService {
             },
           }
         : {}),
+      // IKQZY7：限购元信息透出（none 不挂）
+      ...(_limitMeta ? { purchaseLimitMeta: _limitMeta } : {}),
       weight: number(product.weight),
     };
   }
@@ -960,6 +1055,11 @@ export class BusinessService {
           await this.activeSeckillMap(seckillLines.map((l) => l.productId))
         ).keys(),
       );
+      // IKQZY7 周期限购：车行内达限商品整批拒绝
+      await this.assertPurchaseLimit(
+        userId,
+        dto.items.filter((l) => l.quantity > 0).map((l) => l.productId),
+      );
       // IKQZOB：人均限购已拆——品种守卫照旧
       // IKGNMV（一单一秒杀）：全量替换语义下，保存后的秒杀身份行品种
       // >1 整批拒绝（保留哪个由用户回购物车调整）；原价行不受此限
@@ -1040,6 +1140,8 @@ export class BusinessService {
       if (!seckill) throw new BadRequestException('秒杀活动未开始或已结束');
       // IKQZOB：数量锁保留（一单一品一件）；已购拦截已拆（可重复购买）
       if (quantity > 1) throw new BadRequestException('秒杀商品每单限购 1 件');
+      // IKQZY7 周期限购：达限商品拒加购（不分价格身份）
+      await this.assertPurchaseLimit(userId, [productId]);
       // IKGNMV（一单一秒杀）：已有**其他**秒杀身份行时拒加（品种 ≤1/单）；
       // 原价行不受此限
       const others = await this.db.cartItem.findMany({
@@ -1104,6 +1206,11 @@ export class BusinessService {
       if (!p || line.quantity > p.stock - p.lockedStock)
         throw new BadRequestException(`${line.product.name}库存不足`);
     }
+    // IKQZY7 周期限购结算兜底（加购到结算间名额可能被占）
+    await this.assertPurchaseLimit(
+      userId,
+      cart.items.filter((i) => i.quantity > 0).map((i) => i.product.id),
+    );
     // IKQZOB：人均限购结算兜底已拆（跨订单可重复购买）
     const seckillRows = cart.items.filter((i) => i.asSeckill);
     // IKGNMV（一单一秒杀）结算兜底：绕过加购拦截的脏数据（并发/历史存量）
@@ -1409,6 +1516,22 @@ export class BusinessService {
       // 已付单）；不同用户互不阻塞——限购本来就按人。
       // IKQZOB：秒杀人均限购支付复核已拆（跨订单可重复购买）——库存
       // 原子抢占在下方条件更新独立保留，超卖防护不受影响。
+      // IKQZY7 周期限购支付复核（防双设备先下单后支付）：行锁串行化
+      // 同用户并发支付，复核后到者必见先到者已付单。
+      const limitProducts = [
+        ...new Set(
+          items
+            .map((l) => (l.product as { id?: string }).id)
+            .filter(Boolean),
+        ),
+      ] as string[];
+      const hasLimited = await this.db.product.count({
+        where: { id: { in: limitProducts }, purchaseLimit: { not: 'none' } },
+      });
+      if (hasLimited) {
+        await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${userId} FOR UPDATE`;
+        await this.assertPurchaseLimit(userId, limitProducts);
+      }
       // 条件更新抢占支付权：并发的第二笔支付 count=0 直接失败，
       // 库存扣减与后续副作用都移到抢占成功之后，防止双扣。
       const won = await tx.order.updateMany({

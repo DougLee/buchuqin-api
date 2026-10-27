@@ -980,6 +980,7 @@ export class AdminService {
         image: body.image ?? '',
         images: body.images,
         location: body.location ?? '',
+        purchaseLimit: body.purchaseLimit ?? 'none',
         weight: body.weight ?? 0,
         retailUnit: body.retailUnit?.trim() ?? '',
         wholesaleUnit: body.wholesaleUnit?.trim() || '件',
@@ -1065,6 +1066,10 @@ export class AdminService {
           ? { description: body.description }
           : {}),
         ...(body.location !== undefined ? { location: body.location } : {}),
+        // IKQZY7 周期限购：校区行经营策略，可选不传不动
+        ...(body.purchaseLimit !== undefined
+          ? { purchaseLimit: body.purchaseLimit }
+          : {}),
         ...(body.locationCode !== undefined
           ? { locationCode: body.locationCode }
           : {}),

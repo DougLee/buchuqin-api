@@ -92,6 +92,9 @@ export class CreateProductDto extends BarcodeDto {
   unitsPerCase?: number;
   /** 商品介绍（IKAHAU）：纯文本多行 ≤2000 字，空 = C 端不渲染区块。 */
   @IsOptional() @IsString() @MaxLength(2000) description?: string;
+  /** 周期限购（IKQZY7）：none/once/weekly/monthly，校区行配置 */
+  @IsOptional() @IsIn(['none', 'once', 'weekly', 'monthly'])
+  purchaseLimit?: 'none' | 'once' | 'weekly' | 'monthly';
 }
 /**
  * 商品改价专用端点（蛋词体系字段级分权，2026-09-19）：
@@ -196,6 +199,9 @@ export class UpdateProductDto {
   unitsPerCase?: number;
   /** 商品介绍（IKAHAU）：整段覆盖，空串清空。 */
   @IsOptional() @IsString() @MaxLength(2000) description?: string;
+  /** 周期限购（IKQZY7）：PATCH 可选；官方库行恒 none（service 校验）。 */
+  @IsOptional() @IsIn(['none', 'once', 'weekly', 'monthly'])
+  purchaseLimit?: 'none' | 'once' | 'weekly' | 'monthly';
 }
 /**
  * 组织商品目录（IKKRMX / ADR-0001 决策 4）：组织层建档/编辑。

@@ -1,0 +1,3 @@
+-- 商品周期限购（IKQZY7）
+ALTER TABLE "Product" ADD COLUMN "purchaseLimit" TEXT NOT NULL DEFAULT 'none';
+ALTER TABLE "Product" ADD COLUMN "purchaseLimitQty" INTEGER NOT NULL DEFAULT 1;

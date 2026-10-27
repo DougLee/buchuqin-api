@@ -501,6 +501,11 @@ model Product {
   procurementMode String?
   // 校区本地进货价，分/零售单位；LOCAL 时必填（允许 0），C 端永不输出。
   localPurchasePrice Int?
+  // 周期限购（IKQZY7 道哥 2026-10-27）：none=不限（绝大多数商品）/once=终身
+  // 一次/weekly=每周一次（周一起）/monthly=每月一次（1 号起）；按已付订单
+  // items 计数（不分价格身份），退款落出计数；每周期件数 purchaseLimitQty
+  purchaseLimit     String @default("none")
+  purchaseLimitQty  Int    @default(1)
   stock           Int
   lockedStock     Int            @default(0)
   sales           Int            @default(0)
