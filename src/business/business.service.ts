@@ -704,7 +704,13 @@ export class BusinessService {
     const marketing = await marketingEnabled(this.db, campusId);
     // IKH0EK 推荐位（2026-09-19 道哥定版）：运营勾选的 featured 商品按
     // featuredSort 优先展示，剩余位置按销量补满 18（去重）；未配置即纯销量。
-    const onSale = { campusId, status: 'on-sale', category: { hidden: false } };
+    // IKQYMF：售罄隐藏（stock>0 并入 C 端口径）
+    const onSale = {
+      campusId,
+      status: 'on-sale',
+      stock: { gt: 0 },
+      category: { hidden: false },
+    };
     const [campus, banners, categories, featured, rest] = await Promise.all([
       this.campus(campusId),
       marketing
@@ -746,7 +752,7 @@ export class BusinessService {
         status: 'active',
         startsAt: { lte: now },
         endsAt: { gt: now },
-        product: { campusId, status: 'on-sale' },
+        product: { campusId, status: 'on-sale', stock: { gt: 0 } },
       },
       orderBy: { endsAt: 'asc' },
       take: 20,
@@ -813,6 +819,8 @@ export class BusinessService {
       where: {
         campusId,
         status: 'on-sale',
+        // IKQYMF：售罄商品列表不出现（补货自动恢复）
+        stock: { gt: 0 },
         // IKC9M4：hidden 分类的商品全链路不露出（全部/分类/搜索）
         category: { hidden: false },
         ...(categoryId && categoryId !== 'all' ? { categoryId } : {}),
@@ -844,7 +852,12 @@ export class BusinessService {
         status: 'active',
         startsAt: { lte: now },
         endsAt: { gt: now },
-        product: { campusId, status: 'on-sale', category: { hidden: false } },
+        product: {
+        campusId,
+        status: 'on-sale',
+        stock: { gt: 0 },
+        category: { hidden: false },
+      },
       },
       orderBy: [{ endsAt: 'asc' }, { createdAt: 'asc' }],
       include: { product: true },
@@ -871,6 +884,7 @@ export class BusinessService {
       where: {
         campusId,
         status: 'on-sale',
+        stock: { gt: 0 },
         featured: true,
         category: { hidden: false },
       },
