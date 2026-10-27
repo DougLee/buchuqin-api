@@ -716,6 +716,11 @@ export class UpdateCampusDto {
   @IsString()
   @MaxLength(500, { message: '二维码地址过长' })
   serviceQrcode?: string;
+  /** 售后福利群二维码（IKQXSD）：空串=未配置，用户端售后页不渲染 */
+  @IsOptional()
+  @IsString()
+  @MaxLength(500, { message: '二维码地址过长' })
+  afterSalesGroupQrcode?: string;
   /** 订单自动出库（IKM55A）：校区级开关+延迟秒数，可选不传不动 */
   @IsOptional()
   @IsBoolean()

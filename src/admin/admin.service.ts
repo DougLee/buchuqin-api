@@ -7176,6 +7176,10 @@ export class AdminService {
         ...(body.serviceQrcode != null
           ? { serviceQrcode: body.serviceQrcode }
           : {}),
+        // IKQXSD 售后福利群二维码：用户端售后页展示，空串=未配置
+        ...(body.afterSalesGroupQrcode != null
+          ? { afterSalesGroupQrcode: body.afterSalesGroupQrcode }
+          : {}),
         // IKM55A 订单自动出库：平台/组织角色经 campuses/:id 全量更新
         ...(body.autoOutboundEnabled === undefined ||
         body.autoOutboundEnabled === null
@@ -8611,6 +8615,8 @@ export class AdminService {
           servicePhone: true,
           // IKKTWM 客服二维码：同档案 Tab 编辑
           serviceQrcode: true,
+          // IKQXSD 售后福利群二维码：同档案 Tab 编辑
+          afterSalesGroupQrcode: true,
           // IKM55A 订单自动出库：配送与营业 Tab 编辑
           autoOutboundEnabled: true,
           autoOutboundDelaySeconds: true,

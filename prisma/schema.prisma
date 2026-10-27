@@ -100,6 +100,9 @@ model Campus {
   servicePhone         String            @default("4008002026")
   // 校区客服微信二维码（IKKTWM）：COS 图；小程序客服弹层主展示，空串=回落拨号
   serviceQrcode        String            @default("")
+  // 售后福利群二维码（IKQXSD 道哥 2026-10-27）：COS 图；用户端售后页展示，
+  // 空串=未配置不渲染
+  afterSalesGroupQrcode String           @default("")
   // 无楼长提示（IKHMKR 道哥 2026-09-21）：结算/下单时楼栋无在职楼长的弹窗
   // 提示，校区自定义；空=回落默认文案（防误清空丢提示）
   noManagerTip         String            @default("")
