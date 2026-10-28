@@ -1127,6 +1127,9 @@ export class BusinessService {
       select: { quantity: true, asSeckill: true },
     });
     // IKHL6Y：同一商品购物车单一身份——跨身份再加拒绝（先移除已有行再换入口）
+    // IKQZY7 周期限购：达限商品拒加购（不分价格身份/不限秒杀行——挂在
+    // 主体，任何加购都判；负数（移出购物车）不拦）
+    if (quantity > 0) await this.assertPurchaseLimit(userId, [productId]);
     if (quantity > 0 && existing && Boolean(existing.asSeckill) !== asSeckill)
       throw new BadRequestException(
         asSeckill
@@ -1140,8 +1143,6 @@ export class BusinessService {
       if (!seckill) throw new BadRequestException('秒杀活动未开始或已结束');
       // IKQZOB：数量锁保留（一单一品一件）；已购拦截已拆（可重复购买）
       if (quantity > 1) throw new BadRequestException('秒杀商品每单限购 1 件');
-      // IKQZY7 周期限购：达限商品拒加购（不分价格身份）
-      await this.assertPurchaseLimit(userId, [productId]);
       // IKGNMV（一单一秒杀）：已有**其他**秒杀身份行时拒加（品种 ≤1/单）；
       // 原价行不受此限
       const others = await this.db.cartItem.findMany({
