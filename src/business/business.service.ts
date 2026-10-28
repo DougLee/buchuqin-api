@@ -2096,6 +2096,7 @@ export class BusinessService {
     status: string;
     auditRemark: string;
     wxRefundId: string | null;
+    refundedAt?: Date | null;
     createdAt: Date;
     updatedAt: Date;
     items?: Array<{
@@ -2120,6 +2121,7 @@ export class BusinessService {
       statusText: REFUND_STATUS_TEXT[record.status] ?? record.status,
       auditRemark: record.auditRemark,
       wxRefundId: record.wxRefundId,
+      refundedAt: record.refundedAt?.toISOString() ?? null,
       /** v2 部分退款：商品行（整单退为空数组） */
       items: (record.items ?? []).map((i) => ({
         id: i.id,
@@ -2246,15 +2248,33 @@ export class BusinessService {
       }>;
     },
   ) {
-    const pending = await this.db.refund.findFirst({
-      where: { orderId: order.id, status: 'pending' },
-      select: { id: true },
-    });
-    if (pending) throw new BadRequestException('该订单已有退款申请在审核中');
     const amount = input.items.length
       ? input.items.reduce((s, i) => s + i.amount, 0)
       : this.refundAmountFor(order);
+    if (amount < 1)
+      throw new BadRequestException('可退金额不足 0.01 元，无法提交退款');
     const record = await this.db.$transaction(async (tx) => {
+      // 先条件锁定订单：同一订单并发申请只有一笔能从原状态
+      // 进入 after-sales；退款创建失败则整个事务回滚。
+      const locked = await tx.order.updateMany({
+        where: { id: order.id, status: order.status },
+        data: { status: 'after-sales', statusText: input.statusText },
+      });
+      if (!locked.count)
+        throw new BadRequestException('该订单已有退款申请或状态已变化');
+      const reserved = await tx.refund.aggregate({
+        where: {
+          orderId: order.id,
+          status: { in: ['pending', 'approved', 'refunding', 'refunded'] },
+        },
+        _sum: { amount: true },
+      });
+      const available =
+        this.refundAmountFor(order) - Number(reserved._sum.amount ?? 0);
+      if (amount > available)
+        throw new BadRequestException(
+          `超出可退上限：本单最多还可退 ¥${(Math.max(0, available) / 100).toFixed(2)}`,
+        );
       const created = await tx.refund.create({
         data: {
           userId: order.userId,
@@ -2284,10 +2304,6 @@ export class BusinessService {
         include: { items: true },
       });
       return created;
-    });
-    await this.db.order.update({
-      where: { id: order.id },
-      data: { status: 'after-sales', statusText: input.statusText },
     });
     return this.refundView(record);
   }
@@ -2362,19 +2378,10 @@ export class BusinessService {
         return this.refundView(record);
       });
     }
-    // 遗留 AfterSale（IKHZKA 前的历史申请）：撤销并回滚订单（无快照按 delivered 兜底）
+    // 遗留 AfterSale 只读兼容历史查询；新状态变更必须只写 Refund。
     const item = await this.db.afterSale.findFirst({ where: { id, userId } });
     if (!item) throw new NotFoundException('售后单不存在');
-    if (item.status !== 'pending')
-      throw new BadRequestException('当前售后状态不可撤销');
-    return this.db.$transaction(async (tx) => {
-      const record = await tx.afterSale.update({
-        where: { id },
-        data: { status: 'cancelled' },
-      });
-      await this.restoreOrderFromRefund(tx, item.orderId, 'delivered');
-      return record;
-    });
+    throw new BadRequestException('历史售后记录仅供查看，无法修改');
   }
 
   /** 退款申请撤销/拒绝后订单回滚：仅当订单仍在售后态时回（并发推进则不动）。 */
@@ -2401,21 +2408,17 @@ export class BusinessService {
     const items = await this.db.refund.findMany({
       where: { userId },
       orderBy: { createdAt: 'desc' },
+      include: { items: true },
     });
-    return items.map((i) => ({
-      ...i,
-      amount: number(i.amount),
-      createdAt: i.createdAt.toISOString(),
-    }));
+    return items.map((i) => this.refundView(i));
   }
   async refund(userId: string, id: string) {
-    const item = await this.db.refund.findFirst({ where: { id, userId } });
+    const item = await this.db.refund.findFirst({
+      where: { id, userId },
+      include: { items: true },
+    });
     if (!item) throw new NotFoundException('退款记录不存在');
-    return {
-      ...item,
-      amount: number(item.amount),
-      createdAt: item.createdAt.toISOString(),
-    };
+    return this.refundView(item);
   }
   async notifications(userId: string) {
     const items = await this.db.notification.findMany({

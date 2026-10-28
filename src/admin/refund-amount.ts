@@ -10,6 +10,8 @@ export function approvedRefundAmount(
 ) {
   if (source === 'pre-delivery') return Math.round(lockedAmount);
   if (source === 'after-sale')
-    return items.reduce((sum, item) => sum + Math.round(item.amount), 0);
+    return items.length
+      ? items.reduce((sum, item) => sum + Math.round(item.amount), 0)
+      : Math.round(lockedAmount);
   throw new Error(`未知退款来源: ${source}`);
 }

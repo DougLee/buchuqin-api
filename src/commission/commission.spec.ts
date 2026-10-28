@@ -322,16 +322,43 @@ describe('commission & settlement (IK8W5L)', () => {
     expect(
       riderRecords.filter((x) => x.status === 'adjusted' && x.amount === -400),
     ).toHaveLength(1);
-    // 楼长（pending）→ 原地翻负为 adjusted
+    // 楼长（pending）同样保留原佣金，另记累计调整行
     const managerRecords = await db.commission.findMany({
       where: { orderId: orderA, staffId: MANAGER },
     });
-    expect(managerRecords).toHaveLength(1);
-    expect(managerRecords[0].status).toBe('adjusted');
-    expect(managerRecords[0].amount).toBe(-400);
-    // 负向调整计入当月聚合：楼长提成合计 400 - 400 = 0
+    expect(managerRecords).toHaveLength(2);
+    expect(
+      managerRecords.filter(
+        (x) => x.status === 'adjusted' && x.amount === -400,
+      ),
+    ).toHaveLength(1);
+    // 原佣金保留为正向快照，负向调整单独展示；应发口径相抵。
     const mine = await fulfillment.commissions(MANAGER, month);
     expect(mine.adjustment).toBe(-400);
-    expect(mine.deliveryIncome).toBe(0);
+    expect(mine.deliveryIncome).toBe(400);
+    expect(mine.payable).toBe(50000);
+  });
+
+  it('多次部分退款按累计比例更新同一条佣金调整，最终全退不重复冲回', async () => {
+    const orderB = orderIds[1];
+    await db.$transaction(async (tx) => {
+      await commissions.refundAdjust(tx, orderB, '累计退25%', 0.25);
+    });
+    await db.$transaction(async (tx) => {
+      await commissions.refundAdjust(tx, orderB, '累计退50%', 0.5);
+    });
+    await db.$transaction(async (tx) => {
+      await commissions.refundAdjust(tx, orderB, '最终全退', 1);
+    });
+
+    for (const staffId of [RIDER, MANAGER_Y]) {
+      const rows = await db.commission.findMany({
+        where: { orderId: orderB, staffId },
+      });
+      const adjustments = rows.filter((x) => x.kind === 'adjustment');
+      expect(adjustments).toHaveLength(1);
+      expect(adjustments[0].amount).toBe(-400);
+      expect(rows.reduce((sum, x) => sum + x.amount, 0)).toBe(0);
+    }
   });
 });

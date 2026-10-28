@@ -14,6 +14,10 @@ describe('approvedRefundAmount', () => {
     ).toBe(200);
   });
 
+  it('整单售后没有商品明细时保留申请时锁定金额', () => {
+    expect(approvedRefundAmount('after-sale', 1888, [])).toBe(1888);
+  });
+
   it('拒绝静默处理未知退款来源', () => {
     expect(() => approvedRefundAmount('unknown', 100, [])).toThrow(
       '未知退款来源: unknown',

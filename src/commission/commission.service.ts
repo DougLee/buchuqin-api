@@ -219,35 +219,53 @@ export class CommissionService {
     tx: Prisma.TransactionClient,
     orderId: string,
     reason: string,
+    ratio = 1,
   ): Promise<void> {
-    const records = await tx.commission.findMany({ where: { orderId } });
+    const records = await tx.commission.findMany({
+      where: { orderId, kind: 'commission' },
+    });
     if (!records.length) return;
+    const boundedRatio = Math.max(0, Math.min(1, ratio));
     const currentPeriod = new Date().toISOString().slice(0, 7);
-    for (const record of records) {
-      if (record.status === 'adjusted') continue;
-      if (record.status === 'settled') {
-        await tx.commission.create({
-          data: {
-            staffId: record.staffId,
-            orderId: record.orderId,
-            campusId: record.campusId,
-            ruleId: record.ruleId,
-            ruleVersion: record.ruleVersion,
-            amount: -record.amount,
-            kind: 'adjustment',
-            status: 'adjusted',
-            fallback: record.fallback,
-            period: currentPeriod,
-            remark: reason,
-          },
+    const staffIds = [...new Set(records.map((record) => record.staffId))];
+    for (const staffId of staffIds) {
+      const originals = records.filter((record) => record.staffId === staffId);
+      const originalAmount = originals.reduce(
+        (sum, record) => sum + Math.abs(record.amount),
+        0,
+      );
+      const targetAdjustment = -Math.round(originalAmount * boundedRatio);
+      if (!targetAdjustment) {
+        await tx.commission.deleteMany({
+          where: { orderId, staffId, kind: 'adjustment' },
         });
-      } else {
-        // pending：未结算的直接翻负，对冲本月聚合。
-        await tx.commission.update({
-          where: { id: record.id },
-          data: { amount: -record.amount, status: 'adjusted', remark: reason },
-        });
+        continue;
       }
+      const sample = originals[0];
+      await tx.commission.upsert({
+        where: {
+          orderId_staffId_kind: { orderId, staffId, kind: 'adjustment' },
+        },
+        create: {
+          staffId,
+          orderId,
+          campusId: sample.campusId,
+          ruleId: sample.ruleId,
+          ruleVersion: sample.ruleVersion,
+          amount: targetAdjustment,
+          kind: 'adjustment',
+          status: 'adjusted',
+          fallback: sample.fallback,
+          period: currentPeriod,
+          remark: reason,
+        },
+        update: {
+          amount: targetAdjustment,
+          status: 'adjusted',
+          period: currentPeriod,
+          remark: reason,
+        },
+      });
     }
   }
 

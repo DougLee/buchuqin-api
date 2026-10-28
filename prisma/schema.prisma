@@ -990,6 +990,8 @@ model Refund {
   auditAt     DateTime?
   auditRemark String  @default("")
   wxRefundId  String?
+  /// 微信确认退款成功的实际时间；报表按此字段统计退款，而不是订单当前状态。
+  refundedAt  DateTime?
   /// 最近一次退款失败原因（failed 可人工重试）
   refundError String @default("")
   /// 拒绝次数（拒绝后可重新申请，复用同一条记录留痕于审计）
@@ -1001,6 +1003,7 @@ model Refund {
   items RefundItem[]
 
   @@index([orderId])
+  @@index([status, refundedAt])
 }
 
 /// 退款商品行（IKHZKA v2）：部分退款的商品行快照与金额

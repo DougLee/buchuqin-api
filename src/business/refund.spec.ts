@@ -4,6 +4,8 @@ import { AdminService } from '../admin/admin.service';
 import type { ApplyPreDeliveryRefundDto } from './dto';
 import type { Prisma } from '@prisma/client';
 import type { PaymentsService } from '../payments/payments.service';
+import { WechatRefundOutcomeUnknownError } from '../payments/payments.service';
+import { BadRequestException } from '@nestjs/common';
 
 /**
  * 退款功能 v1 集成测试（IKHZKA）：
@@ -137,16 +139,191 @@ describe('refund v1 (IKHZKA)', () => {
     expect(refund.status).toBe('pending');
   });
 
-  test('金额口径：券抵扣后实付过低时钳 0 不出负数', async () => {
+  test('金额口径：实际可退不足 1 分时拒绝创建退款申请', async () => {
     const order = await makeOrder('paid');
     await db.order.update({
       where: { id: order.id },
       data: { discount: 1200, payableAmount: 0 }, // 券超抵：实付 0
     });
+    await expect(
+      business.applyPreDeliveryRefund(userId, order.id, {
+        reason: '测试退款',
+      }),
+    ).rejects.toThrow('可退金额不足 0.01 元');
+    expect(await db.refund.count({ where: { orderId: order.id } })).toBe(0);
+    expect(
+      (await db.order.findUniqueOrThrow({ where: { id: order.id } })).status,
+    ).toBe('paid');
+  });
+
+  test('微信退款请求结果未知时保持退款中，不回滚订单', async () => {
+    const order = await makeOrder('paid');
     const refund = await business.applyPreDeliveryRefund(userId, order.id, {
-      reason: '测试退款',
+      reason: '下错单了',
     });
-    expect(refund.amount).toBe(0);
+    const payments = {
+      applyWechatRefund: jest
+        .fn()
+        .mockRejectedValue(new WechatRefundOutcomeUnknownError()),
+    } as unknown as PaymentsService;
+    const refundAdmin = new AdminService(
+      db,
+      business,
+      undefined,
+      undefined,
+      undefined,
+      payments,
+    );
+
+    const after = await refundAdmin.auditRefund(
+      refund.id,
+      'approve',
+      'tester',
+      CAMPUS,
+    );
+
+    expect(after.status).toBe('refunding');
+    expect(after.wxRefundId).toBeNull();
+    expect(
+      (await db.order.findUniqueOrThrow({ where: { id: order.id } })).status,
+    ).toBe('after-sales');
+  });
+
+  test('退款回调与定时查单并发到达时只落账一次且均幂等成功', async () => {
+    const order = await makeOrder('paid');
+    await db.order.update({
+      where: { id: order.id },
+      data: { items: json([]) },
+    });
+    const refund = await business.applyPreDeliveryRefund(userId, order.id, {
+      reason: '下错单了',
+    });
+    await db.refund.update({
+      where: { id: refund.id },
+      data: { status: 'refunding' },
+    });
+    const refundAdmin = new AdminService(db, business);
+
+    const [fromCallback, fromCron] = await Promise.all([
+      refundAdmin.reconcileWechatRefundStatus(
+        refund.id,
+        'SUCCESS',
+        'wx-concurrent',
+        'wechat-refund-notify',
+      ),
+      refundAdmin.reconcileWechatRefundStatus(
+        refund.id,
+        'SUCCESS',
+        'wx-concurrent',
+        'system-refund-sync',
+      ),
+    ]);
+
+    expect(fromCallback.status).toBe('refunded');
+    expect(fromCron.status).toBe('refunded');
+    expect(
+      (await db.order.findUniqueOrThrow({ where: { id: order.id } })).status,
+    ).toBe('refunded');
+    expect(await db.refund.count({ where: { orderId: order.id } })).toBe(1);
+  });
+
+  test('未发货退款明确失败后可在 paid 订单上重试并完成', async () => {
+    const order = await makeOrder('paid');
+    await db.order.update({
+      where: { id: order.id },
+      data: { items: json([]) },
+    });
+    const refund = await business.applyPreDeliveryRefund(userId, order.id, {
+      reason: '下错单了',
+    });
+    const applyWechatRefund = jest
+      .fn()
+      .mockRejectedValueOnce(new BadRequestException('微信明确拒绝'))
+      .mockResolvedValueOnce({ status: 'SUCCESS', refundId: 'wx-retry-ok' });
+    const refundAdmin = new AdminService(
+      db,
+      business,
+      undefined,
+      undefined,
+      undefined,
+      { applyWechatRefund } as unknown as PaymentsService,
+    );
+
+    await expect(
+      refundAdmin.auditRefund(refund.id, 'approve', 'tester', CAMPUS),
+    ).rejects.toThrow('退款发起失败');
+    expect(
+      (await db.order.findUniqueOrThrow({ where: { id: order.id } })).status,
+    ).toBe('paid');
+
+    const retried = await refundAdmin.auditRefund(
+      refund.id,
+      'approve',
+      'tester',
+      CAMPUS,
+    );
+    expect(retried.status).toBe('refunded');
+    expect(applyWechatRefund).toHaveBeenCalledTimes(2);
+  });
+
+  test('审核上限预占 pending/approved/refunding 在途退款金额', async () => {
+    const order = await makeOrder('delivered');
+    await db.order.update({
+      where: { id: order.id },
+      data: { status: 'after-sales', statusText: '退款中' },
+    });
+    await db.refund.create({
+      data: {
+        userId,
+        orderId: order.id,
+        source: 'pre-delivery',
+        amount: 800,
+        beforeStatus: 'paid',
+        reason: '第一笔',
+        status: 'refunding',
+      },
+    });
+    const current = await db.refund.create({
+      data: {
+        userId,
+        orderId: order.id,
+        source: 'pre-delivery',
+        amount: 300,
+        beforeStatus: 'paid',
+        reason: '第二笔',
+        status: 'pending',
+      },
+    });
+    const payments = {
+      applyWechatRefund: jest.fn(),
+    } as unknown as PaymentsService;
+    const refundAdmin = new AdminService(
+      db,
+      business,
+      undefined,
+      undefined,
+      undefined,
+      payments,
+    );
+
+    await expect(
+      refundAdmin.auditRefund(current.id, 'approve', 'tester', CAMPUS),
+    ).rejects.toThrow('超出可退上限');
+    expect(payments.applyWechatRefund).not.toHaveBeenCalled();
+  });
+
+  test('同一订单并发申请只创建一条退款并锁定订单', async () => {
+    const order = await makeOrder('paid');
+    const results = await Promise.allSettled([
+      business.applyPreDeliveryRefund(userId, order.id, { reason: 'A' }),
+      business.applyPreDeliveryRefund(userId, order.id, { reason: 'B' }),
+    ]);
+    expect(results.filter((x) => x.status === 'fulfilled')).toHaveLength(1);
+    expect(results.filter((x) => x.status === 'rejected')).toHaveLength(1);
+    expect(await db.refund.count({ where: { orderId: order.id } })).toBe(1);
+    expect(
+      (await db.order.findUniqueOrThrow({ where: { id: order.id } })).status,
+    ).toBe('after-sales');
   });
 
   test('后台拒绝：订单回滚 paid，可重新申请（v2 新建一条，旧条留痕）', async () => {
@@ -262,6 +439,8 @@ describe('refund v1 (IKHZKA)', () => {
     await db.order.update({
       where: { id: order.id },
       data: {
+        productAmount: 4000,
+        payableAmount: 4150,
         package: json({ proof }),
         // 快照两行：10×1 + 15×2（行小计 1000 + 3000）
         items: json([

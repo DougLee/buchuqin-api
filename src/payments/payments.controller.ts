@@ -19,6 +19,7 @@ import { USER_ROLES_KEY, UserRoleGuard } from '../auth/user-role.guard';
 import type { AuthRequest } from '../auth/jwt-auth.guard';
 import { ok } from '../common/api-response';
 import { PaymentsService } from './payments.service';
+import { AdminService } from '../admin/admin.service';
 
 class PrepayDto {
   @IsString()
@@ -28,14 +29,18 @@ class PrepayDto {
 @ApiTags('支付')
 @Controller('payments')
 export class PaymentsController {
-  constructor(private readonly service: PaymentsService) {}
+  constructor(
+    private readonly service: PaymentsService,
+    private readonly admin: AdminService,
+  ) {}
 
   @Post('wechat/prepay')
   @UseGuards(JwtAuthGuard, UserRoleGuard)
   @SetMetadata(USER_ROLES_KEY, ['user'])
   @ApiBearerAuth()
   @ApiOperation({
-    summary: '微信小程序预下单（未配置商户参数返回 501，ADR-0004 后无演示通道）',
+    summary:
+      '微信小程序预下单（未配置商户参数返回 501，ADR-0004 后无演示通道）',
   })
   async prepay(@Req() req: AuthRequest, @Body() body: PrepayDto) {
     return ok(await this.service.prepay(req.user.id, body.orderId));
@@ -58,11 +63,36 @@ export class PaymentsController {
     );
   }
 
+  @Post('wechat/refund-notify')
+  @HttpCode(200)
+  @ApiOperation({ summary: '微信退款结果回调（验签、解密、幂等落账）' })
+  async refundNotify(
+    @Req() req: RawBodyRequest<Request>,
+    @Headers() headers: Record<string, string | string[] | undefined>,
+    @Body() body: Record<string, unknown>,
+  ) {
+    const event = await this.service.refundNotify(
+      headers,
+      req.rawBody?.toString('utf8') ?? '',
+      body,
+    );
+    await this.admin.reconcileWechatRefundStatus(
+      event.refundNo,
+      event.status,
+      event.refundId,
+      'wechat-refund-notify',
+      null,
+    );
+    return { code: 'SUCCESS', message: 'OK' };
+  }
+
   @Get('wechat/templates')
   @UseGuards(JwtAuthGuard, UserRoleGuard)
   @SetMetadata(USER_ROLES_KEY, ['user'])
   @ApiBearerAuth()
-  @ApiOperation({ summary: '订阅消息模板 ID（支付成功/送达，供支付前请求授权）' })
+  @ApiOperation({
+    summary: '订阅消息模板 ID（支付成功/送达，供支付前请求授权）',
+  })
   async templates() {
     return ok({ templates: this.service.subscribeTemplates() });
   }

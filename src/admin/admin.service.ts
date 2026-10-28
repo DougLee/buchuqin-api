@@ -4,6 +4,7 @@ import {
   ForbiddenException,
   HttpException,
   Injectable,
+  Logger,
   NotFoundException,
   Optional,
   ServiceUnavailableException,
@@ -20,7 +21,10 @@ import { maskIdCard } from '../common/sensitive';
 import { presignCosUrl } from '../files/cos-presign';
 import { CommissionService } from '../commission/commission.service';
 import { REFUND_STATUS_TEXT } from '../business/business.service';
-import { PaymentsService } from '../payments/payments.service';
+import {
+  PaymentsService,
+  WechatRefundOutcomeUnknownError,
+} from '../payments/payments.service';
 import type {
   AdjustStockDto,
   CreateAccountDto,
@@ -171,6 +175,7 @@ export function trimReportCost<T extends object>(report: T): T {
 
 @Injectable()
 export class AdminService {
+  private readonly logger = new Logger(AdminService.name);
   constructor(
     private readonly db: PrismaService,
     private readonly business: BusinessService,
@@ -208,53 +213,70 @@ export class AdminService {
     });
     const campusIds = campuses.map((campus) => campus.id);
     const campusWhere = organizationId ? { campusId: { in: campusIds } } : {};
-    const [paidAgg, userAgg, exceptionAgg, buildingAgg, profitRows] =
-      await Promise.all([
-        this.db.order.groupBy({
-          by: ['campusId'],
-          where: {
-            ...campusWhere,
-            paidAt: { gte: startOfToday },
-            status: { notIn: ['pending-payment', 'cancelled'] },
-          },
-          _count: { _all: true },
-          _sum: { payableAmount: true },
-        }),
-        this.db.user.groupBy({
-          by: ['campusId'],
-          where: { ...campusWhere, createdAt: { gte: startOfToday } },
-          _count: { _all: true },
-        }),
-        this.db.order.groupBy({
-          by: ['campusId'],
-          where: { ...campusWhere, status: 'exception' },
-          _count: { _all: true },
-        }),
-        this.db.building.groupBy({
-          by: ['campusId'],
-          where: campusWhere,
-          _count: { _all: true },
-        }),
-        // 校区概览毛利（2026-09-18 道哥）：口径与校区经营日报一致——
-        // 综合毛利=实付−配送费 − 行级 unitWholesaleCost 快照×数量（IKJ92S：
-        // 配送费交付配送员属配送成本，不进毛利；快照前历史单按 0 成本计）；
-        // IKISZ2 增毛利（未扣券）=商品金额 − 同口径成本
-        this.db.order.findMany({
-          where: {
-            ...campusWhere,
-            paidAt: { gte: startOfToday },
-            status: { notIn: ['pending-payment', 'cancelled'] },
-          },
-          select: {
-            campusId: true,
-            payableAmount: true,
-            productAmount: true,
-            deliveryFee: true,
-            discount: true,
-            items: true,
-          },
-        }),
-      ]);
+    const [
+      paidAgg,
+      userAgg,
+      exceptionAgg,
+      buildingAgg,
+      profitRows,
+      refundRows,
+    ] = await Promise.all([
+      this.db.order.groupBy({
+        by: ['campusId'],
+        where: {
+          ...campusWhere,
+          paidAt: { gte: startOfToday },
+          status: { notIn: ['pending-payment', 'cancelled'] },
+        },
+        _count: { _all: true },
+        _sum: { payableAmount: true },
+      }),
+      this.db.user.groupBy({
+        by: ['campusId'],
+        where: { ...campusWhere, createdAt: { gte: startOfToday } },
+        _count: { _all: true },
+      }),
+      this.db.order.groupBy({
+        by: ['campusId'],
+        where: { ...campusWhere, status: 'exception' },
+        _count: { _all: true },
+      }),
+      this.db.building.groupBy({
+        by: ['campusId'],
+        where: campusWhere,
+        _count: { _all: true },
+      }),
+      // 校区概览毛利（2026-09-18 道哥）：口径与校区经营日报一致——
+      // 综合毛利=实付−配送费 − 行级 unitWholesaleCost 快照×数量（IKJ92S：
+      // 配送费交付配送员属配送成本，不进毛利；快照前历史单按 0 成本计）；
+      // IKISZ2 增毛利（未扣券）=商品金额 − 同口径成本
+      this.db.order.findMany({
+        where: {
+          ...campusWhere,
+          paidAt: { gte: startOfToday },
+          status: { notIn: ['pending-payment', 'cancelled'] },
+        },
+        select: {
+          campusId: true,
+          payableAmount: true,
+          productAmount: true,
+          deliveryFee: true,
+          discount: true,
+          items: true,
+        },
+      }),
+      this.db.refund.findMany({
+        where: {
+          status: 'refunded',
+          refundedAt: { gte: startOfToday },
+          order: campusWhere,
+        },
+        select: {
+          amount: true,
+          order: { select: { campusId: true } },
+        },
+      }),
+    ]);
     const paidByCampus = new Map(paidAgg.map((r) => [r.campusId, r]));
     const usersByCampus = new Map(
       userAgg.map((r) => [r.campusId, r._count._all]),
@@ -268,6 +290,12 @@ export class AdminService {
     const profitByCampus = new Map<string, number>();
     const marginByCampus = new Map<string, number>();
     const couponByCampus = new Map<string, number>();
+    const refundsByCampus = new Map<string, number>();
+    for (const refund of refundRows)
+      refundsByCampus.set(
+        refund.order.campusId,
+        (refundsByCampus.get(refund.order.campusId) ?? 0) + refund.amount,
+      );
     for (const o of profitRows) {
       const lines =
         (o.items as unknown as Array<{
@@ -299,18 +327,20 @@ export class AdminService {
     }
     const campusRows = campuses.map((c) => {
       const paid = paidByCampus.get(c.id);
+      const refunded = refundsByCampus.get(c.id) ?? 0;
       return {
         campusId: c.id,
         name: c.name,
         shortName: c.shortName,
         status: c.status,
         buildings: buildingsByCampus.get(c.id) ?? 0,
-        revenue: this.num(paid?._sum.payableAmount ?? 0),
+        revenue: this.num(paid?._sum.payableAmount ?? 0) - refunded,
+        refundedAmount: refunded,
         // IKISZ2 双口径：margin=毛利（未扣券） / profit=综合毛利（实付−成本）
-        margin: this.num(marginByCampus.get(c.id) ?? 0),
+        margin: this.num(marginByCampus.get(c.id) ?? 0) - refunded,
         // 今日优惠券消耗（订单优惠抵扣，IKJ9YP）
         coupon: this.num(couponByCampus.get(c.id) ?? 0),
-        profit: this.num(profitByCampus.get(c.id) ?? 0),
+        profit: this.num(profitByCampus.get(c.id) ?? 0) - refunded,
         orders: paid?._count._all ?? 0,
         newUsers: usersByCampus.get(c.id) ?? 0,
         exceptions: exceptionByCampus.get(c.id) ?? 0,
@@ -320,6 +350,10 @@ export class AdminService {
       campusRows,
       kpis: {
         revenue: campusRows.reduce((sum, r) => sum + r.revenue, 0),
+        refundedAmount: campusRows.reduce(
+          (sum, r) => sum + r.refundedAmount,
+          0,
+        ),
         margin: campusRows.reduce((sum, r) => sum + r.margin, 0),
         coupon: campusRows.reduce((sum, r) => sum + r.coupon, 0),
         profit: campusRows.reduce((sum, r) => sum + r.profit, 0),
@@ -329,13 +363,15 @@ export class AdminService {
         campuses: campusRows.length,
       },
       caliber: {
-        revenue: '全部校区今日支付的有效单实付金额合计（分）',
+        revenue: '全部校区今日实付减今日实际退款金额后的净额（分）',
+        refundedAmount:
+          '全部校区今日确认成功的 Refund.amount 实际退款金额合计（分）',
         margin:
           '全部校区今日支付的有效单毛利合计（商品金额−行级批发成本快照，未扣券，分）',
         coupon:
           '全部校区今日支付的有效单优惠券抵扣合计（订单 discount 字段，分）',
         profit:
-          '全部校区今日支付的有效单综合毛利合计（实付−配送费−行级批发成本快照，扣券且剔除交付配送员的配送费，分）',
+          '全部校区今日净综合毛利（实付−当日实际退款−配送费−行级批发成本快照，分）',
         orders: '全部校区今日支付的有效单合计',
         newUsers: '全部校区今日新增用户',
         exceptions: '状态为异常的未结订单（不限当日）',
@@ -350,28 +386,44 @@ export class AdminService {
       const report = await this.hqDashboard(true, organizationId);
       return costRead ? report : trimReportCost(report);
     }
-    const [campus, orders, buildings, trend, activities, staffRows, stageRows] =
-      await Promise.all([
-        this.db.campus.findFirstOrThrow({ where: { id: campusId } }),
-        this.db.order.findMany({ where: { campusId } }),
-        this.db.building.findMany({ where: { campusId } }),
-        this.trend(campusId),
-        this.activities(campusId),
-        // IKAJSS 水位下钻：在职履约人员按角色计数
-        this.db.staff.groupBy({
-          by: ['role'],
-          where: { campusId },
-          _count: { _all: true },
-        }),
-        // IKAJSS 水位下钻：各节点平均停留（自支付起算的分钟数；paid+picking 并入待拣货）
-        this.db.$queryRaw<Array<{ node: string; minutes: number | null }>>`
+    const [
+      campus,
+      orders,
+      buildings,
+      trend,
+      activities,
+      staffRows,
+      stageRows,
+      refundsToday,
+    ] = await Promise.all([
+      this.db.campus.findFirstOrThrow({ where: { id: campusId } }),
+      this.db.order.findMany({ where: { campusId } }),
+      this.db.building.findMany({ where: { campusId } }),
+      this.trend(campusId),
+      this.activities(campusId),
+      // IKAJSS 水位下钻：在职履约人员按角色计数
+      this.db.staff.groupBy({
+        by: ['role'],
+        where: { campusId },
+        _count: { _all: true },
+      }),
+      // IKAJSS 水位下钻：各节点平均停留（自支付起算的分钟数；paid+picking 并入待拣货）
+      this.db.$queryRaw<Array<{ node: string; minutes: number | null }>>`
           SELECT CASE WHEN status IN ('paid','picking') THEN 'waitingPick' ELSE status END AS node,
                  (AVG(EXTRACT(EPOCH FROM (now() - "paidAt")) / 60))::int AS minutes
           FROM "Order"
           WHERE "campusId" = ${campusId} AND "paidAt" IS NOT NULL
             AND status IN ('paid','picking','waiting-first-mile','first-mile','waiting-handover','last-mile')
           GROUP BY 1`,
-      ]);
+      this.db.refund.findMany({
+        where: {
+          status: 'refunded',
+          refundedAt: { gte: new Date(new Date().setHours(0, 0, 0, 0)) },
+          order: { campusId },
+        },
+        select: { amount: true },
+      }),
+    ]);
     // 有效单：排除待支付/已取消，后续所有口径基于有效单计算。
     const effective = orders.filter(
       (x) => !['pending-payment', 'cancelled'].includes(x.status),
@@ -386,7 +438,10 @@ export class AdminService {
     const paidToday = effective.filter(
       (x) => x.paidAt && x.paidAt.getTime() >= startOfToday.getTime(),
     );
-    const refundedToday = paidToday.filter((x) => x.status === 'refunded');
+    const refundedAmountToday = refundsToday.reduce(
+      (sum, refund) => sum + refund.amount,
+      0,
+    );
     // 送达时间优先取送达凭证时间（delivered 动作写入），历史单回退 timeline 末节点。
     const deliveredAt = (order: (typeof orders)[number]) => {
       const proof = (order.package as Record<string, any> | null)?.proof;
@@ -487,7 +542,9 @@ export class AdminService {
       updatedAt: new Date().toISOString(),
       kpis: {
         // 金额单位:分——整数求和，无浮点误差（IK8W5K）。
-        revenue: paidToday.reduce((s, x) => s + this.num(x.payableAmount), 0),
+        revenue:
+          paidToday.reduce((s, x) => s + this.num(x.payableAmount), 0) -
+          refundedAmountToday,
         // 与多校区汇总同口径：今日已支付有效单的订单优惠抵扣合计。
         coupon: paidToday.reduce((s, x) => s + this.num(x.discount), 0),
         orders: todayOrders.length,
@@ -495,21 +552,18 @@ export class AdminService {
         newUsers: await this.db.user.count({
           where: { campusId, createdAt: { gte: startOfToday } },
         }),
-        refundedAmount: refundedToday.reduce(
-          (s, x) => s + this.num(x.payableAmount),
-          0,
-        ),
+        refundedAmount: refundedAmountToday,
         fulfillmentRate: rate(completed.length, effective.length),
         exceptions: effective.filter((x) => x.status === 'exception').length,
         onTimeRate: rate(onTime.length, completed.length),
       },
       // KPI 口径说明（前端标签需按此对齐 PRD §8.4）。
       caliber: {
-        revenue:
-          '今日支付金额：paidAt 为今日的有效单（待支付/已取消排除），含今日退款单',
+        revenue: '今日净支付金额：今日实付合计减去今日确认成功的实际退款金额',
         coupon:
           '今日优惠券消耗：paidAt 为今日的有效单优惠券抵扣合计（订单 discount 字段，分）',
-        refundedAmount: '今日退款金额：今日支付且当前状态为 refunded 的单',
+        refundedAmount:
+          '今日退款金额：refundedAt 为今日的 Refund.amount 实际金额合计',
         orders: '今日订单：createdAt >= 今日 0 点的有效单（待支付/已取消排除）',
         newUsers: '今日新用户：createdAt >= 今日 0 点',
         fulfillmentRate:
@@ -3905,6 +3959,10 @@ export class AdminService {
         deliveryFee: true,
         items: true,
         address: true,
+        refunds: {
+          where: { status: 'refunded' },
+          select: { amount: true, source: true },
+        },
         campus: { select: { name: true, shortName: true } },
       },
     });
@@ -3949,33 +4007,37 @@ export class AdminService {
         costTotal: 0,
         refundedTotal: 0,
       };
-      // IKLEDG：退款单只入退款列，不计订单数/销售额（净额口径）
-      if (o.status === 'refunded') {
-        cur.refundedTotal += o.payableAmount;
-        agg.set(k, cur);
-        continue;
-      }
+      const actualRefunded = o.refunds.reduce((sum, r) => sum + r.amount, 0);
+      const fullPreDelivery =
+        o.refunds.some((r) => r.source === 'pre-delivery') &&
+        actualRefunded >= o.payableAmount - o.deliveryFee;
       cur.orders += 1;
-      cur.salesTotal += o.payableAmount;
+      // 净额必须使用 Refund.amount；不能用订单状态推断，也不能把不退的配送费算退款。
+      cur.salesTotal += o.payableAmount - actualRefunded;
+      cur.refundedTotal += actualRefunded;
       // IKISZ2 商品金额合计（毛利未扣券口径的分母项）
-      cur.productTotal += o.productAmount;
+      cur.productTotal += fullPreDelivery
+        ? 0
+        : Math.max(0, o.productAmount - actualRefunded);
       // IKJ92S 配送费合计（综合毛利剔除项：交付配送员的配送成本）
       cur.deliveryTotal += o.deliveryFee;
       // 行成本=数量×IKFOPQ 每零售单位批发成本快照（缺快照按 0）
-      cur.costTotal += (
-        o.items as Array<{
-          quantity: number;
-          product?: { unitGrossCost?: number; unitWholesaleCost?: number };
-        }>
-      ).reduce(
-        (sum, line) =>
-          sum +
-          line.quantity *
-            (line.product?.unitGrossCost ??
-              line.product?.unitWholesaleCost ??
-              0),
-        0,
-      );
+      cur.costTotal += fullPreDelivery
+        ? 0
+        : (
+            o.items as Array<{
+              quantity: number;
+              product?: { unitGrossCost?: number; unitWholesaleCost?: number };
+            }>
+          ).reduce(
+            (sum, line) =>
+              sum +
+              line.quantity *
+                (line.product?.unitGrossCost ??
+                  line.product?.unitWholesaleCost ??
+                  0),
+            0,
+          );
       agg.set(k, cur);
     }
     const rows = [...agg.values()]
@@ -5709,7 +5771,12 @@ export class AdminService {
     // approve：pending 或 failed（failed = 微信受理失败后的重试）
     if (!['pending', 'failed'].includes(refund.status))
       throw new BadRequestException('当前状态不可批准');
+    const retryingPreDelivery =
+      refund.status === 'failed' &&
+      refund.source === 'pre-delivery' &&
+      refund.order.status === 'paid';
     if (
+      !retryingPreDelivery &&
       !['after-sales', 'delivered', 'completed'].includes(refund.order.status)
     )
       throw new BadRequestException('订单状态已变化，无法退款，请刷新');
@@ -5743,6 +5810,14 @@ export class AdminService {
       });
       if (!claimed.count)
         throw new BadRequestException('申请状态已变化，请刷新');
+      if (refund.order.status !== 'after-sales') {
+        const locked = await tx.order.updateMany({
+          where: { id: refund.orderId, status: refund.order.status },
+          data: { status: 'after-sales', statusText: '退款处理中' },
+        });
+        if (!locked.count)
+          throw new BadRequestException('订单状态已变化，请刷新');
+      }
       if (amounts?.length)
         await Promise.all(
           amounts.map((a) =>
@@ -5764,13 +5839,15 @@ export class AdminService {
       const refundedBefore = await tx.refund.aggregate({
         where: {
           orderId: refund.orderId,
-          status: 'refunded',
+          status: { in: ['pending', 'approved', 'refunding', 'refunded'] },
           id: { not: id },
         },
         _sum: { amount: true },
       });
       const goodsPaid =
         Number(refund.order.payableAmount) - Number(refund.order.deliveryFee);
+      if (finalAmount < 1)
+        throw new BadRequestException('退款金额必须至少为 0.01 元');
       if (finalAmount + Number(refundedBefore._sum.amount ?? 0) > goodsPaid)
         throw new BadRequestException(
           `超出可退上限：本单最多还可退 ¥${((goodsPaid - Number(refundedBefore._sum.amount ?? 0)) / 100).toFixed(2)}`,
@@ -5810,6 +5887,28 @@ export class AdminService {
       );
       return record;
     } catch (error) {
+      if (
+        error instanceof WechatRefundOutcomeUnknownError ||
+        !(error instanceof HttpException)
+      ) {
+        const record = await this.db.refund.update({
+          where: { id },
+          data: {
+            status: 'refunding',
+            refundError: '微信退款受理结果待确认，系统将自动查单',
+          },
+        });
+        await this.audit(
+          operator,
+          'refund.approve.unknown',
+          'refund',
+          id,
+          { status: refund.status },
+          { status: 'refunding', reason: error.message },
+          campusId,
+        );
+        return record;
+      }
       const message =
         error instanceof HttpException ? error.message : '退款请求失败';
       await this.db.refund.update({
@@ -5862,16 +5961,36 @@ export class AdminService {
       where: { id: refund.orderId },
     });
     const goodsPaid = Number(order.payableAmount) - Number(order.deliveryFee);
-    const refundedAgg = await this.db.refund.aggregate({
-      where: { orderId: order.id, status: 'refunded' },
-      _sum: { amount: true },
-    });
-    const totalRefunded = Number(refundedAgg._sum.amount ?? 0) + refund.amount;
-    const isFull = totalRefunded >= goodsPaid;
     // 幂等早退：本条已落过账（syncRefund 重复调用）直接返回
     if (refund.status === 'refunded')
       return this.db.refund.findUniqueOrThrow({ where: { id: refund.id } });
+    let totalRefunded = 0;
+    let isFull = false;
+    let didFinish = false;
     const record = await this.db.$transaction(async (tx) => {
+      // 同一订单的退款终态串行落账：避免回调与 Cron 并发导致重复回库、
+      // 重复返券，或两笔部分退款合计全退却仍把订单恢复为已送达。
+      await tx.$queryRaw<Array<{ locked: string }>>`
+        SELECT pg_advisory_xact_lock(hashtext(${order.id}))::text AS locked
+      `;
+      const currentRefund = await tx.refund.findUniqueOrThrow({
+        where: { id: refund.id },
+      });
+      const refundedAgg = await tx.refund.aggregate({
+        where: { orderId: order.id, status: 'refunded' },
+        _sum: { amount: true },
+      });
+      if (currentRefund.status === 'refunded') {
+        totalRefunded = Number(refundedAgg._sum.amount ?? 0);
+        isFull = totalRefunded >= goodsPaid;
+        return currentRefund;
+      }
+      totalRefunded =
+        Number(refundedAgg._sum.amount ?? 0) + currentRefund.amount;
+      isFull = totalRefunded >= goodsPaid;
+      const currentOrder = await tx.order.findUniqueOrThrow({
+        where: { id: order.id },
+      });
       // 部分退：订单回原状态（快照在 Refund.beforeStatus）；整单退：refunded。
       // 客服单批准时订单在 delivered/completed（未转售后态）也在合法范围。
       const patchData = isFull
@@ -5893,17 +6012,26 @@ export class AdminService {
             };
           })();
       const won = await tx.order.updateMany({
-        where: { id: order.id, status: { in: ['after-sales', order.status] } },
+        where: {
+          id: order.id,
+          status: { in: ['after-sales', currentOrder.status] },
+        },
         data: patchData,
       });
       if (!won.count) throw new BadRequestException('订单状态已变化，请刷新');
       const after = await tx.refund.update({
         where: { id: refund.id },
-        data: { status: 'refunded', wxRefundId, refundError: '' },
+        data: {
+          status: 'refunded',
+          wxRefundId,
+          refundedAt: new Date(),
+          refundError: '',
+        },
       });
+      didFinish = true;
       if (refund.source === 'pre-delivery' && isFull) {
         // 货未出仓：回补库存与销量（商品可能已被清理，存在才回补）
-        if (!order.stockRestored) {
+        if (!currentOrder.stockRestored) {
           const lines =
             (order.items as Array<{
               product?: { id?: string; costSource?: 'HQ' | 'LOCAL' | 'LEGACY' };
@@ -5959,25 +6087,18 @@ export class AdminService {
       }
       return after;
     });
+    if (!didFinish) return record;
     if (refund.source !== 'pre-delivery') {
-      if (isFull) {
-        // 整单终态的售后退款：佣金全额冲回
-        await this.db.$transaction(async (tx) => {
-          await this.commissions.refundAdjust(
-            tx,
-            order.id,
-            `售后退款冲回 ${order.orderNo}`,
-          );
-        });
-      } else {
-        // 部分退：按累计退款比例冲回（目标差值法）
-        await this.refundCommissionPartial(
+      // 整单/多次部分退都写同一条累计调整：保留原佣金快照，
+      // 按累计已退占商品实付比例 upsert，避免首次多冲、二次不冲。
+      await this.db.$transaction(async (tx) => {
+        await this.commissions.refundAdjust(
+          tx,
           order.id,
-          goodsPaid,
-          totalRefunded,
-          order.orderNo,
+          `售后退款冲回 ${order.orderNo}`,
+          goodsPaid > 0 ? totalRefunded / goodsPaid : 1,
         );
-      }
+      });
     }
     await this.audit(
       operator,
@@ -6009,67 +6130,6 @@ export class AdminService {
   }
 
   /**
-   * 售后部分退款佣金冲回（IKHZKA v2，比例目标差值法）：
-   * 目标冲回额 = 原佣金总额 × (累计已退 ÷ 商品实付)，本次补足「目标 − 已冲回」，
-   * 多次部分退累加不会超过佣金全额。在 finishRefund 落账事务外单独执行
-   * （Commission 读写独立，失败仅记日志）。
-   */
-  private async refundCommissionPartial(
-    orderId: string,
-    goodsPaid: number,
-    totalRefunded: number,
-    orderNo: string,
-  ) {
-    try {
-      const ratio = goodsPaid > 0 ? Math.min(1, totalRefunded / goodsPaid) : 1;
-      await this.db.$transaction(async (tx) => {
-        const originals = await tx.commission.findMany({
-          where: { orderId, kind: 'commission' },
-        });
-        const adjusted = await tx.commission.aggregate({
-          where: { orderId, kind: 'adjustment' },
-          _sum: { amount: true },
-        });
-        const totalCommission = originals.reduce(
-          (s, x) => s + Math.abs(x.amount),
-          0,
-        );
-        if (totalCommission <= 0) return;
-        const target = Math.round(totalCommission * ratio);
-        const done = Math.abs(adjusted._sum.amount ?? 0);
-        const delta = target - done;
-        if (delta <= 0) return;
-        const riders = [...new Set(originals.map((x) => x.staffId))];
-        // 多骑手单按各自佣金占比分摊（单骑手单即全额差值）
-        for (const staffId of riders) {
-          const share = originals
-            .filter((x) => x.staffId === staffId)
-            .reduce((s, x) => s + Math.abs(x.amount), 0);
-          const part = Math.round((delta * share) / totalCommission);
-          if (part <= 0) continue;
-          await tx.commission.create({
-            data: {
-              staffId,
-              orderId,
-              campusId: originals[0].campusId,
-              amount: -part,
-              kind: 'adjustment',
-              status: 'adjusted',
-              period: new Date().toISOString().slice(0, 7),
-              remark: `售后部分退款冲回 ${orderNo}`,
-            },
-          });
-        }
-      });
-    } catch (error) {
-      console.warn(
-        `[refund] 部分退款佣金冲回失败（不影响退款）: ${orderNo}`,
-        error instanceof Error ? error.message : error,
-      );
-    }
-  }
-
-  /**
    * 退款状态同步（IKHZKA）：refunding/approved/failed 的单向微信查终态并落账；
    * CLOSED=微信侧关闭（可重新批准重试）、ABNORMAL=微信异常（需商户平台人工处理）。
    * scope：校区级授权传本校区（强校验），平台级传 null（跨校区可查）。
@@ -6081,48 +6141,111 @@ export class AdminService {
     });
     if (!refund || (scope !== null && refund.order.campusId !== scope))
       throw new NotFoundException('退款申请不存在');
-    const campusId = refund.order.campusId;
     if (!['refunding', 'approved', 'failed'].includes(refund.status))
       throw new BadRequestException('当前状态无需同步');
     if (!this.payments) throw new ServiceUnavailableException('支付服务未就绪');
     // 微信按 out_refund_no（= Refund.id）查询
     const result = await this.payments.queryWechatRefund(refund.id);
+    return this.reconcileWechatRefundStatus(
+      id,
+      result.status,
+      result.refundId,
+      operator,
+      scope,
+    );
+  }
+
+  /** 微信查单与退款回调共用的单一状态落账入口。 */
+  async reconcileWechatRefundStatus(
+    id: string,
+    wxStatus: string,
+    wxRefundId: string | undefined,
+    operator: string,
+    scope: string | null = null,
+  ) {
+    const refund = await this.db.refund.findUnique({
+      where: { id },
+      include: { order: true },
+    });
+    if (!refund || (scope !== null && refund.order.campusId !== scope))
+      throw new NotFoundException('退款申请不存在');
+    const campusId = refund.order.campusId;
     await this.audit(
       operator,
       'refund.sync',
       'refund',
       id,
       { status: refund.status },
-      { wxStatus: result.status },
+      { wxStatus },
       campusId,
     );
-    if (result.status === 'SUCCESS')
+    if (refund.status === 'refunded') return refund;
+    if (wxStatus === 'SUCCESS')
       return this.finishRefund(
         refund,
-        result.refundId ?? refund.wxRefundId ?? '',
+        wxRefundId ?? refund.wxRefundId ?? '',
         operator,
         campusId,
       );
-    if (result.status === 'CLOSED')
-      return this.db.refund.update({
-        where: { id },
-        data: {
-          status: 'failed',
-          refundError: '微信侧退款已关闭，可重新批准发起',
-        },
+    if (wxStatus === 'PROCESSING')
+      return this.db.$transaction(async (tx) => {
+        await tx.order.updateMany({
+          where: {
+            id: refund.orderId,
+            status: { in: [refund.order.status, 'after-sales'] },
+          },
+          data: { status: 'after-sales', statusText: '退款处理中' },
+        });
+        return tx.refund.update({
+          where: { id },
+          data: {
+            status: 'refunding',
+            wxRefundId: wxRefundId ?? refund.wxRefundId,
+            refundError: '',
+          },
+        });
       });
-    if (result.status === 'ABNORMAL')
-      return this.db.refund.update({
-        where: { id },
-        data:
-          refund.status === 'approved'
-            ? {
-                status: 'failed',
-                refundError: '退款未被微信受理，可重新批准发起',
-              }
-            : { refundError: '微信侧退款异常，需登录商户平台处理' },
+    if (['CLOSED', 'ABNORMAL'].includes(wxStatus))
+      return this.db.$transaction(async (tx) => {
+        const failed = await tx.refund.update({
+          where: { id },
+          data: {
+            status: 'failed',
+            wxRefundId: wxRefundId ?? refund.wxRefundId,
+            refundError:
+              wxStatus === 'CLOSED'
+                ? '微信侧退款已关闭，可重新批准发起'
+                : '退款未被微信受理，可重新批准发起',
+          },
+        });
+        await this.restoreOrderFromRefund(
+          tx,
+          refund.orderId,
+          refund.beforeStatus,
+        );
+        return failed;
       });
-    return refund; // PROCESSING：继续等
+    return refund;
+  }
+
+  /** 退款补偿任务入口：受理中、抢占后未完成及失败单都可重复查单，天然幂等。 */
+  async syncOutstandingRefunds() {
+    const rows = await this.db.refund.findMany({
+      where: { status: { in: ['approved', 'refunding', 'failed'] } },
+      orderBy: { updatedAt: 'asc' },
+      take: 100,
+      select: { id: true },
+    });
+    for (const row of rows) {
+      try {
+        await this.syncRefund(row.id, 'system-refund-sync', null);
+      } catch (error) {
+        this.logger.warn(
+          `退款自动查单失败 refund=${row.id}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+    return rows.length;
   }
 
   /**
@@ -6146,11 +6269,6 @@ export class AdminService {
       throw new BadRequestException('仅送达后的订单支持按商品退款');
     if (!input.productIds?.length)
       throw new BadRequestException('请勾选退款商品');
-    const pending = await this.db.refund.findFirst({
-      where: { orderId, status: 'pending' },
-      select: { id: true },
-    });
-    if (pending) throw new BadRequestException('该订单已有退款申请在审核中');
     const items = this.business.parseRefundItems(order, input.productIds);
     const amtMap = new Map(
       (input.amounts ?? []).map((a) => [a.productId, a.amount]),
@@ -6167,41 +6285,64 @@ export class AdminService {
       }
     }
     const total = items.reduce((s, i) => s + i.amount, 0);
-    const refundedBefore = await this.db.refund.aggregate({
-      where: { orderId, status: 'refunded' },
+    if (total < 1) throw new BadRequestException('退款金额必须至少为 0.01 元');
+    // 快速预检用于在支付通道未就绪前也返回准确金额错误；事务内仍会再次
+    // 加锁校验，不能把本次预检当成并发安全依据。
+    const preReserved = await this.db.refund.aggregate({
+      where: {
+        orderId,
+        status: { in: ['pending', 'approved', 'refunding', 'refunded'] },
+      },
       _sum: { amount: true },
     });
-    const goodsPaid = Number(order.payableAmount) - Number(order.deliveryFee);
-    const already = Number(refundedBefore._sum.amount ?? 0);
-    if (total + already > goodsPaid)
+    const preGoodsPaid =
+      Number(order.payableAmount) - Number(order.deliveryFee);
+    const preAlready = Number(preReserved._sum.amount ?? 0);
+    if (total + preAlready > preGoodsPaid)
       throw new BadRequestException(
-        `超出可退上限：本单最多还可退 ¥${((goodsPaid - already) / 100).toFixed(2)}`,
+        `超出可退上限：本单最多还可退 ¥${((preGoodsPaid - preAlready) / 100).toFixed(2)}`,
       );
     if (!this.payments)
       // 校验全过再验支付通道（便于测试上限逻辑）
       throw new ServiceUnavailableException('支付服务未就绪，无法发起退款');
-    const refund = await this.db.refund.create({
-      data: {
-        userId: order.userId,
-        orderId,
-        source: 'after-sale',
-        type: null,
-        description: '',
-        images: [],
-        reason: input.remark?.slice(0, 120) ?? '',
-        amount: total,
-        beforeStatus: order.status === 'after-sales' ? '' : order.status,
-        status: 'pending',
-        auditBy: operator,
-        auditAt: new Date(),
-        auditRemark: input.remark?.slice(0, 200) ?? '',
-        items: { create: items },
-      },
-    });
-    // 订单转售后态锁定（与 C 端申请一致；部分退落账时回滚 beforeStatus）
-    await this.db.order.update({
-      where: { id: orderId },
-      data: { status: 'after-sales', statusText: '部分退款中' },
+    const refund = await this.db.$transaction(async (tx) => {
+      const locked = await tx.order.updateMany({
+        where: { id: orderId, status: order.status },
+        data: { status: 'after-sales', statusText: '部分退款中' },
+      });
+      if (!locked.count)
+        throw new BadRequestException('订单状态已变化，请刷新');
+      const reserved = await tx.refund.aggregate({
+        where: {
+          orderId,
+          status: { in: ['pending', 'approved', 'refunding', 'refunded'] },
+        },
+        _sum: { amount: true },
+      });
+      const goodsPaid = Number(order.payableAmount) - Number(order.deliveryFee);
+      const already = Number(reserved._sum.amount ?? 0);
+      if (total + already > goodsPaid)
+        throw new BadRequestException(
+          `超出可退上限：本单最多还可退 ¥${((goodsPaid - already) / 100).toFixed(2)}`,
+        );
+      return tx.refund.create({
+        data: {
+          userId: order.userId,
+          orderId,
+          source: 'after-sale',
+          type: null,
+          description: '',
+          images: [],
+          reason: input.remark?.slice(0, 120) ?? '',
+          amount: total,
+          beforeStatus: order.status === 'after-sales' ? '' : order.status,
+          status: 'pending',
+          auditBy: operator,
+          auditAt: new Date(),
+          auditRemark: input.remark?.slice(0, 200) ?? '',
+          items: { create: items },
+        },
+      });
     });
     // 创建即批准：复用 auditRefund 的微信退款+落账链路
     return this.auditRefund(

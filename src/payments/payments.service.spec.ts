@@ -3,10 +3,22 @@ import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
 import { BusinessService } from '../business/business.service';
 import { buildOrderTimeline } from '../common/order-state';
-import { PaymentsService } from './payments.service';
+import { PaymentsService, refundNotifyUrl } from './payments.service';
 
 /** 微信支付 env 门控（501 硬错误，无 mock 回退）+ 回调验签 + 超时关单（IK8W5I → ADR-0004）。 */
 describe('payments wechat (IK8W5I)', () => {
+  it('退款通知 URL 从支付通知 URL 稳定派生', () => {
+    expect(
+      refundNotifyUrl(
+        'https://admin-test.example.com/api/v1/payments/wechat/notify',
+      ),
+    ).toBe(
+      'https://admin-test.example.com/api/v1/payments/wechat/refund-notify',
+    );
+    expect(() => refundNotifyUrl('not-a-url')).toThrow(
+      '微信支付回调地址配置错误',
+    );
+  });
   const db = new PrismaService();
   const business = new BusinessService(db);
   const service = new PaymentsService(db, business);

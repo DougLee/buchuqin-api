@@ -16,6 +16,32 @@ import { campusWechatConfig, normalizePem } from '../common/wechat-org';
 /** 微信支付 v3 商户 API 主机（下单/证书下载都走这里，不是 api.weixin.qq.com）。 */
 const WX_PAY_HOST = 'https://api.mch.weixin.qq.com';
 
+/** 支付通知 URL 派生退款通知 URL，避免多组织配置再增加一套易漂移字段。 */
+export function refundNotifyUrl(paymentNotifyUrl: string) {
+  let url: URL;
+  try {
+    url = new URL(paymentNotifyUrl);
+  } catch {
+    throw new BadRequestException('微信支付回调地址配置错误');
+  }
+  url.pathname = url.pathname.endsWith('/wechat/notify')
+    ? url.pathname.replace(/\/wechat\/notify$/, '/wechat/refund-notify')
+    : `${url.pathname.replace(/\/$/, '')}/refund-notify`;
+  return url.toString();
+}
+
+/**
+ * 微信退款请求已发出，但本地无法确认微信是否受理。
+ * 这与微信明确返回业务拒绝不同：调用方必须保持订单锁定，
+ * 并使用同一 out_refund_no 查单，不得回滚订单继续履约。
+ */
+export class WechatRefundOutcomeUnknownError extends Error {
+  constructor() {
+    super('微信退款受理结果待确认');
+    this.name = 'WechatRefundOutcomeUnknownError';
+  }
+}
+
 /**
  * 微信支付公钥 PEM 清理（2026-10-16）：trim + 剥 compose env_file 残留的
  * 首尾引号 + 单行 \n 转义还原。清理后不含 BEGIN 行的（抄错文件/空占位）
@@ -274,6 +300,7 @@ export class PaymentsService {
       out_trade_no: orderNo,
       out_refund_no: refundNo,
       reason: reason.slice(0, 80) || '用户退款',
+      notify_url: refundNotifyUrl(creds.notifyUrl),
       amount: { refund: refundFen, total: totalFen, currency: 'CNY' },
     });
     const urlPath = '/v3/refund/domestic/refunds';
@@ -290,19 +317,25 @@ export class PaymentsService {
         signal: AbortSignal.timeout(8000),
       });
     } catch {
-      throw new HttpException('微信退款服务暂不可用', HttpStatus.BAD_GATEWAY);
+      throw new WechatRefundOutcomeUnknownError();
     }
     const result = (await response.json().catch(() => ({}))) as {
       refund_id?: string;
       status?: string;
       message?: string;
     };
-    if (!response.ok || !result.refund_id)
+    if (response.status >= 500) throw new WechatRefundOutcomeUnknownError();
+    if (!response.ok)
       throw new HttpException(
         `微信退款失败：${result.message ?? response.status}`,
         HttpStatus.BAD_GATEWAY,
       );
-    return { refundId: result.refund_id, status: result.status ?? 'PROCESSING' };
+    // 2xx 却缺退款单号不能当成明确拒绝：请求可能已受理，只是响应被截断。
+    if (!result.refund_id) throw new WechatRefundOutcomeUnknownError();
+    return {
+      refundId: result.refund_id,
+      status: result.status ?? 'PROCESSING',
+    };
   }
 
   /**
@@ -445,6 +478,41 @@ export class PaymentsService {
     if (!order) return { code: 'SUCCESS', message: '订单不存在，忽略' };
     await this.applyPayment(order, event.transaction_id);
     return { code: 'SUCCESS', message: 'OK' };
+  }
+
+  /** 微信退款结果回调：与支付回调复用验签、组织密钥遍历和防重放。 */
+  async refundNotify(
+    headers: Record<string, string | string[] | undefined>,
+    rawBody: string,
+    body: {
+      resource?: {
+        ciphertext?: string;
+        nonce?: string;
+        associated_data?: string;
+      };
+    },
+  ) {
+    await this.verifyNotifySignature(headers, rawBody);
+    const resource = body.resource;
+    if (!resource?.ciphertext || !resource.nonce)
+      throw new BadRequestException('回调报文缺少加密资源');
+    const decrypted = await this.decryptEventResource(
+      resource.ciphertext,
+      resource.nonce,
+      resource.associated_data ?? '',
+    );
+    const event = JSON.parse(decrypted) as {
+      out_refund_no?: string;
+      refund_id?: string;
+      refund_status?: string;
+    };
+    if (!event.out_refund_no || !event.refund_status)
+      throw new BadRequestException('退款回调缺少退款单号或状态');
+    return {
+      refundNo: event.out_refund_no,
+      refundId: event.refund_id,
+      status: event.refund_status,
+    };
   }
 
   /**

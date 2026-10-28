@@ -71,6 +71,7 @@ describe('campus daily report (IKFOPS)', () => {
       },
     });
     orderIds.push(row.id);
+    return row;
   };
 
   beforeAll(async () => {
@@ -130,13 +131,24 @@ describe('campus daily report (IKFOPS)', () => {
       ],
     });
     // O3：昨日但未完成（paid）——剔除
-    await mkOrder({
+    const partialOrder = await mkOrder({
       campusId: CAMPUS_1,
       paidDay: YD,
       hour: 12,
       status: 'paid',
       payable: 999,
       items: [],
+    });
+    await db.refund.create({
+      data: {
+        userId,
+        orderId: partialOrder.id,
+        source: 'after-sale',
+        amount: 199,
+        beforeStatus: 'paid',
+        status: 'refunded',
+        refundedAt: new Date(),
+      },
     });
     // O4：前日 completed——昨日窗不含，前日窗命中
     await mkOrder({
@@ -151,7 +163,7 @@ describe('campus daily report (IKFOPS)', () => {
       ],
     });
     // O5：昨日但已退款（refunded）——剔除
-    await mkOrder({
+    const refundedOrder = await mkOrder({
       campusId: CAMPUS_1,
       paidDay: YD,
       hour: 13,
@@ -159,9 +171,21 @@ describe('campus daily report (IKFOPS)', () => {
       payable: 888,
       items: [],
     });
+    await db.refund.create({
+      data: {
+        userId,
+        orderId: refundedOrder.id,
+        source: 'pre-delivery',
+        amount: 888,
+        beforeStatus: 'paid',
+        status: 'refunded',
+        refundedAt: new Date(),
+      },
+    });
   });
 
   afterAll(async () => {
+    await db.refund.deleteMany({ where: { orderId: { in: orderIds } } });
     await db.order.deleteMany({ where: { id: { in: orderIds } } });
     await db.user.deleteMany({ where: { id: userId } });
     await db.campus.deleteMany({ where: { id: { in: [CAMPUS_1, CAMPUS_2] } } });
@@ -173,37 +197,37 @@ describe('campus daily report (IKFOPS)', () => {
       hqScope: true,
     });
     // IKLEDG 有效单口径：O1(2400)+O2(1100)+O3 paid(999) 计入；O5 退款单列
-    expect(r.totals.orders).toBe(3);
-    expect(r.totals.salesTotal).toBe(4499);
+    expect(r.totals.orders).toBe(4);
+    expect(r.totals.salesTotal).toBe(4300);
     // 退款单列：O5=888（不进销售额）。共享夹具库有其他套件残留的已退款单，
     // totals 全库聚合会被污染（本套件历史失败根因）——按带 tag 的校区行聚合断言
     const taggedRefunded = r.rows
       .filter((x) => [CAMPUS_1, CAMPUS_2].includes(x.campusId))
       .reduce((sum, x) => sum + x.refundedTotal, 0);
-    expect(taggedRefunded).toBe(888);
+    expect(taggedRefunded).toBe(1087);
     // O1 成本=3×20+0（无快照行），O2=2×20，O3 空行=0
     expect(r.totals.costTotal).toBe(100);
     // 综合毛利=实付−配送费−成本=4499−300−100=4099（IKJ92S 剔除配送费）；
     // 毛利=商品金额−成本=4699−100=4599（O3 的 productAmount=999 也入账）
-    expect(r.totals.gross).toBe(4099);
-    expect(r.totals.marginTotal).toBe(4599);
+    expect(r.totals.gross).toBe(3900);
+    expect(r.totals.marginTotal).toBe(4400);
     // 毛利率=4599/4699 商品金额=9787；综合毛利率=4099/4499 实付=9111
-    expect(r.totals.marginRawRate).toBe(9787);
-    expect(r.totals.marginRate).toBe(9111);
+    expect(r.totals.marginRawRate).toBe(9778);
+    expect(r.totals.marginRate).toBe(9070);
     // 行=日期×校区，两行（共享库有外来校区行，按 tag 过滤断言）
     const taggedRows = r.rows.filter((x) =>
       [CAMPUS_1, CAMPUS_2].includes(x.campusId),
     );
     expect(taggedRows.length).toBe(2);
     const c1 = taggedRows.find((x) => x.campusId === CAMPUS_1)!;
-    expect(c1.orders).toBe(2);
-    expect(c1.salesTotal).toBe(3399);
-    expect(c1.refundedTotal).toBe(888);
+    expect(c1.orders).toBe(3);
+    expect(c1.salesTotal).toBe(3200);
+    expect(c1.refundedTotal).toBe(1087);
     expect(c1.costTotal).toBe(60);
     // O1 无券+O3 空行（productAmount=999）：毛利=综合毛利=3339
-    expect(c1.marginTotal).toBe(3339);
-    expect(c1.gross).toBe(3339);
-    expect(c1.marginRate).toBe(9823);
+    expect(c1.marginTotal).toBe(3140);
+    expect(c1.gross).toBe(3140);
+    expect(c1.marginRate).toBe(9813);
     const c2 = taggedRows.find((x) => x.campusId === CAMPUS_2)!;
     expect(c2.salesTotal).toBe(1100);
     // O2 券+配送费单：毛利 1260；综合毛利=1100−300−40=760（差=券 200+配送费 300）
@@ -219,9 +243,9 @@ describe('campus daily report (IKFOPS)', () => {
       hqScope: true,
       campusId: CAMPUS_1,
     });
-    expect(r.totals.orders).toBe(2);
-    expect(r.totals.salesTotal).toBe(3399);
-    expect(r.totals.refundedTotal).toBe(888);
+    expect(r.totals.orders).toBe(3);
+    expect(r.totals.salesTotal).toBe(3200);
+    expect(r.totals.refundedTotal).toBe(1087);
     expect(r.rows.length).toBe(1);
   });
 
@@ -241,8 +265,8 @@ describe('campus daily report (IKFOPS)', () => {
       userCampusId: CAMPUS_1,
       campusId: CAMPUS_2, // 越权参数应被忽略
     });
-    expect(r.totals.orders).toBe(2);
-    expect(r.totals.salesTotal).toBe(3399);
+    expect(r.totals.orders).toBe(3);
+    expect(r.totals.salesTotal).toBe(3200);
     expect(r.rows.every((x) => x.campusId === CAMPUS_1)).toBe(true);
   });
 
