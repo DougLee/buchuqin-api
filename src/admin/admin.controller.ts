@@ -2309,6 +2309,9 @@ export class AdminController {
             address: body.address,
             servicePhone: body.servicePhone,
             serviceQrcode: body.serviceQrcode,
+            // IKQXSD 售后福利群二维码：与 serviceQrcode 同为校区自定义字段，
+            // 漏在此白名单会被静默剥掉（200 成功但不落库，2026-10-28 道哥实测）
+            afterSalesGroupQrcode: body.afterSalesGroupQrcode,
             buildingManagerBaseSalary: body.buildingManagerBaseSalary,
           }
         : body;
