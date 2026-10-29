@@ -10,130 +10,132 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-/* ---------- 多租户组织基线（IKKRMM，ADR-0001 2026-10-10） ---------- */
+/**
+ * ---------- 多租户组织基线（IKKRMM，ADR-0001 2026-10-10） ----------
+ */
 
 /// 组织（IKKRMM）：平台—组织—校区三层的中间层。组织 A=不出寝食社（存量
 /// 全部数据无感迁入，迁移回填 org-a）；组织 B（IKKRMS）经平台「组织管理」
 /// 页开通。微信配置字段为预留（ADR-0001 决策 2：存 DB 后台维护，组织 B
 /// 开通用；组织 A env 兜底），本阶段全部可空、无任何读取链路。
 model Organization {
-  id           String   @id @default(cuid())
-  name         String
-  shortName    String   @default("")
+  id                       String   @id @default(cuid())
+  name                     String
+  shortName                String   @default("")
   /// active | disabled（停用后该组织校区/账号的处置属 IKKRMP，本阶段不消费）
-  status       String   @default("active")
+  status                   String   @default("active")
   /// 预留：组织小程序 AppID（组织 A 走 env 兜底，路由属 IKKRMO/IKKRMT）
-  wxAppId      String?
+  wxAppId                  String?
   /// 预留：组织小程序 Secret（敏感，端点只回「已配置」位不回明文）
-  wxSecret     String?
+  wxSecret                 String?
   /// 组织履约端小程序 AppID（一个组织一套用户端+一套履约端；为空时仅组织 A
   /// 继续走 WX_APPID_DELIVERY 环境变量兼容路径）
-  deliveryWxAppId String? @unique
+  deliveryWxAppId          String?  @unique
   /// 组织履约端小程序 Secret（敏感，只写不回读）
-  deliveryWxSecret String?
+  deliveryWxSecret         String?
   /// 履约端「新订单提醒」订阅消息模板 ID（模板归 AppID，必须按组织隔离）
   deliveryNotifyTemplateId String?
   /// 预留：微信支付商户号（ADR-0001 决策 1：组织 B 独立商户号）
-  mchId        String?
+  mchId                    String?
   /// 预留：商户 APIv3 密钥（敏感，同 wxSecret 口径）
-  mchApiV3Key  String?
+  mchApiV3Key              String?
   /// 预留：商户证书序列号
-  serialNo     String?
+  serialNo                 String?
   /// 预留：商户私钥 PEM（敏感，同 wxSecret 口径）
-  privateKey   String?
+  privateKey               String?
   /// 预留：回调域名（组织 B 独立回调，路由属 IKKRMT）
-  notifyDomain String?
+  notifyDomain             String?
   /// 微信支付公钥 PEM（2024+ 新入驻商户无平台证书，回调验签用；非敏感可回读）。
   /// 验签发生在解密前、报文不含组织信息——按候选钥遍历匹配（serial 仅是
   /// PUB_KEY_ID_ 模式信号，公钥本身才是信任锚）。
-  wxPayPublicKey String?
+  wxPayPublicKey           String?
   /// IKP34J 服务号组织级路由：组织自有服务号 AppID（gzhAppId/gzhSecret/
   /// gzhToken/gzhTemplateId 四项齐备才按组织路由，缺任一且非 org-a 停发）
-  gzhAppId     String?
+  gzhAppId                 String?
   /// 组织服务号 AppSecret（敏感，端点只回「已配置」位不回明文）
-  gzhSecret    String?
+  gzhSecret                String?
   /// 服务号回调验签 Token（与微信公众平台服务器配置一致；回调按候选遍历对签）
-  gzhToken     String?
+  gzhToken                 String?
   /// 服务号模板消息模板 ID（模板归服务号 AppID，必须按组织隔离）
-  gzhTemplateId String?
+  gzhTemplateId            String?
   /// 服务号关注引导二维码图片 URL（履约端 profile 下发；非敏感可回读）
-  gzhQrcodeUrl String?
+  gzhQrcodeUrl             String?
   /// IKKRMU 功能授权（营销切片）：null=全开（组织 A 现状兼容）；JSON 数组=
   /// 已开通能力白名单（如 ["marketing"]，空数组=全关）。能力开关只收窄不放大
   /// ——组织关了校区不能显式开。
-  capabilities Json?
+  capabilities             Json?
   /// IKKRMV 配送履约模式：'rider_delivery'=骑手小程序履约（组织 A 现状）|
   /// 'staff_delivery'=后台员工履约（组织 B）。两种模式共用订单状态语义
   /// （12 态状态机不因模式增删，见 common/order-state.ts）——仅履约执行
   /// 入口不同：staff_delivery 校区订单出库后不进骑手任务池/不派单，由
   /// 后台订单动作（staff-deliver/staff-complete）推进至送达。
-  deliveryMode String   @default("rider_delivery")
-  createdAt    DateTime @default(now())
+  deliveryMode             String   @default("rider_delivery")
+  createdAt                DateTime @default(now())
 }
 
 model Campus {
-  id                   String            @id @default(cuid())
+  id                        String                  @id @default(cuid())
   // IKFOPY：campus=普通校区（用户可见可下单）；hq=总部仓（中转仓储，用户端
   // 与校区角色全屏蔽，hq/admin 视角经库存 campusScope 聚焦使用仓储页）
-  type                 String            @default("campus")
-  name                 String
-  shortName            String
-  warehouseName        String
-  address              String?
-  status               String            @default("active")
+  type                      String                  @default("campus")
+  name                      String
+  shortName                 String
+  warehouseName             String
+  address                   String?
+  status                    String                  @default("active")
   // 配送费/起送门槛后台可配置（IK9SO6）：单位分，0 表示该项免费/无门槛
-  deliveryFeeInstant   Int               @default(400)
-  deliveryFeeScheduled Int               @default(200)
-  deliveryThreshold    Int               @default(1000)
+  deliveryFeeInstant        Int                     @default(400)
+  deliveryFeeScheduled      Int                     @default(200)
+  deliveryThreshold         Int                     @default(1000)
   // 打烊停单（IKGI1C，2026-09-17 道哥定版）：每日打烊窗 HH:mm，跨零点合法
   // （closeStart > closeEnd = 跨天窗）；相等 = 不打烊。IKGNMV 补充（同日道哥
   // 拍板）：默认 00:00/00:00 = 24 小时营业，新校区默认不打烊
-  closeStart           String            @default("00:00")
-  closeEnd             String            @default("00:00")
+  closeStart                String                  @default("00:00")
+  closeEnd                  String                  @default("00:00")
   // 手动闭店开关：与时间窗叠加判定，admin 配置页一键切换
-  manualClosed         Boolean           @default(false)
+  manualClosed              Boolean                 @default(false)
   // 楼长月度底薪（IKDOIU 道哥）：单位分，0 = 无底薪（纯提成+调整）——
   // 取代 settlements 硬编码 50000，校区维度自主配置
-  buildingManagerBaseSalary Int          @default(0)
+  buildingManagerBaseSalary Int                     @default(0)
   // 客服电话（IKHMF1 道哥 2026-09-21）：校区自定义，小程序我的/详情/订单
   // 拨号展示；默认 4008002026 兜底（换号改默认值即全量更新）
-  servicePhone         String            @default("4008002026")
+  servicePhone              String                  @default("4008002026")
   // 校区客服微信二维码（IKKTWM）：COS 图；小程序客服弹层主展示，空串=回落拨号
-  serviceQrcode        String            @default("")
+  serviceQrcode             String                  @default("")
   // 售后福利群二维码（IKQXSD 道哥 2026-10-27）：COS 图；用户端售后页展示，
   // 空串=未配置不渲染
-  afterSalesGroupQrcode String           @default("")
+  afterSalesGroupQrcode     String                  @default("")
   // 无楼长提示（IKHMKR 道哥 2026-09-21）：结算/下单时楼栋无在职楼长的弹窗
   // 提示，校区自定义；空=回落默认文案（防误清空丢提示）
-  noManagerTip         String            @default("")
+  noManagerTip              String                  @default("")
   // 订单自动出库（IKM55A 道哥 2026-10-16）：开启后已支付订单 N 秒自动出库
   // （含预约达；picking 人工介入不抢跑）。Cron 30s 精度扫描，实际出库
   // 落在 N~N+30s。关闭=完全人工节奏。
-  autoOutboundEnabled  Boolean           @default(false)
-  autoOutboundDelaySeconds Int           @default(60)
+  autoOutboundEnabled       Boolean                 @default(false)
+  autoOutboundDelaySeconds  Int                     @default(60)
   // 多租户归属（IKKRMM/ADR-0001）：可空且本阶段不收紧 NOT NULL——campus-official
   // 平台伪校区永属平台层留空；campus-hq 与全部真实校区归组织 A（迁移回填
   // org-a）。纯字符串不建外键（参照 AdminAccount.campusId 先例：生命周期独立），
   // 组织真源在 Organization 表。
-  organizationId       String?
+  organizationId            String?
   // IKKRMU 校区功能开关：null=继承组织 capabilities；JSON 数组=校区级已
   // 开通能力白名单（空数组=全关）。语义=在组织授权之上**只能再收窄**
   // （组织关→校区必关；组织开→校区可显式关）。
-  features             Json?
-  createdAt            DateTime          @default(now())
-  users                User[]
-  products             Product[]
-  addresses            Address[]
-  orders               Order[]
-  staff                Staff[]
-  storageLocations     StorageLocation[]
-  wechatGroups         WechatGroup[]
-  printers             Printer[]
-  lotteryWheel         LotteryWheel?
-  purchaseRequests     PurchaseRequest[]
-  recruitApplications  RecruitingApplication[]
-  restockOrders        RestockOrder[]
-  notices              Notice[]
+  features                  Json?
+  createdAt                 DateTime                @default(now())
+  users                     User[]
+  products                  Product[]
+  addresses                 Address[]
+  orders                    Order[]
+  staff                     Staff[]
+  storageLocations          StorageLocation[]
+  wechatGroups              WechatGroup[]
+  printers                  Printer[]
+  lotteryWheel              LotteryWheel?
+  purchaseRequests          PurchaseRequest[]
+  recruitApplications       RecruitingApplication[]
+  restockOrders             RestockOrder[]
+  notices                   Notice[]
 
   @@index([organizationId])
 }
@@ -158,7 +160,6 @@ model CampusDailySeq {
  * （INSERT ON CONFLICT DO UPDATE RETURNING）——Order.dailySeq 的发号器。
  */
 
-
 /**
  * 微信群二维码（IKAJSY）：buildingId 空串=校级大群；每楼栋至多一群 + 每校至多一大群。
  */
@@ -179,34 +180,34 @@ model WechatGroup {
  * 账号级 user/userKey 仍在 env（XPYUN_USER/XPYUN_USERKEY）；此处存终端 SN/KEY。
  */
 model Printer {
-  id        String   @id @default(cuid())
-  campusId  String   @unique
-  campus    Campus   @relation(fields: [campusId], references: [id])
+  id               String   @id @default(cuid())
+  campusId         String   @unique
+  campus           Campus   @relation(fields: [campusId], references: [id])
   /**
    * 运营辨认名（如「仓内前台小票机」）。
    */
-  name      String
+  name             String
   /**
    * 芯烨云终端号（机身铭牌/自检页）。
    */
-  sn        String   @unique
+  sn               String   @unique
   /**
    * 终端 key（与 SN 成对，机身二维码可得），绑定芯烨云账号时使用。
    */
-  key       String
+  key              String
   /**
    * 小票联数（IKCZOX）：1=现状单联无联名；2=商家联+骑手联；3=再加用户联。
    */
-  copies    Int      @default(1)
+  copies           Int      @default(1)
   /**
    * 多联联间发送间隔秒数（IKFFHO）：0=单次 POST 拼联（现状）；1-10 拆逐联推送，
    * 上一联受理成功后 sleep N 秒发下一联。发送侧延迟——云打印无出纸回执，
    * 实际出纸间隔 ≈ N + 打印耗时；离线暂存恢复后连续出纸、间隔失效。
    */
-  copiesGapSeconds Int @default(0)
-  status    String   @default("active")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  copiesGapSeconds Int      @default(0)
+  status           String   @default("active")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 }
 
 /**
@@ -229,18 +230,18 @@ model StorageLocation {
 // campusId 为普通字段（同 AuditLog），不建外键——账号生命周期独立于校园数据清理；
 // 语义=当前运营校区上下文（切换校区换发 token），不是权限范围。
 model AdminAccount {
-  id           String              @id @default(cuid())
-  username     String              @unique
-  passwordHash String
-  nickname     String              @default("")
-  role         String
-  campusId     String
+  id             String              @id @default(cuid())
+  username       String              @unique
+  passwordHash   String
+  nickname       String              @default("")
+  role           String
+  campusId       String
   /// RBAC V1：active 正常 | disabled 停用（登录与鉴权双拒，旧 token 随 sessionVersion 失效）
-  status       String              @default("active")
+  status         String              @default("active")
   /// 会话版本：改密/停用 bump 进 JWT；Guard 比对不一致即 401（旧 token 缺省视为 0）
-  sessionVersion Int               @default(0)
+  sessionVersion Int                 @default(0)
   /// Explicit migration marker; zero grants can mean deliberate revocation.
-  rbacMigrated Boolean              @default(false)
+  rbacMigrated   Boolean             @default(false)
   /// IKKRMP（ADR-0001）：固定数据边界层级——'platform' 平台级（跨组织不受限）|
   /// 'org' 组织级（organizationId 固定组织，目标校区必须属于该组织）|
   /// 'campus' 校区级（恒本校区/授权集，现状语义）。NULL=历史账号按 campusId
@@ -251,71 +252,73 @@ model AdminAccount {
   /// 归属由 campusId→campus.organizationId 推导）。纯字符串不建外键
   /// （同 campusId 先例，组织生命周期独立于账号）。
   organizationId String?
-  createdAt    DateTime            @default(now())
-  updatedAt    DateTime            @updatedAt
-  accesses     AdminCampusAccess[]
-  rbacRoles    AdminAccountRole[]
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  accesses       AdminCampusAccess[]
+  rbacRoles      AdminAccountRole[]
 
   @@index([organizationId])
 }
 
-/* ---------- RBAC V1（2026-09-19 道哥 goal）：账号 → 角色 → 权限，按校区生效 ---------- */
+/**
+ * ---------- RBAC V1（2026-09-19 道哥 goal）：账号 → 角色 → 权限，按校区生效 ----------
+ */
 
 /// 角色：一个角色关联多个权限；builtin 内置角色（super-admin）受保护不可删改权限。
 model AdminRole {
-  id          String               @id @default(cuid())
-  code        String               @unique
-  name        String
-  remark      String               @default("")
+  id              String                @id @default(cuid())
+  code            String                @unique
+  name            String
+  remark          String                @default("")
   /// active | disabled（停用后经由它的授权全部失效）
-  status      String               @default("active")
+  status          String                @default("active")
   /// 内置角色：不可删除；super-admin 权限集固定不可编辑
-  builtin     Boolean              @default(false)
+  builtin         Boolean               @default(false)
   /// 迁移模板角色首灌标记：false=尚未灌注初始权限（启动同步负责灌注）；true 后不再自动重置
-  seeded      Boolean              @default(false)
+  seeded          Boolean               @default(false)
   /// Legacy role-menu conversion runs once, including deliberately empty roles.
-  menusMigrated Boolean            @default(false)
+  menusMigrated   Boolean               @default(false)
   /// IKKRMQ 分配权归属：'platform' 仅超管可分配 | 'org' 组织管理员可分配 |
   /// 'campus' 校区管理员可分配。默认 'platform'=现状收紧（账号写端点现状
   /// 超管独占）。迁移仅加列不回填，存量角色默认值与现状等价。
-  assignableBy   String            @default("platform")
+  assignableBy    String                @default("platform")
   /// IKKRMQ 适用目标账号层级：NULL 不限 | 'org' 仅组织级账号 | 'campus' 仅
   /// 校区级账号。分配时与目标账号 orgLevel 匹配（服务层校验，超管全可）。
   applicableLevel String?
   /// 已退役：两层模型时期的菜单 key 清单（真源已切 AdminRoleMenu，保留列供回滚）
-  menus       Json?
-  createdAt   DateTime             @default(now())
-  updatedAt   DateTime             @updatedAt
-  permissions   AdminRolePermission[]
-  accounts      AdminAccountRole[]
-  adminRoleMenus AdminRoleMenu[]
+  menus           Json?
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+  permissions     AdminRolePermission[]
+  accounts        AdminAccountRole[]
+  adminRoleMenus  AdminRoleMenu[]
 }
 
 /// 权限点：由开发在代码登记（src/admin/rbac/registry.ts）同步入库，后台只读。
 /// scope=platform 平台功能（跨校区数据/仅平台级授权可用）| campus 校区业务（平台级或校区级授权皆可）。
 model AdminPermission {
-  id          String               @id @default(cuid())
-  code        String               @unique
-  name        String
+  id        String                @id @default(cuid())
+  code      String                @unique
+  name      String
   /// 业务分组（工作台/订单/商品/库存/…），权限目录展示用
-  group       String
-  scope       String
+  group     String
+  scope     String
   /// 组内排序
-  sort        Int                  @default(0)
-  remark      String               @default("")
-  builtin     Boolean              @default(true)
-  createdAt   DateTime             @default(now())
-  roles       AdminRolePermission[]
+  sort      Int                   @default(0)
+  remark    String                @default("")
+  builtin   Boolean               @default(true)
+  createdAt DateTime              @default(now())
+  roles     AdminRolePermission[]
 }
 
 /// 角色-权限关联（全量重设式维护）。
 model AdminRolePermission {
-  id            String         @id @default(cuid())
-  role          AdminRole      @relation(fields: [roleId], references: [id], onDelete: Cascade)
-  roleId        String
-  permission    AdminPermission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
-  permissionId  String
-  createdAt     DateTime       @default(now())
+  id           String          @id @default(cuid())
+  role         AdminRole       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  roleId       String
+  permission   AdminPermission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  permissionId String
+  createdAt    DateTime        @default(now())
 
   @@unique([roleId, permissionId])
 }
@@ -342,38 +345,40 @@ model AdminAccountRole {
 
 /// RBAC 全局版本号：任何角色/权限/授权变更 bump，用于有效权限缓存的显式失效。
 model RbacState {
-  id      String   @id @default("global")
-  version Int      @default(0)
+  id          String   @id @default("global")
+  version     Int      @default(0)
   /// 菜单初始模板只灌入一次；之后删除的菜单不会在服务重启时被恢复。
-  menusSeeded Boolean @default(false)
-  updatedAt DateTime @updatedAt
+  menusSeeded Boolean  @default(false)
+  updatedAt   DateTime @updatedAt
 }
 
-/* ---------- 蛋词体系对齐（2026-09-19 拍板 B）：菜单+按钮权限合一棵树 ---------- */
+/**
+ * ---------- 蛋词体系对齐（2026-09-19 拍板 B）：菜单+按钮权限合一棵树 ----------
+ */
 
 /// 系统菜单（对齐蛋词 base_sys_menu）：type 0 目录/1 菜单/2 按钮；perms=URL 模式。
 /// MENU_NODES 仅作为首次初始化模板，完成首灌后菜单全量由后台维护。
 /// parentId 为裸串不建外键（菜单树生命周期独立于关联行）。
 model AdminMenu {
-  id        String   @id @default(cuid())
-  code      String   @unique
+  id        String          @id @default(cuid())
+  code      String          @unique
   parentId  String?
   name      String
   /// 0=目录 1=菜单 2=按钮
-  type      Int      @default(0)
+  type      Int             @default(0)
   /// URL 模式逗号串（鉴权真源）；菜单行=查看类 GET，按钮行=操作类
-  perms     String   @default("")
+  perms     String          @default("")
   /// 菜单：前端路由 path（如 /products）
-  path      String   @default("")
+  path      String          @default("")
   /// 菜单：前端组件标识（组件映射表键，动态注册用）
-  viewPath  String   @default("")
-  keepAlive Boolean @default(false)
-  icon      String   @default("")
-  orderNum  Int      @default(0)
-  isShow    Boolean  @default(true)
-  status    String   @default("active")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  viewPath  String          @default("")
+  keepAlive Boolean         @default(false)
+  icon      String          @default("")
+  orderNum  Int             @default(0)
+  isShow    Boolean         @default(true)
+  status    String          @default("active")
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
   roleMenus AdminRoleMenu[]
 
   @@index([parentId, orderNum])
@@ -408,22 +413,22 @@ model AdminCampusAccess {
 }
 
 model User {
-  id            String         @id @default(cuid())
-  campusId      String
-  campus        Campus         @relation(fields: [campusId], references: [id])
-  nickname      String
-  phone         String
-  avatar        String         @default("")
-  role          String         @default("user")
-  openid        String?        @unique
-  createdAt     DateTime       @default(now())
-  addresses     Address[]
-  cartItems     CartItem[]
-  orders        Order[]
-  notifications Notification[]
-  afterSales    AfterSale[]
-  refunds       Refund[]
-  userCoupons   UserCoupon[]
+  id                  String                  @id @default(cuid())
+  campusId            String
+  campus              Campus                  @relation(fields: [campusId], references: [id])
+  nickname            String
+  phone               String
+  avatar              String                  @default("")
+  role                String                  @default("user")
+  openid              String?                 @unique
+  createdAt           DateTime                @default(now())
+  addresses           Address[]
+  cartItems           CartItem[]
+  orders              Order[]
+  notifications       Notification[]
+  afterSales          AfterSale[]
+  refunds             Refund[]
+  userCoupons         UserCoupon[]
   recruitApplications RecruitingApplication[]
 }
 
@@ -433,7 +438,7 @@ model Category {
   // 生命周期独立；先例同 AdminAccount.campusId）
   campusId String
   name     String
-  sort     Int        @default(0)
+  sort     Int       @default(0)
   image    String    @default("")
   // 类目可见性开关（IKC9M4 → IKKA1S 校区级）：隐藏后本校区 C 端分类导航/全部
   // 列表/搜索/热销/秒杀全链路不出现该类目及其商品（商品数据不动）
@@ -445,13 +450,13 @@ model Category {
 }
 
 model Product {
-  id              String         @id @default(cuid())
+  id                 String                @id @default(cuid())
   /**
    * 条码唯一改校区维度（IKAJSM）：官方库与各校区可同码，同校区内去重
    */
-  barcode         String?
-  campusId        String
-  campus          Campus         @relation(fields: [campusId], references: [id])
+  barcode            String?
+  campusId           String
+  campus             Campus                @relation(fields: [campusId], references: [id])
   /**
    * 目录层级（IKKRMW / ADR-0001 决策 3）：'platform'=平台商品目录行（原官方库，
    * campus-official 伪校区行打解绑过渡标记）；'campus'=组织校区行（组织 B 接入
@@ -460,7 +465,7 @@ model Product {
    * 维度工作、缺省不读此字段；伪校区物理解绑（campusId 改指向/去外键）留
    * IKKRMX。
    */
-  catalogScope    String         @default("campus")
+  catalogScope       String                @default("campus")
   /**
    * 组织商品目录归属（IKKRMX / ADR-0001 决策 4）：非空=catalogScope='org' 的
    * 组织目录行归属该组织（复用校区模型不建新表——行物理上仍落 campus-official
@@ -469,97 +474,97 @@ model Product {
    * 组织归属经 campus.organizationId 推导）。纯字符串不建外键（先例同
    * Campus.organizationId），组织真源在 Organization 表。
    */
-  organizationId  String?
+  organizationId     String?
   /**
    * 三层来源链 platform←org←campus（IKKRMX）：组织校区副本指回组织目录行
    * （类似 sourceProductId 指回平台目录行）——组织目录→校区导入时落值，
    * 导入后即与源行解耦：组织行调价/停用不连坐校区副本，上游变化只产生
    * 「待同步」提示，永不自动覆盖下层经营字段（pullUpstream 同口径钉死）。
    */
-  orgCatalogId    String?
+  orgCatalogId       String?
   /**
    * 组织采购来源（IKKRMX）：'platform'=平台供货 / 'local'=自主采购，组织层
    * 字段（仅组织目录行消费，与校区行 procurementMode 正交）。
    * 组织毛利口径钉死（实现仅注释+字段，报表属后续 issue）：
    * 组织毛利 = 组织供货价(price) − 当前明确成本
-   *   - 平台供货（'platform'）：成本=平台批发价快照（wholesalePrice）
-   *   - 自主采购（'local'）：成本=组织进货价（costPrice）
+   * - 平台供货（'platform'）：成本=平台批发价快照（wholesalePrice）
+   * - 自主采购（'local'）：成本=组织进货价（costPrice）
    */
-  supplyMode      String?
-  categoryId      String
-  category        Category       @relation(fields: [categoryId], references: [id])
-  name            String
-  subtitle        String
-  price           Int // 金额单位:分（IK8W5K）；官方行=批发价格，校区行=实际售价（IKC1AC）
-  originalPrice   Int // 建议零售价（总部建议，校区可看；C 端划线原价）
+  supplyMode         String?
+  categoryId         String
+  category           Category              @relation(fields: [categoryId], references: [id])
+  name               String
+  subtitle           String
+  price              Int // 金额单位:分（IK8W5K）；官方行=批发价格，校区行=实际售价（IKC1AC）
+  originalPrice      Int // 建议零售价（总部建议，校区可看；C 端划线原价）
   // IKC1AC 价格三层：进货价（总部专用，C 端/校区出口一律剔除）与批发价快照
   // （校区行由导入/pullUpstream 自官方 price 复制）
-  costPrice       Int            @default(0)
-  wholesalePrice  Int            @default(0)
+  costPrice          Int                   @default(0)
+  wholesalePrice     Int                   @default(0)
   // 校区实际采购方式：HQ=总部供货，LOCAL=校区自主采购；null=历史数据待确认。
   // 与 sourceProductId（商品资料来源）正交，不能据后者推断。
-  procurementMode String?
+  procurementMode    String?
   // 校区本地进货价，分/零售单位；LOCAL 时必填（允许 0），C 端永不输出。
   localPurchasePrice Int?
   // 周期限购（IKQZY7 道哥 2026-10-27）：none=不限（绝大多数商品）/once=终身
   // 一次/weekly=每周一次（周一起）/monthly=每月一次（1 号起）；按已付订单
   // items 计数（不分价格身份），退款落出计数；每周期件数 purchaseLimitQty
-  purchaseLimit     String @default("none")
-  purchaseLimitQty  Int    @default(1)
-  stock           Int
-  lockedStock     Int            @default(0)
-  sales           Int            @default(0)
+  purchaseLimit      String                @default("none")
+  purchaseLimitQty   Int                   @default(1)
+  stock              Int
+  lockedStock        Int                   @default(0)
+  sales              Int                   @default(0)
   // IKH0EK 首页推荐位（2026-09-19 道哥定版）：featured=运营在后台勾选的推荐位
   // 商品（手动优先展示），featuredSort=推荐位顺序（小值在前）；销量补齐位跟在
   // 推荐位之后。校区隔离天然成立（商品本就按校区归属）。
-  featured        Boolean        @default(false)
-  featuredSort    Int            @default(0)
-  tag             String
-  image           String
+  featured           Boolean               @default(false)
+  featuredSort       Int                   @default(0)
+  tag                String
+  image              String
   /**
    * 详情多图（IK9SNS）：string[] JSON，首图兼容 image 字段；空数组用 image
    */
-  images          Json?
+  images             Json?
   /**
    * 商品介绍（IKAHAU）：纯文本多行 ≤2000 字，空 = C 端详情页不渲染区块
    */
-  description     String?
+  description        String?
   /**
    * 库位（IK9U40 反馈#7 / IKA0VG）：库位管理字典里的区域名（下拉选择）
    */
-  location        String         @default("")
+  location           String                @default("")
   /**
    * 库位编号（IKA0VG）：区域内具体位置，规则人工控制，可不填
    */
-  locationCode    String         @default("")
-  weight          Decimal        @db.Decimal(10, 3)
-  status          String         @default("on-sale")
+  locationCode       String                @default("")
+  weight             Decimal               @db.Decimal(10, 3)
+  status             String                @default("on-sale")
   // 单位属性（IKFOPU）：零售按听/瓶卖、订货按件批发的双单位建模。
   // 零售单位空 = 展示处不显示单位文字（存量 5442 商品零变化）；含量=批发
   // 单位包含的零售单位数，无件概念填 1，订货入库按它换算（5 件×24=120 听）
-  retailUnit      String         @default("")
-  wholesaleUnit   String         @default("件")
-  unitsPerCase    Int            @default(1)
+  retailUnit         String                @default("")
+  wholesaleUnit      String                @default("件")
+  unitsPerCase       Int                   @default(1)
   /**
    * 官方库来源（IKAJSO）：本校区行来自官方库哪个商品；自建/历史商品为空
    */
-  sourceProductId String?
+  sourceProductId    String?
   /**
    * 上游信息同步时间（IKAJSO）：官方库 updatedAt 晚于此值 = 「上游已更新」
    */
-  sourceSyncedAt  DateTime?
+  sourceSyncedAt     DateTime?
   /**
    * 资料更新时间（IKAJSO）：官方库改动判断上游是否落后的依据
    */
-  updatedAt       DateTime       @default(now()) @updatedAt
-  cartItems       CartItem[]
-  inventoryTxns   InventoryTxn[]
-  promotions      Promotion[]
-  purchaseRequests PurchaseRequest[]
-  restockBatchItems RestockBatchItem[]
-  restockOrderItems RestockOrderItem[]
+  updatedAt          DateTime              @default(now()) @updatedAt
+  cartItems          CartItem[]
+  inventoryTxns      InventoryTxn[]
+  promotions         Promotion[]
+  purchaseRequests   PurchaseRequest[]
+  restockBatchItems  RestockBatchItem[]
+  restockOrderItems  RestockOrderItem[]
   purchaseOrderItems PurchaseOrderItem[]
-  shipmentItems RestockShipmentItem[]
+  shipmentItems      RestockShipmentItem[]
 
   @@unique([campusId, barcode])
 }
@@ -570,36 +575,36 @@ model Product {
  * = 总部手动提前关闭（grilling #9）。
  */
 model RestockBatch {
-  id            String    @id @default(cuid())
-  name          String
-  startAt       DateTime
-  endAt         DateTime
-  closedAt      DateTime?
-  createdBy     String
-  createdByName String    @default("")
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  items         RestockBatchItem[]
-  orders        RestockOrder[]
+  id             String             @id @default(cuid())
+  name           String
+  startAt        DateTime
+  endAt          DateTime
+  closedAt       DateTime?
+  createdBy      String
+  createdByName  String             @default("")
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  items          RestockBatchItem[]
+  orders         RestockOrder[]
   purchaseOrders PurchaseOrder[]
-  shipments     RestockShipment[]
+  shipments      RestockShipment[]
 }
 
 /// 供应商采购单（IKFOQ1，2026-09-15 grilling 定版）：批次已确认订货单一键聚合生成。
 /// 状态由 已收/应收 推导（待到货/部分到货/已收齐），closedAt 非 null 即手动关闭（可重开）。
 model PurchaseOrder {
-  id            String    @id @default(cuid())
+  id            String              @id @default(cuid())
   batchId       String
-  batch         RestockBatch @relation(fields: [batchId], references: [id])
+  batch         RestockBatch        @relation(fields: [batchId], references: [id])
   supplierName  String
   closedAt      DateTime?
-  closedNote    String    @default("")
-  closedBy      String    @default("")
-  closedByName  String    @default("")
+  closedNote    String              @default("")
+  closedBy      String              @default("")
+  closedByName  String              @default("")
   createdBy     String
-  createdByName String    @default("")
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  createdByName String              @default("")
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
   items         PurchaseOrderItem[]
 
   @@index([batchId])
@@ -608,17 +613,17 @@ model PurchaseOrder {
 /// 采购行：requiredCases=聚合快照，receivedCases/badCases 验收累计，
 /// unitCost 单价快照（预填 costPrice 可改，分），unitsPerCase 快照防换算漂移。
 model PurchaseOrderItem {
-  id            String         @id @default(cuid())
+  id            String        @id @default(cuid())
   orderId       String
-  order         PurchaseOrder  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  order         PurchaseOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
   productId     String
-  product       Product        @relation(fields: [productId], references: [id])
+  product       Product       @relation(fields: [productId], references: [id])
   requiredCases Int
-  receivedCases Int            @default(0)
-  badCases      Int            @default(0)
+  receivedCases Int           @default(0)
+  badCases      Int           @default(0)
   unitCost      Int
   unitsPerCase  Int
-  lastNote      String         @default("")
+  lastNote      String        @default("")
 
   @@unique([orderId, productId])
 }
@@ -638,22 +643,22 @@ model RestockBatchItem {
  * 提交后锁定，总部确认即锁总部仓库存，发货转扣（IKFOQ2）。
  */
 model RestockOrder {
-  id           String    @id @default(cuid())
+  id           String             @id @default(cuid())
   batchId      String
-  batch        RestockBatch @relation(fields: [batchId], references: [id])
+  batch        RestockBatch       @relation(fields: [batchId], references: [id])
   campusId     String
-  campus       Campus    @relation(fields: [campusId], references: [id])
+  campus       Campus             @relation(fields: [campusId], references: [id])
   /// submitted | confirmed | rejected | shipped | received（IKJCJF：无草稿，每次提交成单）
-  status       String    @default("submitted")
+  status       String             @default("submitted")
   submitBy     String?
-  submitByName String    @default("")
+  submitByName String             @default("")
   submittedAt  DateTime?
   auditBy      String?
-  auditByName  String    @default("")
-  auditNote    String    @default("")
+  auditByName  String             @default("")
+  auditNote    String             @default("")
   auditAt      DateTime?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
   items        RestockOrderItem[]
   shipment     RestockShipment?
 
@@ -665,19 +670,19 @@ model RestockOrder {
 /// （不拆包），锁定转实扣（总部仓 stock/lockedStock 双降）；不支持撤销。
 /// 行落进货价/批发价快照供毛利②（IKFOPR）。
 model RestockShipment {
-  id             String          @id @default(cuid())
-  orderId        String          @unique
-  order          RestockOrder    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  id             String                @id @default(cuid())
+  orderId        String                @unique
+  order          RestockOrder          @relation(fields: [orderId], references: [id], onDelete: Cascade)
   batchId        String
-  batch          RestockBatch    @relation(fields: [batchId], references: [id])
+  batch          RestockBatch          @relation(fields: [batchId], references: [id])
   campusId       String
-  note           String          @default("")
+  note           String                @default("")
   shippedBy      String
-  shippedByName  String          @default("")
-  shippedAt      DateTime        @default(now())
+  shippedByName  String                @default("")
+  shippedAt      DateTime              @default(now())
   /// 校区确认到货后回填；null=未到货（grilling #3：不登记差异，按发货数全额入账）
   receivedBy     String?
-  receivedByName String          @default("")
+  receivedByName String                @default("")
   receivedAt     DateTime?
   items          RestockShipmentItem[]
 
@@ -859,33 +864,33 @@ model CartItem {
 }
 
 model Coupon {
-  id          String       @id @default(cuid())
-  campusId    String
-  name        String
+  id               String       @id @default(cuid())
+  campusId         String
+  name             String
   // IKDCVO：kind 券品种（platform 金额券下单抵扣 | partner 异业券到店展示暂不核销）；
   // trigger 发放方式（manual 手动领取 | lottery 转盘 | signup 注册自动发）。
   // 注册券/转盘券不进公开可领列表；partner 券 amount/threshold 记 0 不参与下单。
-  kind        String       @default("platform")
-  trigger     String       @default("manual")
-  remark      String       @default("")
-  amount      Int // 金额单位:分
-  threshold   Int
+  kind             String       @default("platform")
+  trigger          String       @default("manual")
+  remark           String       @default("")
+  amount           Int // 金额单位:分
+  threshold        Int
   // IKDEN2：null = 不限量（四通道统一不设上限）；存量 0 语义不变（死券）
-  total       Int?
-  status      String
-  expiresAt   DateTime? // null = 长期有效（IKDCVO）
+  total            Int?
+  status           String
+  expiresAt        DateTime? // null = 长期有效（IKDCVO）
   // 支付后推荐（道哥 2026-09-08）：勾选的 manual 券出现在支付成功页
   // 「领券卡」一键领取——支付完成后的复购营销位
-  featuredAfterPay Boolean @default(false)
+  featuredAfterPay Boolean      @default(false)
   // 每人限领张数（IKKEWS）：0=不限制；1=同券同用户仅持一张（默认，存量行为
   // 不变）；>1 限张。定向发放/领券中心按「限领−已持有」补发，0 跳过校验
-  perUserLimit Int          @default(1)
+  perUserLimit     Int          @default(1)
   // 定向券（IKKEWS）：只能定向发放触达用户，领券中心不显示、领取接口拒绝
-  targetedOnly Boolean     @default(false)
-  issued      Int          @default(0)
-  claimed     Int          @default(0)
-  used        Int          @default(0)
-  userCoupons UserCoupon[]
+  targetedOnly     Boolean      @default(false)
+  issued           Int          @default(0)
+  claimed          Int          @default(0)
+  used             Int          @default(0)
+  userCoupons      UserCoupon[]
 }
 
 model UserCoupon {
@@ -967,37 +972,37 @@ model AfterSale {
 }
 
 model Refund {
-  id String @id @default(cuid())
-  userId String
-  user   User   @relation(fields: [userId], references: [id])
-  orderId String
-  order   Order  @relation(fields: [orderId], references: [id])
+  id           String    @id @default(cuid())
+  userId       String
+  user         User      @relation(fields: [userId], references: [id])
+  orderId      String
+  order        Order     @relation(fields: [orderId], references: [id])
   /// 来源：after-sale=送达后售后（原 AfterSale 流程迁移）；pre-delivery=已支付未出库悔单
-  source   String @default("after-sale")
+  source       String    @default("after-sale")
   /// 售后类型（source=after-sale 有值）：quality|missing|damaged
-  type        String?
-  description String  @default("")
-  images      Json?
+  type         String?
+  description  String    @default("")
+  images       Json?
   /// 退款金额（分）= 实付 − 配送费，审批通过时锁定
-  amount  Int
+  amount       Int
   /// 申请时订单状态快照（拒绝/撤销后回滚用：paid/delivered/completed）
-  beforeStatus String @default("")
+  beforeStatus String    @default("")
   /// 悔单原因（选填）
-  reason      String @default("")
+  reason       String    @default("")
   /// pending|approved|refunding|refunded|rejected|failed
-  status      String @default("pending")
-  auditBy     String?
-  auditAt     DateTime?
-  auditRemark String  @default("")
-  wxRefundId  String?
+  status       String    @default("pending")
+  auditBy      String?
+  auditAt      DateTime?
+  auditRemark  String    @default("")
+  wxRefundId   String?
   /// 微信确认退款成功的实际时间；报表按此字段统计退款，而不是订单当前状态。
-  refundedAt  DateTime?
+  refundedAt   DateTime?
   /// 最近一次退款失败原因（failed 可人工重试）
-  refundError String @default("")
+  refundError  String    @default("")
   /// 拒绝次数（拒绝后可重新申请，复用同一条记录留痕于审计）
-  rejectCount Int    @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  rejectCount  Int       @default(0)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   /// v2 部分退款：一单可多条申请（每次申请一条，含 1..N 商品行）
   items RefundItem[]
@@ -1008,18 +1013,18 @@ model Refund {
 
 /// 退款商品行（IKHZKA v2）：部分退款的商品行快照与金额
 model RefundItem {
-  id        String @id @default(cuid())
-  refundId  String
-  refund    Refund @relation(fields: [refundId], references: [id], onDelete: Cascade)
+  id          String @id @default(cuid())
+  refundId    String
+  refund      Refund @relation(fields: [refundId], references: [id], onDelete: Cascade)
   /// 商品行快照（下单时 items 快照对应行）
   productId   String
   productName String
   /// 行快照单价（分）
-  unitPrice Int
+  unitPrice   Int
   /// 行购买数量
-  quantity  Int
+  quantity    Int
   /// 本行金额（分）：申请=行原价小计；批准=客服最终核定
-  amount    Int
+  amount      Int
 
   @@index([refundId])
 }
@@ -1060,7 +1065,9 @@ model Staff {
    * 上报 +N / 推送成功 -1 / 43101 清零校准。只做展示不做推送门控。
    */
   notifyQuota         Int                  @default(0)
-  /** 最近一次额度耗尽（43101）时间：驱动骑手端低水位提示条（当天维度） */
+  /**
+   * 最近一次额度耗尽（43101）时间：驱动骑手端低水位提示条（当天维度）
+   */
   notifyQuotaFailedAt DateTime?
   onTimeRate          Decimal              @db.Decimal(5, 2)
   proofRate           Decimal?             @db.Decimal(5, 2)
@@ -1217,25 +1224,41 @@ model RecruitingApplication {
   user         User      @relation(fields: [userId], references: [id])
   campusId     String
   campus       Campus    @relation(fields: [campusId], references: [id])
-  /** 报名楼栋 id（报名时所选校区下的楼栋） */
+  /**
+   * 报名楼栋 id（报名时所选校区下的楼栋）
+   */
   buildingId   String
-  /** 楼栋名快照（后台楼栋调整后报名记录仍可读） */
+  /**
+   * 楼栋名快照（后台楼栋调整后报名记录仍可读）
+   */
   buildingName String
   name         String
   phone        String
-  /** 自我介绍（选填） */
+  /**
+   * 自我介绍（选填）
+   */
   note         String    @default("")
   /// pending 待联系 | interviewing 面试中 | approved 已通过 | rejected 已拒绝
   status       String    @default("pending")
-  /** 拒绝原因（C 端进度页展示） */
+  /**
+   * 拒绝原因（C 端进度页展示）
+   */
   rejectReason String    @default("")
-  /** 后台补录身份证号（C 端不采集） */
+  /**
+   * 后台补录身份证号（C 端不采集）
+   */
   idCardNo     String    @default("")
-  /** 后台补录身份证照片 URL 数组 */
+  /**
+   * 后台补录身份证照片 URL 数组
+   */
   idCardImages Json?
-  /** 运营备注（面试评价等，admin 补录；与候选人自我介绍 note 相互独立） */
+  /**
+   * 运营备注（面试评价等，admin 补录；与候选人自我介绍 note 相互独立）
+   */
   staffRemark  String    @default("")
-  /** 审批通过创建的实习楼长 */
+  /**
+   * 审批通过创建的实习楼长
+   */
   staffId      String?
   auditBy      String    @default("")
   auditByName  String    @default("")
@@ -1277,8 +1300,10 @@ model LotteryDraw {
   @@index([userId, createdAt])
 }
 
-/** 小程序公告（IKHM1P 道哥 2026-09-21）：校区自定义多条，生效窗+启停；
- *  C 端按创建时间正序拼接「｜」跑马灯滚动展示。 */
+/**
+ * 小程序公告（IKHM1P 道哥 2026-09-21）：校区自定义多条，生效窗+启停；
+ * C 端按创建时间正序拼接「｜」跑马灯滚动展示。
+ */
 model Notice {
   id        String   @id @default(cuid())
   campusId  String
@@ -1291,4 +1316,23 @@ model Notice {
   updatedAt DateTime @updatedAt
 
   @@index([campusId, status])
+}
+
+/**
+ * 用户行为事件（IKRGLV 埋点 MVP）：转化漏斗+商品热度——C 端批量上报，
+ * userId/campusId 服务端从 token 取；meta 只放非敏感维度。
+ */
+model UserEvent {
+  id        String   @id @default(cuid())
+  userId    String
+  campusId  String
+  /// 事件名（page_view/product_view/search/add_cart/share，白名单校验）
+  event     String
+  /// 目标对象（商品 id / 搜索词 / 页面名），无目标留空
+  targetId  String   @default("")
+  meta      Json?
+  createdAt DateTime @default(now())
+
+  @@index([campusId, event, createdAt])
+  @@index([userId, createdAt])
 }

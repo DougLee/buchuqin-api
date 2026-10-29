@@ -7,6 +7,7 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { ScheduleModule } from '@nestjs/schedule';
 import { existsSync } from 'node:fs';
 import { AuthController } from './auth/auth.controller';
+import { AnalyticsController } from './analytics/analytics.controller';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { UserRoleGuard } from './auth/user-role.guard';
 import { HealthController } from './health/health.controller';
@@ -66,6 +67,7 @@ const adminDistDir = process.env.ADMIN_DIST_DIR ?? '';
   controllers: [
     HealthController,
     AuthController,
+    AnalyticsController,
     BusinessController,
     FulfillmentController,
     AdminController,
