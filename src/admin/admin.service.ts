@@ -9,7 +9,7 @@ import {
   Optional,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { hash } from 'bcryptjs';
 import ExcelJS from 'exceljs';
 import { PrismaService } from '../database/prisma.service';
@@ -3909,6 +3909,94 @@ export class AdminService {
           },
           rows,
         });
+  }
+
+  // ==================== 用户行为分析（IKRGLV）：埋点漏斗+热度报表 ====================
+
+  /**
+   * 行为分析汇总（道哥 2026-10-29 定稿：仅超管可见）：
+   * - 漏斗：埋点事件（浏览/看商品/加购）+ 交易段（下单/支付，从 Order 表口径）
+   * - 商品热度 Top10：product_view/add_cart 按 targetId 聚合，join 商品名
+   * - 搜索词 Top10：search 事件按词聚合
+   * 业务日界北京时间切（与日报同口径）。
+   */
+  async analyticsSummary(start: string, end: string, campusId?: string) {
+    const startAt = new Date(`${start}T00:00:00+08:00`);
+    const endAt = new Date(`${end}T23:59:59.999+08:00`);
+    const evFilter = campusId
+      ? Prisma.sql`AND "campusId" = ${campusId}`
+      : Prisma.empty;
+    const events = await this.db.$queryRaw<
+      Array<{ event: string; hits: bigint; users: bigint }>
+    >`
+      SELECT "event", COUNT(*) AS hits, COUNT(DISTINCT "userId") AS users
+      FROM "UserEvent"
+      WHERE "createdAt" BETWEEN ${startAt} AND ${endAt} ${evFilter}
+      GROUP BY "event"`;
+    const topProducts = await this.db.$queryRaw<
+      Array<{ target_id: string; views: bigint; carts: bigint }>
+    >`
+      SELECT "targetId",
+             COUNT(*) FILTER (WHERE "event" = 'product_view') AS views,
+             COUNT(*) FILTER (WHERE "event" = 'add_cart') AS carts
+      FROM "UserEvent"
+      WHERE "event" IN ('product_view', 'add_cart')
+        AND "createdAt" BETWEEN ${startAt} AND ${endAt} ${evFilter}
+      GROUP BY "targetId"
+      ORDER BY carts DESC, views DESC
+      LIMIT 10`;
+    const topKeywords = await this.db.$queryRaw<
+      Array<{ target_id: string; hits: bigint }>
+    >`
+      SELECT "targetId", COUNT(*) AS hits
+      FROM "UserEvent"
+      WHERE "event" = 'search'
+        AND "createdAt" BETWEEN ${startAt} AND ${endAt} ${evFilter}
+      GROUP BY "targetId"
+      ORDER BY hits DESC
+      LIMIT 10`;
+    // 交易段：与日报同口径——paidAt 落窗、排除待支付/取消
+    const trade = await this.db.order.aggregate({
+      where: {
+        paidAt: { gte: startAt, lte: endAt },
+        ...(campusId ? { campusId } : {}),
+        status: { notIn: ['pending-payment', 'cancelled'] },
+      },
+      _count: { _all: true },
+      _sum: { payableAmount: true },
+    });
+    // 商品名补齐（商品可能已删，缺名显示截断 id）
+    const productIds = topProducts.map((p) => p.target_id);
+    const products = productIds.length
+      ? await this.db.product.findMany({
+          where: { id: { in: productIds } },
+          select: { id: true, name: true },
+        })
+      : [];
+    const nameOf = new Map(products.map((p) => [p.id, p.name]));
+    const num = (v: bigint | number | null | undefined) => Number(v ?? 0);
+    return {
+      range: { start, end },
+      funnel: events.map((e) => ({
+        event: e.event,
+        hits: num(e.hits),
+        users: num(e.users),
+      })),
+      trade: {
+        orders: num(trade._count._all),
+        amount: num(trade._sum.payableAmount),
+      },
+      topProducts: topProducts.map((p) => ({
+        productId: p.target_id,
+        name: nameOf.get(p.target_id) ?? p.target_id.slice(0, 12),
+        views: num(p.views),
+        carts: num(p.carts),
+      })),
+      topKeywords: topKeywords.map((k) => ({
+        keyword: k.target_id,
+        hits: num(k.hits),
+      })),
+    };
   }
 
   // ==================== 校区经营日报（IKFOPS）：C 端订单实时聚合 ====================

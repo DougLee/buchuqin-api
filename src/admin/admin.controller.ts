@@ -1292,6 +1292,28 @@ export class AdminController {
     );
   }
 
+  /** 行为分析汇总（IKRGLV，道哥定稿仅超管可见）：漏斗+商品热度+搜索词。
+   *  菜单/权限点只在超管（通配）生效，无角色模板引用；超管恒全平台聚合。 */
+  @Get('analytics/summary') async analyticsSummary(
+    @Req() req: AuthRequest,
+    @Query('start') start?: string,
+    @Query('end') end?: string,
+  ) {
+    const ctx = this.ctx(req);
+    if (!ctx.super)
+      throw new ForbiddenException('仅超级管理员可查看行为分析');
+    const today = new Date(Date.now() + 8 * 3600 * 1000)
+      .toISOString()
+      .slice(0, 10);
+    return ok(
+      await this.service.analyticsSummary(
+        start || today,
+        end || today,
+        await this.scopedCampus(req),
+      ),
+    );
+  }
+
   // ==================== 营销作战地图（IKFOQ3）：寝室级下单覆盖 ====================
   // 权限复用 buildings 键（admin/operations）；校区经 campusScope（IKISDN）：
   // 校区级恒本校区防串；平台级可 ?campus= 聚焦、缺省全放行（页面内选校区）

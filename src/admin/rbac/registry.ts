@@ -54,6 +54,10 @@ export const MENU_NODES: MenuNodeDef[] = [
   { code: 'after-sales.audit', name: '退款审核', type: 2, parent: 'after-sales', order: 1, perms: ['POST /admin/refunds/:id/audit', 'POST /admin/refunds/:id/sync', 'POST /admin/orders/:id/refunds'], remark: '批准=微信原路退回；拒绝=回滚订单；同步=查询退款终态；按商品退款' },
   { code: 'battle-map', name: '营销作战地图', type: 1, parent: 'g.ops', path: '/battle-map', icon: 'buildings', order: 4, perms: ['GET /admin/marketing/map', 'GET /admin/battle-map/buildings/:buildingId', 'GET /admin/battle-map/rooms/:roomId'] },
   { code: 'campus-report', name: '校区日报', type: 1, parent: 'g.ops', path: '/campus-report', icon: 'campus-report', order: 5, perms: ['GET /admin/reports/campus-daily', 'GET /admin/reports/hq-daily'] },
+  // IKRGLV 行为分析（道哥定稿仅超管可见）：不进任何角色模板——预设角色
+  // seeded 后不补新菜单（registry 同步特性），故模板不含即天然超管专属；
+  // 前端另有 superViews 双保险
+  { code: 'behavior-analytics', name: '行为分析', type: 1, parent: 'g.ops', path: '/behavior-analytics', icon: 'dashboard', order: 6, perms: ['GET /admin/analytics/summary'], remark: '用户行为漏斗+商品热度+搜索词（仅超管）' },
 
   /* ---------- 目录：仓储中心 ---------- */
   { code: 'g.wh', name: '仓储中心', type: 0, order: 2 },
