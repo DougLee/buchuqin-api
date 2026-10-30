@@ -22,6 +22,15 @@ export class TaskActionDto {
   @IsOptional() @IsString() receiver?: string;
 }
 
+/** 骑手到店扫码（IKRSIY）：小票二维码内容=orderNo。字段必挂装饰器——
+ *  全局 ValidationPipe whitelist 会静默剥离无装饰器字段。 */
+export class ScanArriveDto {
+  @IsString()
+  @MinLength(1, { message: '订单号不能为空' })
+  @MaxLength(40)
+  orderNo!: string;
+}
+
 export class StaffStatusDto {
   @IsIn(['online', 'paused', 'offline']) status!:
     'online' | 'paused' | 'offline';

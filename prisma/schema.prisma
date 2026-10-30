@@ -102,12 +102,37 @@ model Campus {
   servicePhone              String                  @default("4008002026")
   // 校区客服微信二维码（IKKTWM）：COS 图；小程序客服弹层主展示，空串=回落拨号
   serviceQrcode             String                  @default("")
+  // 企微微信客服链接（IKRSIY #195）：https://work.weixin.qq.com/kfid/xxx；
+  // 用户端据此拉起企微客服会话，空串=未配置，前端走旧客服弹层（拨号/二维码）
+  serviceKfUrl              String                  @default("")
+  // 企微企业 ID（IKRSIY #195）：wx.openCustomerServiceChat 的 corpAccessId
+  // 必填项，全局一个（如 wwxxxxxxxx）；空串=客服链接配了也拉不起
+  serviceKfCorpId           String                  @default("")
   // 售后福利群二维码（IKQXSD 道哥 2026-10-27）：COS 图；用户端售后页展示，
   // 空串=未配置不渲染
   afterSalesGroupQrcode     String                  @default("")
   // 无楼长提示（IKHMKR 道哥 2026-09-21）：结算/下单时楼栋无在职楼长的弹窗
   // 提示，校区自定义；空=回落默认文案（防误清空丢提示）
   noManagerTip              String                  @default("")
+  // 群二维码弹窗文案（IKRSJ3 #114 道哥 2026-10-30）：用户端售后福利群弹窗/
+  // 卡片的说明文案，校区自定义；空=回落默认文案
+  groupQrcodeTip            String                  @default("")
+  // 楼长销售额展示开关（IKRSIZ #108 道哥 2026-10-30）：关=配送端工作台
+  // 不下发销售额（todayGmv/monthGmv 置 null，前端不渲染）
+  managerSalesVisible       Boolean                 @default(true)
+  // 楼长提成模式（IKRSIX #112 道哥 2026-10-30）：per-order=按单固定（现状，
+  // 送达提成=订单配送模式对应配送费直取）；rate=销售比例——楼长系提成=
+  // round((实付−配送费)×managerCommissionRate/10000)，骑手恒按单固定
+  managerCommissionMode     String                  @default("per-order")
+  // 楼长提成比例（IKRSIX #112）：万分比（5%=500，0~10000）；仅 mode=rate 消费
+  managerCommissionRate     Int                     @default(0)
+  // 用户订单详情是否下发骑手/楼长真实电话（IKRSIY #107）：关=详情不带
+  // deliveryChain（隐私默认最小披露），开=后端组装骑手+楼长姓名/电话/工号
+  showDeliveryContacts      Boolean                 @default(false)
+  // 到店前退款是否退配送费的校区级覆盖（IKRSIY #91/#110 道哥）：默认不退
+  // （可退上限=实付−配送费维持现状）；开=到店前退款上限放宽为实付全额。
+  // 订单已到店（arrived 及之后）不受此开关限制，配送费一律可退
+  refundDeliveryFeeBeforeArrive Boolean             @default(false)
   // 订单自动出库（IKM55A 道哥 2026-10-16）：开启后已支付订单 N 秒自动出库
   // （含预约达；picking 人工介入不抢跑）。Cron 30s 精度扫描，实际出库
   // 落在 N~N+30s。关闭=完全人工节奏。
@@ -133,6 +158,7 @@ model Campus {
   printers                  Printer[]
   lotteryWheel              LotteryWheel?
   purchaseRequests          PurchaseRequest[]
+  purchaseRecords           PurchaseRecord[]
   recruitApplications       RecruitingApplication[]
   restockOrders             RestockOrder[]
   notices                   Notice[]
@@ -749,6 +775,32 @@ model PurchaseRequest {
   @@index([status, createdAt])
 }
 
+/// 手动采购记录（IKRSIX #97 道哥 2026-10-30）：校区自主零星采购台账——
+/// 与订货批次流（RestockOrder/PurchaseOrder 按件订货聚合）无关，纯登记
+/// 不动库存/不进流水；到期预警（≤30 天 expiring / 已过期 expired）由
+/// 列表端点按服务端时间算好下发。
+model PurchaseRecord {
+  id          String    @id @default(cuid())
+  campusId    String
+  campus      Campus    @relation(fields: [campusId], references: [id])
+  /// 商品名称（自由文本——零星采购未必建档商品）
+  productName String
+  /// 入库数量（零售单位）
+  qty         Int
+  /// 自主采购价（分/零售单位，IK8W5K）
+  price       Int
+  /// 商品过期时间；空=不登记效期
+  expiresAt   DateTime?
+  /// 入库日期
+  purchasedAt DateTime
+  remark      String    @default("")
+  /// 创建人 AdminAccount.id（列表经 operatorNames 解析人话名）
+  createdBy   String
+  createdAt   DateTime  @default(now())
+
+  @@index([campusId, purchasedAt])
+}
+
 model Promotion {
   id        String   @id @default(cuid())
   productId String
@@ -986,6 +1038,10 @@ model Refund {
   images       Json?
   /// 退款金额（分）= 实付 − 配送费，审批通过时锁定
   amount       Int
+  /// IKRSIY #110/#91：审核口径留痕——本次退款「可含配送费」（可退上限放宽到
+  /// 实付全额）。批准时按到店分界/校区开关/审核开关落库；金额本身是否真含
+  /// 配送费由 finalAmount 体现，此标记只记录上限口径
+  refundDeliveryFee Boolean @default(false)
   /// 申请时订单状态快照（拒绝/撤销后回滚用：paid/delivered/completed）
   beforeStatus String    @default("")
   /// 悔单原因（选填）

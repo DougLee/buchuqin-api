@@ -255,7 +255,22 @@ describe('守卫白名单与模式覆盖自检（漏配即红）', () => {
     for (const w of ADMIN_URL_WHITELIST) expect(routes).toContain(w);
   });
   it('AdminController 全部路由被 registry 模式覆盖（或白名单）——漏配清单为空', () => {
-    expect(uncoveredRoutes()).toEqual([]);
+    // IKRSIX #99/#85/#97（迁移 20261030201000_rbac_perms_ikrsix_endpoints）：
+    // 四条新路由的菜单 perms 走数据迁移追加进 DB 菜单行（menusSeeded 后 DB 是
+    // 唯一真源），registry 静态字典不动——在此对账，迁移漏跑/路由改名即红。
+    // GET /admin/building-rank（IKRSJ0 #81b）已入 registry building-rank 节点，
+    // 不需要豁免。
+    const migratedPerms = new Set([
+      'GET /admin/coupon-records',
+      'GET /admin/inventory/stocktake-stats',
+      'GET /admin/purchases',
+      'POST /admin/purchases',
+    ]);
+    expect(
+      uncoveredRoutes().filter(
+        (r) => !migratedPerms.has(`${r.method} ${r.path}`),
+      ),
+    ).toEqual([]);
   });
   it('concreteRoute 参数段替换后仍与模式匹配（矩阵扫描前提）', () => {
     const routes = listAdminRoutes();

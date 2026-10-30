@@ -7,7 +7,7 @@ import {
   Optional,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import type { Banner, Product } from '@prisma/client';
+import type { Banner, Order, Product } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../database/prisma.service';
 import { perRetailUnitCostFen } from '../common/product-units';
@@ -360,6 +360,73 @@ export class BusinessService {
       timeline: order.timeline as TimelineStep[],
     };
   }
+  /**
+   * 用户订单详情组装（IKRSIY #107 后端口子）：campus.showDeliveryContacts=
+   * true 时附带 deliveryChain（骑手+楼长姓名/电话/工号，组装口径与后台
+   * IKP0AP 同款）；开关关/未配置时不下发该键——前端据 /campus/current 的
+   * showDeliveryContacts 决定渲染，后端闸门保证未开启时抓包也拿不到真实
+   * 号码。仅订单详情端点走此组装；列表（orders）不带，避免 N 次查询。
+   */
+  private async orderDetail(order: Order) {
+    const campus = await this.db.campus.findUnique({
+      where: { id: order.campusId },
+      select: { showDeliveryContacts: true },
+    });
+    const view = this.orderView(order);
+    if (!campus?.showDeliveryContacts) return view;
+    return {
+      ...view,
+      deliveryChain: await this.deliveryChainForOrder(
+        order.id,
+        order.riderId,
+      ),
+    };
+  }
+  /**
+   * 配送链（IKRSIY #107）：rider=order.riderId → Staff（未接单为 null）；
+   * manager=Commission 按 orderId 反查最近一条楼长角色（building-manager/
+   * intern-building-manager）——订单送达时落库的提成快照是「本单楼长」
+   * 唯一可靠凭证；customer-pickup/员工配送组织无楼长链路时为 null。
+   */
+  private async deliveryChainForOrder(
+    orderId: string,
+    riderId: string | null,
+  ) {
+    const [rider, managerRows] = await Promise.all([
+      riderId
+        ? this.db.staff.findUnique({
+            where: { id: riderId },
+            select: { name: true, phone: true, staffNo: true },
+          })
+        : Promise.resolve(null),
+      this.db.commission.findMany({
+        where: {
+          orderId,
+          staff: {
+            role: { in: ['building-manager', 'intern-building-manager'] },
+          },
+        },
+        select: {
+          staff: { select: { name: true, phone: true, staffNo: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 1,
+      }),
+    ]);
+    const manager = managerRows[0]?.staff ?? null;
+    return {
+      rider: rider
+        ? { name: rider.name, phone: rider.phone, staffNo: rider.staffNo }
+        : null,
+      manager: manager
+        ? {
+            name: manager.name,
+            phone: manager.phone,
+            staffNo: manager.staffNo,
+          }
+        : null,
+    };
+  }
   private async notify(
     userId: string,
     type: string,
@@ -435,6 +502,10 @@ export class BusinessService {
     if (!item) throw new NotFoundException('校园不存在');
     // IKG1C（IKGI1C 打烊停单）：C 端闭店态一次拿全（weapp 横幅/置灰与下单拦截同口径）
     const { closed, reason } = this.isClosedNow(item);
+    // 下发口径：整行展开——serviceKfUrl（IKRSIY #195 企微客服链接）、
+    // showDeliveryContacts（IKRSIY #107）、groupQrcodeTip（IKRSJ3 #114）、
+    // afterSalesGroupQrcode（IKQXSD）等校区自定义字段随行自动透出，
+    // /campus/current 与 /home 的 campus 组共用本方法，新增字段无需改这里
     return { ...item, closedNow: closed, closedReason: reason };
   }
   /** 分类字典（IKKA1S 校区隔离）：只下发本校区类别（hidden 不下发，IKC9M4）。 */
@@ -488,8 +559,9 @@ export class BusinessService {
         where: { campusId },
         orderBy: { expiresAt: 'asc' },
       }),
+      // IKRSIX #77：跨校区券直接不显示（此前仅下单时拦截，列表照显置灰误导）
       this.db.userCoupon.findMany({
-        where: { userId },
+        where: { userId, coupon: { campusId } },
         include: { coupon: true },
         orderBy: { claimedAt: 'desc' },
       }),
@@ -1440,7 +1512,7 @@ export class BusinessService {
   async order(userId: string, id: string) {
     await this.expirePendingOrders(userId);
     const item = await this.db.order.findFirst({ where: { id, userId } });
-    if (item) return this.orderView(item);
+    if (item) return this.orderDetail(item);
     // 订单管理详情页回跳（2026-10-17 微信订单中心接入）：微信「小程序购物
     // 订单」只认支付时传的 out_trade_no（=orderNo，BCQ…），配置 path 的
     // ${商品订单号} 占位符回填的就是它——id 未命中时按 orderNo 兜底解析。
@@ -1449,7 +1521,7 @@ export class BusinessService {
       where: { orderNo: id, userId },
     });
     if (!byNo) throw new NotFoundException('订单不存在');
-    return this.orderView(byNo);
+    return this.orderDetail(byNo);
   }
   async pay(userId: string, id: string) {
     return this.db.$transaction(async (tx) => {
@@ -2721,6 +2793,13 @@ export class BusinessService {
       const issued = await this.grantCoupon(userId, c.id);
       if (issued && !issued.existing) granted += 1;
     }
+    // IKRSIX #74：无候选券（未配置 signup 券/全部停用过期）此前完全静默，
+    // 配置缺口长期无感知（2026-10-30 对账实锤：生物工程学院漏发即此因）——
+    // 留 warn 便于从日志发现「校区忘了配新人券」
+    if (!candidates.length)
+      BusinessService.logger.warn(
+        `signup coupon grant skipped: no active signup coupon for campus=${campusId} userId=${userId}`,
+      );
     return { granted };
   }
 

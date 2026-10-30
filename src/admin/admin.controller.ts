@@ -52,6 +52,7 @@ import {
   CreateCouponDto,
   CreateDispatchInvitationDto,
   CreateProductDto,
+  CreatePurchaseRecordDto,
   ImportProductsDto,
   UpdateProductDto,
   CreateOrgProductDto,
@@ -356,6 +357,27 @@ export class AdminController {
       ),
     );
   }
+  /**
+   * 楼栋经营榜（IKRSJ0 #81b/#116，道哥 2026-10-30）：Dashboard 排行「完整数据」
+   * 落地页数据源。菜单节点 building-rank 已入 registry（perms
+   * GET /admin/building-rank）；组织管理员/校区运营模板已挂，既有 DB 角色
+   * 需角色管理勾选（超管不受影响）。
+   */
+  @Get('building-rank') async buildingRank(
+    @Req() req: AuthRequest,
+    @Query('start') start?: string,
+    @Query('end') end?: string,
+    @Query('campusId') campusId?: string,
+  ) {
+    return ok(
+      await this.service.buildingRank(
+        start,
+        end,
+        // campusScope：平台 ?campusId= 可选聚焦（空=跨校区）；校区级锁本校区
+        await this.campusScope(req, campusId),
+      ),
+    );
+  }
   @Get('products')
   @ApiOperation({
     summary:
@@ -370,6 +392,8 @@ export class AdminController {
     @Query('view') view?: string,
     @Query('categoryId') categoryId?: string,
     @Query('campus') campus?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortDir') sortDir?: string,
   ) {
     return ok(
       paginate(
@@ -387,6 +411,9 @@ export class AdminController {
           undefined,
           // IKKRMY：无 cost.read 剔除进货价/批发价/本地采购价/采购来源
           this.costRead(req),
+          // IKRSJ1 #93：售价/批发价列排序（道哥 2026-10-30）
+          sortBy || undefined,
+          sortDir || undefined,
         ),
         page,
         pageSize,
@@ -1059,6 +1086,18 @@ export class AdminController {
       '盘点已提交',
     );
   }
+  /** 盘点统计（IKRSIX #85）：按原因聚合核减流水+商品明细，供盘点页报表 */
+  @Get('inventory/stocktake-stats') async stocktakeStats(
+    @Req() req: AuthRequest,
+    @Query('start') start?: string,
+    @Query('end') end?: string,
+    @Query('campus') campus?: string,
+  ) {
+    const campusId = await this.campusScope(req, campus);
+    if (!campusId)
+      throw new BadRequestException('请先选择统计仓库（校区或总部仓）');
+    return ok(await this.service.stocktakeStats(start, end, campusId));
+  }
   // ==================== 订货批次（IKFOQ0）：独立板块「订货管理」====================
 
   /** 批次列表：阶段由时间窗推导；校区角色附带本校区单况统计。 */
@@ -1371,6 +1410,46 @@ export class AdminController {
 
   // ==================== 采购单（IKFOQ1）：独立板块「采购管理」====================
   // 全链总部动作（hq/admin）：生成聚合/验收入库/关闭重开；权限 purchase section。
+
+  // -------------------- 手动采购记录（IKRSIX #97）：零星采购台账 --------------------
+  // 与订货批次流（purchase/orders）正交：校区自主登记，不动库存；菜单 perms
+  // 经迁移 20261030201000_rbac_perms_ikrsix_endpoints 追加到 purchase 行。
+  /** 手动新增采购记录（?campus= 选校区，同 inventory 口径） */
+  @Post('purchases') async createPurchaseRecord(
+    @Req() req: AuthRequest,
+    @Body() body: CreatePurchaseRecordDto,
+    @Query('campus') campus?: string,
+  ) {
+    const campusId = await this.campusScope(req, campus);
+    if (!campusId)
+      throw new BadRequestException('请先选择采购校区');
+    return ok(
+      await this.service.createPurchaseRecord(body, req.user.id, campusId),
+      '采购记录已保存',
+    );
+  }
+  /** 采购记录列表（?start&end&campus&keyword&page&pageSize，分页包裹；含到期预警字段） */
+  @Get('purchases') async purchaseRecords(
+    @Req() req: AuthRequest,
+    @Query('start') start?: string,
+    @Query('end') end?: string,
+    @Query('campus') campus?: string,
+    @Query('keyword') keyword?: string,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+  ) {
+    const campusId = await this.campusScope(req, campus);
+    if (!campusId)
+      throw new BadRequestException('请先选择采购校区');
+    // IKRSIV #86：paginate 把 items 列为噪声字段排除——本列表无 items 字段
+    return ok(
+      paginate(
+        await this.service.purchaseRecords(start, end, campusId, keyword),
+        page,
+        pageSize,
+      ),
+    );
+  }
   @Get('purchase/orders') async purchaseOrders(@Req() req: AuthRequest) {
     // 采购=平台码（purchase.read/write），校区授权天然拿不到，无需再判平台
     this.requirePlatformDataScope(req);
@@ -1478,24 +1557,31 @@ export class AdminController {
     @Query('start') start?: string,
     @Query('end') end?: string,
   ) {
-    return ok(
-      paginate(
-        await this.service.orders(
-          status,
-          await this.campusScope(req, campus),
-          // IKD6FG：配送方式筛选（instant/scheduled）
-          deliveryMode || undefined,
-          // IKJ9XQ 对账：创建时间范围（YYYY-MM-DD）
-          start || undefined,
-          end || undefined,
-          // IKKRMY：订单行成本快照按 cost.read 裁剪（列表毛利列口径来源）
-          this.costRead(req),
-        ),
-        page,
-        pageSize,
-        keyword,
-      ),
+    // IKRSIV #86：通用 paginate 把 items 列为噪声字段排除（pagination.ts:46），
+    // 「搜索商品」恒空。订单端点改专用过滤：单号/状态/手机号 + 商品行品名。
+    const rows = await this.service.orders(
+      status,
+      await this.campusScope(req, campus),
+      // IKD6FG：配送方式筛选（instant/scheduled）
+      deliveryMode || undefined,
+      // IKJ9XQ 对账：创建时间范围（YYYY-MM-DD）
+      start || undefined,
+      end || undefined,
+      // IKKRMY：订单行成本快照按 cost.read 裁剪（列表毛利列口径来源）
+      this.costRead(req),
     );
+    const kw = (keyword ?? '').trim().toLowerCase();
+    const hit = kw
+      ? rows.filter((o) => {
+          const goods = (Array.isArray(o.items) ? o.items : [])
+            .map((l) => String((l as { product?: { name?: string } })?.product?.name ?? ''))
+            .join(' ');
+          return `${o.orderNo ?? ''} ${o.statusText ?? ''} ${o.userPhone ?? ''} ${goods}`
+            .toLowerCase()
+            .includes(kw);
+        })
+      : rows;
+    return ok(paginate(hit, page, pageSize));
   }
   // 路由顺序：必须声明在 orders/:id 之前，否则 status-counts 会被当成订单 id
   @Get('orders/status-counts')
@@ -2169,6 +2255,8 @@ export class AdminController {
         await this.campusScope(req),
         (body.remark ?? '').slice(0, 200),
         body.amounts?.map((a) => ({ itemId: a.itemId, amount: a.amount })),
+        // IKRSIY #110/#91：审核弹窗「退配送费」开关透传（未传=按规则默认）
+        body.refundDeliveryFee,
       ),
       body.action === 'approve' ? '已批准并发起退款' : '已拒绝该申请',
     );
@@ -2360,6 +2448,20 @@ export class AdminController {
             // IKQXSD 售后福利群二维码：与 serviceQrcode 同为校区自定义字段，
             // 漏在此白名单会被静默剥掉（200 成功但不落库，2026-10-28 道哥实测）
             afterSalesGroupQrcode: body.afterSalesGroupQrcode,
+            // IKRSJ3 #114 群二维码弹窗文案 / IKRSIZ #108 楼长销售额开关：
+            // 同为校区级自定义，必须进白名单否则被 whitelist 静默剥
+            groupQrcodeTip: body.groupQrcodeTip,
+            managerSalesVisible: body.managerSalesVisible,
+            // IKRSIX #112：楼长提成模式/比例——同为校区级可维护字段，
+            // 漏在白名单外会被全局 ValidationPipe whitelist 静默剥
+            managerCommissionMode: body.managerCommissionMode,
+            managerCommissionRate: body.managerCommissionRate,
+            // IKRSIY #195/#107/#91：企微客服链接/真实电话开关/到店前退配送费
+            // 开关——同为校区级可维护字段，漏在白名单外会被 whitelist 静默剥
+            serviceKfUrl: body.serviceKfUrl,
+            serviceKfCorpId: body.serviceKfCorpId,
+            showDeliveryContacts: body.showDeliveryContacts,
+            refundDeliveryFeeBeforeArrive: body.refundDeliveryFeeBeforeArrive,
             buildingManagerBaseSalary: body.buildingManagerBaseSalary,
           }
         : body;
@@ -2575,6 +2677,37 @@ export class AdminController {
         page,
         pageSize,
         keyword,
+      ),
+    );
+  }
+  /**
+   * 优惠券领取/核销明细（IKRSIX #99/#184，道哥 2026-10-30）：券配置页「明细」
+   * 抽屉数据源。权限与 GET /admin/coupons 同菜单（coupons）——URL 模式经迁移
+   * 20261030201000_rbac_perms_ikrsix_endpoints 追加进 DB 菜单行（registry
+   * 静态字典不改）。?couponId&status&keyword&start&end 过滤，分页包裹。
+   */
+  @Get('coupon-records') async couponRecords(
+    @Req() req: AuthRequest,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+    @Query('couponId') couponId?: string,
+    @Query('status') status?: string,
+    @Query('keyword') keyword?: string,
+    @Query('start') start?: string,
+    @Query('end') end?: string,
+    @Query('campus') campus?: string,
+  ) {
+    return ok(
+      paginate(
+        await this.service.couponRecords(await this.scopedCampus(req, campus), {
+          couponId,
+          status,
+          keyword,
+          start,
+          end,
+        }),
+        page,
+        pageSize,
       ),
     );
   }

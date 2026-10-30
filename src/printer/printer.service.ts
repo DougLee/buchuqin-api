@@ -13,6 +13,10 @@ import { PrismaService } from '../database/prisma.service';
  * （旧票面），2=商家联+客户联，3=再加骑手联；一次 POST 拼 N 张票（每联尾
  * <CUT>），原子同成败，失败走补打兜底；出纸顺序商家→客户→骑手（卷纸后打在外）。
  * 库位（IKD6H4）：商品明细下缩进显示「【库位:区域-编号】」，attachLocations 实时注入。
+ * 排版四项（IKRSJ2，2026-10-30 道哥拍板）：收件/联系人挪金额区之后、感谢语
+ * 之前；品名 <CB> 大字按 16 半角位折行、「x数量 ￥价」贴右独立行；库位受
+ * Campus.receiptShowLocation 开关（默认 true，字段 schema 后补宽位读取）；
+ * 二维码不动（内容=orderNo，IKRSIY 骑手到店扫码码源）。
  * 金额去尾零+右对齐留 1 列边距（2026-09-05 道哥反馈：￥11.00 打满 32 列被挤行，
  * 末尾 0 成孤行——去尾零从根上缩短，对齐按 31 列留余量）。
  *
@@ -31,6 +35,9 @@ import { PrismaService } from '../database/prisma.service';
 
 /** 58mm 每行半角位宽（16 个汉字）。 */
 const LINE_WIDTH = 32;
+/** <CB> 放大段每行可用半角位（IKRSJ2 品名大字）：双倍宽高下标称列 ×2 占物理
+ *  列，一行只容 LINE_WIDTH/2=16 半角位（8 汉字）——品名按此宽度折行。 */
+const BIG_LINE_WIDTH = LINE_WIDTH / 2;
 
 export interface ReceiptOrderContext {
   id: string;
@@ -212,11 +219,20 @@ export class PrinterService {
       }
     }
     const n = Math.min(Math.max(1, Math.floor(copies)), COPY_LABELS.length);
+    // IKRSJ2 库位打印开关：Campus.receiptShowLocation（Boolean，默认 true）。
+    // 字段由主分支 schema 迁移补齐（本分支零 schema 变更），此处整行取出后
+    // 宽位断言读取——字段未就位时恒 undefined → 默认 true（库位照打）；
+    // schema 落地后此处零改动生效。关闭=全联不打库位（含商家联）。
+    const campusRow = (await this.db.campus.findUnique({
+      where: { id: order.campusId },
+    })) as { receiptShowLocation?: boolean } | null;
+    const showLocation = campusRow?.receiptShowLocation ?? true;
     const parts =
       n <= 1
-        ? [this.buildReceipt(order)]
+        ? [this.buildReceipt(order, undefined, showLocation)]
         : COPY_LABELS.slice(0, n).map((label, index) => {
-            if (index === 0) return this.buildReceipt(order, label);
+            if (index === 0)
+              return this.buildReceipt(order, label, showLocation);
             return this.buildReceipt(
               {
                 ...order,
@@ -230,6 +246,7 @@ export class PrinterService {
                 })),
               },
               label,
+              showLocation,
             );
           });
     const gap = Math.min(Math.max(0, Math.floor(gapSeconds)), 10);
@@ -310,9 +327,15 @@ export class PrinterService {
     await this.printRaw(lines.join('\n'), sn);
   }
 
-  /** 票面构建：表头/收件信息/商品清单/金额/订单号二维码/切刀。
-   *  copyLabel（IKCZOX）：多联时票头联名行（仓库名/标语之后、分隔线之前）。 */
-  buildReceipt(order: ReceiptOrderContext, copyLabel?: string): string {
+  /** 票面构建：表头/商品清单/金额/收件信息/订单号二维码/感谢语/切刀。
+   *  copyLabel（IKCZOX）：多联时票头联名行（仓库名/标语之后、分隔线之前）。
+   *  showLocation（IKRSJ2）：库位打印开关（Campus.receiptShowLocation，默认
+   *  true）——关闭时全联不打库位行；直接调用本方法不传=打（旧票面兼容）。 */
+  buildReceipt(
+    order: ReceiptOrderContext,
+    copyLabel?: string,
+    showLocation = true,
+  ): string {
     const address = order.address ?? {};
     const lines: string[] = [];
     // 票头：当日分拣序号大字（IKHFDZ，仅商家联/单联——分拣锚点）+ 仓库名大字 + 平台名（+ 联名）
@@ -328,27 +351,22 @@ export class PrinterService {
       `配送方式：${order.deliveryMode === 'instant' ? '即时达' : '预约达'}` +
         (order.estimatedArrival ? ` ${order.estimatedArrival}` : ''),
     );
-    lines.push(
-      `收件：${[address.buildingName, address.room].filter(Boolean).join(' ') || '—'}`,
-    );
-    if (address.contactName || address.phone)
-      lines.push(
-        `联系人：${address.contactName ?? ''} ${maskPhone(address.phone)}`.trim(),
-      );
     if (order.remark) lines.push(`备注：${order.remark}`);
     lines.push('-'.repeat(LINE_WIDTH));
-    // 商品清单：品名×数量居左，单价右对齐（快照价即成交价，含促销锁价）；
-    // 库位独立缩进行（IKD6H4 分拣备货单）：区域+编号都带，未配库位跳过。
+    // 商品清单（IKRSJ2 品名放大）：品名整行大字（<CB> 双倍宽高，物理行只容
+    // 16 半角位=8 汉字，按半宽折行），「x数量 ￥价格」贴右独立一行——老
+    // 「名价同行」布局在放大字号下必挤行，itemLineWrap 已随 IKRSJ2 移除。
+    // 库位独立缩进行（IKD6H4 分拣备货单）：区域+编号都带，未配库位跳过；
+    // showLocation=false 整单不打（IKRSJ2 校区开关，含商家联）。
     // 标签用中文「库位:」——▸ 等几何符号不在 GBK，芯烨云渲染成问号（¥ 同坑）
     for (const line of order.items ?? []) {
       const name = line.product?.name ?? '未知商品';
       const price = line.product?.price;
-      // IKHFDZ 排版二轮（道哥真机反馈）：品名居左可折行，「x数量 ￥价格」
-      // 贴右侧与品名最后一行同行（经典超市票布局）；最后一行放不下右段时
-      // 名再折让位——名/量/价三要素仍全保全
+      for (const seg of wrapText(name, BIG_LINE_WIDTH))
+        lines.push(TAG.big(seg));
       lines.push(
-        ...itemLineWrap(
-          name,
+        itemLine(
+          '',
           `x${line.quantity}${price == null ? '' : ' ' + yuan(price)}`,
         ),
       );
@@ -357,7 +375,7 @@ export class PrinterService {
         .join('-');
       // 库位行【】括号强调（2026-09-05 道哥定版）：常规字号不放大、拣货扫视够
       // 醒目——<B> 在本机型实测是放大加粗，不可用；【】在 GBK 字符集内安全
-      if (loc) lines.push(`  【库位:${loc}】`);
+      if (loc && showLocation) lines.push(`  【库位:${loc}】`);
     }
     lines.push('-'.repeat(LINE_WIDTH));
     lines.push(itemLine('商品金额', yuan(order.productAmount)));
@@ -366,7 +384,16 @@ export class PrinterService {
       lines.push(itemLine('优惠', `-${yuan(order.discount)}`));
     lines.push(itemLine('实付', TAG.bold(yuan(order.payableAmount))));
     lines.push('-'.repeat(LINE_WIDTH));
-    // 票尾：订单号二维码（仓管/客服扫码查单）+ 感谢语 + 切刀
+    // 收件/联系人（IKRSJ2 挪位）：金额区之后、感谢语之前——拣货装袋时
+    // 票尾即地址，最后一眼核对收件人，不用回抬头找。
+    lines.push(
+      `收件：${[address.buildingName, address.room].filter(Boolean).join(' ') || '—'}`,
+    );
+    if (address.contactName || address.phone)
+      lines.push(
+        `联系人：${address.contactName ?? ''} ${maskPhone(address.phone)}`.trim(),
+      );
+    // 票尾：订单号二维码（仓管/客服扫码查单；IKRSIY 同为骑手到店扫码码源）+ 感谢语 + 切刀
     lines.push(TAG.center(TAG.qr(order.orderNo)));
     lines.push(TAG.center('扫码核验订单'));
     lines.push(TAG.center('感谢惠顾，欢迎再次下单'));
@@ -390,22 +417,8 @@ function shanghaiDateKey(d: Date): string {
     day: '2-digit',
   }).format(d);
 }
-/** 左右布局+左段折行（IKHFDZ 排版二轮）：品名按整行折，最后一行为右段让位
- *  再折（右段=「x数量 ￥价格」），二者同行拼出超市票商品行 */
-function itemLineWrap(left: string, right: string): string[] {
-  const rightW = textWidth(right);
-  const avail = LINE_WIDTH - 1 - rightW;
-  const segs = wrapText(left, LINE_WIDTH);
-  while (segs.length && textWidth(segs[segs.length - 1]) > Math.max(1, avail)) {
-    const last = segs.pop()!;
-    segs.push(...wrapText(last, Math.max(1, avail)));
-  }
-  const last = segs[segs.length - 1] ?? '';
-  const pad = Math.max(1, LINE_WIDTH - 1 - textWidth(last) - rightW);
-  segs[segs.length - 1] = last + ' '.repeat(pad) + right;
-  return segs;
-}
-/** 品名折行（IKHFDZ 同批）：按 textWidth（中文 2 列/ASCII 1 列）逐字累计切行 */
+/** 品名折行（IKHFDZ 同批；IKRSJ2 起供品名大字半宽折行）：按 textWidth
+ *  （中文 2 列/ASCII 1 列）逐字累计切行 */
 function wrapText(s: string, width: number): string[] {
   const out: string[] = [];
   let cur = '';

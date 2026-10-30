@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -229,13 +230,30 @@ export class FulfillmentService {
       where: { staffId, createdAt: { gte: dayStart } },
       _sum: { amount: true },
     });
+    // IKRSIZ #108：校区可关「楼长销售额展示」——关闭时不下发金额（null=前端
+    // 不渲染销售额两格），避免改包抓包看数；收入两格不受影响。
+    // IKRSIX #112：同查提成模式/比例随根级下发（楼长端「本单提成预估」口径用：
+    // rate 模式=round((实付−配送费)×rate/10000)，per-order=按单固定直取）。
+    const campusRow = await this.db.campus.findUnique({
+      where: { id: s.campusId },
+      select: {
+        managerSalesVisible: true,
+        managerCommissionMode: true,
+        managerCommissionRate: true,
+      },
+    });
+    const salesVisible = campusRow?.managerSalesVisible ?? true;
     return {
+      // IKRSIX #112 前端口子：根级提成模式（per-order|rate）与万分比比例
+      commissionMode: campusRow?.managerCommissionMode ?? 'per-order',
+      commissionRate: campusRow?.managerCommissionRate ?? 0,
       period: 'today',
       pending: mine.filter((x) =>
         [
           'paid',
           'picking',
           'waiting-first-mile',
+          'arrived',
           'first-mile',
           'waiting-handover',
           'last-mile',
@@ -244,8 +262,8 @@ export class FulfillmentService {
       completed: completedToday.length,
       completedTotal: completed.length,
       // IKIRO6：推广订单金额（分）——今日/本月（送达时间口径，与 completed 一致）
-      todayGmv: gmvOf(completedToday),
-      monthGmv: gmvOf(completed.filter(inMonth)),
+      todayGmv: salesVisible ? gmvOf(completedToday) : null,
+      monthGmv: salesVisible ? gmvOf(completed.filter(inMonth)) : null,
       monthOrders: completed.filter(inMonth).length,
       income: incomeAgg._sum.amount ?? 0,
       // IKKTTP 首页金额四联：今日/本月 × 销售额/收入（income=本月佣金合计）
@@ -467,6 +485,7 @@ export class FulfillmentService {
             throw new BadRequestException(
               '已接单未取货不可转单，取货配送后方可转单',
             );
+          // IKRSIY：arrived（已到店）同样不在白名单——转单门槛维持配送中起
           if (!['first-mile', 'waiting-handover'].includes(order.status))
             throw new BadRequestException(
               `当前订单状态为「${order.statusText}」，不能转单`,
@@ -513,10 +532,10 @@ export class FulfillmentService {
           });
           return null; // 回池不重发派单通知（推送时点在出库，超本改动范围）
         }
-        // 动作迁移表（12 态状态机，迁移表全文见 src/common/order-state.ts，IK93GQ）：
-        // v1 履约简化（IKA0UM，2026-08-20）：去掉扫码取货/配送单——骑手 accept 抢单
-        // 只写归属不改状态，depart 按钮直接进 first-mile（配送中），无 pickup 动作；
-        // 交接（IKA0UP）改为拍照凭证，不再扫寝室二维码。
+        // 动作迁移表（13 态状态机，迁移表全文见 src/common/order-state.ts，IK93GQ；
+        // IKRSIY 增 arrived「已到店」）：v1 履约简化（IKA0UM，2026-08-20）去掉
+        // 扫码取货/配送单——骑手 accept 抢单只写归属不改状态，depart 按钮直接进
+        // first-mile（配送中）；交接（IKA0UP）改为拍照凭证，不再扫寝室二维码。
         // 旧机兼容：first-mile 仍可 receive、last-mile 仍可 handover。
         const maps: Record<
           string,
@@ -554,13 +573,25 @@ export class FulfillmentService {
               depart: {
                 status: 'first-mile',
                 text: '配送中，骑手已出发',
-                from: ['waiting-first-mile'],
+                // IKRSIY：已到店（arrived）同样可出发；到店确认不强制（道哥拍板）。
+                from: ['waiting-first-mile', 'arrived'],
               },
-              arrive: {
-                status: 'waiting-handover',
-                text: '已到楼下，等待楼长交接',
-                from: ['first-mile'],
-              },
+              // IKRSIY：arrive 动作双义，按当前状态分叉（from 门控保证不串）——
+              // waiting-first-mile 到店确认 → arrived「已到店」（与扫码
+              // POST /fulfillment/scan-arrive 同语义）；first-mile 到楼 →
+              // waiting-handover「楼下待交接」（原语义不变）。
+              arrive:
+                order.status === 'waiting-first-mile'
+                  ? {
+                      status: 'arrived',
+                      text: ORDER_STATUS_TEXT.arrived,
+                      from: ['waiting-first-mile'],
+                    }
+                  : {
+                      status: 'waiting-handover',
+                      text: '已到楼下，等待楼长交接',
+                      from: ['first-mile'],
+                    },
               handover: {
                 status: order.status,
                 text: '已与楼长完成交接',
@@ -727,6 +758,55 @@ export class FulfillmentService {
         void this.push?.notifyManagersOnDepart(pushDone.orderId);
     }
     return this.task(staffId, id);
+  }
+  /**
+   * 骑手到店扫码确认（IKRSIY，#109/#111 已到店）：小票二维码内容=orderNo，
+   * 骑手到仓库取货时扫码 → waiting-first-mile 推进 arrived「已到店」。
+   * 与手动按钮（POST /fulfillment/tasks/:id/actions/arrive）同语义；本端点
+   * 供扫码页直调（免传任务 id）。条件更新（where 带旧状态+riderId）防并发
+   * ——扫码与按钮竞速/重复扫码仅一笔生效，抢不到 409。timeline 无 arrived
+   * 独立节点（markTimelineStep 对 arrived 幂等空转，见 order-state.ts）。
+   * 返回轻量确认体（{orderId,orderNo,status,statusText}），前端拿到后自行
+   * 刷新任务列表。
+   */
+  async scanArrive(staffId: string, rawOrderNo: string) {
+    const orderNo = String(rawOrderNo ?? '').trim();
+    if (!orderNo) throw new BadRequestException('缺少订单号（扫码内容为空）');
+    const staff = await this.profile(staffId);
+    // IKKRMV：后台员工配送校区订单不经骑手推进（与 updateTask 同门禁）。
+    if (await campusStaffDelivery(this.db, staff.campusId))
+      throw new BadRequestException(
+        '该校区为后台员工配送模式，骑手端无配送任务',
+      );
+    const order = await this.db.order.findFirst({
+      where: { orderNo, campusId: staff.campusId },
+    });
+    if (!order) throw new NotFoundException('订单不存在');
+    if (order.riderId !== staffId)
+      // 未接单/他人接单统一话术（不泄露归属），引导先接单。
+      throw new BadRequestException('请先接单后再到店扫码');
+    const won = await this.db.order.updateMany({
+      where: {
+        id: order.id,
+        status: 'waiting-first-mile',
+        riderId: staffId,
+      },
+      data: {
+        status: 'arrived',
+        statusText: ORDER_STATUS_TEXT.arrived,
+        timeline: markTimelineStep(order.timeline, 'arrived'),
+      },
+    });
+    if (!won.count)
+      throw new ConflictException(
+        `当前订单状态为「${order.statusText}」，不能重复到店确认`,
+      );
+    return {
+      orderId: order.id,
+      orderNo: order.orderNo,
+      status: 'arrived',
+      statusText: ORDER_STATUS_TEXT.arrived,
+    };
   }
   /**
    * 订阅消息额度上报/查询（IKDQP9，一法两用）：count>0 为授权上报（+N，
@@ -967,6 +1047,10 @@ export class FulfillmentService {
     } else if (order.status === 'first-mile') {
       status = 'delivering';
       statusText = '配送中';
+    } else if (order.status === 'arrived') {
+      // IKRSIY：已到店待出发——归在途（delivering）桶，文案单列
+      status = 'delivering';
+      statusText = '已到店，待出发';
     } else if (order.riderId) {
       status = 'delivering';
       statusText = '已接单，待出发';
@@ -1065,10 +1149,16 @@ export class FulfillmentService {
     }
     // 骑手动作仅认已出库的单（IKA0UM 简化：无扫码取货，depart 直接配送中）。
     if (status === 'waiting-first-mile') {
-      // 无归属单只能抢（accept/grab）；本人已抢到的单才能出发/转单。
+      // 无归属单只能抢（accept/grab）；本人已抢到的单才能到店/出发/转单。
+      // IKRSIY：新增到店确认 arrive（→arrived 已到店，与扫码 scan-arrive
+      // 同语义）；depart 仍在列——到店不强制（道哥拍板）。
       if (!riderId) return ['accept'];
       if (viewerId && riderId !== viewerId) return [];
-      return ['depart', 'transfer'];
+      return ['arrive', 'depart', 'transfer'];
+    }
+    if (status === 'arrived') {
+      // IKRSIY：已到店仅可出发；转单不可（IKRQR7 门槛维持配送中起）。
+      return viewerId && riderId === viewerId ? ['depart'] : [];
     }
     if (status === 'first-mile')
       return lastMileMode === 'customer-pickup'

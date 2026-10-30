@@ -60,6 +60,10 @@ export const MENU_NODES: MenuNodeDef[] = [
   { code: 'behavior-analytics', name: '行为分析', type: 1, parent: 'g.ops', path: '/behavior-analytics', icon: 'dashboard', order: 6, perms: ['GET /admin/analytics/summary'], remark: '用户行为漏斗+商品热度+搜索词（仅超管）' },
   // IKRQR7 转单管理（道哥定稿仅超管）：不进任何角色模板；DB 菜单行需手动补（registry 新节点不自动落库）
   { code: 'transfer-logs', name: '转单管理', type: 1, parent: 'g.ops', path: '/transfer-logs', icon: 'orders', order: 7, perms: ['GET /admin/transfer-logs'], remark: '骑手转单留痕报表（仅超管）' },
+  // IKRSJ0 #81b/#116 楼栋经营榜（道哥 2026-10-30）：全部楼栋×时间段订单/销售
+  // 榜，Dashboard 排行「完整数据」落地页。进组织管理员与校区运营模板；既有
+  // DB 角色（menusSeeded 后）不自动获得，需角色管理勾选或手动补菜单行
+  { code: 'building-rank', name: '楼栋经营榜', type: 1, parent: 'g.ops', path: '/building-rank', icon: 'campus-report', order: 8, perms: ['GET /admin/building-rank'], remark: '全部楼栋经营排行（时间段筛选）' },
 
   /* ---------- 目录：仓储中心 ---------- */
   { code: 'g.wh', name: '仓储中心', type: 0, order: 2 },
@@ -242,6 +246,7 @@ export const ROLE_TEMPLATES: { code: string; name: string; remark: string; menuC
     remark: '旧 operations 角色迁移模板：按校区授予',
     menuCodes: withDirs([
       'dashboard', 'orders', 'orders.write', 'after-sales', 'after-sales.audit', 'battle-map', 'campus-report',
+      'building-rank',
       'products', 'products.write', 'products.price', 'products.status',
       'categories', 'categories.write', 'inventory', 'inventory.adjust', 'inventory.outbound',
       'warehouse-orders', 'inventory-txns',
@@ -350,6 +355,7 @@ const ORG_ADMIN_MENUS = withDirs([
   'after-sales.audit',
   'battle-map',
   'campus-report',
+  'building-rank',
   'products',
   'products.write',
   'products.price',

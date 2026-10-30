@@ -2,10 +2,12 @@ import { PrinterService, ReceiptOrderContext } from './printer.service';
 
 /** 小票打印（IKBT6N）：sign 算法与 58mm 票面构建；网络调用用 stub 不真实外发。 */
 describe('PrinterService (IKBT6N)', () => {
-  // IKHFDZ：printOrderReceipt 取号需 db（raw 发号+order 回写）——单测 stub
+  // IKHFDZ：printOrderReceipt 取号需 db（raw 发号+order 回写）——单测 stub；
+  // IKRSJ2：库位开关读 campus.findUnique（null 行=receiptShowLocation 未配置，默认打）
   const dbStub = {
     $queryRaw: async () => [{ seq: 7 }],
     order: { update: async () => ({}) },
+    campus: { findUnique: async () => null },
   } as never;
   const service = new PrinterService(dbStub);
   const order: ReceiptOrderContext = {
@@ -26,10 +28,21 @@ describe('PrinterService (IKBT6N)', () => {
     },
     items: [
       {
-        product: { name: '农夫山泉 550ml', price: 200, location: 'A区', locationCode: '01' },
+        product: {
+          name: '农夫山泉 550ml',
+          price: 200,
+          location: 'A区',
+          locationCode: '01',
+        },
         quantity: 2,
       },
-      { product: { name: '特别长的一个商品名称需要被截断处理才行哦', price: 1250 }, quantity: 1 },
+      {
+        product: {
+          name: '特别长的一个商品名称需要被截断处理才行哦',
+          price: 1250,
+        },
+        quantity: 1,
+      },
     ],
     productAmount: 1650,
     deliveryFee: 400,
@@ -62,14 +75,35 @@ describe('PrinterService (IKBT6N)', () => {
       expect(content).not.toContain('13800001234');
     });
 
-    it('商品行：名居左可折行，x数量￥单价与名最后一行同行靠右（道哥真机反馈排版）', () => {
-      expect(content).toContain('农夫山泉 550ml');
-      // 短名一行：名与 x2￥2 同行（左右布局）
-      const shortLine = content.split('\n').find((l) => l.includes('农夫山泉'));
-      expect(shortLine).toContain('x2');
-      expect(shortLine).toContain('￥2');
-      // 超长品名不截断（无 … 尾）
+    it('品名大字（IKRSJ2）：<CB> 放大按 16 半角位折行，量价贴右独立行', () => {
+      expect(content).toContain('<CB>农夫山泉 550ml</CB>');
+      // 短名一行放下（14 半角位 ≤ 16），「x2 ￥2」独立成行且贴右（左空白起排）
+      const qtyLine = content.split('\n').find((l) => l.trim() === 'x2 ￥2');
+      expect(qtyLine).toBeTruthy();
+      expect((qtyLine as string).startsWith(' ')).toBe(true);
+      // 长名（20 汉字）按 8 汉字折行，无 … 截断，每行裸宽 ≤ 16 半角位
+      const w = (s: string) =>
+        [...s.replace(/<[^>]+>/g, '')].reduce(
+          (n, ch) => n + (/[⺀-鿿豈-﫿！-｠　-〿]/.test(ch) ? 2 : 1),
+          0,
+        );
+      const bigLines = content
+        .split('\n')
+        .filter((l) => l.includes('<CB>') && !l.includes('湖工大'));
+      expect(bigLines.length).toBeGreaterThanOrEqual(4); // 短名 1 + 长名 3
+      for (const line of bigLines) expect(w(line)).toBeLessThanOrEqual(16);
+      expect(bigLines.some((l) => l.includes('特别长的一个商品'))).toBe(true);
       expect(content.split('\n').find((l) => l.endsWith('…'))).toBeUndefined();
+    });
+
+    it('收件/联系人挪到金额区之后、二维码之前（IKRSJ2）', () => {
+      const idx = (s: string) => content.indexOf(s);
+      expect(idx('收件：')).toBeGreaterThan(idx('实付'));
+      expect(idx('联系人：')).toBeGreaterThan(idx('实付'));
+      expect(idx('收件：')).toBeLessThan(idx('<QR>'));
+      // 抬头不再有收件信息（老位置已挪走）
+      const headTail = content.slice(idx('订单号：'), idx('备注：'));
+      expect(headTail).not.toContain('收件：');
     });
     it('票头含当日分拣序号大字（商家联口径，IKHFDZ）', () => {
       expect(content).toContain('单号 7');
@@ -78,6 +112,15 @@ describe('PrinterService (IKBT6N)', () => {
     it('库位行【】括号强调、常规字号（2026-09-05 道哥定版）', () => {
       expect(content).toContain('  【库位:A区-01】');
       expect(content).not.toContain('<B>  【库位');
+    });
+
+    it('库位开关 showLocation=false：库位行不打，其余票面不变（IKRSJ2）', () => {
+      const without = service.buildReceipt(order, undefined, false);
+      expect(without).not.toContain('库位');
+      // 金额/地址/二维码不受开关影响
+      expect(without).toContain('西区 3 栋 302');
+      expect(without).toContain('￥19.5');
+      expect(without.endsWith('<CUT>')).toBe(true);
     });
 
     it('右对齐行不超 31 半角位（2026-09-05 挤行孤零回归）', () => {
@@ -103,7 +146,9 @@ describe('PrinterService (IKBT6N)', () => {
       );
       // <B> 放大段物理列 ×2：实付(4) + 空格(基准 11) + 金额×2 ≤ 27
       expect((m as RegExpMatchArray)[1].length).toBeLessThanOrEqual(11);
-      expect(4 + (m as RegExpMatchArray)[1].length + wAmount * 2).toBeLessThanOrEqual(27);
+      expect(
+        4 + (m as RegExpMatchArray)[1].length + wAmount * 2,
+      ).toBeLessThanOrEqual(27);
     });
 
     it('金额段含商品金额/配送费/优惠/实付（去尾零）', () => {
@@ -153,13 +198,11 @@ describe('PrinterService (IKBT6N)', () => {
       process.env.XPYUN_USER = 'u';
       process.env.XPYUN_USERKEY = 'k';
       process.env.XPYUN_PRINTER_SN = 'SN123';
-      const fetchSpy = jest
-        .spyOn(global, 'fetch')
-        .mockResolvedValue(
-          new Response(JSON.stringify({ code: 0, data: 'print-id' }), {
-            status: 200,
-          }),
-        );
+      const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue(
+        new Response(JSON.stringify({ code: 0, data: 'print-id' }), {
+          status: 200,
+        }),
+      );
       await service.printRaw('hello');
       const [url, init] = fetchSpy.mock.calls[0];
       expect(String(url)).toContain('/xprinter/print');
@@ -192,9 +235,7 @@ describe('PrinterService (IKBT6N)', () => {
     });
 
     it('gap=0：copies=2 仍是单次 POST 拼联（存量行为不变）', async () => {
-      const fetchSpy = jest
-        .spyOn(global, 'fetch')
-        .mockImplementation(okRes as never);
+      const fetchSpy = jest.spyOn(global, 'fetch').mockImplementation(okRes);
       await service.printOrderReceipt(order, undefined, 2, 0);
       expect(fetchSpy).toHaveBeenCalledTimes(1);
       const body = JSON.parse(
@@ -207,16 +248,16 @@ describe('PrinterService (IKBT6N)', () => {
     });
 
     it('gap>0：拆 N 次推送且第二次在 sleep 之后（发送侧延迟）', async () => {
-      const fetchSpy = jest
-        .spyOn(global, 'fetch')
-        .mockImplementation(okRes as never);
+      const fetchSpy = jest.spyOn(global, 'fetch').mockImplementation(okRes);
       // 真实 sleep 缩到 10ms 级别不可行——直接监听全局 setTimeout 累计时长
       const delays: number[] = [];
-      jest.spyOn(global, 'setTimeout').mockImplementation(((cb: () => void, ms?: number) => {
-        delays.push(ms ?? 0);
-        cb();
-        return 0 as never;
-      }) as never);
+      jest
+        .spyOn(global, 'setTimeout')
+        .mockImplementation((cb: () => void, ms?: number) => {
+          delays.push(ms ?? 0);
+          cb();
+          return 0 as never;
+        });
       await service.printOrderReceipt(order, undefined, 2, 3);
       expect(fetchSpy).toHaveBeenCalledTimes(2);
       // 每联独立 <CUT>，联间不再拼接
@@ -235,7 +276,7 @@ describe('PrinterService (IKBT6N)', () => {
 
     it('gap>0 中间联失败：warn 后后续联照发（各联独立）', async () => {
       let call = 0;
-      jest.spyOn(global, 'fetch').mockImplementation((() => {
+      jest.spyOn(global, 'fetch').mockImplementation(() => {
         call++;
         return call === 2
           ? Promise.resolve({
@@ -243,13 +284,16 @@ describe('PrinterService (IKBT6N)', () => {
               json: () => Promise.resolve({ code: 1001, msg: 'mock fail' }),
             } as Response)
           : okRes();
-      }) as never);
-      jest.spyOn(global, 'setTimeout').mockImplementation(((cb: () => void) => {
+      });
+      jest.spyOn(global, 'setTimeout').mockImplementation((cb: () => void) => {
         cb();
         return 0 as never;
-      }) as never);
+      });
       const warnSpy = jest
-        .spyOn((service as never as { logger: { warn: jest.Mock } }).logger, 'warn')
+        .spyOn(
+          (service as never as { logger: { warn: jest.Mock } }).logger,
+          'warn',
+        )
         .mockImplementation(() => undefined);
       await service.printOrderReceipt(order, undefined, 3, 2);
       expect(fetchSpyCount()).toBe(3);
@@ -260,15 +304,15 @@ describe('PrinterService (IKBT6N)', () => {
     });
 
     it('gap 越界钳制：99 → 10（上限），-1 → 0（走单 POST）', async () => {
-      const fetchSpy = jest
-        .spyOn(global, 'fetch')
-        .mockImplementation(okRes as never);
+      const fetchSpy = jest.spyOn(global, 'fetch').mockImplementation(okRes);
       const delays: number[] = [];
-      jest.spyOn(global, 'setTimeout').mockImplementation(((cb: () => void, ms?: number) => {
-        delays.push(ms ?? 0);
-        cb();
-        return 0 as never;
-      }) as never);
+      jest
+        .spyOn(global, 'setTimeout')
+        .mockImplementation((cb: () => void, ms?: number) => {
+          delays.push(ms ?? 0);
+          cb();
+          return 0 as never;
+        });
       await service.printOrderReceipt(order, undefined, 2, 99);
       expect(delays).toEqual([10000]);
       delays.length = 0;
@@ -276,6 +320,52 @@ describe('PrinterService (IKBT6N)', () => {
       await service.printOrderReceipt(order, undefined, 2, -1);
       expect(fetchSpy).toHaveBeenCalledTimes(1);
       expect(delays).toEqual([]);
+    });
+  });
+
+  describe('printOrderReceipt 库位校区开关 receiptShowLocation（IKRSJ2）', () => {
+    const okRes = () =>
+      Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ code: 0, data: 'cloud-id' }),
+      } as Response);
+    const makeService = (row: { receiptShowLocation?: boolean } | null) =>
+      new PrinterService({
+        $queryRaw: () => Promise.resolve([{ seq: 7 }]),
+        order: { update: () => Promise.resolve({}) },
+        campus: { findUnique: () => Promise.resolve(row) },
+      } as never);
+    beforeEach(() => {
+      process.env.XPYUN_USER = 'u';
+      process.env.XPYUN_USERKEY = 'k';
+      process.env.XPYUN_PRINTER_SN = 'SN123';
+    });
+    afterEach(() => {
+      jest.restoreAllMocks();
+    });
+
+    it('receiptShowLocation=false：商家联也不打库位（全联关闭）', async () => {
+      const svc = makeService({ receiptShowLocation: false });
+      const fetchSpy = jest.spyOn(global, 'fetch').mockImplementation(okRes);
+      await svc.printOrderReceipt(order, undefined, 2, 0);
+      const body = JSON.parse(
+        (fetchSpy.mock.calls[0][1] as RequestInit).body as string,
+      ) as { content: string };
+      expect(body.content).not.toContain('库位');
+    });
+
+    it('字段未配置（campus 行 null / 无字段）默认打库位（商家联有、客户联无）', async () => {
+      const svc = makeService(null);
+      const fetchSpy = jest.spyOn(global, 'fetch').mockImplementation(okRes);
+      await svc.printOrderReceipt(order, undefined, 2, 0);
+      const body = JSON.parse(
+        (fetchSpy.mock.calls[0][1] as RequestInit).body as string,
+      ) as { content: string };
+      expect(body.content).toContain('【库位:A区-01】');
+      // 多联口径不变：商家联有库位、客户联剥库位
+      const copies = body.content.split('<CUT>');
+      expect(copies[0]).toContain('库位');
+      expect(copies[1]).not.toContain('库位');
     });
   });
 });

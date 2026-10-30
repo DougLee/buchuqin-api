@@ -40,6 +40,7 @@ import type {
   CreateOrganizationDto,
   CreateProductDto,
   CreatePromotionDto,
+  CreatePurchaseRecordDto,
   CreateRestockBatchDto,
   CreateOrgProductDto,
   OrganizationBootstrapDto,
@@ -85,7 +86,11 @@ import {
 import { HQ_CAMPUS_ID, OFFICIAL_CAMPUS_ID } from '../common/campus';
 import { assertMarketingEnabled } from '../common/capability';
 import { campusStaffDelivery } from '../common/organization';
-import { approvedRefundAmount } from './refund-amount';
+import {
+  approvedRefundAmount,
+  orderArrived,
+  refundCeiling,
+} from './refund-amount';
 
 /* ==================== 成本 capability 输出裁剪（IKKRMY，2026-10-10） ====================
  * allowCapability(ctx,'cost.read')=false 的账号，商品/订单/报表响应统一剔除
@@ -395,6 +400,9 @@ export class AdminService {
       staffRows,
       stageRows,
       refundsToday,
+      totalRefundedAgg,
+      stockRows,
+      stocktakeAgg,
     ] = await Promise.all([
       this.db.campus.findFirstOrThrow({ where: { id: campusId } }),
       this.db.order.findMany({ where: { campusId } }),
@@ -409,11 +417,15 @@ export class AdminService {
       }),
       // IKAJSS 水位下钻：各节点平均停留（自支付起算的分钟数；paid+picking 并入待拣货）
       this.db.$queryRaw<Array<{ node: string; minutes: number | null }>>`
-          SELECT CASE WHEN status IN ('paid','picking') THEN 'waitingPick' ELSE status END AS node,
+          SELECT CASE
+                   WHEN status IN ('paid','picking') THEN 'waitingPick'
+                   -- IKRSIY #109：arrived（已到店）归入待取货节点同口径
+                   WHEN status = 'arrived' THEN 'waiting-first-mile'
+                   ELSE status END AS node,
                  (AVG(EXTRACT(EPOCH FROM (now() - "paidAt")) / 60))::int AS minutes
           FROM "Order"
           WHERE "campusId" = ${campusId} AND "paidAt" IS NOT NULL
-            AND status IN ('paid','picking','waiting-first-mile','first-mile','waiting-handover','last-mile')
+            AND status IN ('paid','picking','waiting-first-mile','arrived','first-mile','waiting-handover','last-mile')
           GROUP BY 1`,
       this.db.refund.findMany({
         where: {
@@ -422,6 +434,31 @@ export class AdminService {
           order: { campusId },
         },
         select: { amount: true },
+      }),
+      // IKRSIX #82/#116：历史总销售额的退款合计（Refund.amount 口径同多校区汇总）
+      this.db.refund.aggregate({
+        where: { status: 'refunded', order: { campusId } },
+        _sum: { amount: true },
+      }),
+      // IKRSIX #82/#116：存货成本/预计销售额底表（可售=stock，库存页 availableStock
+      // 同口径；lockedStock 全链路只读恒 0，不另扣减）
+      this.db.product.findMany({
+        where: { campusId },
+        select: {
+          id: true,
+          price: true,
+          procurementMode: true,
+          wholesalePrice: true,
+          localPurchasePrice: true,
+          unitsPerCase: true,
+          stock: true,
+        },
+      }),
+      // IKRSIX #82/#116：库存核减流水（adjust 负向，含盘点校准与人工核减）按商品聚合
+      this.db.inventoryTxn.groupBy({
+        by: ['productId'],
+        where: { type: 'adjust', delta: { lt: 0 }, product: { campusId } },
+        _sum: { delta: true },
       }),
     ]);
     // 有效单：排除待支付/已取消，后续所有口径基于有效单计算。
@@ -440,6 +477,34 @@ export class AdminService {
     );
     const refundedAmountToday = refundsToday.reduce(
       (sum, refund) => sum + refund.amount,
+      0,
+    );
+    // IKRSIX #82/#116（道哥 2026-10-30）：看板根级经营 KPI——
+    // totalSales=历史总销售额（有效单排除 pending-payment/cancelled/refunded，
+    // 实付合计 − Refund.amount 已退款合计）；todayDeliveryFee=今日 paidAt 有效单
+    // 配送费合计；stockCost/forecastSales=存货成本/预计销售额（可售=stock，
+    // 单位成本与订单行成本快照同口径）；stocktakeCost=库存核减流水数量×当前
+    // 成本价估算（InventoryTxn 无成本快照，用商品当前成本口径，见字段注释）。
+    const validSalesOrders = orders.filter(
+      (x) => !['pending-payment', 'cancelled', 'refunded'].includes(x.status),
+    );
+    const totalRefunded = this.num(totalRefundedAgg._sum.amount ?? 0);
+    const unitCost = (p: (typeof stockRows)[number]) =>
+      p.procurementMode === 'LOCAL'
+        ? (p.localPurchasePrice ?? 0)
+        : p.procurementMode === 'HQ'
+          ? p.wholesalePrice
+          : perRetailUnitCostFen(p.wholesalePrice, p.unitsPerCase);
+    const stockCost = stockRows.reduce(
+      (sum, p) => sum + p.stock * unitCost(p),
+      0,
+    );
+    const forecastSales = stockRows.reduce((sum, p) => sum + p.stock * p.price, 0);
+    const stockQtyByProduct = new Map(
+      stocktakeAgg.map((r) => [r.productId, -this.num(r._sum.delta ?? 0)]),
+    );
+    const stocktakeCost = stockRows.reduce(
+      (sum, p) => sum + (stockQtyByProduct.get(p.id) ?? 0) * unitCost(p),
       0,
     );
     // 送达时间优先取送达凭证时间（delivered 动作写入），历史单回退 timeline 末节点。
@@ -575,6 +640,16 @@ export class AdminService {
         waitingHandover:
           'status=waiting-handover（骑手到楼下等待楼长交接，IK93GQ 拆分后的独立状态）',
         lastMile: 'status=last-mile（楼长送往寝室途中）',
+        // IKRSIX #82/#116：根级经营 KPI 口径说明（与字段一一对应）
+        totalSales:
+          '历史总销售额：全部有效订单（排除 pending-payment/cancelled/refunded）实付合计 − 已退款合计（Refund.amount，分）',
+        todayDeliveryFee:
+          '今日配送费：paidAt 为今日的有效单 deliveryFee 合计（分）',
+        stockCost:
+          '存货成本：可售库存（stock）× 商品当前每零售单位成本（与订单行成本快照同口径：LOCAL=本地进货价/HQ=批发价/历史=批发价按含量折算）；无 cost.read 恒 0',
+        stocktakeCost:
+          '盘点成本：库存核减流水（InventoryTxn adjust 负向，含盘点校准与人工核减）数量 × 商品当前成本价估算（流水无成本快照，估算口径同 stockCost）；无 cost.read 恒 0',
+        forecastSales: '预计销售额：可售库存（stock）× 商品售价（price）合计（分）',
       },
       trend,
       activities,
@@ -583,8 +658,9 @@ export class AdminService {
         waitingPick: effective.filter((x) =>
           ['paid', 'picking'].includes(x.status),
         ).length,
-        waitingFirstMile: effective.filter(
-          (x) => x.status === 'waiting-first-mile',
+        // IKRSIY #109：arrived（已到店待出发）按「已接单待取货」同类并入
+        waitingFirstMile: effective.filter((x) =>
+          ['waiting-first-mile', 'arrived'].includes(x.status),
         ).length,
         firstMile: effective.filter((x) => x.status === 'first-mile').length,
         waitingHandover: effective.filter(
@@ -605,9 +681,23 @@ export class AdminService {
         timeout: detail(riders + managers),
       },
       timeoutOrders,
+      // IKRSIX #82/#116/#81b：看板根级新增经营 KPI（单校区视角；总部汇总分支
+      // 不下发——存货维度无跨校区口径）。stockCost/stocktakeCost 属成本口径，
+      // 无 cost.read 一律置 0（同 IKKRMY 输出层裁剪精神，键位保留给前端）。
+      totalSales:
+        validSalesOrders.reduce((s, x) => s + this.num(x.payableAmount), 0) -
+        totalRefunded,
+      todayDeliveryFee: paidToday.reduce(
+        (s, x) => s + this.num(x.deliveryFee),
+        0,
+      ),
+      stockCost: costRead ? stockCost : 0,
+      stocktakeCost: costRead ? stocktakeCost : 0,
+      forecastSales,
+      // IKRSJ0 #81：道哥拍板排行改前 10（原 5 条），「完整数据」跳楼栋经营榜新页
       hotBuildings: [...buildingMap.values()]
         .sort((a, b) => b.orders - a.orders)
-        .slice(0, 5)
+        .slice(0, 10)
         .map((item) => ({
           name: item.name,
           orders: item.orders,
@@ -615,6 +705,72 @@ export class AdminService {
           completionRate: rate(item.completed, item.orders),
           onTimeRate: rate(item.onTime, item.completed),
         })),
+    };
+  }
+  /**
+   * 楼栋经营榜（IKRSJ0 #81b/#116，道哥 2026-10-30）：Dashboard 排行「完整数据」
+   * 落地页——时间段内全部楼栋（不截断），orders=有效订单数（排除
+   * pending-payment/cancelled），salesTotal=实付合计 − 已退款合计，按
+   * salesTotal 降序。楼栋归属按订单 address JSON 的 buildingId/buildingName，
+   * 与 dashboard hotBuildings 同一解析口径（buildingId 缺失的历史单按楼栋名
+   * 兜底成组）。start/end 为北京时间自然日（YYYY-MM-DD），缺省本月。
+   */
+  async buildingRank(start?: string, end?: string, campusId?: string) {
+    const today = new Date(Date.now() + 8 * 3600 * 1000)
+      .toISOString()
+      .slice(0, 10);
+    const startDay = start || `${today.slice(0, 7)}-01`;
+    const endDay = end || today;
+    const startAt = new Date(`${startDay}T00:00:00+08:00`);
+    const endAt = new Date(`${endDay}T23:59:59.999+08:00`);
+    if (
+      Number.isNaN(startAt.getTime()) ||
+      Number.isNaN(endAt.getTime()) ||
+      startAt > endAt
+    )
+      throw new BadRequestException('日期范围不合法');
+    const orders = await this.db.order.findMany({
+      where: {
+        status: { notIn: ['pending-payment', 'cancelled'] },
+        paidAt: { gte: startAt, lte: endAt },
+        ...(campusId ? { campusId } : {}),
+      },
+      select: {
+        address: true,
+        payableAmount: true,
+        refunds: { where: { status: 'refunded' }, select: { amount: true } },
+      },
+    });
+    const map = new Map<
+      string,
+      { buildingId: string; buildingName: string; orders: number; sales: number }
+    >();
+    for (const o of orders) {
+      const addr = o.address as { buildingId?: string; buildingName?: string } | null;
+      const buildingId = String(addr?.buildingId ?? '');
+      const buildingName = String(addr?.buildingName ?? '未知楼栋');
+      const key = buildingId || buildingName;
+      const cur = map.get(key) ?? {
+        buildingId,
+        buildingName,
+        orders: 0,
+        sales: 0,
+      };
+      cur.orders += 1;
+      // 净额口径同校区日报 IKLEDG：实付 − Refund.amount（不用订单状态推断）
+      cur.sales += this.num(o.payableAmount) -
+        o.refunds.reduce((sum, r) => sum + r.amount, 0);
+      map.set(key, cur);
+    }
+    return {
+      items: [...map.values()]
+        .map((x) => ({
+          buildingId: x.buildingId,
+          buildingName: x.buildingName,
+          orders: x.orders,
+          salesTotal: x.sales,
+        }))
+        .sort((a, b) => b.salesTotal - a.salesTotal),
     };
   }
   /** 近 7 日订单/支付金额/新用户聚合（数据库分组，缺数据日期补零，按校园过滤）。 */
@@ -686,6 +842,8 @@ export class AdminService {
     'coupon.update': '更新优惠券',
     'coupon.issue': '发放优惠券',
     'coupon.delete': '删除优惠券',
+    // IKRSIX #97：手动采购记录（零星采购台账）
+    'purchase-record.create': '新增采购记录',
     'dispatch-invitation.create': '创建调配邀请',
     'dispatch-invitation.cancel': '取消调配邀请',
     'inventory.adjust': '调整库存',
@@ -825,6 +983,10 @@ export class AdminService {
     catalogScope?: 'platform',
     // IKKRMY：cost.read=false 时输出剔除成本字段（控制器按 capability 计算）
     costRead = true,
+    // IKRSJ1 #93：列排序（道哥 2026-10-30）——price/wholesalePrice 升降序；
+    // 非法值回退默认销量序。仅 /admin/products 端点透传，其余调用方不受影响。
+    sortBy?: string,
+    sortDir?: string,
   ) {
     // 先取本校区已导入行指向的官方商品 id 集；为空必须跳过 notIn
     // （Prisma notIn: [] 会排除全部行）
@@ -857,7 +1019,11 @@ export class AdminService {
           ? { id: { notIn: importedSourceIds } }
           : {}),
       },
-      orderBy: { sales: 'desc' },
+      // IKRSJ1 #93：价格列排序（售价/批发价），缺省维持销量序
+      orderBy:
+        sortBy && ['price', 'wholesalePrice'].includes(sortBy)
+          ? ({ [sortBy]: sortDir === 'asc' ? 'asc' : 'desc' } as Prisma.ProductOrderByWithRelationInput)
+          : { sales: 'desc' },
     });
     // IKAJSO「上游已更新」角标：官方库 updatedAt 晚于本校区同步时间即标记
     const sourceIds = xs
@@ -2454,6 +2620,126 @@ export class AdminService {
     };
   }
   /**
+   * 盘点统计（IKRSIX #85，道哥 2026-10-30）：按盘点原因聚合核减流水——
+   * 流水口径 = type=adjust 且 reason 带「盘点校准」前缀（service.stocktake
+   * 落值；人工核减/采购入库等其他流水不混入）。count=流水条数（含盘盈）；
+   * totalQty=核减数量和（delta<0 取绝对值，盘盈不进核减合计）；
+   * totalCost/products.cost=数量×商品当前每零售单位成本（InventoryTxn 无
+   * 成本快照，估算口径与订单行成本快照一致，见 unitCostFenOf）。
+   * start/end 过滤 createdAt（北京时间自然日），缺省本月。
+   */
+  async stocktakeStats(start?: string, end?: string, campusId?: string) {
+    const today = new Date(Date.now() + 8 * 3600 * 1000)
+      .toISOString()
+      .slice(0, 10);
+    const startDay = start?.trim() || `${today.slice(0, 7)}-01`;
+    const endDay = end?.trim() || today;
+    const startAt = new Date(`${startDay}T00:00:00+08:00`);
+    const endAt = new Date(`${endDay}T23:59:59.999+08:00`);
+    if (
+      Number.isNaN(startAt.getTime()) ||
+      Number.isNaN(endAt.getTime()) ||
+      startAt > endAt
+    )
+      throw new BadRequestException('日期范围不合法');
+    const txns = await this.db.inventoryTxn.findMany({
+      where: {
+        type: 'adjust',
+        reason: { startsWith: '盘点校准' },
+        createdAt: { gte: startAt, lte: endAt },
+        ...(campusId ? { product: { campusId } } : {}),
+      },
+      include: {
+        product: {
+          select: {
+            id: true,
+            name: true,
+            procurementMode: true,
+            wholesalePrice: true,
+            localPurchasePrice: true,
+            unitsPerCase: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    const byReason = new Map<
+      string,
+      {
+        reason: string;
+        count: number;
+        totalQty: number;
+        totalCost: number;
+        products: Map<
+          string,
+          { productId: string; productName: string; qty: number; cost: number }
+        >;
+      }
+    >();
+    for (const t of txns) {
+      // 老数据自由文本（如「盘点校准：库房潮湿受潮」）剥离前缀后按余文归组
+      const reason =
+        t.reason === '盘点校准'
+          ? '未填写原因'
+          : t.reason.replace(/^盘点校准：/, '');
+      const cur =
+        byReason.get(reason) ??
+        {
+          reason,
+          count: 0,
+          totalQty: 0,
+          totalCost: 0,
+          products: new Map<
+            string,
+            {
+              productId: string;
+              productName: string;
+              qty: number;
+              cost: number;
+            }
+          >(),
+        };
+      cur.count += 1;
+      const reducedQty = t.delta < 0 ? -t.delta : 0;
+      const cost = reducedQty * this.unitCostFenOf(t.product);
+      cur.totalQty += reducedQty;
+      cur.totalCost += cost;
+      const p =
+        cur.products.get(t.productId) ??
+        {
+          productId: t.product.id,
+          productName: t.product.name,
+          qty: 0,
+          cost: 0,
+        };
+      p.qty += reducedQty;
+      p.cost += cost;
+      cur.products.set(t.productId, p);
+      byReason.set(reason, cur);
+    }
+    return {
+      items: [...byReason.values()].map((r) => ({
+        reason: r.reason,
+        count: r.count,
+        totalQty: r.totalQty,
+        totalCost: r.totalCost,
+        products: [...r.products.values()],
+      })),
+    };
+  }
+  /** 商品每零售单位成本口径（IKFOPQ 与支付时行快照一致）：LOCAL=本地进货价
+   *  （分/零售单位）| HQ=批发价快照（分/零售单位）| 历史未确认=批发价按含量折算。 */
+  private unitCostFenOf(p: {
+    procurementMode: string | null;
+    wholesalePrice: number;
+    localPurchasePrice: number | null;
+    unitsPerCase: number;
+  }) {
+    if (p.procurementMode === 'LOCAL') return p.localPurchasePrice ?? 0;
+    if (p.procurementMode === 'HQ') return p.wholesalePrice;
+    return perRetailUnitCostFen(p.wholesalePrice, p.unitsPerCase);
+  }
+  /**
    * 采购申请列表（IKD6FJ）：校区看本校区，hq 跨校区（附校区名）。
    * status 空查全部；默认按提交时间倒序。
    */
@@ -3068,6 +3354,111 @@ export class AdminService {
     const received = items.reduce((s, i) => s + i.receivedCases, 0);
     if (received === 0) return 'pending';
     return received >= required ? 'completed' : 'partial';
+  }
+
+  /**
+   * 手动采购记录（IKRSIX #97，道哥 2026-10-30）：校区自主零星采购台账——
+   * 纯登记不动库存/不落 InventoryTxn（与订货批次流正交）；到期预警
+   * （expiresAt 距今 ≤30 天 expiring / 已过 expired）服务端按北京时间
+   * 算好下发，前端不自行判。start/end 过滤 purchasedAt（自然日），缺省本月。
+   */
+  async createPurchaseRecord(
+    body: CreatePurchaseRecordDto,
+    operator: string,
+    campusId: string,
+  ) {
+    const purchasedAt = new Date(body.purchasedAt);
+    if (Number.isNaN(purchasedAt.getTime()))
+      throw new BadRequestException('入库日期不合法');
+    const expiresAt = body.expiresAt ? new Date(body.expiresAt) : null;
+    if (body.expiresAt && Number.isNaN(expiresAt!.getTime()))
+      throw new BadRequestException('过期时间不合法');
+    const row = await this.db.purchaseRecord.create({
+      data: {
+        campusId,
+        productName: body.productName.trim(),
+        qty: body.qty,
+        price: body.price,
+        expiresAt,
+        purchasedAt,
+        remark: body.remark?.trim() ?? '',
+        createdBy: operator,
+      },
+    });
+    await this.audit(
+      operator,
+      'purchase-record.create',
+      'purchase-record',
+      row.id,
+      null,
+      {
+        productName: row.productName,
+        qty: row.qty,
+        price: row.price,
+        purchasedAt: row.purchasedAt.toISOString(),
+      },
+      campusId,
+    );
+    return row;
+  }
+  async purchaseRecords(
+    start?: string,
+    end?: string,
+    campusId?: string,
+    keyword?: string,
+  ) {
+    const today = new Date(Date.now() + 8 * 3600 * 1000)
+      .toISOString()
+      .slice(0, 10);
+    const startDay = start?.trim() || `${today.slice(0, 7)}-01`;
+    const endDay = end?.trim() || today;
+    const startAt = new Date(`${startDay}T00:00:00+08:00`);
+    const endAt = new Date(`${endDay}T23:59:59.999+08:00`);
+    if (
+      Number.isNaN(startAt.getTime()) ||
+      Number.isNaN(endAt.getTime()) ||
+      startAt > endAt
+    )
+      throw new BadRequestException('日期范围不合法');
+    const kw = keyword?.trim();
+    const rows = await this.db.purchaseRecord.findMany({
+      where: {
+        ...(campusId ? { campusId } : {}),
+        purchasedAt: { gte: startAt, lte: endAt },
+        ...(kw ? { productName: { contains: kw } } : {}),
+      },
+      orderBy: { purchasedAt: 'desc' },
+    });
+    const names = await this.operatorNames(rows.map((r) => r.createdBy));
+    // 到期预警口径：expired=到期时刻已过北京时间今日 0 点；expiring=到期日
+    // 距今 ≤30 自然日（按 UTC 日界差取整，'YYYY-MM-DD' 串落库即 UTC 零点，
+    // 不受北京 8 小时偏移影响——ceil 会把 30 天整算成 31 天）
+    const todayStart = new Date(`${today}T00:00:00+08:00`).getTime();
+    const todayUtc = new Date(`${today}T00:00:00Z`).getTime();
+    const DAY_MS = 86400 * 1000;
+    return rows.map((r) => {
+      const expired = r.expiresAt != null && r.expiresAt.getTime() < todayStart;
+      const daysToExpiry =
+        r.expiresAt == null
+          ? null
+          : Math.floor((r.expiresAt.getTime() - todayUtc) / DAY_MS);
+      return {
+        id: r.id,
+        campusId: r.campusId,
+        productName: r.productName,
+        qty: r.qty,
+        price: r.price,
+        expiresAt: r.expiresAt ? r.expiresAt.toISOString() : null,
+        purchasedAt: r.purchasedAt.toISOString(),
+        remark: r.remark,
+        createdBy: r.createdBy,
+        createdByName: names.get(r.createdBy) ?? r.createdBy,
+        createdAt: r.createdAt.toISOString(),
+        // IKRSIX #97：到期预警服务端算好——≤30 天 expiring，已过 expired
+        expiring: !expired && daysToExpiry != null && daysToExpiry <= 30,
+        expired,
+      };
+    });
   }
 
   async purchaseOrders() {
@@ -4105,11 +4496,14 @@ export class AdminService {
         payableAmount: true,
         productAmount: true,
         deliveryFee: true,
+        // IKRSIX #84b：优惠合计（订单 discount 字段，券+活动抵扣）
+        discount: true,
         items: true,
         address: true,
         refunds: {
           where: { status: 'refunded' },
-          select: { amount: true, source: true },
+          // IKRSIY #110/#91：refundDeliveryFee 参与整单已退上限判定
+          select: { amount: true, source: true, refundDeliveryFee: true },
         },
         campus: { select: { name: true, shortName: true } },
       },
@@ -4133,6 +4527,8 @@ export class AdminService {
         salesTotal: number;
         productTotal: number;
         deliveryTotal: number;
+        // IKRSIX #84b：优惠合计（订单 discount 字段，口径跟随 deliveryTotal）
+        discountTotal: number;
         costTotal: number;
         /** IKLEDG：当日支付且已退款合计（分），不进销售额 */
         refundedTotal: number;
@@ -4152,13 +4548,19 @@ export class AdminService {
         salesTotal: 0,
         productTotal: 0,
         deliveryTotal: 0,
+        discountTotal: 0,
         costTotal: 0,
         refundedTotal: 0,
       };
       const actualRefunded = o.refunds.reduce((sum, r) => sum + r.amount, 0);
+      // IKRSIY #110/#91：任一批次含配送费 → 整单判定上限=实付全额，
+      // 否则维持「实付−配送费」（与 finishRefund 的 fullRefundCeiling 同口径）
+      const fullCeiling = o.refunds.some((r) => r.refundDeliveryFee)
+        ? o.payableAmount
+        : o.payableAmount - o.deliveryFee;
       const fullPreDelivery =
         o.refunds.some((r) => r.source === 'pre-delivery') &&
-        actualRefunded >= o.payableAmount - o.deliveryFee;
+        actualRefunded >= fullCeiling;
       cur.orders += 1;
       // 净额必须使用 Refund.amount；不能用订单状态推断，也不能把不退的配送费算退款。
       cur.salesTotal += o.payableAmount - actualRefunded;
@@ -4169,6 +4571,8 @@ export class AdminService {
         : Math.max(0, o.productAmount - actualRefunded);
       // IKJ92S 配送费合计（综合毛利剔除项：交付配送员的配送成本）
       cur.deliveryTotal += o.deliveryFee;
+      // IKRSIX #84b 优惠合计（订单 discount 字段——券+活动抵扣口径）
+      cur.discountTotal += o.discount;
       // 行成本=数量×IKFOPQ 每零售单位批发成本快照（缺快照按 0）
       cur.costTotal += fullPreDelivery
         ? 0
@@ -4217,6 +4621,8 @@ export class AdminService {
     const tSales = rows.reduce((s, r) => s + r.salesTotal, 0);
     const tCost = rows.reduce((s, r) => s + r.costTotal, 0);
     const tDelivery = rows.reduce((s, r) => s + r.deliveryTotal, 0);
+    // IKRSIX #84b：优惠合计（totals 项，行合计与跨校区一致）
+    const tDiscount = rows.reduce((s, r) => s + r.discountTotal, 0);
     const tRefunded = rows.reduce((s, r) => s + r.refundedTotal, 0);
     const tGross = tSales - tDelivery - tCost;
     const tMargin = rows.reduce((s, r) => s + r.marginTotal, 0);
@@ -4232,6 +4638,8 @@ export class AdminService {
           productTotal: tProduct,
           marginTotal: tMargin,
           gross: tGross,
+          // IKRSIX #84b：优惠合计非成本口径，cost.read 关闭也照常下发
+          discountTotal: tDiscount,
           refundedTotal: tRefunded,
           marginRawRate: tProduct
             ? Math.round((tMargin / tProduct) * 10000)
@@ -4248,6 +4656,8 @@ export class AdminService {
         productTotal: tProduct,
         marginTotal: tMargin,
         gross: tGross,
+        // IKRSIX #84b：优惠合计（订单 discount 字段合计）
+        discountTotal: tDiscount,
         refundedTotal: tRefunded,
         marginRawRate: tProduct ? Math.round((tMargin / tProduct) * 10000) : 0,
         marginRate: tSales ? Math.round((tGross / tSales) * 10000) : 0,
@@ -5461,6 +5871,15 @@ export class AdminService {
         // IKM55A 订单自动出库：配送与营业 tab 同区配置
         autoOutboundEnabled: true,
         autoOutboundDelaySeconds: true,
+        // IKRSIX #112：楼长提成模式/比例（结算 tab 同页读写）
+        managerCommissionMode: true,
+        managerCommissionRate: true,
+        // IKRSIY #195/#107/#91：企微客服链接 / 订单详情真实电话开关 /
+        // 到店前退配送费开关（配送与客服 tab 同页读写）
+        serviceKfUrl: true,
+        serviceKfCorpId: true,
+        showDeliveryContacts: true,
+        refundDeliveryFeeBeforeArrive: true,
       },
     });
     return campus;
@@ -5496,6 +5915,32 @@ export class AdminService {
         ...(body.autoOutboundDelaySeconds != null
           ? { autoOutboundDelaySeconds: body.autoOutboundDelaySeconds }
           : {}),
+        // IKRSIZ #108：楼长销售额展示开关（关=配送端不下发销售额）
+        ...(body.managerSalesVisible === undefined ||
+        body.managerSalesVisible === null
+          ? {}
+          : { managerSalesVisible: body.managerSalesVisible }),
+        // IKRSIX #112：楼长提成模式/比例（可选不传不动）
+        ...(body.managerCommissionMode != null
+          ? { managerCommissionMode: body.managerCommissionMode }
+          : {}),
+        ...(body.managerCommissionRate != null
+          ? { managerCommissionRate: body.managerCommissionRate }
+          : {}),
+        // IKRSIY #195/#107/#91：企微客服链接/真实电话开关/到店前退配送费开关
+        //（可选不传不动，同页读写）
+        ...(body.serviceKfUrl != null ? { serviceKfUrl: body.serviceKfUrl } : {}),
+        ...(body.serviceKfCorpId != null
+          ? { serviceKfCorpId: body.serviceKfCorpId }
+          : {}),
+        ...(body.showDeliveryContacts === undefined ||
+        body.showDeliveryContacts === null
+          ? {}
+          : { showDeliveryContacts: body.showDeliveryContacts }),
+        ...(body.refundDeliveryFeeBeforeArrive === undefined ||
+        body.refundDeliveryFeeBeforeArrive === null
+          ? {}
+          : { refundDeliveryFeeBeforeArrive: body.refundDeliveryFeeBeforeArrive }),
       },
       select: {
         deliveryFeeInstant: true,
@@ -5507,6 +5952,13 @@ export class AdminService {
         noManagerTip: true,
         autoOutboundEnabled: true,
         autoOutboundDelaySeconds: true,
+        managerSalesVisible: true,
+        managerCommissionMode: true,
+        managerCommissionRate: true,
+        serviceKfUrl: true,
+        serviceKfCorpId: true,
+        showDeliveryContacts: true,
+        refundDeliveryFeeBeforeArrive: true,
       },
     });
     await this.audit(
@@ -5845,6 +6297,8 @@ export class AdminService {
       images: (r.images as string[] | null) ?? [],
       reason: r.reason,
       amount: this.num(r.amount),
+      // IKRSIY #110/#91：审核口径留痕——本笔上限是否含配送费（前端展示用）
+      refundDeliveryFee: r.refundDeliveryFee,
       payableAmount: this.num(r.order.payableAmount),
       deliveryFee: this.num(r.order.deliveryFee),
       status: r.status,
@@ -5876,6 +6330,11 @@ export class AdminService {
    *   受理失败标 failed + 原因，可再次批准重试。
    * - reject：拒绝并回滚订单到申请前状态（beforeStatus 快照），用户可重新申请。
    * 金额口径：Refund.amount（申请时锁定 = 实付 − 配送费）。
+   * 配送费口径（IKRSIY #110/#91）：订单已到店（arrived 及之后）配送费可退，
+   * 到店前看校区 refundDeliveryFeeBeforeArrive 开关；审核弹窗「退配送费」
+   * 开关（refundDeliveryFee）显式传值时以开关为准——true 放宽上限到实付
+   * 全额，false 收紧回「实付−配送费」；未传按上述规则取默认。落库
+   * Refund.refundDeliveryFee 留痕。
    * scope：校区级授权传本校区（强校验），平台级传 null（跨校区可审）。
    */
   async auditRefund(
@@ -5886,6 +6345,8 @@ export class AdminService {
     remark = '',
     /** v2 部分退款：审核核定的各行金额（客服可改），按 RefundItem.id 对齐 */
     amounts?: Array<{ itemId: string; amount: number }>,
+    /** IKRSIY #110/#91：审核弹窗「退配送费」开关；未传=按到店分界/校区开关取默认 */
+    refundDeliveryFee?: boolean,
   ) {
     const refund = await this.db.refund.findUnique({
       where: { id },
@@ -5894,6 +6355,24 @@ export class AdminService {
     if (!refund || (scope !== null && refund.order.campusId !== scope))
       throw new NotFoundException('退款申请不存在');
     const campusId = refund.order.campusId;
+    // IKRSIY #110/#91：本次退款「可含配送费」的默认口径——订单已到店（含
+    // after-sales 售后锁定态，只从 delivered/completed 进入）一律可退；到店前
+    // 由校区开关 refundDeliveryFeeBeforeArrive 决定（默认不退，维持现状）。
+    // 审核开关显式传值时覆盖默认（true 放宽 / false 收紧）。
+    const campusRow = await this.db.campus.findUnique({
+      where: { id: campusId },
+      select: { refundDeliveryFeeBeforeArrive: true },
+    });
+    const includeDeliveryFee =
+      refundDeliveryFee ??
+      (orderArrived(refund.order.status) ||
+        !!campusRow?.refundDeliveryFeeBeforeArrive);
+    // 可退上限（含历史批次）：含配送费=实付全额；不含=实付−配送费（现状）
+    const refundableTotal = refundCeiling(
+      Number(refund.order.payableAmount),
+      Number(refund.order.deliveryFee),
+      includeDeliveryFee,
+    );
     if (action === 'reject') {
       // failed 也可拒绝：微信受理失败且确认不退的单要有终态出口，不能永远挂着
       if (!['pending', 'failed'].includes(refund.status))
@@ -6013,17 +6492,20 @@ export class AdminService {
         },
         _sum: { amount: true },
       });
-      const goodsPaid =
-        Number(refund.order.payableAmount) - Number(refund.order.deliveryFee);
+      // IKRSIY #110/#91：全局硬上限按放宽/收紧后的口径（refundableTotal）
       if (finalAmount < 1)
         throw new BadRequestException('退款金额必须至少为 0.01 元');
-      if (finalAmount + Number(refundedBefore._sum.amount ?? 0) > goodsPaid)
+      if (finalAmount + Number(refundedBefore._sum.amount ?? 0) > refundableTotal)
         throw new BadRequestException(
-          `超出可退上限：本单最多还可退 ¥${((goodsPaid - Number(refundedBefore._sum.amount ?? 0)) / 100).toFixed(2)}`,
+          `超出可退上限：本单最多还可退 ¥${((refundableTotal - Number(refundedBefore._sum.amount ?? 0)) / 100).toFixed(2)}`,
         );
       return tx.refund.update({
         where: { id },
-        data: { amount: finalAmount },
+        data: {
+          amount: finalAmount,
+          // 审核口径留痕：本次上限是否含配送费（finishRefund/报表整单判定消费）
+          refundDeliveryFee: includeDeliveryFee,
+        },
       });
     });
     try {
@@ -6107,10 +6589,12 @@ export class AdminService {
 
   /**
    * 退款终态落账（微信确认退款后，IKHZKA v2）：
-   * - 累计已退 ≥ 实付−配送费 → 订单 refunded（整单终态：券返还+秒杀限购派生释放）
+   * - 累计已退 ≥ 整单上限 → 订单 refunded（整单终态：券返还+秒杀限购派生释放）；
+   *   上限口径按 IKRSIY #110/#91：任一批次含配送费=实付全额，否则=实付−配送费
    * - 部分退 → 订单回滚 beforeStatus（状态不变+金额标记，Q4 定稿 A）
    * - 未发货退款（pre-delivery，整单）回补库存与销量（stockRestored 防双补）
-   * - 售后（after-sale）佣金按「累计退款 ÷ 商品实付」比例负向冲回（目标差值法防超冲）
+   * - 售后（after-sale）佣金按「累计退款 ÷ 商品实付」比例负向冲回（目标差值法防超冲；
+   *   分母恒为商品实付——提成只挂商品金额，比例超 1 由 refundAdjust 内部 clamp）
    */
   private async finishRefund(
     refund: {
@@ -6145,18 +6629,31 @@ export class AdminService {
       const currentRefund = await tx.refund.findUniqueOrThrow({
         where: { id: refund.id },
       });
+      // IKRSIY #110/#91：任一活动批次（含本条）带 refundDeliveryFee → 整单
+      // 判定上限放宽为实付全额；否则维持「实付−配送费」。活动集与累计金额
+      // 聚合同口径（pending/approved/refunding/refunded，failed 不占额度）。
+      const feeRefunds = await tx.refund.count({
+        where: {
+          orderId: order.id,
+          refundDeliveryFee: true,
+          status: { in: ['pending', 'approved', 'refunding', 'refunded'] },
+        },
+      });
+      const fullRefundCeiling = feeRefunds
+        ? Number(order.payableAmount)
+        : goodsPaid;
       const refundedAgg = await tx.refund.aggregate({
         where: { orderId: order.id, status: 'refunded' },
         _sum: { amount: true },
       });
       if (currentRefund.status === 'refunded') {
         totalRefunded = Number(refundedAgg._sum.amount ?? 0);
-        isFull = totalRefunded >= goodsPaid;
+        isFull = totalRefunded >= fullRefundCeiling;
         return currentRefund;
       }
       totalRefunded =
         Number(refundedAgg._sum.amount ?? 0) + currentRefund.amount;
-      isFull = totalRefunded >= goodsPaid;
+      isFull = totalRefunded >= fullRefundCeiling;
       const currentOrder = await tx.order.findUniqueOrThrow({
         where: { id: order.id },
       });
@@ -6464,8 +6961,14 @@ export class AdminService {
       },
       _sum: { amount: true },
     });
-    const preGoodsPaid =
-      Number(order.payableAmount) - Number(order.deliveryFee);
+    // IKRSIY #110/#91：本流程入口已限 delivered/completed/after-sales（均属
+    // 「已到店」分界后），配送费可退——上限放宽为实付全额（refundCeiling）。
+    // 行金额仍按商品行核定，开关只放宽额度，不改变按行取数。
+    const preGoodsPaid = refundCeiling(
+      Number(order.payableAmount),
+      Number(order.deliveryFee),
+      true,
+    );
     const preAlready = Number(preReserved._sum.amount ?? 0);
     if (total + preAlready > preGoodsPaid)
       throw new BadRequestException(
@@ -6488,7 +6991,12 @@ export class AdminService {
         },
         _sum: { amount: true },
       });
-      const goodsPaid = Number(order.payableAmount) - Number(order.deliveryFee);
+      // IKRSIY #110/#91：已到店（同上入口闸门）→ 上限=实付全额
+      const goodsPaid = refundCeiling(
+        Number(order.payableAmount),
+        Number(order.deliveryFee),
+        true,
+      );
       const already = Number(reserved._sum.amount ?? 0);
       if (total + already > goodsPaid)
         throw new BadRequestException(
@@ -6504,6 +7012,9 @@ export class AdminService {
           images: [],
           reason: input.remark?.slice(0, 120) ?? '',
           amount: total,
+          // 上限口径留痕：已到店批次一律含配送费额度（与 auditRefund 默认一致；
+          // 实际金额仍由商品行核定，随后 auditRefund 批准时会再按开关覆写）
+          refundDeliveryFee: true,
           beforeStatus: order.status === 'after-sales' ? '' : order.status,
           status: 'pending',
           auditBy: operator,
@@ -7507,6 +8018,37 @@ export class AdminService {
         ...(body.noManagerTip != null
           ? { noManagerTip: body.noManagerTip }
           : {}),
+        // IKRSJ3 #114：群二维码弹窗文案（校区自定义，空串=回落默认文案）
+        ...(body.groupQrcodeTip != null
+          ? { groupQrcodeTip: body.groupQrcodeTip }
+          : {}),
+        // IKRSIZ #108：楼长销售额展示开关（关=配送端不下发销售额）
+        ...(body.managerSalesVisible === undefined ||
+        body.managerSalesVisible === null
+          ? {}
+          : { managerSalesVisible: body.managerSalesVisible }),
+        // IKRSIX #112：楼长提成模式/比例（可选不传不动）
+        ...(body.managerCommissionMode != null
+          ? { managerCommissionMode: body.managerCommissionMode }
+          : {}),
+        ...(body.managerCommissionRate != null
+          ? { managerCommissionRate: body.managerCommissionRate }
+          : {}),
+        // IKRSIY #195：企微微信客服链接（空串=未配置，走旧客服弹层）
+        ...(body.serviceKfUrl != null ? { serviceKfUrl: body.serviceKfUrl } : {}),
+        ...(body.serviceKfCorpId != null
+          ? { serviceKfCorpId: body.serviceKfCorpId }
+          : {}),
+        // IKRSIY #107：用户订单详情下发骑手/楼长真实电话开关
+        ...(body.showDeliveryContacts === undefined ||
+        body.showDeliveryContacts === null
+          ? {}
+          : { showDeliveryContacts: body.showDeliveryContacts }),
+        // IKRSIY #91：到店前退款是否退配送费的校区级覆盖（默认不退）
+        ...(body.refundDeliveryFeeBeforeArrive === undefined ||
+        body.refundDeliveryFeeBeforeArrive === null
+          ? {}
+          : { refundDeliveryFeeBeforeArrive: body.refundDeliveryFeeBeforeArrive }),
         // 打烊窗/手动闭店（可选不传不动）：平台账号管理任意校区配送营业配置
         ...(body.closeStart ? { closeStart: body.closeStart } : {}),
         ...(body.closeEnd ? { closeEnd: body.closeEnd } : {}),
@@ -7682,6 +8224,94 @@ export class AdminService {
       // IKDEN2：不限量券 remain=null（后台显示「不限量」）
       remain: x.total === null ? null : Math.max(0, x.total - x.claimed),
     }));
+  }
+  /**
+   * 优惠券领取/核销明细（IKRSIX #99/#184，道哥 2026-10-30）：UserCoupon 行级
+   * 视图 join 用户/券模板/核销订单。UserCoupon 无 usedAt/usedOrderId——核销
+   * 语义是「Order.couponId 直接存 UserCoupon.id（下单锁定，支付 locked→used）」，
+   * usedAt 取核销订单 paidAt、orderNo 回查该订单。start/end 过滤 claimedAt
+   * （北京时间自然日）；keyword 匹配昵称/手机号（命中明文，返回恒脱敏）。
+   */
+  async couponRecords(
+    campusId: string,
+    opts: {
+      couponId?: string;
+      status?: string;
+      keyword?: string;
+      start?: string;
+      end?: string;
+    },
+  ) {
+    // 状态过滤按 UserCoupon.status 实际值（claimed 领取|locked 下单锁定|
+    // used 已核销|released 已释放），不是字面的 active/expired
+    const status = opts.status?.trim();
+    if (status && !['claimed', 'locked', 'used', 'released'].includes(status))
+      throw new BadRequestException('状态取值须为 claimed/locked/used/released');
+    let claimedFrom: Date | undefined;
+    let claimedTo: Date | undefined;
+    if (opts.start?.trim()) {
+      claimedFrom = new Date(`${opts.start.trim()}T00:00:00+08:00`);
+      if (Number.isNaN(claimedFrom.getTime()))
+        throw new BadRequestException('开始日期不合法');
+    }
+    if (opts.end?.trim()) {
+      claimedTo = new Date(`${opts.end.trim()}T23:59:59.999+08:00`);
+      if (Number.isNaN(claimedTo.getTime()))
+        throw new BadRequestException('结束日期不合法');
+    }
+    if (claimedFrom && claimedTo && claimedFrom > claimedTo)
+      throw new BadRequestException('日期范围不合法');
+    const keyword = opts.keyword?.trim();
+    const rows = await this.db.userCoupon.findMany({
+      where: {
+        coupon: { campusId },
+        ...(opts.couponId?.trim() ? { couponId: opts.couponId.trim() } : {}),
+        ...(status ? { status } : {}),
+        ...(claimedFrom || claimedTo
+          ? { claimedAt: { ...(claimedFrom ? { gte: claimedFrom } : {}), ...(claimedTo ? { lte: claimedTo } : {}) } }
+          : {}),
+        ...(keyword
+          ? {
+              user: {
+                OR: [
+                  { nickname: { contains: keyword } },
+                  { phone: { contains: keyword } },
+                ],
+              },
+            }
+          : {}),
+      },
+      include: {
+        user: { select: { id: true, nickname: true, phone: true } },
+        coupon: { select: { id: true, name: true } },
+      },
+      orderBy: { claimedAt: 'desc' },
+    });
+    // 核销单号：Order.couponId=UserCoupon.id，一券至多一单（@@unique 语义）
+    const usedIds = rows.filter((r) => r.status === 'used').map((r) => r.id);
+    const usedOrders = usedIds.length
+      ? await this.db.order.findMany({
+          where: { couponId: { in: usedIds } },
+          select: { couponId: true, orderNo: true, paidAt: true },
+          orderBy: { paidAt: 'desc' },
+        })
+      : [];
+    const usedBy = new Map(usedOrders.map((o) => [o.couponId, o]));
+    return rows.map((r) => {
+      const used = usedBy.get(r.id);
+      return {
+        id: r.id,
+        userId: r.user.id,
+        userNickname: r.user.nickname,
+        userPhone: this.maskPhone(r.user.phone),
+        couponId: r.coupon.id,
+        couponName: r.coupon.name,
+        status: r.status,
+        claimedAt: r.claimedAt.toISOString(),
+        usedAt: used?.paidAt ? used.paidAt.toISOString() : null,
+        orderNo: used?.orderNo ?? null,
+      };
+    });
   }
   async createCoupon(
     body: CreateCouponDto,

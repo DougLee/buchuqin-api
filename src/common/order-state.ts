@@ -1,14 +1,18 @@
 import type { Prisma } from '@prisma/client';
 
 /**
- * 订单状态机（PRD §11.1，12 态）（IK93GQ；2026-08-20 履约 v1 简化 IKA0UM/UQ/UP）。
+ * 订单状态机（PRD §11.1 12 态 + IKRSIY arrived「已到店」，现 13 态）
+ * （IK93GQ；2026-08-20 履约 v1 简化 IKA0UM/UQ/UP）。
  *
  * 迁移表（--动作(操作角色)-->）：
  *   pending-payment  --pay(用户/支付回调)-->                paid
  *   paid             --outbound(admin 仓库出库，一步)-->      waiting-first-mile（已出库，待配送）
  *   picking          --outbound(历史单兼容出库)-->           waiting-first-mile
  *   waiting-first-mile --accept/grab(骑手抢单，写 riderId，状态不变)--> waiting-first-mile
- *   waiting-first-mile --depart(骑手点「开始配送」，无扫码)--> first-mile（配送中）
+ *   waiting-first-mile --arrive(骑手到店确认：扫小票码 POST
+ *                      /fulfillment/scan-arrive 或手动按钮，IKRSIY)--> arrived（已到店）
+ *   arrived          --depart(骑手出发，IKRSIY)-->            first-mile（配送中）
+ *   waiting-first-mile --depart(骑手点「开始配送」，到店不强制，IKRSIY)--> first-mile（配送中）
  *   first-mile       --arrive(骑手到楼下+楼长提醒)-->        waiting-handover（楼下待交接）
  *   waiting-handover --handover(骑手拍照交接凭证，状态不变)--> waiting-handover（已交接）
  *   waiting-handover --receive(楼长接货)-->                 last-mile（待送到寝室）
@@ -26,6 +30,8 @@ import type { Prisma } from '@prisma/client';
  *   paid            不可自助取消（ADR-0004 试点期不退款，客服人工处理）
  *   waiting-first-mile/first-mile/waiting-handover
  *                   --transfer(骑手转单)/absent(用户不在)/refused(拒收)/mark-exception(admin)--> exception
+ *                   （IKRSIY：arrived「已到店」不可转单——IKRQR7 转单门槛维持
+ *                   配送中起，到店未出发不放开）
  *   refunded        仅历史数据（ADR-0004：售后审核假退款路径已拆除，无新增入口）
  *
  * 历史单兼容（旧 9 态语义并入新机）：
@@ -44,13 +50,16 @@ import type { Prisma } from '@prisma/client';
  * timeline 节点（新单 5 步，约定：进入某状态时把对应节点置 done）：
  *   paid(支付成功) / picking(仓库拣货·出库时点亮) / first-mile(送往楼下)
  *   / waiting-handover(楼下待交接) / last-mile(送到寝室)
- *   stepKeyForStatus：waiting-first-mile→picking（出库完成）、delivered→last-mile（送达兜底）。
+ *   stepKeyForStatus：waiting-first-mile→picking（出库完成）、delivered→last-mile（送达兜底）；
+ *   arrived→picking（IKRSIY：已到店无独立节点，指回已 done 的拣货节点做幂等空转
+ *   ——绝不走补录兜底，否则会把「送到寝室」末节点时间误写到店时刻）。
  */
 export const ORDER_STATUSES = [
   'pending-payment',
   'paid',
   'picking',
   'waiting-first-mile',
+  'arrived',
   'first-mile',
   'waiting-handover',
   'last-mile',
@@ -68,6 +77,7 @@ export const ORDER_STATUS_TEXT: Record<OrderStatus, string> = {
   paid: '仓库正在接单',
   picking: '仓库正在拣货',
   'waiting-first-mile': '已出库，待配送员接单',
+  arrived: '配送员已到店',
   'first-mile': '配送中，骑手送往楼下',
   'waiting-handover': '已到楼下，等待楼长交接',
   'last-mile': '楼长送往寝室',
@@ -87,6 +97,7 @@ const PHASE_BY_STATUS: Record<
   paid: 'fulfillment',
   picking: 'fulfillment',
   'waiting-first-mile': 'fulfillment',
+  arrived: 'fulfillment',
   'first-mile': 'fulfillment',
   'waiting-handover': 'fulfillment',
   'last-mile': 'fulfillment',
@@ -106,6 +117,7 @@ export const DELIVERING_STATUSES = [
   'paid',
   'picking',
   'waiting-first-mile',
+  'arrived',
   'first-mile',
   'waiting-handover',
   'last-mile',
@@ -120,6 +132,11 @@ export function stepKeyForStatus(status: string): string | null {
     case 'picking':
     case 'waiting-first-mile':
       // waiting-first-mile = 拣货完成待接，推进到的是拣货节点。
+      return 'picking';
+    case 'arrived':
+      // IKRSIY：已到店无独立 timeline 节点——指回已 done 的拣货节点做幂等空转
+      // （markTimelineStep 见 done 即跳过），避免落进末节点补录兜底把
+      // 「送到寝室」时间误写成到店时刻。
       return 'picking';
     case 'first-mile':
       return 'first-mile';

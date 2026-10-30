@@ -361,4 +361,79 @@ describe('commission & settlement (IK8W5L)', () => {
       expect(rows.reduce((sum, x) => sum + x.amount, 0)).toBe(0);
     }
   });
+
+  // IKRSIX #112（道哥 2026-10-30）：楼长提成比例模式——放在既有用例之后执行，
+  // 用完即还原 per-order，不污染前面按单固定口径的断言。
+  it('rate 模式楼长按销售比例提成、骑手维持按单固定，见习楼长同样入账', async () => {
+    const orderC = await makeOrder(buildingX, '提成楼 X', 3);
+    await db.campus.update({
+      where: { id: CAMPUS },
+      data: { managerCommissionMode: 'rate', managerCommissionRate: 1000 },
+    });
+    await db.$transaction(async (tx) => {
+      await commissions.recordForDelivered(tx, {
+        ...orderC,
+        status: 'delivered',
+      });
+    });
+    const rowsC = await db.commission.findMany({
+      where: { orderId: orderC.id },
+    });
+    expect(rowsC).toHaveLength(2); // 骑手 + 楼长
+    const managerRow = rowsC.find((x) => x.staffId === MANAGER)!;
+    const riderRow = rowsC.find((x) => x.staffId === RIDER)!;
+    // 楼长 = round((实付 − 配送费) × 1000 / 10000)（万分比 10%）
+    expect(managerRow.amount).toBe(
+      Math.round(
+        ((orderC.payableAmount - orderC.deliveryFee) * 1000) / 10000,
+      ),
+    );
+    expect(managerRow.remark).toBe('订单送达销售提成');
+    // 骑手恒配送费直取，不随模式变化
+    expect(riderRow.amount).toBe(400);
+    expect(riderRow.remark).toBe('订单送达配送费');
+    // 见习楼长（intern-building-manager）独立扛楼：rate 模式同样吃比例
+    // （挂到无正式楼长的新楼 Z，避免与 Y 楼正式楼长抢 findFirst 归属）。
+    // 见习楼长/新楼 Z 留给 afterAll 清理（commission→staff→building 顺序）。
+    const z = await db.building.create({
+      data: { campusId: CAMPUS, name: '提成楼 Z', floors: 6 },
+    });
+    const intern = await db.staff.create({
+      data: {
+        id: 'staff-comm-intern',
+        campusId: CAMPUS,
+        name: '提成见习楼长',
+        role: 'intern-building-manager',
+        roleText: '见习楼长',
+        staffNo: 'BM-COMM-INT',
+        buildingId: z.id,
+        building: '提成楼 Z',
+        onTimeRate: 100,
+        income: 0,
+      },
+    });
+    const orderD = await makeOrder(z.id, '提成楼 Z', 1);
+    await db.$transaction(async (tx) => {
+      await commissions.recordForDelivered(tx, {
+        ...orderD,
+        status: 'delivered',
+      });
+    });
+    const internRows = await db.commission.findMany({
+      where: { orderId: orderD.id, staffId: intern.id },
+    });
+    expect(internRows).toHaveLength(1);
+    expect(internRows[0].amount).toBe(
+      Math.round(
+        ((orderD.payableAmount - orderD.deliveryFee) * 1000) / 10000,
+      ),
+    );
+    orderIds.push(orderD.id);
+    // 还原 per-order：后续重复送达不再生成/改写既有记录（幂等基线不破）
+    await db.campus.update({
+      where: { id: CAMPUS },
+      data: { managerCommissionMode: 'per-order' },
+    });
+    orderIds.push(orderC.id);
+  });
 });

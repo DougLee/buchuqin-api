@@ -19,6 +19,7 @@ import { FulfillmentService } from './fulfillment.service';
 import {
   LeaveRequestDto,
   RejectDto,
+  ScanArriveDto,
   StaffStatusDto,
   TaskActionDto,
   UpdateProfileDto,
@@ -172,6 +173,16 @@ export class FulfillmentController {
     @Body() b: TaskActionDto,
   ) {
     return this.action(r, id, 'grab', b);
+  }
+  /** IKRSIY（#109/#111 已到店）：骑手扫小票二维码（内容=orderNo）确认到店
+   *  ——waiting-first-mile → arrived「已到店」。手动按钮走
+   *  POST tasks/:id/actions/arrive，本端点供扫码页直调（免任务 id）。 */
+  @Post('scan-arrive')
+  async scanArrive(@Req() r: AuthRequest, @Body() d: ScanArriveDto) {
+    return ok(
+      await this.service.scanArrive(this.auth(r), d.orderNo),
+      '已确认到店',
+    );
   }
   // IKA0UM：pickup 扫码取货快捷端点已随「去扫码」简化移除，走 actions/:action。
   @Post('tasks/:id/depart') depart(

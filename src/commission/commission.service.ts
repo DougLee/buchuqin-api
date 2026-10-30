@@ -150,22 +150,44 @@ export class CommissionService {
     // IKQFG4（道哥 2026-10-26 B 方案）：配送员报酬=校区配送费直取——
     // 按订单配送模式取即时达/预约达配送费配置，与用户支付口径一比一。
     // 提成规则表（loadRules/bestMatch）废弃不再匹配；ruleId/version 置空。
+    // IKRSIX #112（道哥 2026-10-30）：楼长提成支持销售比例模式——校区
+    // managerCommissionMode=rate 时楼长系提成=round((实付−配送费)×rate/10000)
+    // （万分比，5%=500）；骑手与 per-order 模式维持配送费直取现状。
     const campus = await tx.campus.findUnique({
       where: { id: String(order.campusId) },
-      select: { deliveryFeeInstant: true, deliveryFeeScheduled: true },
+      select: {
+        deliveryFeeInstant: true,
+        deliveryFeeScheduled: true,
+        managerCommissionMode: true,
+        managerCommissionRate: true,
+      },
     });
-    const amount =
+    const deliveryAmount =
       order.deliveryMode === 'scheduled'
         ? (campus?.deliveryFeeScheduled ?? 0)
         : (campus?.deliveryFeeInstant ?? 0);
+    const rateMode = campus?.managerCommissionMode === 'rate';
+    // 销售提成基数=商品实付（实付−配送费），脏数据为负时兜 0
+    const salesBase = Math.max(
+      0,
+      Number(order.payableAmount ?? 0) - Number(order.deliveryFee ?? 0),
+    );
+    const managerAmount = rateMode
+      ? Math.round((salesBase * (campus?.managerCommissionRate ?? 0)) / 10000)
+      : deliveryAmount;
     const period = new Date().toISOString().slice(0, 7);
     // 楼长归属：优先 buildingId 关联，历史地址回退楼栋名。
+    // IKRSIX #112：rate 模式下楼长系（building-manager/intern-building-manager）
+    // 都可记提成（见习楼长独立扛楼的校区同样吃比例）；per-order 模式维持
+    // 现状只认正式楼长。
     const manager =
       dims.buildingId || dims.buildingName
         ? await tx.staff.findFirst({
             where: {
               campusId: String(order.campusId),
-              role: 'building-manager',
+              role: rateMode
+                ? { in: ['building-manager', 'intern-building-manager'] }
+                : 'building-manager',
               status: { not: 'deleted' },
               ...(dims.buildingId
                 ? {
@@ -182,6 +204,10 @@ export class CommissionService {
       ...new Set([order.riderId, manager?.id].filter(Boolean)),
     ] as string[];
     for (const staffId of targets) {
+      // 同一人兼骑手与本单楼长：按楼长口径记一行（rate 模式记销售提成），
+      // 不拆两行——@@unique(orderId, staffId) 本就只容一条
+      const isManagerTarget = staffId === manager?.id;
+      const amount = isManagerTarget ? managerAmount : deliveryAmount;
       await tx.commission.upsert({
         where: {
           orderId_staffId_kind: {
@@ -201,7 +227,8 @@ export class CommissionService {
           status: 'pending',
           fallback: false,
           period,
-          remark: '订单送达配送费',
+          remark:
+            isManagerTarget && rateMode ? '订单送达销售提成' : '订单送达配送费',
         },
         update: {},
       });

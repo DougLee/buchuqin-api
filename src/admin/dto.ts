@@ -338,6 +338,36 @@ export class UpdateDeliveryConfigDto {
   @Min(10, { message: '自动出库延迟至少 10 秒' })
   @Max(600, { message: '自动出库延迟最多 600 秒' })
   autoOutboundDelaySeconds?: number;
+  /** 楼长销售额展示开关（IKRSIZ #108）：关=配送端工作台不下发销售额 */
+  @IsOptional()
+  @IsBoolean()
+  managerSalesVisible?: boolean;
+  /** 楼长提成模式（IKRSIX #112）：per-order=按单固定（配送费直取）；rate=销售比例 */
+  @IsOptional()
+  @IsIn(['per-order', 'rate'])
+  managerCommissionMode?: string;
+  /** 楼长提成比例（IKRSIX #112，万分比 5%=500）：仅 rate 模式消费；0=比例未配 */
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(10000)
+  managerCommissionRate?: number;
+  /** 企微微信客服链接（IKRSIY #195）：空串=未配置走旧客服弹层；≤200 字 */
+  @IsOptional()
+  @IsString()
+  @MaxLength(200, { message: '客服链接最多 200 字' })
+  serviceKfUrl?: string;
+  /** 企微企业 ID（IKRSIY #195）：openCustomerServiceChat 的 corpAccessId，空=拉不起 */
+  serviceKfCorpId?: string;
+  /** 用户订单详情下发骑手/楼长真实电话开关（IKRSIY #107） */
+  @IsOptional()
+  @IsBoolean()
+  showDeliveryContacts?: boolean;
+  /** 到店前退款是否退配送费的校区级覆盖（IKRSIY #91）：默认不退 */
+  @IsOptional()
+  @IsBoolean()
+  refundDeliveryFeeBeforeArrive?: boolean;
 }
 export class CreateCouponDto {
   @IsString() @MaxLength(40) name!: string;
@@ -426,13 +456,33 @@ export class IssueCouponDto {
 export class StocktakeDto {
   @IsString() productId!: string;
   @Type(() => Number) @IsInt() @Min(0) countedQty!: number;
-  @IsOptional() @IsString() @MaxLength(120) reason?: string;
+  // IKRSIX #85（道哥 2026-10-30）：盘点原因收敛枚举——盘点统计页按原因聚合
+  // （线下销售/赠送/货损/丢损），自由文本没法归类。落流水仍带「盘点校准：」前缀。
+  @IsOptional()
+  @IsIn(['线下销售', '赠送', '货损', '丢损'])
+  reason?: string;
 }
 /** 采购申请（IKD6FJ）：校区提交 → hq 审核 → 通过后入库。 */
 export class CreatePurchaseRequestDto {
   @IsString() productId!: string;
   @Type(() => Number) @IsInt() @Min(1) quantity!: number;
   @IsOptional() @IsString() @MaxLength(120) reason?: string;
+}
+/**
+ * 手动采购记录（IKRSIX #97）：校区自主零星采购台账，纯登记不动库存——
+ * 与订货批次流（RestockOrder/PurchaseOrder）无关。金额一律整数分（IK8W5K）。
+ */
+export class CreatePurchaseRecordDto {
+  @IsString() @MinLength(1) @MaxLength(80) productName!: string;
+  /** 入库数量（零售单位，正整数） */
+  @Type(() => Number) @IsInt() @Min(1) qty!: number;
+  /** 自主采购价（分/零售单位，允许 0=赠品/自产） */
+  @Type(() => Number) @IsInt() @Min(0) price!: number;
+  /** 商品过期时间（ISO 日期串），可空=不登记效期 */
+  @IsOptional() @IsDateString() expiresAt?: string;
+  /** 入库日期（ISO 日期串） */
+  @IsDateString() purchasedAt!: string;
+  @IsOptional() @IsString() @MaxLength(200) remark?: string;
 }
 export class AuditPurchaseRequestDto {
   @IsIn(['approved', 'rejected']) action!: 'approved' | 'rejected';
@@ -742,6 +792,43 @@ export class UpdateCampusDto {
   @IsString()
   @MaxLength(60, { message: '提示文案最多 60 字' })
   noManagerTip?: string;
+  /** 群二维码弹窗文案（IKRSJ3 #114 校区自定义）：空串=回落默认文案 */
+  @IsOptional()
+  @IsString()
+  @MaxLength(100, { message: '弹窗文案最多 100 字' })
+  groupQrcodeTip?: string;
+  /** 楼长销售额展示开关（IKRSIZ #108）：关=配送端工作台不下发销售额 */
+  @IsOptional()
+  @IsBoolean()
+  managerSalesVisible?: boolean;
+  /** 楼长提成模式（IKRSIX #112）：per-order=按单固定（配送费直取）；rate=销售比例 */
+  @IsOptional()
+  @IsIn(['per-order', 'rate'])
+  managerCommissionMode?: string;
+  /** 楼长提成比例（IKRSIX #112，万分比 5%=500）：仅 rate 模式消费；0=比例未配 */
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(10000)
+  managerCommissionRate?: number;
+  /** 企微微信客服链接（IKRSIY #195）：https://work.weixin.qq.com/kfid/xxx；
+   *  空串=未配置，用户端走旧客服弹层。必须带装饰器：全局 ValidationPipe
+   *  whitelist 会剥离无装饰器字段（见 serviceQrcode 2026-10-16 案例） */
+  @IsOptional()
+  @IsString()
+  @MaxLength(200, { message: '客服链接最多 200 字' })
+  serviceKfUrl?: string;
+  /** 企微企业 ID（IKRSIY #195）：openCustomerServiceChat 的 corpAccessId，空=拉不起 */
+  serviceKfCorpId?: string;
+  /** 用户订单详情下发骑手/楼长真实电话开关（IKRSIY #107）：关=详情不带 deliveryChain */
+  @IsOptional()
+  @IsBoolean()
+  showDeliveryContacts?: boolean;
+  /** 到店前退款是否退配送费的校区级覆盖（IKRSIY #91）：默认不退 */
+  @IsOptional()
+  @IsBoolean()
+  refundDeliveryFeeBeforeArrive?: boolean;
   /** 打烊窗/手动闭店（平台账号管理任意校区配送营业配置）：均可选不传不动 */
   @IsOptional()
   @IsString()
@@ -997,7 +1084,10 @@ export class UpdateNoticeDto {
 }
 
 /** 退款审核（IKHZKA）：approve=批准并发起微信原路退回；reject=拒绝（备注建议填写）。
- *  v2：amounts=审核核定的部分退款各行金额（客服可改）。 */
+ *  v2：amounts=审核核定的部分退款各行金额（客服可改）。
+ *  IKRSIY #110/#91：refundDeliveryFee=审核弹窗「退配送费」开关（可选）——
+ *  true 放宽可退上限到实付全额，false 收紧回「实付−配送费」；不传按到店
+ *  分界/校区 refundDeliveryFeeBeforeArrive 开关取默认。 */
 export class RefundAuditAmountDto {
   @IsString() itemId!: string;
   @Type(() => Number) @IsInt() @Min(0) amount!: number;
@@ -1005,6 +1095,7 @@ export class RefundAuditAmountDto {
 export class RefundAuditDto {
   @IsIn(['approve', 'reject']) action!: 'approve' | 'reject';
   @IsOptional() @IsString() @MaxLength(200) remark?: string;
+  @IsOptional() @IsBoolean() refundDeliveryFee?: boolean;
   @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
