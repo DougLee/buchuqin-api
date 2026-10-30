@@ -58,6 +58,8 @@ export const MENU_NODES: MenuNodeDef[] = [
   // seeded 后不补新菜单（registry 同步特性），故模板不含即天然超管专属；
   // 前端另有 superViews 双保险
   { code: 'behavior-analytics', name: '行为分析', type: 1, parent: 'g.ops', path: '/behavior-analytics', icon: 'dashboard', order: 6, perms: ['GET /admin/analytics/summary'], remark: '用户行为漏斗+商品热度+搜索词（仅超管）' },
+  // IKRQR7 转单管理（道哥定稿仅超管）：不进任何角色模板；DB 菜单行需手动补（registry 新节点不自动落库）
+  { code: 'transfer-logs', name: '转单管理', type: 1, parent: 'g.ops', path: '/transfer-logs', icon: 'orders', order: 7, perms: ['GET /admin/transfer-logs'], remark: '骑手转单留痕报表（仅超管）' },
 
   /* ---------- 目录：仓储中心 ---------- */
   { code: 'g.wh', name: '仓储中心', type: 0, order: 2 },

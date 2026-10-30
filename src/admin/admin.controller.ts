@@ -1314,6 +1314,32 @@ export class AdminController {
     );
   }
 
+  /** 转单管理（IKRQR7，道哥定稿仅超管）：骑手转单留痕报表 */
+  @Get('transfer-logs') async transferLogs(
+    @Req() req: AuthRequest,
+    @Query('staffId') staffId?: string,
+    @Query('start') start?: string,
+    @Query('end') end?: string,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+  ) {
+    const ctx = this.ctx(req);
+    if (!ctx.super)
+      throw new ForbiddenException('仅超级管理员可查看转单管理');
+    return ok(
+      await this.service.transferLogs(
+        {
+          staffId: staffId || undefined,
+          start: start || undefined,
+          end: end || undefined,
+          campusId: (await this.scopedCampus(req)) || undefined,
+        },
+        Number(page) || 1,
+        Math.min(Number(pageSize) || 20, 100),
+      ),
+    );
+  }
+
   // ==================== 营销作战地图（IKFOQ3）：寝室级下单覆盖 ====================
   // 权限复用 buildings 键（admin/operations）；校区经 campusScope（IKISDN）：
   // 校区级恒本校区防串；平台级可 ?campus= 聚焦、缺省全放行（页面内选校区）

@@ -912,25 +912,25 @@ model DeliverySlot {
 }
 
 model Order {
-  id                String       @id @default(cuid())
+  id                String        @id @default(cuid())
   riderId           String?
-  orderNo           String       @unique
+  orderNo           String        @unique
   userId            String
-  user              User         @relation(fields: [userId], references: [id])
+  user              User          @relation(fields: [userId], references: [id])
   campusId          String
-  campus            Campus       @relation(fields: [campusId], references: [id])
+  campus            Campus        @relation(fields: [campusId], references: [id])
   /// 当日分拣序号（IKHFDZ）：出库打印时取号（每校区每日从 1），补打复用；
   /// null=未打印/功能上线前历史单。商家联票头大字展示，便于仓内分拣。
   dailySeq          Int?
   status            String
   statusText        String
-  createdAt         DateTime     @default(now())
+  createdAt         DateTime      @default(now())
   paidAt            DateTime?
   address           Json
   deliveryMode      String
   deliverySlot      String?
   couponId          String?
-  remark            String       @default("")
+  remark            String        @default("")
   items             Json
   productAmount     Int
   totalQuantity     Int
@@ -941,10 +941,11 @@ model Order {
   estimatedArrival  String
   timeline          Json
   package           Json?
-  stockRestored     Boolean      @default(false)
+  stockRestored     Boolean       @default(false)
   afterSales        AfterSale[]
   refunds           Refund[]
   commissions       Commission[]
+  transferLogs      TransferLog[]
 }
 
 model Notification {
@@ -1076,6 +1077,7 @@ model Staff {
   dispatchInvitations DispatchInvitation[]
   commissions         Commission[]
   bills               BmBill[]
+  transferLogs        TransferLog[]
 }
 
 model LeaveRequest {
@@ -1335,4 +1337,23 @@ model UserEvent {
 
   @@index([campusId, event, createdAt])
   @@index([userId, createdAt])
+}
+
+/**
+ * 转单留痕（IKRQR7）：骑手转单记录——转单即释放回抢单池，本表是唯一
+ * 痕迹（timeline 末端节点回退、归属清空）；后台转单管理/订单详情消费。
+ */
+model TransferLog {
+  id         String   @id @default(cuid())
+  orderId    String
+  order      Order    @relation(fields: [orderId], references: [id])
+  /// 转单骑手（楼长无转单）
+  staffId    String
+  staff      Staff    @relation(fields: [staffId], references: [id])
+  /// 转单前的订单状态（中文文案冗余，报表免 join）
+  fromStatus String
+  createdAt  DateTime @default(now())
+
+  @@index([orderId])
+  @@index([staffId, createdAt])
 }

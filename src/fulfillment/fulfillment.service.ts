@@ -462,24 +462,35 @@ export class FulfillmentService {
           if (manager) throw new BadRequestException('楼长任务无需转单');
           if (order.riderId !== staffId)
             throw new BadRequestException('仅可转单自己接取的任务');
-          if (
-            !['waiting-first-mile', 'first-mile', 'waiting-handover'].includes(
-              order.status,
-            )
-          )
+          // IKRQR7（道哥定稿）：至少配送中才可转——已接单未取货不可转
+          if (order.status === 'waiting-first-mile')
+            throw new BadRequestException(
+              '已接单未取货不可转单，取货配送后方可转单',
+            );
+          if (!['first-mile', 'waiting-handover'].includes(order.status))
             throw new BadRequestException(
               `当前订单状态为「${order.statusText}」，不能转单`,
             );
-          const timeline = ((order.timeline as JsonMap[]) ?? []).map((step) =>
-            [
-              'first-mile',
-              'waiting-handover',
-              'ready-to-deliver',
-              'last-mile',
-            ].includes(step.key)
-              ? { ...step, done: false, time: undefined }
-              : step,
-          );
+          const timeline = [
+            ...((order.timeline as JsonMap[]) ?? []).map((step) =>
+              [
+                'first-mile',
+                'waiting-handover',
+                'ready-to-deliver',
+                'last-mile',
+              ].includes(step.key)
+                ? { ...step, done: false, time: undefined }
+                : step,
+            ),
+            // IKRQR7：用户端中性提示（不暴露内部转单细节）
+            {
+              key: 'transferred',
+              done: true,
+              time: new Date().toISOString(),
+              title: '配送员调整',
+              description: '订单将由其他配送员继续配送',
+            },
+          ];
           const released = await tx.order.updateMany({
             where: { id: order.id, status: order.status, riderId: staffId },
             data: {
@@ -491,6 +502,15 @@ export class FulfillmentService {
           });
           if (!released.count)
             throw new BadRequestException('订单状态已变化，请刷新');
+          // IKRQR7：转单留痕——回池后 timeline 无痕，本表是唯一记录
+          //（后台转单管理/订单详情消费）
+          await tx.transferLog.create({
+            data: {
+              orderId: order.id,
+              staffId,
+              fromStatus: order.statusText, // 业务文案即状态中文，免查表
+            },
+          });
           return null; // 回池不重发派单通知（推送时点在出库，超本改动范围）
         }
         // 动作迁移表（12 态状态机，迁移表全文见 src/common/order-state.ts，IK93GQ）：

@@ -3911,6 +3911,66 @@ export class AdminService {
         });
   }
 
+  // ==================== 转单管理（IKRQR7）：骑手转单留痕报表 ====================
+
+  /** 转单记录列表（道哥定稿仅超管）：骑手/日期筛选，join 订单号与骑手信息 */
+  async transferLogs(
+    opts: { staffId?: string; start?: string; end?: string; campusId?: string },
+    page = 1,
+    pageSize = 20,
+  ) {
+    const startAt = opts.start
+      ? new Date(`${opts.start}T00:00:00+08:00`)
+      : undefined;
+    const endAt = opts.end
+      ? new Date(`${opts.end}T23:59:59.999+08:00`)
+      : undefined;
+    const where = {
+      ...(opts.staffId ? { staffId: opts.staffId } : {}),
+      ...(startAt || endAt
+        ? {
+            createdAt: {
+              ...(startAt ? { gte: startAt } : {}),
+              ...(endAt ? { lte: endAt } : {}),
+            },
+          }
+        : {}),
+      ...(opts.campusId
+        ? { order: { campusId: opts.campusId } }
+        : {}),
+    };
+    const [rows, total] = await Promise.all([
+      this.db.transferLog.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+        include: {
+          staff: { select: { name: true, staffNo: true } },
+          order: {
+            select: { orderNo: true, campusId: true, payableAmount: true },
+          },
+        },
+      }),
+      this.db.transferLog.count({ where }),
+    ]);
+    return {
+      items: rows.map((t) => ({
+        id: t.id,
+        orderNo: t.order.orderNo,
+        campusId: t.order.campusId,
+        amount: Number(t.order.payableAmount),
+        staffName: t.staff.name,
+        staffNo: t.staff.staffNo,
+        fromStatus: t.fromStatus,
+        createdAt: t.createdAt.toISOString(),
+      })),
+      total,
+      page,
+      pageSize,
+    };
+  }
+
   // ==================== 用户行为分析（IKRGLV）：埋点漏斗+热度报表 ====================
 
   /**
@@ -4623,15 +4683,33 @@ export class AdminService {
   ) {
     const x = await this.db.order.findFirst({
       where: { id, ...(campusId ? { campusId } : {}) },
+      include: {
+        // IKRQR7：转单留痕（新→旧），订单详情显示谁在何时从何状态转出
+        transferLogs: {
+          orderBy: { createdAt: 'desc' },
+          include: { staff: { select: { name: true, staffNo: true } } },
+        },
+      },
     });
     if (!x) throw new NotFoundException('订单不存在');
     // IKKRMY：订单详情同列表口径——无 cost.read 剔除行内成本快照（内部
     // 调用方（orderAction/补打小票）走缺省 true，不受影响）
     const base = costRead ? x : trimOrderCost(x);
+    const transferLogs = x.transferLogs.map((t) => ({
+      id: t.id,
+      staffName: t.staff.name,
+      staffNo: t.staff.staffNo,
+      fromStatus: t.fromStatus,
+      createdAt: t.createdAt.toISOString(),
+    }));
     // 配送链（IKP0AP）：仅后台订单详情端点开启——内部调用（orderAction/
     // 手动改状态/补打小票）复用本方法做审计 before 快照，带链会污染 diff。
-    if (!withDeliveryChain) return base;
-    return { ...base, deliveryChain: await this.deliveryChain(id, x.riderId) };
+    if (!withDeliveryChain) return { ...base, transferLogs };
+    return {
+      ...base,
+      transferLogs,
+      deliveryChain: await this.deliveryChain(id, x.riderId),
+    };
   }
   /**
    * 配送链（IKP0AP）：订单详情组装骑手/楼长的姓名+电话+工号，后台可直接拨号。
