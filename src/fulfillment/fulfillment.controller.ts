@@ -90,17 +90,33 @@ export class FulfillmentController {
     @Query('status') s?: string,
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
+    @Query('buildingId') buildingId?: string,
   ) {
     return ok(
-      paginate(await this.service.tasks(this.auth(r), s), page, pageSize),
+      paginate(
+        await this.service.tasks(this.auth(r), s, buildingId),
+        page,
+        pageSize,
+      ),
     );
   }
-  @Get('tasks/available') async available(@Req() r: AuthRequest) {
+  @Get('tasks/available') async available(
+    @Req() r: AuthRequest,
+    @Query('buildingId') buildingId?: string,
+  ) {
     const id = this.auth(r);
     // 抢单池仅配送员角色（IK8W5U）；楼长的接货视图走 GET /fulfillment/tasks。
     if (r.user.role === 'building-manager')
       throw new ForbiddenException('抢单池仅配送员可用');
-    return ok(await this.service.availableTasks(id));
+    return ok(await this.service.availableTasks(id, buildingId));
+  }
+  /** IKRMQF（道哥 2026-10-30）：任务看板楼栋筛选——骑手所在校区楼栋列表 */
+  @Get('buildings') async buildings(@Req() r: AuthRequest) {
+    return ok(
+      await this.service.campusBuildings(
+        (await this.service.profile(this.auth(r))).campusId,
+      ),
+    );
   }
   /** IKKTTP 楼长作战地图：整栋三色格（绑定楼栋） */
   @Get('battle-map') async battleMap(@Req() r: AuthRequest) {

@@ -277,7 +277,7 @@ export class FulfillmentService {
       return String(address.buildingId) === String(staff.buildingId);
     return String(address.buildingName) === staff.building;
   }
-  async tasks(staffId: string, status?: string) {
+  async tasks(staffId: string, status?: string, buildingId?: string) {
     const staff = await this.profile(staffId);
     // IKKRMV：后台员工配送（staff_delivery）组织的校区不进骑手任务列表
     // ——订单出库后不进骑手任务池（不入池不通知），配送与送达由后台订单
@@ -288,22 +288,31 @@ export class FulfillmentService {
     );
     const orders = this.attributedOrders(
       staff,
-      await this.db.order.findMany({
-        where: {
-          campusId: staff.campusId,
-          status: { notIn: ['pending-payment', 'cancelled', 'refunded'] },
-          // 骑手视图：已被其他配送员接走的单不再出现在任务池。
-          ...(!manager
-            ? { OR: [{ riderId: null }, { riderId: staffId }] }
-            : {}),
-        },
-        orderBy: { createdAt: 'desc' },
-      }),
-    ).filter(
-      (order) =>
-        !manager ||
-        (order.package as JsonMap | null)?.lastMileMode !== 'customer-pickup',
-    );
+      (
+        await this.db.order.findMany({
+          where: {
+            campusId: staff.campusId,
+            status: { notIn: ['pending-payment', 'cancelled', 'refunded'] },
+            // 骑手视图：已被其他配送员接走的单不再出现在任务池。
+            ...(!manager
+              ? { OR: [{ riderId: null }, { riderId: staffId }] }
+              : {}),
+          },
+          orderBy: { createdAt: 'desc' },
+        })),
+    )
+      .filter(
+        (order) =>
+          !manager ||
+          (order.package as JsonMap | null)?.lastMileMode !==
+          'customer-pickup',
+      )
+      .filter((o) => {
+        // IKRMQF（道哥 2026-10-30）：楼栋筛选——骑手看板按地址快照 buildingId 精确过滤
+        if (!buildingId) return true;
+        const a = o.address as JsonMap | null;
+        return String(a?.buildingId ?? '') === buildingId;
+      });
     // 提成展示口径统一（IK8W5L）：已生成的 Commission 记录优先，未送达单按规则预览。
     const riderIds = [
       ...new Set(
@@ -365,7 +374,7 @@ export class FulfillmentService {
    * IKKRMV：staff_delivery 组织的校区抢单池恒空（不入池；出库侧亦不派单
    * 通知，见 NotificationsService.notifyRidersOnFirstMile）。
    */
-  async availableTasks(staffId: string) {
+  async availableTasks(staffId: string, buildingId?: string) {
     const staff = await this.profile(staffId);
     if (await campusStaffDelivery(this.db, staff.campusId)) return [];
     const orders = await this.db.order.findMany({
@@ -373,6 +382,15 @@ export class FulfillmentService {
         campusId: staff.campusId,
         status: 'waiting-first-mile',
         riderId: null,
+        // IKRMQF（道哥 2026-10-30）：抢单池楼栋筛选——骑手按楼栋抢
+        ...(buildingId
+          ? {
+              address: {
+                path: ['buildingId'],
+                equals: buildingId,
+              },
+            }
+          : {}),
       },
       orderBy: { createdAt: 'asc' },
     });
@@ -802,6 +820,14 @@ export class FulfillmentService {
     };
   }
 
+  /** IKRMQF（道哥 2026-10-30）：任务看板楼栋筛选——骑手所在校区在职楼栋 */
+  async campusBuildings(campusId: string) {
+    return this.db.building.findMany({
+      where: { campusId, status: 'active' },
+      select: { id: true, name: true },
+      orderBy: { name: 'asc' },
+    });
+  }
   /** IKRMQF：楼栋性别批查——任务卡显示男寝/女寝徽标（按地址快照 buildingId
    *  实时查楼栋表，存量单快照无 gender 也能显示当前归属） */
   private async buildingGenderByOrder(
