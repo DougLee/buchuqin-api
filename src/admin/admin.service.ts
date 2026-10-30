@@ -5261,10 +5261,11 @@ export class AdminService {
     if (body.name !== undefined) data.name = body.name;
     if (body.role !== undefined) data.role = body.role;
     if (body.staffNo !== undefined) data.staffNo = body.staffNo;
-    // 联系电话（IKP0AP）：员工编辑透传（未传不动）；null 同样不动——
-    // @IsOptional 放行 null，直接透传会撞 phone 非空约束 500
-    //（道哥 2026-10-30 测试环境改楼长绑楼栋实测报 Internal server error）
-    if (body.phone != null) data.phone = body.phone;
+    // 联系电话（IKP0AP）：员工编辑透传（未传不动）。null=前端「清空电话」
+    // （StaffPage 注释「清空=未录入（提交 null）」）——列有非空约束，落空串
+    // 而非透传 null；此前 !== undefined 判断让 null 直达 Prisma 撞 500
+    //（道哥 2026-10-30 测试环境改楼长绑楼栋实测）
+    if (body.phone !== undefined) data.phone = body.phone ?? "";
     if (body.status !== undefined) data.status = body.status;
     if (campusChanged) data.campus = { connect: { id: target.id } };
     let buildingName = before.building;
