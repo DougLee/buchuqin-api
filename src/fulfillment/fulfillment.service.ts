@@ -259,12 +259,13 @@ export class FulfillmentService {
       ),
     };
   }
-  /** 订单归属：楼长按楼栋（IKAFP4 读写一致），配送员按校园全量。 */
+  /** 订单归属：楼长（含实习）按楼栋（IKAFP4 读写一致；道哥 2026-10-30
+   *  实习楼长同正式楼长只看本楼栋，不再全量），配送员按校园全量。 */
   private attributedOrders<T extends { address: unknown }>(
     staff: { role: string; buildingId: string | null; building: string },
     orders: T[],
   ): T[] {
-    return staff.role === 'building-manager'
+    return ['building-manager', 'intern-building-manager'].includes(staff.role)
       ? orders.filter((x) =>
           this.isOwnBuilding(staff, x.address as JsonMap),
         )
