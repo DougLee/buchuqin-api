@@ -163,10 +163,6 @@ export class FulfillmentService {
         todayIncome: performance.todayIncome,
         monthGmv: performance.monthGmv,
       },
-      announcement:
-        profile.role === 'building-manager'
-          ? '有包裹即将到楼，请准备接货'
-          : '校园仓有待配送任务',
       tasks: active.slice(0, 4),
     };
   }
