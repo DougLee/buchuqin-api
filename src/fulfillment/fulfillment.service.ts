@@ -340,6 +340,7 @@ export class FulfillmentService {
     const riderById = new Map(
       riders.map((r) => [r.id, { name: r.name, phone: r.phone }]),
     );
+    const buildingGenderById = await this.buildingGenderByOrder(orders);
     const result = orders.map((o) =>
       this.toTask(
         o as unknown as JsonMap,
@@ -349,6 +350,7 @@ export class FulfillmentService {
         campusFees ?? { deliveryFeeInstant: 0, deliveryFeeScheduled: 0 },
         staff.campusWarehouseName,
         riderById,
+        buildingGenderById,
       ),
     );
     return result.filter(
@@ -381,6 +383,7 @@ export class FulfillmentService {
       where: { id: staff.campusId },
       select: { deliveryFeeInstant: true, deliveryFeeScheduled: true },
     });
+    const buildingGenderById = await this.buildingGenderByOrder(orders);
     return orders.map((o) =>
       this.toTask(
         o as unknown as JsonMap,
@@ -389,6 +392,8 @@ export class FulfillmentService {
         undefined,
         campusFees ?? { deliveryFeeInstant: 0, deliveryFeeScheduled: 0 },
         staff.campusWarehouseName,
+        undefined,
+        buildingGenderById,
       ),
     );
   }
@@ -800,6 +805,26 @@ export class FulfillmentService {
     };
   }
 
+  /** IKRMQF：楼栋性别批查——任务卡显示男寝/女寝徽标（按地址快照 buildingId
+   *  实时查楼栋表，存量单快照无 gender 也能显示当前归属） */
+  private async buildingGenderByOrder(
+    orders: Array<{ address?: unknown }>,
+  ): Promise<Map<string, string>> {
+    const ids = [
+      ...new Set(
+        orders
+          .map((o) => String((o.address as JsonMap | null)?.buildingId ?? ""))
+          .filter(Boolean),
+      ),
+    ];
+    if (!ids.length) return new Map();
+    const rows = await this.db.building.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, gender: true },
+    });
+    return new Map(rows.map((r) => [r.id, r.gender]));
+  }
+
   private toTask(
     order: JsonMap,
     role: StaffRole,
@@ -814,6 +839,8 @@ export class FulfillmentService {
     /** 骑手信息表（IKP0AP）：staffId → {name, phone}，tasks() 一条 in 批查预载；
      *  未传/未接单/抢单池（riderId 恒空）时 rider 为 null。 */
     riderById?: Map<string, { name: string; phone: string }>,
+    /** IKRMQF：楼栋性别表 buildingId → male/female/mixed，任务卡性别徽标 */
+    buildingGenderById?: Map<string, string>,
   ) {
     const a = order.address as JsonMap,
       items = order.items as JsonMap[],
@@ -875,6 +902,10 @@ export class FulfillmentService {
       status,
       statusText,
       building: String(a.buildingName),
+      // IKRMQF：楼栋性别（male/female/mixed）——配送端显示男寝/女寝徽标
+      buildingGender: a.buildingId
+        ? (buildingGenderById?.get(String(a.buildingId)) ?? "mixed")
+        : "mixed",
       floor: Number(a.floor),
       room: String(a.room),
       // 收件人联系渠道（IK9AWW）：配送员「用户不在」时可直接拨打；
