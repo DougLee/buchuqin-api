@@ -9,7 +9,10 @@ import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
 import { AdminService } from '../admin/admin.service';
 import { NotificationsService } from '../notifications/notifications.service';
-import { markTimelineStep } from '../common/order-state';
+import {
+  markTimelineStep,
+  ORDER_STATUS_TEXT,
+} from '../common/order-state';
 import {
   campusOrganizationId,
   campusStaffDelivery,
@@ -450,6 +453,46 @@ export class FulfillmentService {
         // 这里堵住直调接口对他楼订单 receive/delivered 的横向越权。
         if (manager && !this.isOwnBuilding(staff, order.address as JsonMap))
           throw new ForbiddenException('非本楼订单，无权操作');
+        // IKRQFK（道哥 2026-10-30 拍板方案一）：转单即释放回抢单池——
+        // 原实现转 exception「转单申请处理中」且 riderId 残留，无审批流、
+        // 无重新派单入口，其他骑手永远看不到（实测范佳柱不可见），单卡死。
+        // 新语义：清归属 + 回 waiting-first-mile 待接单，其他骑手立即可抢；
+        // 配送中/待交接转单=货回仓语义（末端节点回退为未完成）。
+        if (action === 'transfer') {
+          if (manager) throw new BadRequestException('楼长任务无需转单');
+          if (order.riderId !== staffId)
+            throw new BadRequestException('仅可转单自己接取的任务');
+          if (
+            !['waiting-first-mile', 'first-mile', 'waiting-handover'].includes(
+              order.status,
+            )
+          )
+            throw new BadRequestException(
+              `当前订单状态为「${order.statusText}」，不能转单`,
+            );
+          const timeline = ((order.timeline as JsonMap[]) ?? []).map((step) =>
+            [
+              'first-mile',
+              'waiting-handover',
+              'ready-to-deliver',
+              'last-mile',
+            ].includes(step.key)
+              ? { ...step, done: false, time: undefined }
+              : step,
+          );
+          const released = await tx.order.updateMany({
+            where: { id: order.id, status: order.status, riderId: staffId },
+            data: {
+              status: 'waiting-first-mile',
+              riderId: null,
+              statusText: ORDER_STATUS_TEXT['waiting-first-mile'],
+              timeline: timeline as unknown as Prisma.InputJsonValue,
+            },
+          });
+          if (!released.count)
+            throw new BadRequestException('订单状态已变化，请刷新');
+          return null; // 回池不重发派单通知（推送时点在出库，超本改动范围）
+        }
         // 动作迁移表（12 态状态机，迁移表全文见 src/common/order-state.ts，IK93GQ）：
         // v1 履约简化（IKA0UM，2026-08-20）：去掉扫码取货/配送单——骑手 accept 抢单
         // 只写归属不改状态，depart 按钮直接进 first-mile（配送中），无 pickup 动作；
@@ -502,11 +545,6 @@ export class FulfillmentService {
                 status: order.status,
                 text: '已与楼长完成交接',
                 from: ['waiting-handover', 'last-mile'],
-              },
-              transfer: {
-                status: 'exception',
-                text: '转单申请处理中',
-                from: ['waiting-first-mile', 'first-mile', 'waiting-handover'],
               },
               ...(customerPickup
                 ? {
