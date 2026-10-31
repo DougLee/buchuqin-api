@@ -9559,6 +9559,14 @@ export class AdminService {
           // IKRSIZ #112：提成方式/比例随配置回读（此前漏下发，保存后回显恒旧值）
           managerCommissionMode: true,
           managerCommissionRate: true,
+          // 本轮新增校区配置的读链路补齐（道哥 2026-10-31 排查：写通读漏同款，
+          // 群文案/销售额开关/企微客服/配送人开关/到店前退款开关全部回显旧值）
+          groupQrcodeTip: true,
+          managerSalesVisible: true,
+          serviceKfUrl: true,
+          serviceKfCorpId: true,
+          showDeliveryContacts: true,
+          refundDeliveryFeeBeforeArrive: true,
           // IKHMF1 客服电话：校区自定义，聚合页档案 Tab 编辑
           servicePhone: true,
           // IKKTWM 客服二维码：同档案 Tab 编辑
