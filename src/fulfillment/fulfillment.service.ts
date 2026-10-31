@@ -480,13 +480,16 @@ export class FulfillmentService {
           if (manager) throw new BadRequestException('楼长任务无需转单');
           if (order.riderId !== staffId)
             throw new BadRequestException('仅可转单自己接取的任务');
-          // IKRQR7（道哥定稿）：至少配送中才可转——已接单未取货不可转
-          if (order.status === 'waiting-first-mile')
-            throw new BadRequestException(
-              '已接单未取货不可转单，取货配送后方可转单',
-            );
-          // IKRSIY：arrived（已到店）同样不在白名单——转单门槛维持配送中起
-          if (!['first-mile', 'waiting-handover'].includes(order.status))
+          // 道哥 2026-10-31 流程定稿（更新 IKRQR7 门槛）：点开始配送=抢到，
+          // 抢到后即可转单——待取货/配送中/待交接均可；已到店（arrived）不转
+          //（马上取货，转单无意义）。
+          if (
+            ![
+              'waiting-first-mile',
+              'first-mile',
+              'waiting-handover',
+            ].includes(order.status)
+          )
             throw new BadRequestException(
               `当前订单状态为「${order.statusText}」，不能转单`,
             );
