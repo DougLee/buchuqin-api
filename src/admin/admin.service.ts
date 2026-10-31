@@ -9556,6 +9556,9 @@ export class AdminService {
           closeEnd: true,
           manualClosed: true,
           buildingManagerBaseSalary: true,
+          // IKRSIZ #112：提成方式/比例随配置回读（此前漏下发，保存后回显恒旧值）
+          managerCommissionMode: true,
+          managerCommissionRate: true,
           // IKHMF1 客服电话：校区自定义，聚合页档案 Tab 编辑
           servicePhone: true,
           // IKKTWM 客服二维码：同档案 Tab 编辑
