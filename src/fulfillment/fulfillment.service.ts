@@ -1160,10 +1160,14 @@ export class FulfillmentService {
       // IKRSIY：已到店仅可出发；转单不可（IKRQR7 门槛维持配送中起）。
       return viewerId && riderId === viewerId ? ['depart'] : [];
     }
-    if (status === 'first-mile')
+    if (status === 'first-mile') {
+      // 门禁补漏（道哥 2026-10-31 实测：非本人看配送中的单也拿到转单按钮）
+      // ——与 waiting-first-mile/arrived/waiting-handover 同口径：仅本人可操作
+      if (!(viewerId && riderId === viewerId)) return [];
       return lastMileMode === 'customer-pickup'
         ? ['delivered', 'transfer']
         : ['arrive', 'transfer'];
+    }
     if (status === 'waiting-handover') {
       if (!(viewerId && riderId === viewerId)) return [];
       // IKA57T：已交接（凭证已传）就不再显示「拍照交接」，避免看起来卡死。
