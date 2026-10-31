@@ -40,6 +40,36 @@ export function orderArrived(status: string): boolean {
 }
 
 /**
+ * 后台整单退款申请/批准的订单状态白名单（IKRSIY #110 追加，道哥
+ * 2026-10-31 定稿）：已支付未履约完成的单——未出库（paid/picking）与
+ * 已出库未送达——一律可从后台发起整单退款申请，批准通道与创建通道
+ * 共用本表，杜绝「创建放行、批准被拦」的口径漂移。
+ */
+export const PRE_DELIVERY_REFUNDABLE_STATUSES = [
+  'paid',
+  'picking',
+  'waiting-first-mile',
+  'arrived',
+  'first-mile',
+  'waiting-handover',
+  'last-mile',
+] as const;
+
+/**
+ * 退款撤销/拒绝/受理失败回滚订单的目标状态（IKRSIY #110 追加）：
+ * 未履约完成的快照状态原样回滚，快照缺失/未知兜底 delivered（兼容存量
+ * after-sale 数据）。文案由调用方按 ORDER_STATUS_TEXT 取。
+ */
+export function refundRestoreTarget(beforeStatus: string): string {
+  const restorable = new Set<string>([
+    ...PRE_DELIVERY_REFUNDABLE_STATUSES,
+    'delivered',
+    'completed',
+  ]);
+  return restorable.has(beforeStatus) ? beforeStatus : 'delivered';
+}
+
+/**
  * 可退上限口径（IKRSIY #110/#91）：
  * - 含配送费（到店后，或到店前+校区 refundDeliveryFeeBeforeArrive 开，或
  *   审核弹窗「退配送费」开关显式开）→ 上限=实付全额 payableAmount；

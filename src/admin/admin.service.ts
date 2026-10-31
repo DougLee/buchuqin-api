@@ -89,7 +89,9 @@ import { campusStaffDelivery } from '../common/organization';
 import {
   approvedRefundAmount,
   orderArrived,
+  PRE_DELIVERY_REFUNDABLE_STATUSES,
   refundCeiling,
+  refundRestoreTarget,
 } from './refund-amount';
 
 /* ==================== 成本 capability 输出裁剪（IKKRMY，2026-10-10） ====================
@@ -6419,12 +6421,16 @@ export class AdminService {
     // approve：pending 或 failed（failed = 微信受理失败后的重试）
     if (!['pending', 'failed'].includes(refund.status))
       throw new BadRequestException('当前状态不可批准');
-    const retryingPreDelivery =
-      refund.status === 'failed' &&
+    // IKRSIY #110 追加（道哥 2026-10-31）：pre-delivery 整单申请的批准
+    // 白名单与创建通道同口径（已支付未履约完成都放行）——此前只认
+    // after-sales/delivered/completed，已出库未送达的单批准被误拦。
+    const preDeliveryOpen =
       refund.source === 'pre-delivery' &&
-      refund.order.status === 'paid';
+      (PRE_DELIVERY_REFUNDABLE_STATUSES as readonly string[]).includes(
+        refund.order.status,
+      );
     if (
-      !retryingPreDelivery &&
+      !preDeliveryOpen &&
       !['after-sales', 'delivered', 'completed'].includes(refund.order.status)
     )
       throw new BadRequestException('订单状态已变化，无法退款，请刷新');
@@ -6567,10 +6573,14 @@ export class AdminService {
         data: { status: 'failed', refundError: message },
       });
       // 微信未受理：订单解锁回原状态（客服单可能未转售后态，尽力回滚）
+      // pre-delivery 存量申请无快照时兜底 paid（回「仓库正在接单」仍属
+      // 未履约区间，比错滚「已送达寝室」安全）
       await this.restoreOrderFromRefund(
         this.db as unknown as Prisma.TransactionClient,
         refund.orderId,
-        refund.beforeStatus || 'delivered',
+        refund.source === 'pre-delivery' && !refund.beforeStatus
+          ? 'paid'
+          : refund.beforeStatus,
       );
       await this.audit(
         operator,
@@ -6653,28 +6663,27 @@ export class AdminService {
       }
       totalRefunded =
         Number(refundedAgg._sum.amount ?? 0) + currentRefund.amount;
-      isFull = totalRefunded >= fullRefundCeiling;
+      // pre-delivery 悔单语义=未履约整单退款（IKRSIY #110 追加）：审核
+      // 开关含配送费时 ceiling=实付全额>商品额，纯金额判定会误判成部分
+      // 退（订单错滚原状态、库存/券不回补）——按 source 短路判整单。
+      isFull =
+        currentRefund.source === 'pre-delivery' ||
+        totalRefunded >= fullRefundCeiling;
       const currentOrder = await tx.order.findUniqueOrThrow({
         where: { id: order.id },
       });
       // 部分退：订单回原状态（快照在 Refund.beforeStatus）；整单退：refunded。
       // 客服单批准时订单在 delivered/completed（未转售后态）也在合法范围。
+      // pre-delivery 开关开时上限=实付全额>商品额，整单申请也会走部分退，
+      // 快照必须是未履约状态原样回滚（同 restoreOrderFromRefund 口径）。
       const patchData = isFull
         ? { status: 'refunded', statusText: '已退款' }
         : (() => {
-            const target = ['paid', 'delivered', 'completed'].includes(
-              refund.beforeStatus,
-            )
-              ? refund.beforeStatus
-              : 'delivered';
+            const target = refundRestoreTarget(refund.beforeStatus);
             return {
               status: target,
               statusText:
-                target === 'paid'
-                  ? '仓库正在接单'
-                  : target === 'completed'
-                    ? '已确认收货'
-                    : '已送达寝室',
+                ORDER_STATUS_TEXT[target as OrderStatus] ?? '已送达寝室',
             };
           })();
       const won = await tx.order.updateMany({
@@ -6946,6 +6955,8 @@ export class AdminService {
         userId: order.userId,
         source: 'pre-delivery',
         amount,
+        // 撤销/拒绝回滚订单要用的状态快照（未记录会错滚成 delivered）
+        beforeStatus: order.status,
         reason: `${input.remark.trim()}（后台整单申请，原状态：${order.statusText}）`,
         status: 'pending',
       },
@@ -6979,17 +6990,14 @@ export class AdminService {
     const order = await this.db.order.findUnique({ where: { id: orderId } });
     if (!order || (scope !== null && order.campusId !== scope))
       throw new NotFoundException('订单不存在');
-    // 道哥 2026-10-31 方案 A：已出库未送达单支持后台发起整单退款申请——
-    // 进审核队列（批准才原路退），金额=商品额，配送费按审核开关定。
+    // 道哥 2026-10-31 方案 A + 追加定稿：已支付未履约完成的单（未出库
+    // paid/picking、已出库未送达）都支持后台发起整单退款申请——进审核
+    // 队列（批准才原路退），金额=商品额，配送费按审核开关定。
     // 用户端悔单通道在出库即关闭，此入口是这类单唯一的系统内退款通道。
     if (
-      [
-        'waiting-first-mile',
-        'arrived',
-        'first-mile',
-        'waiting-handover',
-        'last-mile',
-      ].includes(order.status)
+      (PRE_DELIVERY_REFUNDABLE_STATUSES as readonly string[]).includes(
+        order.status,
+      )
     )
       return this.createUnshippedFullRefund(order, input, operator);
     if (!['delivered', 'completed', 'after-sales'].includes(order.status))
@@ -7095,21 +7103,18 @@ export class AdminService {
     );
   }
 
-  /** 退款申请撤销/拒绝后订单回滚  /** 退款申请撤销/拒绝后订单回滚（与 C 端撤销共用口径，仅当订单仍在售后态）。 */
+  /** 退款申请撤销/拒绝后订单回滚（与 C 端撤销共用口径，仅当订单仍在售后态）。 */
   private async restoreOrderFromRefund(
     tx: Prisma.TransactionClient,
     orderId: string,
     beforeStatus: string,
   ) {
-    const target = ['paid', 'delivered', 'completed'].includes(beforeStatus)
-      ? beforeStatus
-      : 'delivered';
+    // 回滚目标覆盖全部未履约完成状态（IKRSIY #110 追加）：pre-delivery
+    // 整单申请可来自已出库未送达单，快照状态必须在映射内，否则未送达
+    // 单被驳后会错滚成「已送达寝室」。文案统一取 ORDER_STATUS_TEXT。
+    const target = refundRestoreTarget(beforeStatus);
     const statusText =
-      target === 'paid'
-        ? '仓库正在接单'
-        : target === 'completed'
-          ? '已确认收货'
-          : '已送达寝室';
+      ORDER_STATUS_TEXT[target as OrderStatus] ?? '已送达寝室';
     await tx.order.updateMany({
       where: { id: orderId, status: 'after-sales' },
       data: { status: target, statusText },

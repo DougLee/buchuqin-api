@@ -288,7 +288,9 @@ describe('refund v1 (IKHZKA)', () => {
         userId,
         orderId: order.id,
         source: 'pre-delivery',
-        amount: 300,
+        // IKRSIY #110 口径：订单在 after-sales（已到店锁定态）→ 上限含配
+        // 送费=实付 1150；在途 800 + 本笔 400 = 1200 > 1150 触发拦截。
+        amount: 400,
         beforeStatus: 'paid',
         reason: '第二笔',
         status: 'pending',
