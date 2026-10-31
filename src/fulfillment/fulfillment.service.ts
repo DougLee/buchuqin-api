@@ -167,6 +167,10 @@ export class FulfillmentService {
         todayIncome: performance.todayIncome,
         monthGmv: performance.monthGmv,
       },
+      // IKRSIZ #112：提成方式/比例透传（performance 已算，dashboard 组装时
+      // 漏带——收益页副行恒显示「按单计酬」，道哥 2026-10-31 H5 实测）
+      commissionMode: performance.commissionMode,
+      commissionRate: performance.commissionRate,
       tasks: active.slice(0, 4),
     };
   }
