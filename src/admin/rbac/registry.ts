@@ -89,7 +89,7 @@ export const MENU_NODES: MenuNodeDef[] = [
   { code: 'products.status', name: '商品上下架', type: 2, parent: 'products', order: 3, perms: ['POST /admin/products/batch-status'] },
   { code: 'categories', name: '商品类别', type: 1, parent: 'g.wh', path: '/categories', icon: 'categories', order: 3, perms: ['GET /admin/categories'] },
   { code: 'categories.write', name: '类别维护', type: 2, parent: 'categories', order: 1, perms: ['POST /admin/categories', 'PATCH /admin/categories/:id', 'DELETE /admin/categories/:id'] },
-  { code: 'inventory', name: '库存总览', type: 1, parent: 'g.wh', path: '/inventory', icon: 'inventory', order: 4, perms: ['GET /admin/inventory'] },
+  { code: 'inventory', name: '库存盘点', type: 1, parent: 'g.wh', path: '/inventory', icon: 'inventory', order: 4, perms: ['GET /admin/inventory'] },
   { code: 'inventory.inbound', name: '库存入库', type: 2, parent: 'inventory', order: 1, perms: ['POST /admin/inventory/stock-in'], remark: '直接入库（平台/总部仓口径）' },
   { code: 'inventory.adjust', name: '库存调整/盘点', type: 2, parent: 'inventory', order: 2, perms: ['POST /admin/inventory/stocktake', 'POST /admin/inventory/adjust'] },
   { code: 'warehouse-orders', name: '拣货任务', type: 1, parent: 'g.wh', path: '/warehouse-orders', icon: 'warehouse-orders', order: 5, perms: ['GET /admin/orders', 'GET /admin/orders/status-counts'] },
