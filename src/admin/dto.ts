@@ -1109,7 +1109,11 @@ export class RefundItemAmountDto {
   @Type(() => Number) @IsInt() @Min(0) amount!: number;
 }
 export class AdminCreateRefundDto {
-  @IsArray() @ArrayMinSize(1) @IsString({ each: true }) productIds!: string[];
+  // 道哥 2026-10-31 方案 A：已出库未送达单走整单退款（不带 productIds），
+  // 送达后按商品退款必填——分支校验在 service 内各自把关
+  @IsOptional()
+  @IsArray() @ArrayMinSize(1) @IsString({ each: true })
+  productIds?: string[];
   @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })

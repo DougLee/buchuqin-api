@@ -6915,13 +6915,61 @@ export class AdminService {
   }
 
   /**
+   * 已出库未送达单的后台整单退款申请（道哥 2026-10-31 方案 A）：
+   * 不即时批准——落 Refund(pending, source=pre-delivery) 进售后审核队列，
+   * 批准链复用 auditRefund（pre-delivery 分支：到店前默认不退配送费、
+   * Campus.refundDeliveryFeeBeforeArrive 可放宽、审核开关 refundDeliveryFee）。
+   * 库存不自动回补（货已出库，追回走人工盘点）。
+   */
+  private async createUnshippedFullRefund(
+    order: { id: string; userId: string; campusId: string; status: string; statusText: string; productAmount: number; payableAmount: number },
+    input: { productIds?: string[]; amounts?: Array<{ productId: string; amount: number }>; remark?: string },
+    operator: string,
+  ) {
+    if (!input.remark?.trim())
+      throw new BadRequestException('请填写退款原因');
+    const going = await this.db.refund.findFirst({
+      where: {
+        orderId: order.id,
+        status: { in: ['pending', 'approved', 'refunding'] },
+      },
+      select: { id: true },
+    });
+    if (going)
+      throw new BadRequestException('该订单已有进行中的退款申请');
+    const amount = Math.round(Number(order.productAmount));
+    if (amount < 1)
+      throw new BadRequestException('商品金额异常，无法发起整单退款');
+    const created = await this.db.refund.create({
+      data: {
+        orderId: order.id,
+        userId: order.userId,
+        source: 'pre-delivery',
+        amount,
+        reason: `${input.remark.trim()}（后台整单申请，原状态：${order.statusText}）`,
+        status: 'pending',
+      },
+    });
+    await this.audit(
+      operator,
+      'refund.create-unshipped',
+      'order',
+      order.id,
+      null,
+      { refundId: created.id, amount, status: order.status },
+      order.campusId,
+    );
+    return created;
+  }
+
+  /**
    * 客服按商品发起部分退款并即时批准（IKHZKA v2）：客服操作即审核，一次提交。
    * 金额=行原价小计（可传 amounts 核定），硬上限：累计已退 + 本次 ≤ 实付 − 配送费。
    */
   async createAndApproveRefund(
     orderId: string,
     input: {
-      productIds: string[];
+      productIds?: string[];
       amounts?: Array<{ productId: string; amount: number }>;
       remark?: string;
     },
@@ -6931,6 +6979,19 @@ export class AdminService {
     const order = await this.db.order.findUnique({ where: { id: orderId } });
     if (!order || (scope !== null && order.campusId !== scope))
       throw new NotFoundException('订单不存在');
+    // 道哥 2026-10-31 方案 A：已出库未送达单支持后台发起整单退款申请——
+    // 进审核队列（批准才原路退），金额=商品额，配送费按审核开关定。
+    // 用户端悔单通道在出库即关闭，此入口是这类单唯一的系统内退款通道。
+    if (
+      [
+        'waiting-first-mile',
+        'arrived',
+        'first-mile',
+        'waiting-handover',
+        'last-mile',
+      ].includes(order.status)
+    )
+      return this.createUnshippedFullRefund(order, input, operator);
     if (!['delivered', 'completed', 'after-sales'].includes(order.status))
       throw new BadRequestException('仅送达后的订单支持按商品退款');
     if (!input.productIds?.length)
