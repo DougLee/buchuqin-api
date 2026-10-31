@@ -152,10 +152,9 @@ describe('FulfillmentService IKRSIY 到店确认（arrived）', () => {
     lastUpdate = undefined;
   });
 
-  it('actions：waiting-first-mile 可用动作含 arrive（arrive/depart/transfer）', () => {
+  it('actions：waiting-first-mile 可用动作=arrive/transfer（道哥 2026-10-31 流程定稿：到店必经，无 depart 跳过通道）', () => {
     expect(actions('waiting-first-mile', 'rider-1', 'rider-1')).toEqual([
       'arrive',
-      'depart',
       'transfer',
     ]);
     expect(actions('waiting-first-mile', null)).toEqual(['accept']);

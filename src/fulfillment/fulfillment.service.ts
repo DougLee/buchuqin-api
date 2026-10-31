@@ -1149,12 +1149,13 @@ export class FulfillmentService {
     }
     // 骑手动作仅认已出库的单（IKA0UM 简化：无扫码取货，depart 直接配送中）。
     if (status === 'waiting-first-mile') {
-      // 无归属单只能抢（accept/grab）；本人已抢到的单才能到店/出发/转单。
-      // IKRSIY：新增到店确认 arrive（→arrived 已到店，与扫码 scan-arrive
-      // 同语义）；depart 仍在列——到店不强制（道哥拍板）。
+      // 无归属单只能抢（accept/grab）；本人已抢到的单才能到店/转单。
+      // IKRSIY：到店确认 arrive（→arrived 已到店，与扫码 scan-arrive 同语义）。
+      // 道哥 2026-10-31 流程定稿：到店为必经环节（到店→到店取货→配送），
+      // depart 从待取货态移除——无跳过到店通道，保障到店数据完整（退款分界）。
       if (!riderId) return ['accept'];
       if (viewerId && riderId !== viewerId) return [];
-      return ['arrive', 'depart', 'transfer'];
+      return ['arrive', 'transfer'];
     }
     if (status === 'arrived') {
       // IKRSIY：已到店仅可出发；转单不可（IKRQR7 门槛维持配送中起）。
