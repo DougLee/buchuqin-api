@@ -117,6 +117,15 @@ model Campus {
   // 群二维码弹窗文案（IKRSJ3 #114 道哥 2026-10-30）：用户端售后福利群弹窗/
   // 卡片的说明文案，校区自定义；空=回落默认文案
   groupQrcodeTip            String                  @default("")
+  // 栏目标签文案（IKS0W7 道哥 2026-11-01）：C 端分类页侧栏/段标题与首页
+  // 栏目名后台可配，校区级；空=回落前端默认文案。
+  // seckillLabel 同源管首页促销卡+分类页侧栏（两处同名统一防跳转迷路）；
+  // featuredLabel 只管分类页「推荐」；homeFeaturedLabel 只管首页「为你推荐」；
+  // clearanceLabel 只管首页「临期特惠」
+  seckillLabel              String?
+  featuredLabel             String?
+  homeFeaturedLabel         String?
+  clearanceLabel            String?
   // 楼长销售额展示开关（IKRSIZ #108 道哥 2026-10-30）：关=配送端工作台
   // 不下发销售额（todayGmv/monthGmv 置 null，前端不渲染）
   managerSalesVisible       Boolean                 @default(true)

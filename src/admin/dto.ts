@@ -797,6 +797,24 @@ export class UpdateCampusDto {
   @IsString()
   @MaxLength(100, { message: '弹窗文案最多 100 字' })
   groupQrcodeTip?: string;
+  /** 栏目标签文案（IKS0W7 校区级可配）：C 端分类页侧栏/段标题与首页栏目名；
+   *  空串=回落前端默认文案。必须带装饰器：whitelist 会剥离无装饰器字段 */
+  @IsOptional()
+  @IsString()
+  @MaxLength(20, { message: '标签文案最多 20 字' })
+  seckillLabel?: string;
+  @IsOptional()
+  @IsString()
+  @MaxLength(20, { message: '标签文案最多 20 字' })
+  featuredLabel?: string;
+  @IsOptional()
+  @IsString()
+  @MaxLength(20, { message: '标签文案最多 20 字' })
+  homeFeaturedLabel?: string;
+  @IsOptional()
+  @IsString()
+  @MaxLength(20, { message: '标签文案最多 20 字' })
+  clearanceLabel?: string;
   /** 楼长销售额展示开关（IKRSIZ #108）：关=配送端工作台不下发销售额 */
   @IsOptional()
   @IsBoolean()

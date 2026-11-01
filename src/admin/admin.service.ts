@@ -8104,6 +8104,15 @@ export class AdminService {
         ...(body.groupQrcodeTip != null
           ? { groupQrcodeTip: body.groupQrcodeTip }
           : {}),
+        // IKS0W7：栏目标签文案（空串=前端回落默认文案；不传不动）
+        ...(body.seckillLabel != null ? { seckillLabel: body.seckillLabel } : {}),
+        ...(body.featuredLabel != null ? { featuredLabel: body.featuredLabel } : {}),
+        ...(body.homeFeaturedLabel != null
+          ? { homeFeaturedLabel: body.homeFeaturedLabel }
+          : {}),
+        ...(body.clearanceLabel != null
+          ? { clearanceLabel: body.clearanceLabel }
+          : {}),
         // IKRSIZ #108：楼长销售额展示开关（关=配送端不下发销售额）
         ...(body.managerSalesVisible === undefined ||
         body.managerSalesVisible === null
@@ -9645,6 +9654,11 @@ export class AdminService {
           // 本轮新增校区配置的读链路补齐（道哥 2026-10-31 排查：写通读漏同款，
           // 群文案/销售额开关/企微客服/配送人开关/到店前退款开关全部回显旧值）
           groupQrcodeTip: true,
+          // IKS0W7 栏目标签文案随配置回读（写通读漏会回显旧值）
+          seckillLabel: true,
+          featuredLabel: true,
+          homeFeaturedLabel: true,
+          clearanceLabel: true,
           managerSalesVisible: true,
           serviceKfUrl: true,
           serviceKfCorpId: true,

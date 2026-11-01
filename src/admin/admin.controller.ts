@@ -2451,6 +2451,11 @@ export class AdminController {
             // IKRSJ3 #114 群二维码弹窗文案 / IKRSIZ #108 楼长销售额开关：
             // 同为校区级自定义，必须进白名单否则被 whitelist 静默剥
             groupQrcodeTip: body.groupQrcodeTip,
+            // IKS0W7 栏目标签文案（分类页侧栏+首页栏目）：同上 whitelist 口径
+            seckillLabel: body.seckillLabel,
+            featuredLabel: body.featuredLabel,
+            homeFeaturedLabel: body.homeFeaturedLabel,
+            clearanceLabel: body.clearanceLabel,
             managerSalesVisible: body.managerSalesVisible,
             // IKRSIX #112：楼长提成模式/比例——同为校区级可维护字段，
             // 漏在白名单外会被全局 ValidationPipe whitelist 静默剥
