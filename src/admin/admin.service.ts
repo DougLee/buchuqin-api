@@ -5052,6 +5052,9 @@ export class AdminService {
         phone: this.maskPhone(x.user.phone),
       },
       userPhone: this.maskPhone(x.user.phone),
+      // 明文手机号仅限服务端 keyword 过滤用（完整号码命中），controller
+      // 响应前无条件剥离——列表脱敏口径不变（道哥 2026-11-01 修）
+      userPhoneRaw: x.user.phone ?? '',
       packageNo: (x.package as any)?.id ?? '--',
     }));
     // IKKRMY：成本快照字段输出层裁剪（无 cost.read 不可见，前端毛利列同源隐藏）

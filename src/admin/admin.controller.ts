@@ -1576,12 +1576,17 @@ export class AdminController {
           const goods = (Array.isArray(o.items) ? o.items : [])
             .map((l) => String((l as { product?: { name?: string } })?.product?.name ?? ''))
             .join(' ');
-          return `${o.orderNo ?? ''} ${o.statusText ?? ''} ${o.userPhone ?? ''} ${goods}`
+          // 手机号用明文 raw 命中（脱敏值 185****3728 匹配不上完整号码）
+          return `${o.orderNo ?? ''} ${o.statusText ?? ''} ${o.userPhoneRaw ?? ''} ${goods}`
             .toLowerCase()
             .includes(kw);
         })
       : rows;
-    return ok(paginate(hit, page, pageSize));
+    // 明文手机号只参与服务端过滤，响应恒剥离（列表脱敏口径不变）
+    const sanitized = hit.map(
+      ({ userPhoneRaw: _raw, ...rest }) => rest,
+    );
+    return ok(paginate(sanitized, page, pageSize));
   }
   // 路由顺序：必须声明在 orders/:id 之前，否则 status-counts 会被当成订单 id
   @Get('orders/status-counts')
