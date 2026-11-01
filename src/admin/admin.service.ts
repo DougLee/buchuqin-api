@@ -1021,9 +1021,9 @@ export class AdminService {
           ? { id: { notIn: importedSourceIds } }
           : {}),
       },
-      // IKRSJ1 #93：价格列排序（售价/批发价），缺省维持销量序
+      // IKRSJ1 #93：价格列排序（售价/批发价/建议零售价），缺省维持销量序
       orderBy:
-        sortBy && ['price', 'wholesalePrice'].includes(sortBy)
+        sortBy && ['price', 'wholesalePrice', 'originalPrice'].includes(sortBy)
           ? ({ [sortBy]: sortDir === 'asc' ? 'asc' : 'desc' } as Prisma.ProductOrderByWithRelationInput)
           : { sales: 'desc' },
     });
@@ -1062,6 +1062,21 @@ export class AdminService {
         (upstreamAt.get(x.sourceProductId) ?? 0) > x.sourceSyncedAt.getTime()
       ),
     }));
+    // IKRSJ1 扩展（道哥 2026-11-01）：本地进货价/可售库存是映射后显示字段
+    // （LOCAL 自报价、总部直供 ¥0；可售=stock），DB 层排不了——内存按显示
+    // 口径排；null（未报价）恒排末尾。JS sort 稳定，同值保持销量序。
+    if (sortBy && ['localPurchasePrice', 'availableStock'].includes(sortBy)) {
+      const dir = sortDir === 'asc' ? 1 : -1;
+      const key = sortBy as 'localPurchasePrice' | 'availableStock';
+      rows.sort((a, b) => {
+        const va = a[key];
+        const vb = b[key];
+        if (va == null && vb == null) return 0;
+        if (va == null) return 1;
+        if (vb == null) return -1;
+        return (va - vb) * dir;
+      });
+    }
     // IKB3K9：状态 Tab 服务端过滤（口径含售罄映射，直接滤映射后状态）
     // IKKRMY：无 cost.read 时输出层统一裁剪成本字段（CSV 导出同口径）
     const scoped = statuses?.length
@@ -4822,7 +4837,8 @@ export class AdminService {
         return {
           userId: u.id,
           nickname: u.nickname,
-          phone: this.maskPhone(u.phone),
+          // 手机号明文（道哥 2026-11-01：后台不脱敏）
+          phone: u.phone ?? '',
           registeredAt: u.createdAt.toISOString(),
           orderCount: total?._count._all ?? 0,
           totalAmount: total?._sum.payableAmount ?? 0,
@@ -5045,16 +5061,13 @@ export class AdminService {
       payableAmount: this.num(x.payableAmount),
       // IKAJSL：跨校区列表需要校区列（单校区视角冗余无害）
       campusName: x.campus?.shortName || x.campus?.name || '',
-      // 用户信息脱敏：只回 id/昵称/打码手机号。
+      // 用户信息：手机号明文（道哥 2026-11-01 拍板：后台手机号不脱敏）
       user: {
         id: x.user.id,
         nickname: x.user.nickname,
-        phone: this.maskPhone(x.user.phone),
+        phone: x.user.phone ?? '',
       },
-      userPhone: this.maskPhone(x.user.phone),
-      // 明文手机号仅限服务端 keyword 过滤用（完整号码命中），controller
-      // 响应前无条件剥离——列表脱敏口径不变（道哥 2026-11-01 修）
-      userPhoneRaw: x.user.phone ?? '',
+      userPhone: x.user.phone ?? '',
       packageNo: (x.package as any)?.id ?? '--',
     }));
     // IKKRMY：成本快照字段输出层裁剪（无 cost.read 不可见，前端毛利列同源隐藏）
@@ -8372,7 +8385,8 @@ export class AdminService {
         id: r.id,
         userId: r.user.id,
         userNickname: r.user.nickname,
-        userPhone: this.maskPhone(r.user.phone),
+        // 手机号明文（道哥 2026-11-01：后台不脱敏）
+        userPhone: r.user.phone ?? '',
         couponId: r.coupon.id,
         couponName: r.coupon.name,
         status: r.status,
@@ -9201,10 +9215,10 @@ export class AdminService {
         return {
           id: u.id,
           nickname: u.nickname,
-          // 脱敏口径与订单列表一致（管理员看不到完整手机号/openid）
           openidMasked: mask(u.openid ?? ''),
-          phoneMasked: this.maskPhone(u.phone),
-          // IKKKC2：明文手机号（仅定向发券抽屉请求时下发）
+          // 手机号明文恒给（道哥 2026-11-01：后台手机号不脱敏；
+          // 原 phoneMasked 字段名保留兼容旧前端，值已明文）
+          phoneMasked: u.phone ?? '',
           ...(opts.plainPhone ? { phone: u.phone } : {}),
           buildingName: addr?.buildingName ?? '',
           room: addr?.room ?? '',
