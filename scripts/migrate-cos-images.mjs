@@ -382,7 +382,11 @@ async function rewrite() {
 async function genSql() {
   let out = `-- 生产换址 SQL（道哥发令后服务器 psql 执行；幂等：replace 无匹配无副作用）\nBEGIN;\n`;
   let n = 0;
-  for (const b of ['product', 'category', 'banner', 'uploads']) {
+  const allMap = path.resolve('migrate-cos-map-all.json');
+  const batches = existsSync(allMap)
+    ? ['all']
+    : ['product', 'category', 'banner', 'uploads'];
+  for (const b of batches) {
     const f = path.resolve(`migrate-cos-map-${b}.json`);
     if (!existsSync(f)) continue;
     const map = JSON.parse(readFileSync(f, 'utf8'));
