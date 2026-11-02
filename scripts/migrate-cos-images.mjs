@@ -35,6 +35,9 @@ const limit = Number(argOf('limit', '0'));
 /** --adopt：目标 .webp 已存在时采纳（拉双方大小记映射换址）——仅当确认
  *  该 .webp 是本脚本前轮产物（如映射文件误删后重建）；默认 SKIP 来源不明 */
 const adopt = args.includes('--adopt');
+/** --from-bucket：转码输入改为直接列桶对象（跨环境场景：转码机连不上目标库，
+ *  生产库引用全集≈全桶按目录批，孤儿对象多转无害且换址只认库引用） */
+const fromBucket = args.includes('--from-bucket');
 
 const BUCKET = process.env.COS_BUCKET;
 const REGION = process.env.COS_REGION;
@@ -174,14 +177,44 @@ async function collectRefs(dbUrl, want) {
 /* ---------- 转码 ---------- */
 async function transcode() {
   const dbUrl = process.env.DATABASE_URL;
-  if (!BUCKET || !REGION || !dbUrl) {
+  if (!BUCKET || !REGION || (!fromBucket && !dbUrl)) {
     console.error('缺 COS_*/DATABASE_URL 环境变量（.env 加载：node --env-file=.env ...）');
     process.exit(1);
   }
-  const refs = await collectRefs(dbUrl, batch);
-  const keys = [...refs.keys()].sort();
+  let keys;
+  if (fromBucket) {
+    // 全桶模式：列桶对象按目录过滤（跨环境场景——生产库引用全集≈全桶按
+    // 目录批；孤儿对象多转无害，换址只认库引用）
+    keys = [];
+    let marker = '';
+    for (;;) {
+      const page = await new Promise((resolve, reject) =>
+        cos.getBucket(
+          { Bucket: BUCKET, Region: REGION, Marker: marker, MaxKeys: 1000 },
+          (err, d) => (err ? reject(err) : resolve(d)),
+        ),
+      );
+      for (const o of page.Contents ?? []) {
+        const key = o.Key;
+        if (isSkipped(key)) continue;
+        if (key.toLowerCase().endsWith('.webp')) continue; // 已 webp 免转
+        const b = batchOf(key);
+        if (b === 'stray' && batch !== 'all' && batch !== 'stray') continue;
+        if (batch !== 'all' && b !== batch) continue;
+        keys.push(key);
+      }
+      if (page.IsTruncated === 'true') marker = page.NextMarker;
+      else break;
+    }
+  } else {
+    const refs = await collectRefs(dbUrl, batch);
+    keys = [...refs.keys()];
+  }
+  keys.sort();
   const capped = limit > 0 ? keys.slice(0, limit) : keys;
-  console.log(`扫描引用 ${keys.length} 个对象，本次处理 ${capped.length} 个`);
+  console.log(
+    `扫描 ${fromBucket ? '全桶' : '库引用'} ${keys.length} 个对象，本次处理 ${capped.length} 个`,
+  );
 
   const map = { generatedAt: new Date().toISOString(), batch, items: [] };
   let done = 0,
@@ -195,7 +228,7 @@ async function transcode() {
       skippedExisting++;
       continue;
     }
-    const q = QUALITY[refs.get(key).batch] ?? 80;
+    const q = QUALITY[refs.get(key)?.batch] ?? QUALITY[batchOf(key)] ?? 80;
     try {
       if (await cosHead(newKey)) {
         if (!adopt) {
@@ -277,8 +310,10 @@ async function rewrite() {
       const map = JSON.parse(readFileSync(f, 'utf8'));
       for (const it of map.items) {
         if (it.reused && !it.oldSize && it.oldKey === it.newKey) continue;
-        const oldUrl = `${PUBLIC_BASE}/${it.oldKey}`;
-        const newUrl = `${PUBLIC_BASE}/${it.newKey}`;
+        // key 级替换：URL 尾部即对象键，域名无关（static.buchuqin.com 与
+        // 原始 COS 域名两种库存前缀都命中）
+        const oldUrl = it.oldKey;
+        const newUrl = it.newKey;
         // Product 主图+轮播
         const { rowCount: r1 } = await client.query(
           `UPDATE "Product" SET image = replace(image, $1, $2)
@@ -352,8 +387,8 @@ async function genSql() {
     if (!existsSync(f)) continue;
     const map = JSON.parse(readFileSync(f, 'utf8'));
     for (const it of map.items) {
-      const oldUrl = `${PUBLIC_BASE}/${it.oldKey}`;
-      const newUrl = `${PUBLIC_BASE}/${it.newKey}`;
+      const oldUrl = it.oldKey;
+      const newUrl = it.newKey;
       const esc = (s) => s.replace(/'/g, "''");
       out += `UPDATE "Product" SET image = replace(image,'${esc(oldUrl)}','${esc(newUrl)}') WHERE image LIKE '%${esc(oldUrl)}';\n`;
       out += `UPDATE "Product" SET images = (SELECT jsonb_agg(replace(x::text,'${esc(oldUrl)}','${esc(newUrl)}')::jsonb) FROM jsonb_array_elements_text(images) x) WHERE images @> jsonb_build_array('${esc(oldUrl)}'::text);\n`;
