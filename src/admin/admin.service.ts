@@ -6016,6 +6016,9 @@ export class AdminService {
       floors: x.floors,
       hasElevator: x.hasElevator,
       gender: x.gender,
+      // 经营日报「启用中的楼栋」过滤消费（道哥 2026-11-02 补漏：组装漏带
+      // status，前端过滤恒空显示「该校区暂无启用中的楼栋」）
+      status: x.status,
       roomsCount: x._count.rooms,
       staffName: x.staff.map((s) => s.name).join('、') || undefined,
     }));
