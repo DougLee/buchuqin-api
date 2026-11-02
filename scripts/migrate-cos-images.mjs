@@ -228,7 +228,7 @@ async function transcode() {
       skippedExisting++;
       continue;
     }
-    const q = QUALITY[refs.get(key)?.batch] ?? QUALITY[batchOf(key)] ?? 80;
+    const q = QUALITY[batchOf(key)] ?? 80;
     try {
       if (await cosHead(newKey)) {
         if (!adopt) {
