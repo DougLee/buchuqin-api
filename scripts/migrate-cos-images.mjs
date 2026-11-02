@@ -32,6 +32,9 @@ const argOf = (name, dflt) => {
 };
 const batch = argOf('batch', 'all');
 const limit = Number(argOf('limit', '0'));
+/** --adopt：目标 .webp 已存在时采纳（拉双方大小记映射换址）——仅当确认
+ *  该 .webp 是本脚本前轮产物（如映射文件误删后重建）；默认 SKIP 来源不明 */
+const adopt = args.includes('--adopt');
 
 const BUCKET = process.env.COS_BUCKET;
 const REGION = process.env.COS_REGION;
@@ -195,9 +198,22 @@ async function transcode() {
     const q = QUALITY[refs.get(key).batch] ?? 80;
     try {
       if (await cosHead(newKey)) {
-        // 目标 .webp 已存在且来源不明（可能是别家引用的图）——安全第一：
-        // 不复用、不覆盖、不换址（旧 .png 引用保留，人工判断后处理）
-        console.warn(`  SKIP ${key}：目标 ${newKey} 已存在（来源不明，不覆盖）`);
+        if (!adopt) {
+          // 默认保守：来源不明（可能是别家引用的图）不覆盖不换址
+          console.warn(
+            `  SKIP ${key}：目标 ${newKey} 已存在（加 --adopt 可采纳为前轮产物）`,
+          );
+          skippedExisting++;
+          continue;
+        }
+        // --adopt：确认是本脚本前轮产物——拉双方大小重建映射
+        const [orig, news] = await Promise.all([cosGet(key), cosGet(newKey)]);
+        map.items.push({
+          oldKey: key,
+          newKey,
+          oldSize: orig.length,
+          newSize: news.length,
+        });
         skippedExisting++;
         continue;
       }
