@@ -288,7 +288,7 @@ async function rewrite() {
         const { rowCount: r2 } = await client.query(
           `UPDATE "Product"
            SET images = (
-             SELECT jsonb_agg(replace(x::text, $1, $2)::jsonb)
+             SELECT jsonb_agg(to_jsonb(replace(x, $1, $2)))
              FROM jsonb_array_elements_text(images) x
            )
            WHERE images @> jsonb_build_array($1::text)`,
@@ -309,7 +309,7 @@ async function rewrite() {
         const { rowCount: r5 } = await client.query(
           `UPDATE "Refund"
            SET images = (
-             SELECT jsonb_agg(replace(x::text, $1, $2)::jsonb)
+             SELECT jsonb_agg(to_jsonb(replace(x, $1, $2)))
              FROM jsonb_array_elements_text(images) x
            )
            WHERE images @> jsonb_build_array($1::text)`,
