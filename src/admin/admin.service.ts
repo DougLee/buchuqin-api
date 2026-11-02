@@ -4409,7 +4409,7 @@ export class AdminService {
       WHERE "createdAt" BETWEEN ${startAt} AND ${endAt} ${evFilter}
       GROUP BY "event"`;
     const topProducts = await this.db.$queryRaw<
-      Array<{ target_id: string; views: bigint; carts: bigint }>
+      Array<{ targetId: string; views: bigint; carts: bigint }>
     >`
       SELECT "targetId",
              COUNT(*) FILTER (WHERE "event" = 'product_view') AS views,
@@ -4421,7 +4421,7 @@ export class AdminService {
       ORDER BY carts DESC, views DESC
       LIMIT 10`;
     const topKeywords = await this.db.$queryRaw<
-      Array<{ target_id: string; hits: bigint }>
+      Array<{ targetId: string; hits: bigint }>
     >`
       SELECT "targetId", COUNT(*) AS hits
       FROM "UserEvent"
@@ -4441,7 +4441,7 @@ export class AdminService {
       _sum: { payableAmount: true },
     });
     // 商品名补齐（商品可能已删，缺名显示截断 id）
-    const productIds = topProducts.map((p) => p.target_id);
+    const productIds = topProducts.map((p) => p.targetId);
     const products = productIds.length
       ? await this.db.product.findMany({
           where: { id: { in: productIds } },
@@ -4462,13 +4462,13 @@ export class AdminService {
         amount: num(trade._sum.payableAmount),
       },
       topProducts: topProducts.map((p) => ({
-        productId: p.target_id,
-        name: nameOf.get(p.target_id) ?? p.target_id.slice(0, 12),
+        productId: p.targetId,
+        name: nameOf.get(p.targetId) ?? p.targetId.slice(0, 12),
         views: num(p.views),
         carts: num(p.carts),
       })),
       topKeywords: topKeywords.map((k) => ({
-        keyword: k.target_id,
+        keyword: k.targetId,
         hits: num(k.hits),
       })),
     };
