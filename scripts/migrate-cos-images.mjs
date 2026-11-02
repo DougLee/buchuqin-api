@@ -395,10 +395,10 @@ async function genSql() {
       const newUrl = it.newKey;
       const esc = (s) => s.replace(/'/g, "''");
       out += `UPDATE "Product" SET image = replace(image,'${esc(oldUrl)}','${esc(newUrl)}') WHERE image LIKE '%${esc(oldUrl)}';\n`;
-      out += `UPDATE "Product" SET images = (SELECT jsonb_agg(replace(x::text,'${esc(oldUrl)}','${esc(newUrl)}')::jsonb) FROM jsonb_array_elements_text(images) x) WHERE images @> jsonb_build_array('${esc(oldUrl)}'::text);\n`;
+      out += `UPDATE "Product" SET images = (SELECT jsonb_agg(to_jsonb(replace(x,'${esc(oldUrl)}','${esc(newUrl)}'))) FROM jsonb_array_elements_text(images) x) WHERE images @> jsonb_build_array('${esc(oldUrl)}'::text);\n`;
       out += `UPDATE "Category" SET image = replace(image,'${esc(oldUrl)}','${esc(newUrl)}') WHERE image LIKE '%${esc(oldUrl)}';\n`;
       out += `UPDATE "Banner" SET image = replace(image,'${esc(oldUrl)}','${esc(newUrl)}') WHERE image LIKE '%${esc(oldUrl)}';\n`;
-      out += `UPDATE "Refund" SET images = (SELECT jsonb_agg(replace(x::text,'${esc(oldUrl)}','${esc(newUrl)}')::jsonb) FROM jsonb_array_elements_text(images) x) WHERE images @> jsonb_build_array('${esc(oldUrl)}'::text);\n`;
+      out += `UPDATE "Refund" SET images = (SELECT jsonb_agg(to_jsonb(replace(x,'${esc(oldUrl)}','${esc(newUrl)}'))) FROM jsonb_array_elements_text(images) x) WHERE images @> jsonb_build_array('${esc(oldUrl)}'::text);\n`;
       out += `UPDATE "Order" SET package = replace(package::text,'${esc(oldUrl)}','${esc(newUrl)}')::jsonb WHERE package::text LIKE '%${esc(oldUrl)}';\n`;
       n += 6;
     }
