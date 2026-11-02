@@ -155,12 +155,13 @@ async function collectRefs(dbUrl, want) {
       `SELECT id, package FROM "Order" WHERE package IS NOT NULL`,
     );
     for (const r of orows) {
-      const shots = r.package?.handoverProof;
-      for (const shot of shots ?? [])
-        for (const u of shot?.images ?? []) {
+      // package.handoverProof / package.proof 均为单对象 {time, images[]}
+      for (const slot of ['handoverProof', 'proof']) {
+        for (const u of r.package?.[slot]?.images ?? []) {
           const k = urlToKey(u);
-          if (k) add(k, `Order:${r.id}.handoverProof`);
+          if (k) add(k, `Order:${r.id}.${slot}`);
         }
+      }
     }
   }
   await client.end();
