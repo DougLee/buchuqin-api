@@ -25,7 +25,9 @@ export const PLATFORM_PATTERNS = [
   'GET /admin/org-products', 'POST /admin/org-products',
   'PATCH /admin/org-products/:id', 'POST /admin/org-products/:id/import',
   'POST /admin/campuses',
-  'POST /admin/inventory/stock-in',
+  // 库存入库放行校区级（道哥 2026-11-02：校区自主采购入库是真实场景，
+  // campus-admin 已勾 inventory.inbound 却被本清单拦成按钮不可见+接口 403；
+  // 订货批次/采购验收仍属总部供应链动作保持平台限定）
   'POST /admin/restock/batches', 'PATCH /admin/restock/batches/:id',
   'POST /admin/restock/batches/:id/close',
   'POST /admin/restock/orders/:id/audit', 'POST /admin/restock/orders/:id/ship',
