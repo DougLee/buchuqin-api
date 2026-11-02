@@ -2111,6 +2111,13 @@ export class AdminService {
       },
     });
     if (!before) throw new NotFoundException('商品不存在');
+    // 库存只读（道哥 2026-11-02）：商品编辑不再允许直改库存——所有调整统一
+    // 走库存管理（盘点/入库），保证 InventoryTxn 流水不断链。等值回写放行
+    // （幂等保存不误伤），值变化即拒。
+    if (body.stock !== undefined && body.stock !== before.stock)
+      throw new BadRequestException(
+        '商品编辑不支持修改库存，请到库存管理（盘点/入库）调整',
+      );
     if (
       body.procurementMode !== undefined &&
       body.procurementMode !== before.procurementMode
