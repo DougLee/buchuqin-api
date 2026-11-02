@@ -4664,6 +4664,8 @@ export class AdminService {
           gross: tGross,
           // IKRSIX #84b：优惠合计非成本口径，cost.read 关闭也照常下发
           discountTotal: tDiscount,
+          // 配送费合计（道哥 2026-11-02 补漏）：行级算了 totals 漏带，前端恒「—」
+          deliveryTotal: tDelivery,
           refundedTotal: tRefunded,
           marginRawRate: tProduct
             ? Math.round((tMargin / tProduct) * 10000)
@@ -4682,6 +4684,8 @@ export class AdminService {
         gross: tGross,
         // IKRSIX #84b：优惠合计（订单 discount 字段合计）
         discountTotal: tDiscount,
+        // 配送费合计（道哥 2026-11-02 补漏）：行级算了 totals 漏带，前端恒「—」
+        deliveryTotal: tDelivery,
         refundedTotal: tRefunded,
         marginRawRate: tProduct ? Math.round((tMargin / tProduct) * 10000) : 0,
         marginRate: tSales ? Math.round((tGross / tSales) * 10000) : 0,
