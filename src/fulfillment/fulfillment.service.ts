@@ -70,12 +70,17 @@ export class FulfillmentService {
     const org = organizationId
       ? await this.db.organization.findUnique({
           where: { id: organizationId },
-          select: { gzhQrcodeUrl: true },
+          select: { gzhQrcodeUrl: true, deliveryNotifyTemplateId: true },
         })
       : null;
     return {
       ...rest,
       gzhQrcodeUrl: org?.gzhQrcodeUrl ?? '',
+      // 骑手端订阅授权模板 ID（道哥 2026-11-02 大雄推送修复）：授权弹窗
+      // requestSubscribeMessage 必须用**本组织小程序名下**的模板——硬编码
+      // org-a 模板在他组织授权直接 fail（「未开启成功」根因）。空串=组织
+      // 未配，前端回落内置默认（org-a 语义）
+      notifyTemplateId: org?.deliveryNotifyTemplateId ?? '',
       campusName: campus?.name ?? '',
       campusWarehouseName: campus?.warehouseName ?? '',
       onTimeRate: Number(s.onTimeRate),
