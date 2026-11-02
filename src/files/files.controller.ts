@@ -20,6 +20,7 @@ import type { AuthRequest } from '../auth/jwt-auth.guard';
 import { ok } from '../common/api-response';
 import { PrismaService } from '../database/prisma.service';
 import { RbacService } from '../admin/rbac/rbac.service';
+import { compressUploadImage } from './image-compress';
 
 const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
 // MIME 白名单：位图格式收敛，拒绝 svg+xml（可携带脚本导致存储型 XSS）。
@@ -167,13 +168,23 @@ export class FilesController {
     // app/ 系（小程序素材，IK9VBI）直接落白名单对应 COS 子目录（IKC1AE 起
     // 支持 app/wechat-group 等子目录）；uploads/ 按月归档
     const dir = target === 'uploads' ? monthlyFolder() : target;
-    const key = `${dir}/${randomUUID()}${safeExt}`;
+    // 上传即压缩（道哥 2026-11-02）：转 WebP q80+长边 1600，群码/GIF/小图
+    // 豁免、失败 fail-open 原样传——压缩产物扩展名/类型随结果切换
+    const compressed = await compressUploadImage(
+      file.buffer,
+      file.mimetype,
+      target,
+    );
+    const body = compressed?.buffer ?? file.buffer;
+    const mime = compressed?.mimetype ?? file.mimetype;
+    const finalExt = compressed?.ext ?? safeExt;
+    const key = `${dir}/${randomUUID()}${finalExt}`;
 
     try {
       await putToCos(
         key,
-        file.buffer,
-        file.mimetype,
+        body,
+        mime,
         PRIVATE_FOLDERS.has(target) ? 'private' : 'public-read',
       );
     } catch (error) {
@@ -186,6 +197,8 @@ export class FilesController {
       {
         url: `${COS_PUBLIC_BASE}/${key}`,
         private: PRIVATE_FOLDERS.has(target),
+        // 压缩元信息（道哥 2026-11-02）：webp=true 表示服务端已转 WebP 压缩
+        webp: compressed != null,
       },
       '上传成功',
     );
