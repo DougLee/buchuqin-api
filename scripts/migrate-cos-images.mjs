@@ -187,17 +187,17 @@ async function transcode() {
     failed = 0;
   for (const key of capped) {
     const newKey = key.replace(/\.[a-z0-9]+$/i, '.webp');
+    // 已是 webp：无需转码，引用原样保留（不进映射，rewrite 无事可做）
+    if (key === newKey) {
+      skippedExisting++;
+      continue;
+    }
     const q = QUALITY[refs.get(key).batch] ?? 80;
     try {
       if (await cosHead(newKey)) {
-        // 幂等：目标已存在（前次跑过）——直接记映射供换址
-        const orig = key === newKey ? null : await cosGet(key);
-        map.items.push({
-          oldKey: key,
-          newKey,
-          reused: true,
-          ...(orig ? { oldSize: orig.length } : {}),
-        });
+        // 目标 .webp 已存在且来源不明（可能是别家引用的图）——安全第一：
+        // 不复用、不覆盖、不换址（旧 .png 引用保留，人工判断后处理）
+        console.warn(`  SKIP ${key}：目标 ${newKey} 已存在（来源不明，不覆盖）`);
         skippedExisting++;
         continue;
       }
