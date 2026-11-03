@@ -640,6 +640,41 @@ export class AuthController {
   }
 
   /**
+   * IKSN19 校区确认页数据源：登录前可调的本组织开放校区列表。
+   * 按 appid 解析组织（与 wechat-login 同一入口 resolveMiniProgramOrganization，
+   * env 兼容路径解析 null → 不加组织限定，与 login fallback 同口径）；
+   * 仅暴露展示字段。小程序端据此渲染校区确认页：多校区弹确认页（分享链路
+   * 预选分享校区），单校区静默带唯一 campusId 登录。
+   */
+  @Get('mini-program-campuses')
+  @HttpCode(200)
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
+  @ApiOperation({
+    summary: '小程序开放校区列表（登录前可调，按 appid 识别组织）',
+  })
+  async miniProgramCampuses(@Query('appid') appid?: string) {
+    const trimmed = appid?.trim();
+    if (!trimmed) throw new BadRequestException('缺少小程序 appid');
+    const organization = await resolveMiniProgramOrganization(
+      this.db,
+      trimmed,
+      'user',
+    );
+    return ok(
+      await this.db.campus.findMany({
+        where: {
+          type: 'campus',
+          status: 'active',
+          ...(organization ? { organizationId: organization.id } : {}),
+        },
+        orderBy: { createdAt: 'asc' },
+        select: { id: true, name: true, shortName: true },
+      }),
+    );
+  }
+
+  /**
    * 切换校区（IKAJT2 选校区/切换流程）：JWT 带 campusId claim，切换必须换发
    * token——返回体与登录一致，前端按登录同款落新会话。旧校区购物车清除、
    * 旧校区地址取消默认（行保留），商品/价格/门槛随新校区生效。

@@ -30,6 +30,8 @@ export interface AuthUser {
 }
 export interface AuthRequest extends Request {
   user: AuthUser;
+  /** RBAC 有效权限上下文（guard 链路运行时挂载；spec 夹具 specReq 同构）。 */
+  rbac?: unknown;
 }
 @Injectable()
 export class JwtAuthGuard implements CanActivate {

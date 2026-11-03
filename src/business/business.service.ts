@@ -2792,6 +2792,12 @@ export class BusinessService {
     for (const c of candidates) {
       const issued = await this.grantCoupon(userId, c.id);
       if (issued && !issued.existing) granted += 1;
+      else if (!issued)
+        // IKSN19：额度发完（updateMany 不命中）此前同样静默，运营对
+        // 「券配置着但发不出」无感知（2026-11-03 湖工大 1000 张发完实锤）
+        BusinessService.logger.warn(
+          `signup coupon grant skipped: coupon exhausted campus=${campusId} coupon=${c.id} userId=${userId}`,
+        );
     }
     // IKRSIX #74：无候选券（未配置 signup 券/全部停用过期）此前完全静默，
     // 配置缺口长期无感知（2026-10-30 对账实锤：生物工程学院漏发即此因）——
