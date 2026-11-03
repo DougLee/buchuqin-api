@@ -313,3 +313,129 @@ describe('Coupon kind/trigger/expirable (IKDCVO)', () => {
     ).rejects.toThrow('请使用「暂停发放」');
   });
 });
+
+/**
+ * 切换校区补发 signup 新人券 + 「同券终身一次」幂等（IKSN19，道哥
+ * 2026-11-03 定稿）：切换到新校区发该校区 signup 券（覆盖确认页选错
+ * 纠正的新用户）；同券历史持有含 used 也拦截——堵往返切换重领的
+ * 薅口子。粒度按券不按校区，多张 signup 券并存发放不受影响。
+ */
+describe('campus-switch signup coupon grant (IKSN19)', () => {
+  const db = new PrismaService();
+  const biz = new BusinessService(db);
+  const CAMPUS_A = 'campus-csw-spec-a';
+  const CAMPUS_B = 'campus-csw-spec-b';
+  const USER2 = 'user-csw-spec';
+  const PREFIX = '切换发券测试';
+
+  const mkSignup = (campusId: string, name: string) =>
+    db.coupon.create({
+      data: {
+        campusId,
+        name,
+        trigger: 'signup',
+        amount: 300,
+        threshold: 0,
+        total: 10,
+        status: 'active',
+      } as any,
+    });
+
+  beforeAll(async () => {
+    // 两个校区均不挂组织（campusOrganizationId=null → 切换不加组织限定）
+    await db.campus.create({
+      data: {
+        id: CAMPUS_A,
+        name: `${PREFIX}A校`,
+        shortName: 'A校',
+        warehouseName: 'A仓',
+      } as any,
+    });
+    await db.campus.create({
+      data: {
+        id: CAMPUS_B,
+        name: `${PREFIX}B校`,
+        shortName: 'B校',
+        warehouseName: 'B仓',
+      } as any,
+    });
+    await db.user.create({
+      data: {
+        id: USER2,
+        openid: 'openid-csw-spec',
+        nickname: '切换发券用户',
+        phone: '13800000003',
+        campusId: CAMPUS_A,
+      } as any,
+    });
+    await mkSignup(CAMPUS_A, `${PREFIX}A新人券`);
+    await mkSignup(CAMPUS_B, `${PREFIX}B新人券`);
+  });
+
+  afterAll(async () => {
+    await db.userCoupon.deleteMany({ where: { userId: USER2 } });
+    await db.coupon.deleteMany({ where: { name: { startsWith: PREFIX } } });
+    await db.user.deleteMany({ where: { id: USER2 } });
+    await db.campus.deleteMany({ where: { id: { in: [CAMPUS_A, CAMPUS_B] } } });
+    await db.$disconnect();
+  });
+
+  it('switching to campus B grants B signup coupon', async () => {
+    await biz.switchUserCampus(USER2, CAMPUS_B);
+    // 发券是事务后尽力而为（fire-and-forget），轮询等它落库
+    let held: { couponId: string } | null = null;
+    for (let i = 0; i < 20 && !held; i++) {
+      await new Promise((r) => setTimeout(r, 100));
+      held = await db.userCoupon.findFirst({
+        where: { userId: USER2, coupon: { campusId: CAMPUS_B } },
+        select: { couponId: true },
+      });
+    }
+    expect(held).not.toBeNull();
+    const coupon = await db.coupon.findFirst({
+      where: { name: `${PREFIX}B新人券` },
+    });
+    expect(coupon!.claimed).toBe(1);
+  });
+
+  /** 轮询等 fire-and-forget 发券落库（spec 库走公网，串行查询链慢） */
+  async function waitForHeld(campusId: string, expectedCount: number) {
+    let rows: { id: string }[] = [];
+    for (let i = 0; i < 40 && rows.length < expectedCount; i++) {
+      await new Promise((r) => setTimeout(r, 100));
+      rows = await db.userCoupon.findMany({
+        where: { userId: USER2, coupon: { campusId } },
+        select: { id: true },
+      });
+    }
+    return rows;
+  }
+
+  it('lifetime-once per coupon: used coupon still blocks re-grant', async () => {
+    // 切回 A：发 A 券
+    await biz.switchUserCampus(USER2, CAMPUS_A);
+    const aRows = await waitForHeld(CAMPUS_A, 1);
+    expect(aRows.length).toBe(1);
+    const aHeld = await db.userCoupon.findFirst({
+      where: { userId: USER2, coupon: { campusId: CAMPUS_A } },
+    });
+    expect(aHeld).not.toBeNull();
+    // A 券用掉（status=used）——终身一次检查含 used 历史
+    await db.userCoupon.update({
+      where: { id: aHeld!.id },
+      data: { status: 'used' },
+    });
+    // 切回 B：B 已有 used 历史持有 → 不重发
+    await biz.switchUserCampus(USER2, CAMPUS_B);
+    const bCoupons = await waitForHeld(CAMPUS_B, 1);
+    expect(bCoupons.length).toBe(1);
+    const bCoupon = await db.coupon.findFirst({
+      where: { name: `${PREFIX}B新人券` },
+    });
+    expect(bCoupon!.claimed).toBe(1);
+    // 切回 A：A 的 used 记录同样拦截 → 不重发
+    await biz.switchUserCampus(USER2, CAMPUS_A);
+    const aCoupons = await waitForHeld(CAMPUS_A, 1);
+    expect(aCoupons.length).toBe(1);
+  });
+});

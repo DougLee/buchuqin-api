@@ -728,6 +728,16 @@ export class BusinessService {
         data: { isDefault: false },
       }),
     ]);
+    // IKSN19（道哥 2026-11-03 定稿）：切换校区补发目标校区 signup 新人券——
+    // 覆盖「确认页选错注册后马上纠正」的新用户（手里的旧校区券跨校区不可用）。
+    // 「每校区终身一次」由 grantCouponInner 幂等保证（含 used 历史持有），
+    // 往返切换薅不动。尽力而为：发券失败不阻塞切换（warn 留痕，口径同
+    // 注册发券失败不阻塞登录）。
+    void this.grantSignupCoupons(userId, campusId).catch((err) =>
+      BusinessService.logger.warn(
+        `campus-switch coupon grant failed userId=${userId} campus=${campusId}: ${String(err)}`,
+      ),
+    );
     return updated;
   }
   async buildings(campusId: string) {
@@ -2739,8 +2749,20 @@ export class BusinessService {
     if (coupon.expiresAt && coupon.expiresAt.getTime() <= Date.now())
       return null;
     if (!opts?.repeat) {
+      // IKSN19（道哥 2026-11-03 定稿）：signup 券「同券终身一次」——历史
+      // 持有含 used 也算数，堵「券用掉后切换往返重领」的薅口子（原幂等
+      // 只查未使用防不住 used）；切换补发（switchUserCampus）与注册发放
+      // 共用本规则。粒度按券不按校区：同校区多张 signup 券并存发放的
+      // 运营能力保持不变。抽奖券走 repeat 模式、手动领取走 claimCoupon
+      // 路径，均不受影响。
       const holding = await tx.userCoupon.findFirst({
-        where: { userId, couponId, status: { not: 'used' } },
+        where: {
+          userId,
+          couponId,
+          ...(coupon.trigger === 'signup'
+            ? {}
+            : { status: { not: 'used' } }),
+        },
       });
       // 幂等命中：返回已有持有记录并带 existing 标记（不计新增发放）。
       if (holding)
