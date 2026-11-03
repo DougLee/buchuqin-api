@@ -672,7 +672,7 @@ export class NotificationsService {
             try {
               await this.sendGzhTemplate(
                 r.gzhOpenid,
-                this.gzhDispatchData(order),
+                this.gzhDispatchData(order, gzhCfg.templateId),
                 gzhCfg,
                 deliveryConfig.appId,
               );
@@ -1171,20 +1171,45 @@ export class NotificationsService {
   }
 
   /**
-   * 派单消息服务号模板数据（IKI3ZP）：类目模板「新订单通知」（编号 42995），
-   * 字段 character_string2=订单编号 / amount3=订单金额 / thing4=客户姓名 /
-   * time5=下单时间。
+   * 派单消息服务号模板数据（IKI3ZP）。两代模板字段集（道哥 2026-11-03
+   * 小满/大雄服务号接入）：
+   * - org-a 旧模板（tm30SXBM 前缀）：character_string2=订单编号 /
+   *   amount3=金额 / thing4=客户姓名 / time5=下单时间；
+   * - 新模板（2026-11 起各组织申请的「新订单通知」编号 42995）：无 time5，
+   *   多 thing15=配送地址 / phone_number19=联系电话——按配置的 templateId
+   *   前缀分流，多余字段微信会 47003 拒收。
    */
-  private gzhDispatchData(order: {
-    orderNo: string;
-    payableAmount: number;
-    address: unknown;
-  }): Record<string, { value: string }> {
+  private gzhDispatchData(
+    order: {
+      orderNo: string;
+      payableAmount: number;
+      address: unknown;
+    },
+    templateId?: string,
+  ): Record<string, { value: string }> {
     const addr = (order.address ?? {}) as Record<string, unknown>;
+    const contactName = String(addr.contactName ?? '客户').slice(0, 20);
+    const amount = `¥${(order.payableAmount / 100).toFixed(2)}`;
+    if (templateId && !templateId.startsWith('tm30')) {
+      const data: Record<string, { value: string }> = {
+        character_string2: { value: order.orderNo },
+        thing4: { value: contactName },
+        thing15: {
+          value: `${String(addr.buildingName ?? '')} ${String(addr.room ?? '')}`
+            .trim()
+            .slice(0, 20),
+        },
+        amount3: { value: amount },
+      };
+      // phone_number 类型校验严格（号码格式）——地址快照无电话时省略该字段
+      const phone = String(addr.phone ?? '').trim();
+      if (phone) data.phone_number19 = { value: phone.slice(0, 20) };
+      return data;
+    }
     return {
       character_string2: { value: order.orderNo },
-      amount3: { value: `¥${(order.payableAmount / 100).toFixed(2)}` },
-      thing4: { value: String(addr.contactName ?? '客户').slice(0, 20) },
+      amount3: { value: amount },
+      thing4: { value: contactName },
       time5: { value: NotificationsService.fmtCn(new Date(), true) },
     };
   }
