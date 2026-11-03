@@ -5936,6 +5936,20 @@ export class AdminService {
         ...(body.noManagerTip != null
           ? { noManagerTip: body.noManagerTip }
           : {}),
+        // IKSN20：预约达营销文案 + 商品详情页「配送到寝」说明三段
+        //（校区自定义，空串=回落默认；可选不传不动）
+        ...(body.scheduledGiftText != null
+          ? { scheduledGiftText: body.scheduledGiftText }
+          : {}),
+        ...(body.deliveryStoryTitle != null
+          ? { deliveryStoryTitle: body.deliveryStoryTitle }
+          : {}),
+        ...(body.deliveryStoryMain != null
+          ? { deliveryStoryMain: body.deliveryStoryMain }
+          : {}),
+        ...(body.deliveryStoryDesc != null
+          ? { deliveryStoryDesc: body.deliveryStoryDesc }
+          : {}),
         // IKM55A 订单自动出库：开关+秒数，可选不传不动
         ...(body.autoOutboundEnabled === undefined ||
         body.autoOutboundEnabled === null
@@ -5979,6 +5993,10 @@ export class AdminService {
         closeEnd: true,
         manualClosed: true,
         noManagerTip: true,
+        scheduledGiftText: true,
+        deliveryStoryTitle: true,
+        deliveryStoryMain: true,
+        deliveryStoryDesc: true,
         autoOutboundEnabled: true,
         autoOutboundDelaySeconds: true,
         managerSalesVisible: true,
@@ -8113,6 +8131,19 @@ export class AdminService {
         // IKHMKR：无楼长提示（校区自定义，空串=回落默认文案）
         ...(body.noManagerTip != null
           ? { noManagerTip: body.noManagerTip }
+          : {}),
+        // IKSN20：预约达营销文案 + 商品详情页「配送到寝」说明三段
+        ...(body.scheduledGiftText != null
+          ? { scheduledGiftText: body.scheduledGiftText }
+          : {}),
+        ...(body.deliveryStoryTitle != null
+          ? { deliveryStoryTitle: body.deliveryStoryTitle }
+          : {}),
+        ...(body.deliveryStoryMain != null
+          ? { deliveryStoryMain: body.deliveryStoryMain }
+          : {}),
+        ...(body.deliveryStoryDesc != null
+          ? { deliveryStoryDesc: body.deliveryStoryDesc }
           : {}),
         // IKRSJ3 #114：群二维码弹窗文案（校区自定义，空串=回落默认文案）
         ...(body.groupQrcodeTip != null

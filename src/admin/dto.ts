@@ -327,6 +327,24 @@ export class UpdateDeliveryConfigDto {
   @IsString()
   @MaxLength(60, { message: '提示文案最多 60 字' })
   noManagerTip?: string;
+  /** 预约达营销文案（IKSN20）：结算页「2小时送达」卡片营销行；空串=回落默认 */
+  @IsOptional()
+  @IsString()
+  @MaxLength(40, { message: '营销文案最多 40 字' })
+  scheduledGiftText?: string;
+  /** 商品详情页「配送到寝」说明三段（IKSN20）：空串=各自回落默认文案 */
+  @IsOptional()
+  @IsString()
+  @MaxLength(20, { message: '标题最多 20 字' })
+  deliveryStoryTitle?: string;
+  @IsOptional()
+  @IsString()
+  @MaxLength(30, { message: '主句最多 30 字' })
+  deliveryStoryMain?: string;
+  @IsOptional()
+  @IsString()
+  @MaxLength(80, { message: '说明最多 80 字' })
+  deliveryStoryDesc?: string;
   /** 订单自动出库开关（IKM55A）：可选不传不动；开启=paid 单 N 秒后 Cron 自动出库 */
   @IsOptional()
   @IsBoolean()
@@ -792,6 +810,24 @@ export class UpdateCampusDto {
   @IsString()
   @MaxLength(60, { message: '提示文案最多 60 字' })
   noManagerTip?: string;
+  /** 预约达营销文案（IKSN20）：结算页「2小时送达」卡片营销行；空串=回落默认 */
+  @IsOptional()
+  @IsString()
+  @MaxLength(40, { message: '营销文案最多 40 字' })
+  scheduledGiftText?: string;
+  /** 商品详情页「配送到寝」说明三段（IKSN20）：空串=各自回落默认文案 */
+  @IsOptional()
+  @IsString()
+  @MaxLength(20, { message: '标题最多 20 字' })
+  deliveryStoryTitle?: string;
+  @IsOptional()
+  @IsString()
+  @MaxLength(30, { message: '主句最多 30 字' })
+  deliveryStoryMain?: string;
+  @IsOptional()
+  @IsString()
+  @MaxLength(80, { message: '说明最多 80 字' })
+  deliveryStoryDesc?: string;
   /** 群二维码弹窗文案（IKRSJ3 #114 校区自定义）：空串=回落默认文案 */
   @IsOptional()
   @IsString()

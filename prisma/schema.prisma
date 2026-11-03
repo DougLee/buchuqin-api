@@ -126,6 +126,14 @@ model Campus {
   featuredLabel             String?
   homeFeaturedLabel         String?
   clearanceLabel            String?
+  // 预约达营销文案（IKSN20 道哥 2026-11-03）：结算页「2小时送达」卡片的
+  // 营销行校区自定义；空=回落前端默认文案（赠送 2 元全品类优惠券）
+  scheduledGiftText         String                  @default("")
+  // 商品详情页「配送到寝」说明三段（IKSN20 道哥 2026-11-03）：校区不支
+  // 持送上楼时整块文案需可改，防误解投诉；空=各自回落前端默认文案
+  deliveryStoryTitle        String                  @default("")
+  deliveryStoryMain         String                  @default("")
+  deliveryStoryDesc         String                  @default("")
   // 楼长销售额展示开关（IKRSIZ #108 道哥 2026-10-30）：关=配送端工作台
   // 不下发销售额（todayGmv/monthGmv 置 null，前端不渲染）
   managerSalesVisible       Boolean                 @default(true)
