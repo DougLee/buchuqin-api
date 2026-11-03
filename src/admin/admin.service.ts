@@ -9720,6 +9720,11 @@ export class AdminService {
           autoOutboundDelaySeconds: true,
           // IKHMKR 无楼长提示：校区自定义，聚合页配送 Tab 编辑
           noManagerTip: true,
+          // IKSN20 预约达营销文案+商品页配送说明三段：写通读漏会回显空
+          scheduledGiftText: true,
+          deliveryStoryTitle: true,
+          deliveryStoryMain: true,
+          deliveryStoryDesc: true,
         },
       }),
       this.db.deliverySlot.findMany({
