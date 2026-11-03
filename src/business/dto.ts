@@ -81,8 +81,8 @@ export class SwitchCampusDto {
   @IsString() campusId!: string;
 }
 export class CreateAfterSalesDto {
-  @IsIn(['quality', 'missing', 'damaged']) type!:
-    'quality' | 'missing' | 'damaged';
+  @IsIn(['quality', 'missing', 'damaged', 'wrong', 'other']) type!:
+    'quality' | 'missing' | 'damaged' | 'wrong' | 'other';
   @IsString() @MaxLength(300) description!: string;
   @IsArray() @ArrayMinSize(1) @IsString({ each: true }) images!: string[];
   /** v2 部分退款：勾选的商品行 productId（缺省=整单退，兼容 v1） */
