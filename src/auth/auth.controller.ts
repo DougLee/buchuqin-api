@@ -75,6 +75,16 @@ class WechatLoginDto {
   campusId?: string;
 }
 
+/** IKSN19 会员预检（删小程序重装后已注册用户免弹校区确认页）：code 一次性，
+ *  预检与登录各用各的 code（wx.login 可重复调用）。 */
+class MemberCheckDto {
+  @IsString()
+  code!: string;
+  @IsString()
+  @IsOptional()
+  appid?: string;
+}
+
 class PhoneDto {
   // IK9SO4：button open-type="getPhoneNumber" 下发的动态令牌，
   // 后端调微信 getuserphonenumber 换真实号码（优先通道）。
@@ -672,6 +682,39 @@ export class AuthController {
         select: { id: true, name: true, shortName: true },
       }),
     );
+  }
+
+  /**
+   * IKSN19 会员预检：删小程序重装（storage 清空）后，已注册用户前端无从
+   * 判断是否弹过校区确认页——冷启动先以 code 换 openid 查询注册态。
+   * 已注册返回既有校区（前端据此显式登录不弹框）；未注册 registered=false
+   * 走校区确认页。code 一次性：预检与登录各用各的 code。查询失败由前端
+   * 兜底走确认页（退化现状，不会更差）。
+   */
+  @Post('member-check')
+  @HttpCode(200)
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  @ApiOperation({
+    summary: '会员预检（匿名，code 换 openid 查注册态与既有校区）',
+  })
+  async memberCheck(@Body() body: MemberCheckDto) {
+    if (!body.code?.trim())
+      throw new BadRequestException('缺少微信登录凭证 code');
+    const credentials = await this.wechatCredentials(body.appid?.trim());
+    if (!credentials && !(await this.wechatConfigured()))
+      throw new HttpException('微信登录未配置', HttpStatus.NOT_IMPLEMENTED);
+    if (!credentials)
+      throw new BadRequestException('该小程序未配置微信登录凭证');
+    const session = await this.code2Session(credentials, body.code.trim());
+    const user = await this.db.user.findUnique({
+      where: { openid: session.openid },
+      select: { campusId: true },
+    });
+    return ok({
+      registered: !!user,
+      campusId: user?.campusId ?? '',
+    });
   }
 
   /**
