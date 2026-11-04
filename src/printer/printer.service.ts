@@ -373,9 +373,11 @@ export class PrinterService {
       const loc = [line.product?.location, line.product?.locationCode]
         .filter(Boolean)
         .join('-');
-      // 库位行【】括号强调（2026-09-05 道哥定版）：常规字号不放大、拣货扫视够
-      // 醒目——<B> 在本机型实测是放大加粗，不可用；【】在 GBK 字符集内安全
-      if (loc && showLocation) lines.push(`  【库位:${loc}】`);
+      // 库位行【】括号 + <B> 放大加粗（道哥 2026-11-04 要求放大）：<B> 实测
+      // 放大加粗、比品名 <CB> 小一号；原缩进两空格取消——放大后 17 半角位
+      // 超一行宽（16）会把尾部 】挤折行，去缩进后 15 位恰好一行。长库位
+      // （区域-编号超长）仍可能折行，芯烨云自动处理。【】在 GBK 内安全
+      if (loc && showLocation) lines.push(TAG.bold(`【库位:${loc}】`));
     }
     lines.push('-'.repeat(LINE_WIDTH));
     lines.push(itemLine('商品金额', yuan(order.productAmount)));
