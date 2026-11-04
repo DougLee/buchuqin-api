@@ -304,18 +304,31 @@ export class PrinterService {
     // IKSN21：二维码升级为微信 URL Link（道哥 2026-11-04）——微信扫一扫
     // 直达配送小程序到店确认页；生成失败回落 orderNo 文本码（旧行为，兼容
     // 存量小程序内扫码链路）。多联共用同一码，构建前生成一次。
-    const arriveUrl = await this.generateArriveLink(order.campusId, order.orderNo);
-    if (arriveUrl) order.arriveUrl = arriveUrl;
     const campusRow = (await this.db.campus.findUnique({
       where: { id: order.campusId },
-    })) as { receiptShowLocation?: boolean } | null;
+    })) as {
+      receiptShowLocation?: boolean;
+      receiptShowQrcode?: boolean;
+    } | null;
     const showLocation = campusRow?.receiptShowLocation ?? true;
+    // 小票二维码开关（道哥 2026-11-04）：关=不打票尾二维码及文案行，
+    // 也不浪费微信调用（URL Link 不生成）
+    const showQrcode = campusRow?.receiptShowQrcode ?? true;
+    const arriveUrl = showQrcode
+      ? await this.generateArriveLink(order.campusId, order.orderNo)
+      : undefined;
+    if (arriveUrl) order.arriveUrl = arriveUrl;
     const parts =
       n <= 1
-        ? [this.buildReceipt(order, undefined, showLocation)]
+        ? [this.buildReceipt(order, undefined, showLocation, showQrcode)]
         : COPY_LABELS.slice(0, n).map((label, index) => {
             if (index === 0)
-              return this.buildReceipt(order, label, showLocation);
+              return this.buildReceipt(
+                order,
+                label,
+                showLocation,
+                showQrcode,
+              );
             return this.buildReceipt(
               {
                 ...order,
@@ -330,6 +343,7 @@ export class PrinterService {
               },
               label,
               showLocation,
+              showQrcode,
             );
           });
     const gap = Math.min(Math.max(0, Math.floor(gapSeconds)), 10);
@@ -418,6 +432,7 @@ export class PrinterService {
     order: ReceiptOrderContext,
     copyLabel?: string,
     showLocation = true,
+    showQrcode = true,
   ): string {
     const address = order.address ?? {};
     const lines: string[] = [];
@@ -483,11 +498,14 @@ export class PrinterService {
       );
     // 票尾二维码（IKSN21 道哥 2026-11-04）：URL Link=微信扫一扫直达配送小
     // 程序到店确认页，文案「骑手扫码 · 到店取货」；生成失败回落 orderNo
-    // 文本码（仓管/客服扫码查单 + 小程序内扫码旧行为），文案随之回旧口径
-    lines.push(TAG.center(TAG.qr(order.arriveUrl ?? order.orderNo)));
-    lines.push(
-      TAG.center(order.arriveUrl ? '骑手扫码 · 到店取货' : '扫码核验订单'),
-    );
+    // 文本码（仓管/客服扫码查单 + 小程序内扫码旧行为），文案随之回旧口径。
+    // receiptShowQrcode=false 整段不渲染（感谢语+切刀保留）
+    if (showQrcode) {
+      lines.push(TAG.center(TAG.qr(order.arriveUrl ?? order.orderNo)));
+      lines.push(
+        TAG.center(order.arriveUrl ? '骑手扫码 · 到店取货' : '扫码核验订单'),
+      );
+    }
     lines.push(TAG.center('感谢惠顾，欢迎再次下单'));
     lines.push('<CUT>');
     return lines.join('\n');

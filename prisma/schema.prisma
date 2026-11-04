@@ -154,6 +154,9 @@ model Campus {
   // （含商家联）。printer.service 宽位断言消费（receiptShowLocation ?? true），
   // schema 落地即生效；存量校区默认 true 行为不变
   receiptShowLocation         Boolean               @default(true)
+  // 小票二维码打印开关（道哥 2026-11-04）：关=小票不打票尾二维码及文案行
+  // （骑手扫码到店的码源随之消失，手动到店按钮兜底）。默认 true 行为不变
+  receiptShowQrcode           Boolean               @default(true)
   // 订单自动出库（IKM55A 道哥 2026-10-16）：开启后已支付订单 N 秒自动出库
   // （含预约达；picking 人工介入不抢跑）。Cron 30s 精度扫描，实际出库
   // 落在 N~N+30s。关闭=完全人工节奏。

@@ -353,6 +353,10 @@ export class UpdateDeliveryConfigDto {
   @IsOptional()
   @IsBoolean()
   receiptShowLocation?: boolean;
+  /** 小票二维码打印开关：关=不打票尾二维码及文案行；不传不动原值 */
+  @IsOptional()
+  @IsBoolean()
+  receiptShowQrcode?: boolean;
   /** 自动出库延迟秒数（IKM55A）：10~600，默认 60 */
   @IsOptional()
   @Type(() => Number)
@@ -807,6 +811,10 @@ export class UpdateCampusDto {
   @IsOptional()
   @IsBoolean()
   receiptShowLocation?: boolean;
+  /** 小票二维码打印开关：关=不打票尾二维码及文案行；不传不动原值 */
+  @IsOptional()
+  @IsBoolean()
+  receiptShowQrcode?: boolean;
   @IsOptional()
   @Type(() => Number)
   @IsInt()
