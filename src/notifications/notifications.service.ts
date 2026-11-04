@@ -728,6 +728,46 @@ export class NotificationsService {
     );
   }
 
+  /**
+   * 夜宵店新单提醒（IKSW1F）：夜宵订单支付成功即推本店楼长（订阅消息，
+   * 与白天楼长到楼通知同模板同额度记账）。fire-and-forget 由业务触发点
+   * void 调用；任何失败静默不阻断支付主流程。
+   */
+  async notifyNightManagerNewOrder(payload: {
+    staffId: string;
+    campusId: string;
+    orderNo: string;
+    amountFen: number;
+    buildingName: string;
+  }): Promise<void> {
+    try {
+      const deliveryConfig = await this.deliveryWechatConfig(payload.campusId);
+      if (!deliveryConfig) return;
+      const staff = await this.db.staff.findUnique({
+        where: { id: payload.staffId },
+        select: { id: true, openid: true, status: true },
+      });
+      if (!staff?.openid || staff.status === 'deleted') return;
+      const yuan = (payload.amountFen / 100).toFixed(2);
+      await this.sendStaffSubscribe(
+        staff.id,
+        staff.openid,
+        {
+          thing6: { value: `${payload.buildingName}夜宵新单 ¥${yuan}`.slice(0, 20) },
+          thing5: { value: '夜宵订单待接单' },
+          thing9: { value: payload.buildingName.slice(0, 20) },
+          name7: { value: deliveryConfig.brandName.slice(0, 20) },
+          time8: { value: NotificationsService.fmtCn(new Date()) },
+        },
+        deliveryConfig,
+      );
+    } catch (error) {
+      this.logger.warn(
+        `夜宵新单楼长通知失败（已忽略）: ${(error as Error).message}`,
+      );
+    }
+  }
+
   /** 楼栋楼长通知（IKEAGE 双角色）：按订单地址楼栋匹配全部楼长/实习楼长，
    *  逐个走订阅消息（额度记账内部处理）；任何异常静默不阻塞履约。 */
   private async notifyBuildingManagers(

@@ -2674,11 +2674,17 @@ export class AdminController {
     @Query('pageSize') pageSize?: string,
     @Query('status') status?: string,
     @Query('keyword') keyword?: string,
+    // IKSW1F 夜宵券 Tab 过滤：不传=不过滤（存量行为零变化）
+    @Query('businessType') businessType?: string,
   ) {
     return ok(
       // IKB5PA：status 过滤（发放中/已暂停 Tab）
       paginate(
-        await this.service.coupons(await this.scopedCampus(req), status),
+        await this.service.coupons(
+          await this.scopedCampus(req),
+          status,
+          businessType,
+        ),
         page,
         pageSize,
         keyword,

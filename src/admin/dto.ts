@@ -406,6 +406,10 @@ export class CreateCouponDto {
   // 不传 = 长期有效（IKDCVO）。
   @IsOptional() @IsString() expiresAt?: string;
   @IsOptional() @IsIn(['platform', 'partner']) kind?: string;
+  // IKSW1F 夜宵券（T52 双向隔离）：不传=day（存量行为零变化）；night=夜宵
+  // 专用券（夜宵领券入口/夜宵订单可用，白天链路全拒）。创建后不可改
+  // （UpdateCouponDto 不收此字段）。
+  @IsOptional() @IsIn(['day', 'night']) businessType?: string;
   @IsOptional() @IsIn(['manual', 'lottery', 'signup']) trigger?: string;
   @IsOptional() @IsString() @MaxLength(60) remark?: string;
   /** 支付后推荐（道哥 2026-09-08）：支付成功页领券卡展示 */

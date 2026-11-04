@@ -556,12 +556,13 @@ export class BusinessService {
     const marketing = await marketingEnabled(this.db, campusId);
     const [items, mine] = await Promise.all([
       this.db.coupon.findMany({
-        where: { campusId },
+        // IKSW1F 券双向隔离（T52）：白天领券中心不下发夜宵券
+        where: { campusId, businessType: 'day' },
         orderBy: { expiresAt: 'asc' },
       }),
       // IKRSIX #77：跨校区券直接不显示（此前仅下单时拦截，列表照显置灰误导）
       this.db.userCoupon.findMany({
-        where: { userId, coupon: { campusId } },
+        where: { userId, coupon: { campusId, businessType: 'day' } },
         include: { coupon: true },
         orderBy: { claimedAt: 'desc' },
       }),
@@ -609,6 +610,9 @@ export class BusinessService {
       // 券跨校园隔离：只能领取本校发放的券。
       if (coupon.campusId !== campusId)
         throw new BadRequestException('该优惠券不属于当前校园');
+      // IKSW1F 券双向隔离（T52）：夜宵券只能走夜宵店领券入口
+      if (coupon.businessType === 'night')
+        throw new BadRequestException('该券仅限夜宵店使用，请在夜宵店领取');
       if (coupon.status !== 'active')
         throw new BadRequestException('优惠券暂不可领取');
       // IKDCVO：lottery/signup/定向 券只走发放通道，不开放手动领取。
@@ -665,6 +669,9 @@ export class BusinessService {
     // 券跨校园隔离：只能使用本校发放的券。
     if (record.coupon.campusId !== campusId)
       throw new BadRequestException('该优惠券不属于当前校园');
+    // IKSW1F 券双向隔离（T52）：白天订单不可使用夜宵券
+    if (record.coupon.businessType === 'night')
+      throw new BadRequestException('夜宵券仅限夜宵店订单使用');
     if (!['claimed', 'released'].includes(record.status))
       throw new BadRequestException('优惠券当前状态不可使用');
     // IKA0BI：bonus 为 2 小时送达专属赠券模板状态——不进公开可领列表、
@@ -830,6 +837,8 @@ export class BusinessService {
       status: 'on-sale',
       stock: { gt: 0 },
       category: { hidden: false },
+      // IKSW1F 夜宵隔离：夜主档行不进白天首页（销量位/推荐位）
+      nightCatalog: false,
     };
     const [campus, banners, categories, featured, rest] = await Promise.all([
       this.campus(campusId),
@@ -872,7 +881,7 @@ export class BusinessService {
         status: 'active',
         startsAt: { lte: now },
         endsAt: { gt: now },
-        product: { campusId, status: 'on-sale', stock: { gt: 0 } },
+        product: { campusId, status: 'on-sale', stock: { gt: 0 }, nightCatalog: false },
       },
       orderBy: { endsAt: 'asc' },
       take: 20,
@@ -943,6 +952,8 @@ export class BusinessService {
         stock: { gt: 0 },
         // IKC9M4：hidden 分类的商品全链路不露出（全部/分类/搜索）
         category: { hidden: false },
+        // IKSW1F 夜宵隔离：夜主档行（隐藏分类）不进白天目录/搜索
+        nightCatalog: false,
         ...(categoryId && categoryId !== 'all' ? { categoryId } : {}),
         ...(keyword
           ? { name: { contains: keyword, mode: 'insensitive' } }
@@ -977,6 +988,7 @@ export class BusinessService {
         status: 'on-sale',
         stock: { gt: 0 },
         category: { hidden: false },
+        nightCatalog: false,
       },
       },
       orderBy: [{ endsAt: 'asc' }, { createdAt: 'asc' }],
@@ -1001,6 +1013,7 @@ export class BusinessService {
         stock: { gt: 0 },
         featured: true,
         category: { hidden: false },
+        nightCatalog: false,
       },
       orderBy: { featuredSort: 'asc' },
     });
@@ -1013,7 +1026,7 @@ export class BusinessService {
   }
   async product(id: string, campusId: string, userId?: string) {
     const item = await this.db.product.findFirst({
-      where: { id, campusId, status: 'on-sale' },
+      where: { id, campusId, status: 'on-sale', nightCatalog: false },
     });
     if (!item) throw new NotFoundException('商品不存在');
     // IKHL6Y 秒杀双渠道：详情页为正常渠道——原价展示/原价加购（clearance
@@ -1042,6 +1055,7 @@ export class BusinessService {
             barcode: src.barcode,
             status: 'on-sale',
             category: { hidden: false },
+            nightCatalog: false,
           },
         })
       : null;
@@ -1199,7 +1213,10 @@ export class BusinessService {
     // 缺省 false（原价行）。原价行不限购、无秒杀校验
     asSeckill = false,
   ) {
-    const p = await this.db.product.findUnique({ where: { id: productId } });
+    const p = await this.db.product.findFirst({
+      // IKSW1F 夜宵隔离：夜主档行不可进白天购物车
+      where: { id: productId, nightCatalog: false },
+    });
     if (!p) throw new NotFoundException('商品不存在');
     // IKG1C（IKGI1C 打烊停单）：加购方向硬拦，判定在秒杀等校验之前；
     // 减少/清零方向放行（同 IKDFZK 口径，别把购物车存量行变成删不掉的钉子户）
@@ -1286,7 +1303,8 @@ export class BusinessService {
       const p = await this.db.product.findUnique({
         where: { id: line.product.id },
       });
-      if (!p || line.quantity > p.stock - p.lockedStock)
+      // IKSW1F 夜宵隔离兜底：夜主档行混入购物车（直调绕过加购拦截）一律拒
+      if (!p || p.nightCatalog || line.quantity > p.stock - p.lockedStock)
         throw new BadRequestException(`${line.product.name}库存不足`);
     }
     // IKQZY7 周期限购结算兜底（加购到结算间名额可能被占）
@@ -2122,7 +2140,7 @@ export class BusinessService {
       where: {
         userId,
         status: { in: ['claimed', 'released'] },
-        coupon: { campusId, kind: 'platform' },
+        coupon: { campusId, kind: 'platform', businessType: 'day' },
       },
       include: { coupon: true },
       orderBy: { claimedAt: 'desc' },

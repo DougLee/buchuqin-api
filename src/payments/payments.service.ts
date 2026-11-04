@@ -75,6 +75,15 @@ interface WxPayCreds {
 }
 
 /**
+ * 夜宵支付成功处理器（IKSW1F）：PaymentsService 回调验签/解密后的业务分发口，
+ * 由 night 模块实现并注册（setter 注入防循环依赖）。outTradeNo 前缀路由：
+ * YX*=夜宵订单支付、ND*=楼长押金缴纳。实现必须幂等。
+ */
+export interface NightPaymentHandler {
+  onPaid(outTradeNo: string, transactionId?: string): Promise<void>;
+}
+
+/**
  * 微信支付后端（IK8W5I → ADR-0004 真实化）：
  * - 组织 A env 兜底：WX_APPID_USER + WX_MCH_ID/WX_APIV3_KEY/WX_SERIAL_NO/
  *   WX_PRIVATE_KEY(_PATH)/WX_NOTIFY_URL 齐备才可用；缺失且订单未命中组织
@@ -94,6 +103,15 @@ export class PaymentsService {
     private readonly db: PrismaService,
     private readonly business: BusinessService,
   ) {}
+  /**
+   * 夜宵支付处理器（IKSW1F）：setter 注入（NightOrderService 构造时注册），
+   * 避免 payments ↔ night 模块循环依赖。回调命中 YX/ND 前缀商户单号时分发；
+   * 实现方必须幂等（重复回调只落账一次）。
+   */
+  private nightHandler: NightPaymentHandler | null = null;
+  registerNightPaymentHandler(handler: NightPaymentHandler) {
+    this.nightHandler = handler;
+  }
   private privateKeyCache: string | null = null;
   /** 微信平台证书缓存：serialNo → PEM（验签用），未知序列号时刷新一次。 */
   private platformCerts = new Map<string, string>();
@@ -206,7 +224,6 @@ export class PaymentsService {
     if (!creds)
       throw new HttpException('微信支付未配置', HttpStatus.NOT_IMPLEMENTED);
     const amount = Number(order.payableAmount);
-    const appid = creds.appId;
     const user = await this.db.user.findUniqueOrThrow({
       where: { id: userId },
       select: { openid: true },
@@ -215,15 +232,42 @@ export class PaymentsService {
       throw new BadRequestException(
         '当前用户无微信 openid，无法发起小程序支付（请用微信登录账号支付）',
       );
+    const payParams = await this.jsapiPrepay(creds, {
+      outTradeNo: order.orderNo,
+      amount,
+      openid: user.openid,
+      description: `不出寝食社订单 ${order.orderNo}`,
+    });
+    return {
+      orderId: order.id,
+      orderNo: order.orderNo,
+      amount,
+      // 订阅消息模板（ADR-0004 两条）：随预下单下发，小程序支付前请求授权。
+      // IKKRMT：组织 B 订单下发空数组（env 模板属于组织 A 小程序，跨 AppID
+      // 无效；组织级模板 ID 未入库，前端拿到空数组即静默跳过授权）。
+      subscribeTemplates: creds.organizationId ? [] : this.subscribeTemplates(),
+      payParams,
+    };
+  }
+
+  /**
+   * JSAPI 统一下单公共通道（IKSW1F 夜宵店重构抽出）：day prepay 与夜宵
+   * prepayNight 共用——报文/签名/错误处理与原 prepay 内联实现逐字节一致。
+   */
+  private async jsapiPrepay(
+    creds: WxPayCreds,
+    opts: { outTradeNo: string; amount: number; openid: string; description: string },
+  ) {
+    const appid = creds.appId;
     const body = JSON.stringify({
       appid,
       mchid: creds.mchId,
-      description: `不出寝食社订单 ${order.orderNo}`,
-      out_trade_no: order.orderNo,
+      description: opts.description,
+      out_trade_no: opts.outTradeNo,
       notify_url: creds.notifyUrl,
       // 金额单位:分（IK8W5K）：payableAmount 已是整数分，直接作为微信支付 total。
-      amount: { total: amount, currency: 'CNY' },
-      payer: { openid: user.openid },
+      amount: { total: opts.amount, currency: 'CNY' },
+      payer: { openid: opts.openid },
     });
     const urlPath = '/v3/pay/transactions/jsapi';
     let response: Response;
@@ -256,25 +300,54 @@ export class PaymentsService {
       nonceStr = randomUUID().replace(/-/g, ''),
       pkg = `prepay_id=${result.prepay_id}`;
     return {
-      orderId: order.id,
-      orderNo: order.orderNo,
-      amount,
-      // 订阅消息模板（ADR-0004 两条）：随预下单下发，小程序支付前请求授权。
-      // IKKRMT：组织 B 订单下发空数组（env 模板属于组织 A 小程序，跨 AppID
-      // 无效；组织级模板 ID 未入库，前端拿到空数组即静默跳过授权）。
-      subscribeTemplates: creds.organizationId ? [] : this.subscribeTemplates(),
-      payParams: {
-        appId: appid,
-        timeStamp,
-        nonceStr,
-        package: pkg,
-        signType: 'RSA',
-        paySign: this.sign(
-          `${appid}\n${timeStamp}\n${nonceStr}\n${pkg}\n`,
-          creds.privateKey,
-        ),
-      },
+      appId: appid,
+      timeStamp,
+      nonceStr,
+      package: pkg,
+      signType: 'RSA',
+      paySign: this.sign(
+        `${appid}\n${timeStamp}\n${nonceStr}\n${pkg}\n`,
+        creds.privateKey,
+      ),
     };
+  }
+
+  /**
+   * 夜宵通道 JSAPI 下单（IKSW1F）：夜宵订单（YX 前缀）与押金缴纳（ND 前缀）
+   * 共用；amount 为整数分。业务校验（订单归属/状态、押金档位）由调用方
+   * （night 服务）完成，这里只做凭证路由与微信交互。
+   */
+  async nightPrepay(opts: {
+    campusId: string;
+    outTradeNo: string;
+    amount: number;
+    openid: string;
+    description: string;
+    /** IKSW1F 押金场景：楼长在履约端小程序拉起支付，payer openid 属履约端
+     *  AppID——传履约端 AppID 覆盖下单 appid（商户号必须已绑定该 AppID，
+     *  未绑定微信侧报 appid/openid 不匹配，属上线配置项）。缺省=用户端口径。 */
+    payerAppId?: string;
+  }) {
+    const creds = await this.campusCreds(opts.campusId);
+    if (!creds)
+      throw new HttpException('微信支付未配置', HttpStatus.NOT_IMPLEMENTED);
+    const effective = opts.payerAppId ? { ...creds, appId: opts.payerAppId } : creds;
+    return this.jsapiPrepay(effective, opts);
+  }
+
+  /**
+   * 夜宵通道主动查单（IKSW1F）：按商户单号查交易状态，供押金缴纳/夜宵订单
+   * 支付结果轮询兜底（回调链路故障时以查单为准落账，与白天 status 兜底同构）。
+   */
+  async nightTradeState(
+    outTradeNo: string,
+    campusId: string,
+  ): Promise<{ tradeState?: string; transactionId?: string }> {
+    const creds = await this.campusCreds(campusId);
+    if (!creds)
+      throw new HttpException('微信支付未配置', HttpStatus.NOT_IMPLEMENTED);
+    const trade = await this.queryWechatTrade(outTradeNo);
+    return { tradeState: trade.trade_state, transactionId: trade.transaction_id };
   }
 
   /**
@@ -292,8 +365,14 @@ export class PaymentsService {
     refundFen: number,
     refundNo: string,
     reason: string,
+    // IKSW1F 夜宵通道：夜宵订单/押金退款无 Refund 行可回查，调用方显式带
+    // 原收款校区路由凭证；缺省 undefined=白天路径（按 Refund→Order 回查），
+    // 存量调用方行为零变化
+    campusIdOverride?: string,
   ): Promise<{ refundId: string; status: string }> {
-    const creds = await this.orderCreds(orderNo);
+    const creds = campusIdOverride
+      ? await this.campusCreds(campusIdOverride)
+      : await this.orderCreds(orderNo);
     if (!creds)
       throw new HttpException('微信支付未配置', HttpStatus.NOT_IMPLEMENTED);
     const body = JSON.stringify({
@@ -344,11 +423,18 @@ export class PaymentsService {
    * 文档中定义的参数」，2026-09-23 测试环境实测；mchid 从鉴权头取）。
    * IKKRMT：凭证按原订单所属组织路由（组织 B 退款单只能在组织 B 商户号下查）。
    */
-  async queryWechatRefund(refundNo: string): Promise<{
+  async queryWechatRefund(
+    refundNo: string,
+    // IKSW1F 夜宵通道：夜宵退款单（NR 前缀）无 Refund 行，调用方显式带校区；
+    // 缺省=白天路径（Refund 行回查）零变化
+    campusIdOverride?: string,
+  ): Promise<{
     status: string;
     refundId?: string;
   }> {
-    const creds = await this.refundCreds(refundNo);
+    const creds = campusIdOverride
+      ? await this.campusCreds(campusIdOverride)
+      : await this.refundCreds(refundNo);
     if (!creds)
       throw new HttpException('微信支付未配置', HttpStatus.NOT_IMPLEMENTED);
     const urlPath = `/v3/refund/domestic/refunds/${refundNo}`;
@@ -475,7 +561,27 @@ export class PaymentsService {
     const order = await this.db.order.findUnique({
       where: { orderNo: event.out_trade_no ?? '' },
     });
-    if (!order) return { code: 'SUCCESS', message: '订单不存在，忽略' };
+    if (!order) {
+      // IKSW1F 夜宵通道路由：白天订单未命中 → 按商户单号前缀分发夜宵处理器
+      // （YX=夜宵订单支付 / ND=楼长押金缴纳）。处理器由 Night 服务启动时注册
+      // （setter 注入避免模块循环依赖）；未注册（单测/极端时序）按忽略处理，
+      // 微信会重试回调，服务就绪后幂等落账。
+      const tradeNo = event.out_trade_no ?? '';
+      if (this.nightHandler && (tradeNo.startsWith('YX') || tradeNo.startsWith('ND'))) {
+        try {
+          await this.nightHandler.onPaid(tradeNo, event.transaction_id);
+        } catch (error) {
+          this.logger.error(
+            `夜宵支付落账失败：outTradeNo=${tradeNo} wxTradeId=${event.transaction_id ?? '未知'} ` +
+              `reason=${error instanceof Error ? error.message : String(error)}`,
+          );
+          // 返回非 SUCCESS 让微信重试（幂等由 night 处理器保证）
+          return { code: 'FAIL', message: '夜宵订单处理失败，请重试' };
+        }
+        return { code: 'SUCCESS', message: 'OK' };
+      }
+      return { code: 'SUCCESS', message: '订单不存在，忽略' };
+    }
     await this.applyPayment(order, event.transaction_id);
     return { code: 'SUCCESS', message: 'OK' };
   }

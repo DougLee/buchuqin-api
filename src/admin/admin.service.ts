@@ -1009,6 +1009,10 @@ export class AdminService {
       // IKD6FG：categoryId 分类筛选（官方库/本校区/库存共用）
       where: {
         campusId,
+        // IKSW1F 夜宵隔离：夜主档行（nightCatalog=true）不进白天商品管理
+        // 列表（夜主档走 /admin/night/catalog 独立数据面）；存量行默认
+        // false，该过滤对存量行为零变化
+        nightCatalog: false,
         ...(categoryId ? { categoryId } : {}),
         ...(catalogScope ? { catalogScope } : {}),
         // IKKRMX：组织目录行也落 campus-official 伪校区（复用校区模型不建
@@ -8371,9 +8375,16 @@ export class AdminService {
     return after;
   }
   /** IKB5PA：status 过滤（active/paused），不传 = 全部。 */
-  async coupons(campusId: string, status?: string) {
+  async coupons(campusId: string, status?: string, businessType?: string) {
     const xs = await this.db.coupon.findMany({
-      where: { campusId, ...(status ? { status } : {}) },
+      where: {
+        campusId,
+        ...(status ? { status } : {}),
+        // IKSW1F 夜宵券 Tab 过滤：day/night 显式过滤，缺省不过滤（零变化）
+        ...(businessType === 'day' || businessType === 'night'
+          ? { businessType }
+          : {}),
+      },
     });
     return xs.map((x) => ({
       ...x,
@@ -8500,6 +8511,8 @@ export class AdminService {
         name: body.name,
         kind,
         trigger,
+        // IKSW1F 券双向隔离（T52）：businessType 缺省 day=存量行为零变化
+        businessType: body.businessType === 'night' ? 'night' : 'day',
         remark: body.remark?.trim() ?? '',
         amount: kind === 'partner' ? 0 : body.amount,
         threshold: kind === 'partner' ? 0 : body.threshold,

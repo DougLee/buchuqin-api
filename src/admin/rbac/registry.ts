@@ -178,6 +178,18 @@ export const MENU_NODES: MenuNodeDef[] = [
      登录即可见（router 对这两个 path 白名单放行，菜单节点仅作展示） */
   { code: 'help', name: '帮助中心', type: 1, parent: 'g.sys', path: '/help', icon: 'help', order: 6 },
   { code: 'changelog', name: '更新日志', type: 1, parent: 'g.sys', path: '/changelog', icon: 'help', order: 7 },
+
+  /* ---------- 目录：夜宵经营（IKSW1F 楼栋夜宵店，2026-11-04 道哥定稿） ---------- */
+  // 注意：MENU_NODES 仅在新库首灌一次（menusSeeded=true 后 DB 为唯一真源）——
+  // 存量环境需经「菜单管理」界面按本组 perms 模式建行后授权，不会随发版自动出现。
+  { code: 'g.night', name: '夜宵经营', type: 0, order: 8 },
+  { code: 'night-stores', name: '夜宵店铺', type: 1, parent: 'g.night', path: '/night-stores', icon: 'campus', order: 1, perms: ['GET /admin/night/stores', 'GET /admin/night/stores/:id', 'GET /admin/night/stores/:id/stock-txns', 'GET /admin/night/stores/:id/liquidation', 'GET /admin/night/catalog', 'GET /admin/night/config', 'GET /admin/night/coupons'] },
+  { code: 'night-stores.write', name: '夜宵店铺管理', type: 2, parent: 'night-stores', order: 1, perms: ['POST /admin/night/stores', 'PATCH /admin/night/stores/:id', 'POST /admin/night/catalog', 'PATCH /admin/night/catalog/:id', 'POST /admin/night/stores/:id/products', 'PATCH /admin/night/stores/:id/products/:productId', 'POST /admin/night/stores/:id/products/:productId/stock', 'PUT /admin/night/config'], remark: '建店/换楼长/夜主档/楼栋商品/强制停售/库存调整/校区配置' },
+  { code: 'night-deposit', name: '押金账务', type: 2, parent: 'night-stores', order: 2, perms: ['POST /admin/night/stores/:id/deposit/deduct', 'POST /admin/night/stores/:id/deposit/refund'], remark: '判责扣除（不得扣负）/退出清算原路退还' },
+  { code: 'night-orders', name: '夜宵订单', type: 1, parent: 'g.night', path: '/night-orders', icon: 'orders', order: 2, perms: ['GET /admin/night/orders', 'GET /admin/night/orders/:id'] },
+  { code: 'night-orders.refund', name: '夜宵退款', type: 2, parent: 'night-orders', order: 1, perms: ['POST /admin/night/orders/:id/refund'], remark: '整单/部分/配送费/回库；佣金联动 adjust+clawback' },
+  { code: 'night-settlements', name: '夜宵结算', type: 1, parent: 'g.night', path: '/night-settlements', icon: 'finance', order: 3, perms: ['GET /admin/night/settlements'] },
+  { code: 'night-settlements.write', name: '夜宵结算操作', type: 2, parent: 'night-settlements', order: 1, perms: ['POST /admin/night/settlements/settle', 'POST /admin/night/settlements/:batch/pay'], remark: '周账单出账/标记打款' },
 ];
 
 export const MENU_NODE_CODES = new Set(MENU_NODES.map((n) => n.code));

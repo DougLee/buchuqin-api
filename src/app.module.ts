@@ -32,6 +32,15 @@ import { FilesController } from './files/files.controller';
 import { NotificationsService } from './notifications/notifications.service';
 import { GzhController } from './notifications/gzh.controller';
 import { PrinterService } from './printer/printer.service';
+// 楼栋夜宵店（IKSW1F）：三端接口 + 超时 Cron
+import { NightAdminController } from './night/night-admin.controller';
+import { NightRiderController } from './night/night-rider.controller';
+import { NightUserController } from './night/night-user.controller';
+import { NightAdminService } from './night/night-admin.service';
+import { NightOrderService } from './night/night-order.service';
+import { NightRiderService } from './night/night-rider.service';
+import { NightUserService } from './night/night-user.service';
+import { NightTimeoutService } from './night/night-timeout.service';
 
 // 部署模式下由 API 容器托管管理后台静态站（ADMIN_DIST_DIR 指向挂载目录）；
 // 本地开发不设置该变量，行为不变
@@ -76,6 +85,10 @@ const adminDistDir = process.env.ADMIN_DIST_DIR ?? '';
     FilesController,
     // 服务号回调（IKI3ZP）：微信服务器推送事件（subscribe 绑定/取关解绑）
     GzhController,
+    // 楼栋夜宵店（IKSW1F）：后台/楼长/用户三端
+    NightAdminController,
+    NightRiderController,
+    NightUserController,
   ],
   providers: [
     PrismaService,
@@ -93,6 +106,13 @@ const adminDistDir = process.env.ADMIN_DIST_DIR ?? '';
     NotificationsService,
     // 芯烨云小票打印（IKBT6N）：出库自动出票 + 订单补打，env 门控静默降级。
     PrinterService,
+    // 夜宵店服务（IKSW1F）：NightOrderService 构造时向 PaymentsService
+    // 注册回调处理器（YX/ND 前缀路由）
+    NightAdminService,
+    NightOrderService,
+    NightRiderService,
+    NightUserService,
+    NightTimeoutService,
     JwtAuthGuard,
     UserRoleGuard,
     // RBAC V1：权限登记同步 + 有效权限服务 + 后台鉴权守卫
