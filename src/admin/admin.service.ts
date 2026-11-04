@@ -5958,6 +5958,11 @@ export class AdminService {
         ...(body.autoOutboundDelaySeconds != null
           ? { autoOutboundDelaySeconds: body.autoOutboundDelaySeconds }
           : {}),
+        // IKRSJ2：小票库位打印开关（可选不传不动）
+        ...(body.receiptShowLocation === undefined ||
+        body.receiptShowLocation === null
+          ? {}
+          : { receiptShowLocation: body.receiptShowLocation }),
         // IKRSIZ #108：楼长销售额展示开关（关=配送端不下发销售额）
         ...(body.managerSalesVisible === undefined ||
         body.managerSalesVisible === null
@@ -5997,6 +6002,7 @@ export class AdminService {
         deliveryStoryTitle: true,
         deliveryStoryMain: true,
         deliveryStoryDesc: true,
+        receiptShowLocation: true,
         autoOutboundEnabled: true,
         autoOutboundDelaySeconds: true,
         managerSalesVisible: true,
@@ -8128,6 +8134,11 @@ export class AdminService {
         ...(body.autoOutboundDelaySeconds != null
           ? { autoOutboundDelaySeconds: body.autoOutboundDelaySeconds }
           : {}),
+        // IKRSJ2：小票库位打印开关（可选不传不动）
+        ...(body.receiptShowLocation === undefined ||
+        body.receiptShowLocation === null
+          ? {}
+          : { receiptShowLocation: body.receiptShowLocation }),
         // IKHMKR：无楼长提示（校区自定义，空串=回落默认文案）
         ...(body.noManagerTip != null
           ? { noManagerTip: body.noManagerTip }
@@ -9720,6 +9731,8 @@ export class AdminService {
           autoOutboundDelaySeconds: true,
           // IKHMKR 无楼长提示：校区自定义，聚合页配送 Tab 编辑
           noManagerTip: true,
+          // IKRSJ2 小票库位打印开关：聚合页配送 Tab 编辑（写通读漏会回显旧值）
+          receiptShowLocation: true,
           // IKSN20 预约达营销文案+商品页配送说明三段：写通读漏会回显空
           scheduledGiftText: true,
           deliveryStoryTitle: true,

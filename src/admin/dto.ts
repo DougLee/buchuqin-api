@@ -349,6 +349,10 @@ export class UpdateDeliveryConfigDto {
   @IsOptional()
   @IsBoolean()
   autoOutboundEnabled?: boolean;
+  /** 小票库位打印开关（IKRSJ2）：关=小票全联不打库位行；不传不动原值 */
+  @IsOptional()
+  @IsBoolean()
+  receiptShowLocation?: boolean;
   /** 自动出库延迟秒数（IKM55A）：10~600，默认 60 */
   @IsOptional()
   @Type(() => Number)
@@ -799,6 +803,10 @@ export class UpdateCampusDto {
   @IsOptional()
   @IsBoolean()
   autoOutboundEnabled?: boolean;
+  /** 小票库位打印开关（IKRSJ2）：关=小票全联不打库位行；不传不动原值 */
+  @IsOptional()
+  @IsBoolean()
+  receiptShowLocation?: boolean;
   @IsOptional()
   @Type(() => Number)
   @IsInt()

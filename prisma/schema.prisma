@@ -150,6 +150,10 @@ model Campus {
   // （可退上限=实付−配送费维持现状）；开=到店前退款上限放宽为实付全额。
   // 订单已到店（arrived 及之后）不受此开关限制，配送费一律可退
   refundDeliveryFeeBeforeArrive Boolean             @default(false)
+  // 小票库位打印开关（IKRSJ2 道哥 2026-11-04 定版）：关=小票全联不打库位行
+  // （含商家联）。printer.service 宽位断言消费（receiptShowLocation ?? true），
+  // schema 落地即生效；存量校区默认 true 行为不变
+  receiptShowLocation         Boolean               @default(true)
   // 订单自动出库（IKM55A 道哥 2026-10-16）：开启后已支付订单 N 秒自动出库
   // （含预约达；picking 人工介入不抢跑）。Cron 30s 精度扫描，实际出库
   // 落在 N~N+30s。关闭=完全人工节奏。
