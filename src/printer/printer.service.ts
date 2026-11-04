@@ -378,6 +378,9 @@ export class PrinterService {
       // 此前「排版乱套」疑似为样张中行内混排（实付 <B>￥x</B>）所致，非
       // 独立标签行问题。缩进取消防折行（15 位恰好一行）。【】GBK 安全
       if (loc && showLocation) lines.push(TAG.bold(`【库位:${loc}】`));
+      // 商品块间空行（道哥 2026-11-04）：库位/价格与下一个商品品名太挤，
+      // 空一行分隔；末个商品后同样留白，与金额区分隔线拉开呼吸感
+      lines.push('');
     }
     lines.push('-'.repeat(LINE_WIDTH));
     lines.push(itemLine('商品金额', yuan(order.productAmount)));
