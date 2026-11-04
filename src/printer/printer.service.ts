@@ -460,14 +460,15 @@ export class PrinterService {
     for (const line of order.items ?? []) {
       const name = line.product?.name ?? '未知商品';
       const price = line.product?.price;
+      // 商品区字号定版（道哥 2026-11-04）：品名/数量价格/库位统一 <B>
+      // 放大一号加粗（本机型无纯加粗档），票头店名/单号保持 <CB> 大字；
+      // wrapText 宽度不变（<B> 同为宽放大一倍，一行 16 半角位）
       for (const seg of wrapText(name, BIG_LINE_WIDTH))
-        lines.push(TAG.big(seg));
-      // 数量价格放大（道哥 2026-11-04 定版）：HB2 实测恒居中无法靠右，
-      // 改与品名同款 <CB> 双倍宽高，itemLine 放大贴右（右缘 4 列空隙）
+        lines.push(TAG.bold(seg));
       lines.push(
         itemLine(
           '',
-          TAG.big(
+          TAG.bold(
             `x${line.quantity}${price == null ? '' : ' ' + yuan(price)}`,
           ),
         ),
