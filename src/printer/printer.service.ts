@@ -91,8 +91,6 @@ const TAG = {
   /** 双倍宽高加粗：票头店名。 */
   big: (s: string) => `<CB>${s}</CB>`,
   bold: (s: string) => `<B>${s}</B>`,
-  /** HB2：芯烨云高倍放大（道哥 2026-11-04 数量价格行选型） */
-  hb2: (s: string) => `<HB2>${s}</HB2>`,
   qr: (s: string) => `<QR>${s}</QR>`,
 } as const;
 
@@ -464,12 +462,12 @@ export class PrinterService {
       const price = line.product?.price;
       for (const seg of wrapText(name, BIG_LINE_WIDTH))
         lines.push(TAG.big(seg));
-      // 数量价格放大（道哥 2026-11-04 定版）：HB2 高倍放大靠右；itemLine
-      // 对齐检测含 HB2（2026-09-05 实测定版贴右逻辑）
+      // 数量价格放大（道哥 2026-11-04 定版）：HB2 实测恒居中无法靠右，
+      // 改与品名同款 <CB> 双倍宽高，itemLine 放大贴右（右缘 4 列空隙）
       lines.push(
         itemLine(
           '',
-          TAG.hb2(
+          TAG.big(
             `x${line.quantity}${price == null ? '' : ' ' + yuan(price)}`,
           ),
         ),
@@ -576,7 +574,7 @@ function truncate(s: string, max: number): string {
  *  末字符挤到下一行。 */
 function itemLine(left: string, right: string): string {
   const bare = (s: string) => s.replace(/<[^>]+>/g, '');
-  const scale = /<B>|<CB>|<HB2>/.test(right) ? 2 : 1;
+  const scale = /<B>|<CB>/.test(right) ? 2 : 1;
   const rightW = Math.max(textWidth(bare(right)) * scale, 4);
   const wLeft = textWidth(bare(left));
   // 放大段（<B>）右缘留 4 列空隙、空格基准 11（2026-09-05 道哥实测票定版：
