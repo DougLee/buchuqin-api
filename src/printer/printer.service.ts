@@ -462,10 +462,14 @@ export class PrinterService {
       const price = line.product?.price;
       for (const seg of wrapText(name, BIG_LINE_WIDTH))
         lines.push(TAG.big(seg));
+      // 数量价格放大（道哥 2026-11-04）：<B> 同库位行字号，itemLine 内置
+      // 放大贴右处理（2026-09-05 实测定版：2 倍宽+右缘 4 列空隙）
       lines.push(
         itemLine(
           '',
-          `x${line.quantity}${price == null ? '' : ' ' + yuan(price)}`,
+          TAG.bold(
+            `x${line.quantity}${price == null ? '' : ' ' + yuan(price)}`,
+          ),
         ),
       );
       const loc = [line.product?.location, line.product?.locationCode]
