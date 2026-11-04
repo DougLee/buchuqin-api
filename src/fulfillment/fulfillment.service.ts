@@ -1212,8 +1212,7 @@ export class FulfillmentService {
     if (!this.admin) throw new Error('AdminService 未注入');
     return this.admin.battleMapRoom(staff.campusId, roomId);
   }
-
-
+}
 
 /** IKSN21：扫码内容解析——URL Link（wxaurl.cn/xxx?no=orderNo）提取 no 参数；
  *  纯 orderNo（旧票/手动输入）原样返回。容错：无参数的链接原样返回，由
