@@ -373,10 +373,11 @@ export class PrinterService {
       const loc = [line.product?.location, line.product?.locationCode]
         .filter(Boolean)
         .join('-');
-      // 库位行【】括号强调（2026-09-05 道哥定版）：常规字号不放大、拣货扫视够
-      // 醒目——<B> 在本机型实测是放大加粗，不可用；【】在 GBK 字符集内安全
-      //（2026-11-04 放大尝试三个版本实机均排版异常，已整体撤销恢复本版）
-      if (loc && showLocation) lines.push(`  【库位:${loc}】`);
+      // 库位行（道哥 2026-11-04 再次要求放大）：<B> 放大加粗靠左，比品名
+      // <CB> 小一号。整行独立标签（同品名既有稳定用法），无行内混排——
+      // 此前「排版乱套」疑似为样张中行内混排（实付 <B>￥x</B>）所致，非
+      // 独立标签行问题。缩进取消防折行（15 位恰好一行）。【】GBK 安全
+      if (loc && showLocation) lines.push(TAG.bold(`【库位:${loc}】`));
     }
     lines.push('-'.repeat(LINE_WIDTH));
     lines.push(itemLine('商品金额', yuan(order.productAmount)));
