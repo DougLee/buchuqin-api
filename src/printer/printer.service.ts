@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import { PrismaService } from '../database/prisma.service';
+import { campusOrganizationId } from '../common/organization';
 
 /**
  * 芯烨云（XPYUN）云打印小票（IKBT6N）。
@@ -43,6 +44,11 @@ export interface ReceiptOrderContext {
   id: string;
   orderNo: string;
   campusId: string;
+  /** IKSN21（道哥 2026-11-04）：小票二维码=微信 URL Link，微信扫一扫直达
+   *  配送小程序到店确认页（pages/arrive/scan?no=orderNo）；空/未生成=回落
+   *  orderNo 文本码（旧票面行为，兼容存量扫码链路）。printOrderReceipt
+   *  统一生成一次传入（多联共用同一码）。 */
+  arriveUrl?: string;
   /** 当日分拣序号（IKHFDZ）：printOrderReceipt 取号后回填——补打路径调用方
    *  带出已有序号则复用（同单同号）。 */
   dailySeq?: number | null;
@@ -115,6 +121,78 @@ export class PrinterService {
     return createHash('sha1')
       .update(`${user}${userKey}${timestamp}`)
       .digest('hex');
+  }
+
+  /** IKSN21（道哥 2026-11-04）：微信 URL Link 生成——小票二维码升级为
+   *  「微信扫一扫直达配送小程序到店确认页」。凭证按订单校区所属组织
+   *  （deliveryWxAppId/Secret），无组织归属回落 env 单机试点口径
+   *  （WX_APPID_DELIVERY/WX_SECRET_DELIVERY，同 auth wechatCredentials）。
+   *  env_version 走 env WX_ENV_VERSION（测试环境配 trial 才能扫开体验版，
+   *  默认 release）。有效期 30 天（接口上限）足够订单流转。
+   *  失败（凭证缺/token 错/配额/接口异常）一律 warn + 返回 undefined——
+   *  二维码回落 orderNo 文本码，绝不阻塞打印主流程。打印低频，token 不做
+   *  缓存（每次打印两次微信调用 ≈ 数百 ms，fire-and-forget 不占事务）。 */
+  private async generateArriveLink(
+    campusId: string,
+    orderNo: string,
+  ): Promise<string | undefined> {
+    try {
+      const organizationId = await campusOrganizationId(this.db, campusId);
+      const org = organizationId
+        ? await this.db.organization.findUnique({
+            where: { id: organizationId },
+            select: { deliveryWxAppId: true, deliveryWxSecret: true },
+          })
+        : null;
+      const appid = org?.deliveryWxAppId?.trim() || process.env.WX_APPID_DELIVERY;
+      const secret =
+        org?.deliveryWxSecret?.trim() || process.env.WX_SECRET_DELIVERY;
+      if (!appid || !secret) {
+        this.logger.debug(
+          '配送小程序凭证未配置（组织与 env 均无），小票二维码回落订单号文本',
+        );
+        return undefined;
+      }
+      const tokenRes = await fetch(
+        `https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid=${appid}&secret=${secret}`,
+      );
+      const tokenData = (await tokenRes.json().catch(() => null)) as
+        | { access_token?: string; errmsg?: string }
+        | null;
+      if (!tokenData?.access_token)
+        throw new Error(
+          `access_token 获取失败: ${tokenData?.errmsg ?? '无返回'}`,
+        );
+      const linkRes = await fetch(
+        `https://api.weixin.qq.com/wxa/generate_urllink?access_token=${tokenData.access_token}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            path: 'pages/arrive/scan',
+            query: `no=${orderNo}`,
+            env_version: process.env.WX_ENV_VERSION || 'release',
+            is_expire: true,
+            expire_interval: 30,
+          }),
+        },
+      );
+      const linkData = (await linkRes.json().catch(() => null)) as
+        | { errcode?: number; errmsg?: string; url_link?: string }
+        | null;
+      if (!linkData?.url_link)
+        throw new Error(
+          `URL Link 生成失败(${linkData?.errcode}): ${linkData?.errmsg ?? '无返回'}`,
+        );
+      return linkData.url_link;
+    } catch (error) {
+      this.logger.warn(
+        `小票到店链接生成失败，二维码回落订单号文本: ${
+          error instanceof Error ? error.message : error
+        }`,
+      );
+      return undefined;
+    }
   }
 
   /** 推送已排版文本到云打印机（凭证未配置静默跳过；失败抛错由调用方兜底）。
@@ -223,6 +301,11 @@ export class PrinterService {
     // 字段由主分支 schema 迁移补齐（本分支零 schema 变更），此处整行取出后
     // 宽位断言读取——字段未就位时恒 undefined → 默认 true（库位照打）；
     // schema 落地后此处零改动生效。关闭=全联不打库位（含商家联）。
+    // IKSN21：二维码升级为微信 URL Link（道哥 2026-11-04）——微信扫一扫
+    // 直达配送小程序到店确认页；生成失败回落 orderNo 文本码（旧行为，兼容
+    // 存量小程序内扫码链路）。多联共用同一码，构建前生成一次。
+    const arriveUrl = await this.generateArriveLink(order.campusId, order.orderNo);
+    if (arriveUrl) order.arriveUrl = arriveUrl;
     const campusRow = (await this.db.campus.findUnique({
       where: { id: order.campusId },
     })) as { receiptShowLocation?: boolean } | null;
@@ -398,9 +481,13 @@ export class PrinterService {
       lines.push(
         `联系人：${address.contactName ?? ''} ${maskPhone(address.phone)}`.trim(),
       );
-    // 票尾：订单号二维码（仓管/客服扫码查单；IKRSIY 同为骑手到店扫码码源）+ 感谢语 + 切刀
-    lines.push(TAG.center(TAG.qr(order.orderNo)));
-    lines.push(TAG.center('扫码核验订单'));
+    // 票尾二维码（IKSN21 道哥 2026-11-04）：URL Link=微信扫一扫直达配送小
+    // 程序到店确认页，文案「骑手扫码 · 到店取货」；生成失败回落 orderNo
+    // 文本码（仓管/客服扫码查单 + 小程序内扫码旧行为），文案随之回旧口径
+    lines.push(TAG.center(TAG.qr(order.arriveUrl ?? order.orderNo)));
+    lines.push(
+      TAG.center(order.arriveUrl ? '骑手扫码 · 到店取货' : '扫码核验订单'),
+    );
     lines.push(TAG.center('感谢惠顾，欢迎再次下单'));
     lines.push('<CUT>');
     return lines.join('\n');

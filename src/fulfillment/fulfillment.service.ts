@@ -782,7 +782,10 @@ export class FulfillmentService {
    * 刷新任务列表。
    */
   async scanArrive(staffId: string, rawOrderNo: string) {
-    const orderNo = String(rawOrderNo ?? '').trim();
+    // IKSN21：扫码内容兼容 URL Link——骑手小程序内 uni.scanCode 扫到新票
+    // 得到 wxaurl.cn 链接（微信外扫直达落地页不走本端点），提取 no 参数；
+    // 纯 orderNo（旧票）原样通过。
+    const orderNo = parseScanOrderNo(rawOrderNo);
     if (!orderNo) throw new BadRequestException('缺少订单号（扫码内容为空）');
     const staff = await this.profile(staffId);
     // IKKRMV：后台员工配送校区订单不经骑手推进（与 updateTask 同门禁）。
@@ -1210,4 +1213,14 @@ export class FulfillmentService {
     return this.admin.battleMapRoom(staff.campusId, roomId);
   }
 
+
+
+/** IKSN21：扫码内容解析——URL Link（wxaurl.cn/xxx?no=orderNo）提取 no 参数；
+ *  纯 orderNo（旧票/手动输入）原样返回。容错：无参数的链接原样返回，由
+ *  后续「订单不存在」兜底话术承接。 */
+function parseScanOrderNo(raw: string): string {
+  const s = String(raw ?? '').trim();
+  if (!s || !s.includes('/')) return s;
+  const m = s.match(/[?&]no=([^&]+)/);
+  return m ? decodeURIComponent(m[1]) : s;
 }
