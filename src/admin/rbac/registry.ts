@@ -156,7 +156,7 @@ export const MENU_NODES: MenuNodeDef[] = [
   { code: 'audit', name: '审计日志', type: 1, parent: 'g.fin', path: '/audit', icon: 'audit', order: 3, perms: ['GET /admin/audit-logs'] },
 
   /* ---------- 目录：系统 ---------- */
-  { code: 'g.sys', name: '系统', type: 0, order: 7 },
+  { code: 'g.sys', name: '系统', type: 0, order: 8 },
   { code: 'accounts', name: '账号管理', type: 1, parent: 'g.sys', path: '/accounts', icon: 'accounts', order: 1, perms: ['GET /admin/accounts', 'GET /admin/rbac/accounts/:id/preview'] },
   // IKKRMM（ADR-0001）：多租户组织只读端点——平台权限（PLATFORM_PATTERNS 拦
   // 校区级授予），页面组件属 IKKRMS（组织 B 开通一条龙），落地前该菜单对
@@ -182,7 +182,7 @@ export const MENU_NODES: MenuNodeDef[] = [
   /* ---------- 目录：夜宵经营（IKSW1F 楼栋夜宵店，2026-11-04 道哥定稿） ---------- */
   // 注意：MENU_NODES 仅在新库首灌一次（menusSeeded=true 后 DB 为唯一真源）——
   // 存量环境需经「菜单管理」界面按本组 perms 模式建行后授权，不会随发版自动出现。
-  { code: 'g.night', name: '夜宵经营', type: 0, order: 8 },
+  { code: 'g.night', name: '夜宵经营', type: 0, order: 7 },
   { code: 'night-stores', name: '夜宵店铺', type: 1, parent: 'g.night', path: '/night-stores', icon: 'campus', order: 1, perms: ['GET /admin/night/stores', 'GET /admin/night/stores/:id', 'GET /admin/night/stores/:id/stock-txns', 'GET /admin/night/stores/:id/liquidation', 'GET /admin/night/catalog', 'GET /admin/night/config', 'GET /admin/night/coupons'] },
   { code: 'night-stores.write', name: '夜宵店铺管理', type: 2, parent: 'night-stores', order: 1, perms: ['POST /admin/night/stores', 'PATCH /admin/night/stores/:id', 'POST /admin/night/catalog', 'PATCH /admin/night/catalog/:id', 'POST /admin/night/stores/:id/products', 'PATCH /admin/night/stores/:id/products/:productId', 'POST /admin/night/stores/:id/products/:productId/stock', 'PUT /admin/night/config'], remark: '建店/换楼长/夜主档/楼栋商品/强制停售/库存调整/校区配置' },
   { code: 'night-deposit', name: '押金账务', type: 2, parent: 'night-stores', order: 2, perms: ['POST /admin/night/stores/:id/deposit/deduct', 'POST /admin/night/stores/:id/deposit/refund'], remark: '判责扣除（不得扣负）/退出清算原路退还' },
