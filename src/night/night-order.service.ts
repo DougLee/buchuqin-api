@@ -250,14 +250,26 @@ export class NightOrderService implements NightPaymentHandler {
           throw new BadRequestException('优惠券不可用或已被锁定');
       }
       // 条件扣库存：影响行数=0 即超卖竞争失败，整个事务回滚（券锁定一并回滚）
+      const stockTxnLines: Array<{
+        nightProductId: string;
+        delta: number;
+        afterStock: number;
+      }> = [];
       for (const line of lines) {
-        const dec = await tx.$executeRaw`
+        const updated = (await tx.$queryRaw`
           UPDATE "NightProduct" SET stock = stock - ${line.quantity}
-          WHERE id = ${line.nightProductId} AND stock >= ${line.quantity}`;
-        if (!dec) throw new BadRequestException(`${line.name}库存不足`);
+          WHERE id = ${line.nightProductId} AND stock >= ${line.quantity}
+          RETURNING stock`) as Array<{ stock: number }>;
+        if (!updated.length)
+          throw new BadRequestException(`${line.name}库存不足`);
+        stockTxnLines.push({
+          nightProductId: line.nightProductId,
+          delta: -line.quantity,
+          afterStock: Number(updated[0].stock),
+        });
       }
       const now = new Date();
-      return tx.nightOrder.create({
+      const created = await tx.nightOrder.create({
         data: {
           orderNo: nightOrderNo(),
           storeId: store.id,
@@ -298,6 +310,21 @@ export class NightOrderService implements NightPaymentHandler {
           ),
         },
       });
+      // 下单锁库存流水（saleOut，与关单回补 refundBack 配对——库存恒等式）
+      for (const s of stockTxnLines) {
+        await tx.nightStockTxn.create({
+          data: {
+            storeId: store.id,
+            nightProductId: s.nightProductId,
+            type: 'saleOut',
+            delta: s.delta,
+            afterStock: s.afterStock,
+            refType: 'night-order',
+            refId: created.id,
+          },
+        });
+      }
+      return created;
     });
     return this.orderView(order);
   }
