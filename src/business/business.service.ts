@@ -11,6 +11,10 @@ import type { Banner, Order, Product } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../database/prisma.service';
 import { perRetailUnitCostFen } from '../common/product-units';
+import {
+  productImageView,
+  type ProductImageSize,
+} from '../common/product-image';
 import { campusOrganizationId } from '../common/organization';
 import { marketingEnabled } from '../common/capability';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -177,7 +181,8 @@ export class BusinessService {
       select: { id: true, purchaseLimit: true },
     });
     const byStart = new Map<string, Date>();
-    for (const k of kinds) byStart.set(k.id, BusinessService.limitWindowStart(k.purchaseLimit));
+    for (const k of kinds)
+      byStart.set(k.id, BusinessService.limitWindowStart(k.purchaseLimit));
     const bought = new Map<string, number>();
     if (!byStart.size) return bought;
     const earliest = new Date(
@@ -218,7 +223,10 @@ export class BusinessService {
       },
     });
     if (!rows.length) return;
-    const bought = await this.purchaseLimitBought(userId, rows.map((r) => r.id));
+    const bought = await this.purchaseLimitBought(
+      userId,
+      rows.map((r) => r.id),
+    );
     const label: Record<string, string> = {
       once: '每人限购一次，已购过',
       weekly: '每周限购一次，本周已购',
@@ -287,7 +295,12 @@ export class BusinessService {
    * 读 .price 即正确），划线位 originalPrice 让给 product.price；promotion 块
    * 供 C 端角标/倒计时与订单快照审计（含 promotionId，下单锁价）。
    */
-  private productView(product: any, withDescription = false, promotion?: any) {
+  private productView(
+    product: any,
+    withDescription = false,
+    promotion?: any,
+    imageSize: ProductImageSize | null = withDescription ? 800 : 240,
+  ) {
     // IKQZY7：限购元信息（none 不挂字段，响应结构不变）——C 端商品卡/详情
     // 据此显示「每人限购一次/每周一次/每月一次」标签；reached 由详情单独判
     const _limitMeta =
@@ -307,7 +320,7 @@ export class BusinessService {
       ...rest
     } = product;
     return {
-      ...rest,
+      ...(imageSize === null ? rest : productImageView(rest, imageSize)),
       // 列表不回介绍（IKAHAU）：≤2000 字 × 全量商品会把首页/列表 payload 撑爆；
       // 详情页 withDescription 才带。
       ...(withDescription ? { description: description ?? '' } : {}),
@@ -356,7 +369,10 @@ export class BusinessService {
       paidAt: order.paidAt?.toISOString(),
       // IKFOPQ：C 端出口剥离双成本快照（进货价/批发成本属内部数据，
       // 绝不进 C 端响应）；admin/履约端不经此视图，快照原样可用
-      items: this.stripCostSnapshot(order.items as OrderLine[]),
+      items: this.stripCostSnapshot(order.items as OrderLine[]).map((line) => ({
+        ...line,
+        product: productImageView(line.product, 160),
+      })),
       timeline: order.timeline as TimelineStep[],
     };
   }
@@ -376,10 +392,7 @@ export class BusinessService {
     if (!campus?.showDeliveryContacts) return view;
     return {
       ...view,
-      deliveryChain: await this.deliveryChainForOrder(
-        order.id,
-        order.riderId,
-      ),
+      deliveryChain: await this.deliveryChainForOrder(order.id, order.riderId),
     };
   }
   /**
@@ -388,10 +401,7 @@ export class BusinessService {
    * intern-building-manager）——订单送达时落库的提成快照是「本单楼长」
    * 唯一可靠凭证；customer-pickup/员工配送组织无楼长链路时为 null。
    */
-  private async deliveryChainForOrder(
-    orderId: string,
-    riderId: string | null,
-  ) {
+  private async deliveryChainForOrder(orderId: string, riderId: string | null) {
     const [rider, managerRows] = await Promise.all([
       riderId
         ? this.db.staff.findUnique({
@@ -973,11 +983,11 @@ export class BusinessService {
         startsAt: { lte: now },
         endsAt: { gt: now },
         product: {
-        campusId,
-        status: 'on-sale',
-        stock: { gt: 0 },
-        category: { hidden: false },
-      },
+          campusId,
+          status: 'on-sale',
+          stock: { gt: 0 },
+          category: { hidden: false },
+        },
       },
       orderBy: [{ endsAt: 'asc' }, { createdAt: 'asc' }],
       include: { product: true },
@@ -1055,6 +1065,17 @@ export class BusinessService {
     return { product, sourceName: src.name, sourceCampusName };
   }
   async cart(userId: string) {
+    const cart = await this.cartData(userId);
+    return {
+      ...cart,
+      items: cart.items.map((line) => ({
+        ...line,
+        product: productImageView(line.product, 160),
+      })),
+    };
+  }
+  /** 内部报价和订单快照保持原图；只在用户响应出口缩放。 */
+  private async cartData(userId: string) {
     const [rows, user] = await Promise.all([
       this.db.cartItem.findMany({
         where: { userId, quantity: { gt: 0 } },
@@ -1088,7 +1109,7 @@ export class BusinessService {
       // 秒杀行跟活动窗走：窗内秒杀价，窗外自动回落正常渠道价
       const seckill = row.asSeckill ? seckillMap.get(row.productId) : undefined;
       const promo = seckill ?? normalPromoMap.get(row.productId);
-      const product = this.productView(row.product, false, promo);
+      const product = this.productView(row.product, false, promo, null);
       return { product, quantity: row.quantity, asSeckill: row.asSeckill };
     });
     // 金额单位:分——全整数运算，无浮点误差（IK8W5K）。
@@ -1270,7 +1291,7 @@ export class BusinessService {
     // 按定版口径不受拦）
     await this.throwIfCampusClosed(campusId);
     const [cart, address] = await Promise.all([
-      this.cart(userId),
+      this.cartData(userId),
       this.db.address.findFirst({ where: { id: dto.addressId, userId } }),
     ]);
     if (!cart.items.length) throw new BadRequestException('购物车为空');
@@ -1373,7 +1394,12 @@ export class BusinessService {
       : null;
     return campus?.noManagerTip || BusinessService.DEFAULT_NO_MANAGER_TIP;
   }
-  async checkout(userId: string, campusId: string, dto: CreateOrderDto) {
+  async checkout(
+    userId: string,
+    campusId: string,
+    dto: CreateOrderDto,
+    forSnapshot = false,
+  ) {
     const { cart, address } = await this.validateQuote(userId, campusId, dto);
     const deliveryFee = await this.deliveryFeeFor(campusId, dto.deliveryMode);
     const userCoupon = dto.couponId
@@ -1390,6 +1416,12 @@ export class BusinessService {
     const managerTip = await this.managerTipFor(address);
     return {
       ...cart,
+      items: forSnapshot
+        ? cart.items
+        : cart.items.map((line) => ({
+            ...line,
+            product: productImageView(line.product, 160),
+          })),
       deliveryFee,
       discount,
       // IKB3K1：应付金额下限 0 元，双保险（上游已拦截超抵扣券）
@@ -1403,7 +1435,7 @@ export class BusinessService {
   }
   async createOrder(userId: string, campusId: string, dto: CreateOrderDto) {
     const { address } = await this.validateQuote(userId, campusId, dto);
-    const settlement = await this.checkout(userId, campusId, dto);
+    const settlement = await this.checkout(userId, campusId, dto, true);
     const now = new Date();
     // 12 态状态机标准 timeline（IK93GQ）：含"楼下待交接"节点。
     const timeline: TimelineStep[] = buildOrderTimeline(
@@ -1603,9 +1635,7 @@ export class BusinessService {
       // 同用户并发支付，复核后到者必见先到者已付单。
       const limitProducts = [
         ...new Set(
-          items
-            .map((l) => (l.product as { id?: string }).id)
-            .filter(Boolean),
+          items.map((l) => (l.product as { id?: string }).id).filter(Boolean),
         ),
       ] as string[];
       const hasLimited = await this.db.product.count({
@@ -2759,9 +2789,7 @@ export class BusinessService {
         where: {
           userId,
           couponId,
-          ...(coupon.trigger === 'signup'
-            ? {}
-            : { status: { not: 'used' } }),
+          ...(coupon.trigger === 'signup' ? {} : { status: { not: 'used' } }),
         },
       });
       // 幂等命中：返回已有持有记录并带 existing 标记（不计新增发放）。
