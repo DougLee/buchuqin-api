@@ -1,0 +1,7 @@
+隔离库存验收：数据库 buchuqinshishe_spec，schema night_stock_workflow_20261106
+
+Test Suites: 3 skipped, 2 passed, 2 of 5 total
+Tests:       65 skipped, 4 passed, 69 total
+Snapshots:   0 total
+Time:        29.006 s, estimated 360 s
+Ran all test suites matching /night/ with tests matching "数据库分页|押金账本|首页销售额|押金档位".

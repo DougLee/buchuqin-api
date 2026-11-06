@@ -1,0 +1,138 @@
+夜宵预览HTTP出站白名单已启用；生产API、微信网关及外部存储均不可连接。
+{
+  "verified": true,
+  "schema": "night_stock_preview_20261106",
+  "stores": [
+    {
+      "storeId": "night-demo-store-0",
+      "status": "open",
+      "managerStaffId": "night-demo-staff-0",
+      "commissionRate": 2000,
+      "deposit": 50000,
+      "depositLedger": 50000,
+      "depositTxnCount": 1,
+      "depositRefundCount": 0,
+      "stockValue": 26510,
+      "reservedValue": 4360,
+      "refundReservedValue": 0,
+      "depositRefundReservedValue": 0,
+      "frozenValue": 0,
+      "shortageValue": 0,
+      "usedQuota": 30870,
+      "usableQuota": 19130
+    },
+    {
+      "storeId": "night-demo-store-1",
+      "status": "paused",
+      "managerStaffId": "night-demo-staff-1",
+      "commissionRate": 2000,
+      "deposit": 50000,
+      "depositLedger": 50000,
+      "depositTxnCount": 1,
+      "depositRefundCount": 0,
+      "stockValue": 27790,
+      "reservedValue": 7500,
+      "refundReservedValue": 0,
+      "depositRefundReservedValue": 0,
+      "frozenValue": 0,
+      "shortageValue": 0,
+      "usedQuota": 35290,
+      "usableQuota": 14710
+    },
+    {
+      "storeId": "night-preview-clearance-store",
+      "status": "closed",
+      "managerStaffId": "night-preview-clearance-staff",
+      "commissionRate": 2000,
+      "deposit": 15000,
+      "depositLedger": 15000,
+      "depositTxnCount": 5,
+      "depositRefundCount": 4,
+      "stockValue": 0,
+      "reservedValue": 0,
+      "refundReservedValue": 0,
+      "depositRefundReservedValue": 0,
+      "frozenValue": 0,
+      "shortageValue": 0,
+      "usedQuota": 0,
+      "usableQuota": 15000
+    },
+    {
+      "storeId": "night-preview-store",
+      "status": "closed",
+      "managerStaffId": "night-preview-staff",
+      "commissionRate": 2000,
+      "deposit": 200000,
+      "depositLedger": 200000,
+      "depositTxnCount": 2,
+      "depositRefundCount": 0,
+      "stockValue": 118050,
+      "reservedValue": 2350,
+      "refundReservedValue": 0,
+      "depositRefundReservedValue": 0,
+      "frozenValue": 1950,
+      "shortageValue": 400,
+      "usedQuota": 120400,
+      "usableQuota": 79600
+    },
+    {
+      "storeId": "cmw59jpnb0007zzphvs2p91fm",
+      "status": "closed",
+      "managerStaffId": null,
+      "commissionRate": 0,
+      "deposit": 0,
+      "depositLedger": 0,
+      "depositTxnCount": 0,
+      "depositRefundCount": 0,
+      "stockValue": 0,
+      "reservedValue": 0,
+      "refundReservedValue": 0,
+      "depositRefundReservedValue": 0,
+      "frozenValue": 0,
+      "shortageValue": 0,
+      "usedQuota": 0,
+      "usableQuota": 0
+    }
+  ],
+  "warehouseCount": 22,
+  "paidDepositIntents": 2,
+  "reportEvidence": [
+    {
+      "reportId": "5a768a47-adfc-4020-b29d-bd24db63f88e",
+      "kind": "loss",
+      "status": "rejected",
+      "heldValue": 0,
+      "items": [
+        {
+          "name": "可口可乐 330ml",
+          "delta": -1,
+          "value": 350,
+          "quantity": 1,
+          "unitValue": 350,
+          "bookQuantity": 8,
+          "nightProductId": "cmw4v0u0b0008zzch7lq3z0tk"
+        }
+      ],
+      "txnCount": 2
+    },
+    {
+      "reportId": "a2aa3075-0f46-42f3-8169-03e32d2a439b",
+      "kind": "stocktake",
+      "status": "approved",
+      "heldValue": 0,
+      "items": [
+        {
+          "name": "可口可乐 330ml",
+          "delta": 1,
+          "value": 350,
+          "quantity": 1,
+          "unitValue": 350,
+          "bookQuantity": 8,
+          "nightProductId": "cmw4v0u0b0008zzch7lq3z0tk",
+          "countedQuantity": 9
+        }
+      ],
+      "txnCount": 1
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+夜宵预览HTTP出站白名单已启用；生产API、微信网关及外部存储均不可连接。
+{
+  "verified": true,
+  "officialId": "cmw599r1h000wzzb113zr2p6o",
+  "catalogId": "cmw59azbe0013zzb1p6q1du8p",
+  "warehouseId": "cmw59az790011zzb1kzpmehbv",
+  "nightProductId": "cmw59f4510002zzphwhwg8qrx",
+  "officialPrice": 500,
+  "nightPrice": 580,
+  "officialCategory": "饮料",
+  "nightCategory": "夜宵验收商品",
+  "officialUnit": "听",
+  "nightUnit": "罐",
+  "importedCopies": 1,
+  "warehouseStock": 0,
+  "buildingStock": 0,
+  "stockTxnCount": 0
+}

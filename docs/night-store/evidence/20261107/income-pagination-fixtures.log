@@ -1,0 +1,26 @@
+夜宵预览HTTP出站白名单已启用；生产API、微信网关及外部存储均不可连接。
+{
+  "simulatedExternalPaymentOnly": true,
+  "schema": "night_stock_preview_20261106",
+  "orders": [
+    {
+      "orderId": "cmw5a3ds80001zz52s5rgoop9",
+      "status": "completed",
+      "payableAmount": 550,
+      "quotaHeld": 0
+    },
+    {
+      "orderId": "cmw5a3fve000dzz520hxaoe7x",
+      "status": "completed",
+      "payableAmount": 550,
+      "quotaHeld": 0
+    },
+    {
+      "orderId": "cmw5a3hib000pzz52j1t26qsa",
+      "status": "completed",
+      "payableAmount": 550,
+      "quotaHeld": 0
+    }
+  ],
+  "commissionTxnCount": 22
+}

@@ -1,0 +1,6 @@
+隔离库存验收：数据库 buchuqinshishe_spec，schema night_stock_workflow_20261106
+Test Suites: 1 passed, 1 total
+Tests:       41 skipped, 2 passed, 43 total
+Snapshots:   0 total
+Time:        27.515 s, estimated 360 s
+Ran all test suites within paths "src/night/night-inventory.integration.spec.ts".

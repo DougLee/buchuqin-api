@@ -1,0 +1,21 @@
+隔离库存验收：数据库 buchuqinshishe_spec，schema night_stock_workflow_20261106
+[Nest] 31982  - 11/07/2026, 1:45:00 AM   DEBUG [PaymentsService] 回调验签头 serial=PUB_KEY_ID_LOCAL
+[Nest] 31982  - 11/07/2026, 1:45:00 AM   DEBUG [PaymentsService] 回调验签头 serial=PUB_KEY_ID_LOCAL
+[Nest] 31982  - 11/07/2026, 1:45:00 AM   ERROR [PaymentsService] 夜宵支付落账失败：outTradeNo=YX_LOCAL_1 wxTradeId=WX_LOCAL_TX reason=夜宵支付金额、币种或商户信息不匹配，已阻止落账
+[Nest] 31982  - 11/07/2026, 1:45:00 AM   DEBUG [PaymentsService] 回调验签头 serial=PUB_KEY_ID_LOCAL
+[Nest] 31982  - 11/07/2026, 1:45:00 AM   ERROR [PaymentsService] 夜宵支付落账失败：outTradeNo=YX_LOCAL_1 wxTradeId=WX_LOCAL_TX reason=夜宵支付金额、币种或商户信息不匹配，已阻止落账
+[Nest] 31982  - 11/07/2026, 1:45:00 AM   DEBUG [PaymentsService] 回调验签头 serial=PUB_KEY_ID_LOCAL
+[Nest] 31982  - 11/07/2026, 1:45:00 AM   ERROR [PaymentsService] 夜宵支付落账失败：outTradeNo=YX_LOCAL_1 wxTradeId=WX_LOCAL_TX reason=夜宵支付金额、币种或商户信息不匹配，已阻止落账
+[Nest] 31982  - 11/07/2026, 1:45:00 AM   DEBUG [PaymentsService] 回调验签头 serial=PUB_KEY_ID_LOCAL
+[Nest] 31982  - 11/07/2026, 1:45:00 AM   ERROR [PaymentsService] 夜宵支付落账失败：outTradeNo=YX_LOCAL_1 wxTradeId=WX_LOCAL_TX reason=夜宵支付金额、币种或商户信息不匹配，已阻止落账
+[Nest] 31982  - 11/07/2026, 1:45:00 AM   DEBUG [PaymentsService] 回调验签头 serial=PUB_KEY_ID_LOCAL
+[Nest] 31982  - 11/07/2026, 1:45:00 AM   ERROR [PaymentsService] 夜宵支付落账失败：outTradeNo=YX_LOCAL_1 wxTradeId=WX_LOCAL_TX reason=夜宵支付金额、币种或商户信息不匹配，已阻止落账
+[Nest] 31982  - 11/07/2026, 1:45:00 AM   DEBUG [PaymentsService] 回调验签头 serial=PUB_KEY_ID_LOCAL
+[Nest] 31982  - 11/07/2026, 1:45:00 AM   ERROR [PaymentsService] 回调验签失败 serial=PUB_KEY_ID_LOCAL
+[Nest] 31982  - 11/07/2026, 1:45:00 AM   DEBUG [PaymentsService] 回调验签头 serial=PUB_KEY_ID_LOCAL
+
+Test Suites: 5 passed, 5 total
+Tests:       74 passed, 74 total
+Snapshots:   0 total
+Time:        417.003 s
+Ran all test suites matching /night/.

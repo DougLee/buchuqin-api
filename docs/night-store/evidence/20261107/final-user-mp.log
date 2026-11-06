@@ -1,0 +1,475 @@
+
+> buchuqin-user-weapp@0.0.0 build:mp-weixin:buchuqin
+> node scripts/weapp.mjs build buchuqin
+
+
+[微信小程序] 不出寝食社 (wxc814687e5ae26924)
+[API] https://admin-test.buchuqin.com/api/v1
+[输出目录] /Users/douglee/Documents/Codes/nongmo-tech/night-store/buchuqin-user-weapp/dist/build/mp-weixin-buchuqin
+
+Compiler version: 5.23（vue3）
+Compiling...
+
+uni-app 有新版本发布，请执行 `npx @dcloudio/uvm@latest` 更新，更新日志详见：https://download1.dcloud.net.cn/hbuilderx/changelog/5.34.2026102909.html
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+   ╷
+79 │ @import "./styles/theme.scss";
+   │         ^^^^^^^^^^^^^^^^^^^^^
+   ╵
+    .cache/weapp-input/buchuqin/App.vue 79:9  root stylesheet
+
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+   ╷
+79 │ @import "../styles/theme.scss";
+   │         ^^^^^^^^^^^^^^^^^^^^^^
+   ╵
+    .cache/weapp-input/buchuqin/components/TabBar.vue 79:9  root stylesheet
+
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+   ╷
+79 │ @import "../styles/theme.scss";
+   │         ^^^^^^^^^^^^^^^^^^^^^^
+   ╵
+    .cache/weapp-input/buchuqin/components/CartOverlay.vue 79:9  root stylesheet
+
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+   ╷
+79 │ @import "../../styles/theme.scss";
+   │         ^^^^^^^^^^^^^^^^^^^^^^^^^
+   ╵
+    .cache/weapp-input/buchuqin/pages/orders/index.vue 79:9  root stylesheet
+
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+   ╷
+79 │ @import "../../styles/theme.scss";
+   │         ^^^^^^^^^^^^^^^^^^^^^^^^^
+   ╵
+    .cache/weapp-input/buchuqin/pages/cart/index.vue 79:9  root stylesheet
+
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+   ╷
+79 │ @import "../../styles/theme.scss";
+   │         ^^^^^^^^^^^^^^^^^^^^^^^^^
+   ╵
+    .cache/weapp-input/buchuqin/pages/checkout/success.vue 79:9  root stylesheet
+
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+   ╷
+82 │ @import "../../styles/theme.scss";
+   │         ^^^^^^^^^^^^^^^^^^^^^^^^^
+   ╵
+    .cache/weapp-input/buchuqin/pages/index/index.vue 82:9  root stylesheet
+
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+   ╷
+79 │ @import "../../styles/theme.scss";
+   │         ^^^^^^^^^^^^^^^^^^^^^^^^^
+   ╵
+    .cache/weapp-input/buchuqin/pages/campus/confirm.vue 79:9  root stylesheet
+
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+   ╷
+79 │ @import "../../styles/theme.scss";
+   │         ^^^^^^^^^^^^^^^^^^^^^^^^^
+   ╵
+    .cache/weapp-input/buchuqin/pages/campus/index.vue 79:9  root stylesheet
+
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+   ╷
+79 │ @import "../../styles/theme.scss";
+   │         ^^^^^^^^^^^^^^^^^^^^^^^^^
+   ╵
+    .cache/weapp-input/buchuqin/pages/orders/detail.vue 79:9  root stylesheet
+
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+   ╷
+79 │ @import "../../styles/theme.scss";
+   │         ^^^^^^^^^^^^^^^^^^^^^^^^^
+   ╵
+    .cache/weapp-input/buchuqin/pages/profile/index.vue 79:9  root stylesheet
+
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+   ╷
+79 │ @import "../../styles/theme.scss";
+   │         ^^^^^^^^^^^^^^^^^^^^^^^^^
+   ╵
+    .cache/weapp-input/buchuqin/pages/product/detail.vue 79:9  root stylesheet
+
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+   ╷
+79 │ @import "../../styles/theme.scss";
+   │         ^^^^^^^^^^^^^^^^^^^^^^^^^
+   ╵
+    .cache/weapp-input/buchuqin/pages/content/detail.vue 79:9  root stylesheet
+
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+   ╷
+79 │ @import "../../styles/theme.scss";
+   │         ^^^^^^^^^^^^^^^^^^^^^^^^^
+   ╵
+    .cache/weapp-input/buchuqin/pages/night/buildings.vue 79:9  root stylesheet
+
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+   ╷
+79 │ @import "../../styles/theme.scss";
+   │         ^^^^^^^^^^^^^^^^^^^^^^^^^
+   ╵
+    .cache/weapp-input/buchuqin/pages/messages/index.vue 79:9  root stylesheet
+
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+   ╷
+79 │ @import "../../styles/theme.scss";
+   │         ^^^^^^^^^^^^^^^^^^^^^^^^^
+   ╵
+    .cache/weapp-input/buchuqin/pages/night/store.vue 79:9  root stylesheet
+
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+   ╷
+79 │ @import "../../styles/theme.scss";
+   │         ^^^^^^^^^^^^^^^^^^^^^^^^^
+   ╵
+    .cache/weapp-input/buchuqin/pages/night/orders.vue 79:9  root stylesheet
+
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+   ╷
+79 │ @import "../../styles/theme.scss";
+   │         ^^^^^^^^^^^^^^^^^^^^^^^^^
+   ╵
+    .cache/weapp-input/buchuqin/pages/recruit/index.vue 79:9  root stylesheet
+
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+   ╷
+79 │ @import "../../styles/theme.scss";
+   │         ^^^^^^^^^^^^^^^^^^^^^^^^^
+   ╵
+    .cache/weapp-input/buchuqin/pages/category/index.vue 79:9  root stylesheet
+
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+   ╷
+79 │ @import "../../styles/theme.scss";
+   │         ^^^^^^^^^^^^^^^^^^^^^^^^^
+   ╵
+    .cache/weapp-input/buchuqin/pages/checkout/index.vue 79:9  root stylesheet
+
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+   ╷
+79 │ @import "../../styles/theme.scss";
+   │         ^^^^^^^^^^^^^^^^^^^^^^^^^
+   ╵
+    .cache/weapp-input/buchuqin/pages/night/checkout.vue 79:9  root stylesheet
+
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+   ╷
+79 │ @import "../../styles/theme.scss";
+   │         ^^^^^^^^^^^^^^^^^^^^^^^^^
+   ╵
+    .cache/weapp-input/buchuqin/pages/night/order-detail.vue 79:9  root stylesheet
+
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+   ╷
+79 │ @import "../../styles/theme.scss";
+   │         ^^^^^^^^^^^^^^^^^^^^^^^^^
+   ╵
+    .cache/weapp-input/buchuqin/pages/address/index.vue 79:9  root stylesheet
+
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+   ╷
+79 │ @import "../../styles/theme.scss";
+   │         ^^^^^^^^^^^^^^^^^^^^^^^^^
+   ╵
+    .cache/weapp-input/buchuqin/pages/address/edit.vue 79:9  root stylesheet
+
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+   ╷
+79 │ @import "../../styles/theme.scss";
+   │         ^^^^^^^^^^^^^^^^^^^^^^^^^
+   ╵
+    .cache/weapp-input/buchuqin/pages/after-sales/apply.vue 79:9  root stylesheet
+
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+   ╷
+79 │ @import "../../styles/theme.scss";
+   │         ^^^^^^^^^^^^^^^^^^^^^^^^^
+   ╵
+    .cache/weapp-input/buchuqin/pages/after-sales/index.vue 79:9  root stylesheet
+
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+   ╷
+79 │ @import "../../styles/theme.scss";
+   │         ^^^^^^^^^^^^^^^^^^^^^^^^^
+   ╵
+    .cache/weapp-input/buchuqin/pages/coupons/index.vue 79:9  root stylesheet
+
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+   ╷
+79 │ @import "../../styles/theme.scss";
+   │         ^^^^^^^^^^^^^^^^^^^^^^^^^
+   ╵
+    .cache/weapp-input/buchuqin/pages/profile/settings.vue 79:9  root stylesheet
+
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+   ╷
+79 │ @import "../styles/theme.scss";
+   │         ^^^^^^^^^^^^^^^^^^^^^^
+   ╵
+    .cache/weapp-input/buchuqin/components/PhoneGate.vue 79:9  root stylesheet
+
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+   ╷
+79 │ @import "../styles/theme.scss";
+   │         ^^^^^^^^^^^^^^^^^^^^^^
+   ╵
+    .cache/weapp-input/buchuqin/components/WelcomeGift.vue 79:9  root stylesheet
+
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+   ╷
+79 │ @import "../styles/theme.scss";
+   │         ^^^^^^^^^^^^^^^^^^^^^^
+   ╵
+    .cache/weapp-input/buchuqin/components/ProductCard.vue 79:9  root stylesheet
+
+DEPRECATION WARNING [legacy-js-api]: The legacy JS API is deprecated and will be removed in Dart Sass 2.0.0.
+
+More info: https://sass-lang.com/d/legacy-js-api
+
+DEPRECATION WARNING [import]: Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+   ╷
+79 │ @import "../styles/theme.scss";
+   │         ^^^^^^^^^^^^^^^^^^^^^^
+   ╵
+    .cache/weapp-input/buchuqin/components/NightEntryBanner.vue 79:9  root stylesheet
+
+DONE  Build complete.
+Run method: open Weixin Mini Program Devtools, import dist/build/mp-weixin-buchuqin run.

@@ -1,0 +1,22 @@
+夜宵预览HTTP出站白名单已启用；生产API、微信网关及外部存储均不可连接。
+{
+  "verified": true,
+  "orderId": "cmw57b3rn0003zzmuv1u8h75u",
+  "requestedQuantity": 3,
+  "receivedQuantity": 2,
+  "receiptTxnCount": 1,
+  "productStock": 9,
+  "inventoryValue": 3150,
+  "reportId": "cmw57gh6t000dzzmugn1igyke",
+  "reportStatus": "approved",
+  "reportHeldValue": 0,
+  "deposit": 200000,
+  "stockValue": 118050,
+  "reservedValue": 2350,
+  "refundReservedValue": 0,
+  "depositRefundReservedValue": 0,
+  "frozenValue": 1950,
+  "shortageValue": 400,
+  "usedQuota": 120400,
+  "usableQuota": 79600
+}

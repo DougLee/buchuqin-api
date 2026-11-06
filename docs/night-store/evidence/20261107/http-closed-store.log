@@ -1,0 +1,9 @@
+{
+  "passed": true,
+  "state": "closed",
+  "rejectedStatus": 400,
+  "message": "夜宵店当前未营业",
+  "beforeStock": 9,
+  "afterStock": 9,
+  "localOnly": true
+}

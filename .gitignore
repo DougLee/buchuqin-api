@@ -3,6 +3,7 @@ node_modules/
 dist/
 coverage/
 *.log
+!docs/night-store/evidence/**/*.log
 .env
 .env.*
 !.env.example

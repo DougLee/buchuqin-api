@@ -2,9 +2,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 
 const root = path.resolve(new URL('..', import.meta.url).pathname);
 const matrix = JSON.parse(fs.readFileSync(path.join(root, 'docs/night-store/acceptance-matrix.json'), 'utf8'));
+const committed = process.argv.includes('--check-git')
+  ? new Set(execFileSync('git', ['ls-tree', '-r', '--name-only', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim().split('\n'))
+  : null;
 assert.equal(matrix.frozen, true);
 assert.equal(matrix.rows.length, 43, '不能减少冻结的验收项');
 assert.equal(new Set(matrix.rows.map(row => row.id)).size, 43);
@@ -23,6 +27,7 @@ for (const row of matrix.rows) {
   for (const file of row.evidence) {
     const target = path.resolve(root, file);
     assert.ok(target.startsWith(root + path.sep) && fs.existsSync(target), `证据缺失：${row.id} ${file}`);
+    if (committed) assert.ok(committed.has(file), `证据未提交：${row.id} ${file}`);
   }
   accepted += row.weight;
 }
