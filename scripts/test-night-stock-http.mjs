@@ -37,6 +37,15 @@ try {
   const p = (await request('/night-rider/night/products', staff))[0];
   const report = await request('/night-rider/night/inventory/reports', staff, { requestId: randomUUID(), kind: 'loss', reason: 'HTTP权限验收，后续驳回恢复', photos: [], items: [{ nightProductId: p.id, quantity: 1, inventoryVersion: p.inventoryVersion }] }, 201);
   await request('/admin/night/stock-orders', staff, undefined, 403);
+  await request('/admin/night/store-products', '', undefined, 401);
+  await request('/admin/night/store-products', staff, undefined, 403);
+  await request(`/admin/night/store-products?storeId=${credentials.storeId}`, foreignToken, undefined, 403);
+  const ownProducts = await request('/admin/night/store-products', foreignToken);
+  assert.equal(ownProducts.total, 0, '校区权限允许查看自己的空结果');
+  const buildingProducts = await request(`/admin/night/store-products?campus=${credentials.campusId}&storeId=${credentials.storeId}&stock=available`, root);
+  assert.ok(buildingProducts.items.length > 0);
+  await request(`/admin/night/stock-orders?campus=${credentials.campusId}&from=2026-02-30`, root, undefined, 400);
+  await request(`/admin/night/inventory-reports?campus=${credentials.campusId}&kind=bad`, root, undefined, 400);
   await request(`/admin/night/stock-orders?storeId=${credentials.storeId}`, foreignToken, undefined, 403);
   await request(`/admin/night/inventory-reports?storeId=${credentials.storeId}`, foreignToken, undefined, 403);
   await request(`/admin/night/catalog/import`, foreignToken, { campusId: credentials.campusId, productIds: ['night-preview-official-0'] }, 403);

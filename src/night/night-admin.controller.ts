@@ -173,15 +173,54 @@ export class NightAdminController {
     @Query('campus') campus?: string,
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
+    @Query('status') status?: string,
+    @Query('categoryId') categoryId?: string,
+    @Query('stock') stock?: string,
+    @Query('source') source?: string,
   ) {
-    const rows = await this.inventory.catalog(
-      await this.campusScope(req, campus),
-      keyword,
-    );
-    return ok(paginate(rows, page, pageSize));
+    const campusId = await this.campusScope(req, campus);
+    const rows = await this.inventory.catalog(campusId, keyword, {
+      status,
+      categoryId,
+      stock,
+      source,
+    });
+    return ok({
+      ...paginate(rows, page, pageSize),
+      categories: await this.inventory.catalogCategories(campusId),
+    });
   }
 
   /* ---------- 楼栋商品 ---------- */
+
+  @Get('store-products')
+  async storeProducts(
+    @Req() req: AuthRequest,
+    @Query('storeId') storeId?: string,
+    @Query('keyword') keyword?: string,
+    @Query('saleAllowed') saleAllowed?: string,
+    @Query('onShelf') onShelf?: string,
+    @Query('stock') stock?: string,
+    @Query('categoryId') categoryId?: string,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+  ) {
+    if (storeId) await this.guardStoreCampus(req, storeId);
+    return ok(
+      paginate(
+        await this.inventory.campusProducts(await this.campusScope(req), {
+          storeId,
+          keyword,
+          saleAllowed,
+          onShelf,
+          stock,
+          categoryId,
+        }),
+        page,
+        pageSize,
+      ),
+    );
+  }
 
   @Get('catalog/candidates')
   async catalogCandidates(
@@ -216,6 +255,9 @@ export class NightAdminController {
     @Req() req: AuthRequest,
     @Query('status') status?: string,
     @Query('storeId') storeId?: string,
+    @Query('keyword') keyword?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
   ) {
     if (storeId) await this.guardStoreCampus(req, storeId);
     return ok(
@@ -223,6 +265,7 @@ export class NightAdminController {
         await this.campusScope(req),
         status,
         storeId,
+        { keyword, from, to },
       ),
     );
   }
@@ -275,6 +318,10 @@ export class NightAdminController {
     @Req() req: AuthRequest,
     @Query('status') status?: string,
     @Query('storeId') storeId?: string,
+    @Query('keyword') keyword?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('kind') kind?: string,
   ) {
     if (storeId) await this.guardStoreCampus(req, storeId);
     return ok(
@@ -282,6 +329,7 @@ export class NightAdminController {
         await this.campusScope(req),
         status,
         storeId,
+        { keyword, from, to, kind },
       ),
     );
   }

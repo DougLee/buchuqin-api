@@ -48,7 +48,7 @@
 
 ## 已完成验证
 
-1. `node scripts/test-night-stock.mjs --skip-push --all-night`：3套、26项全部通过，使用 `_spec` 数据库独立 `night_stock_workflow_20261106` schema。覆盖完整备货、并发额度与仓库库存、撤回取消、重复收货、少收重报、冻结恢复、盘盈、版本过期、改价、跨店、销售取消/送达、退款回库/报损、退押正常并发、总部到货共享仓兼容。
+1. `node scripts/test-night-stock.mjs --skip-push --all-night`：3套、29项全部通过，使用 `_spec` 数据库独立 `night_stock_workflow_20261106` schema。覆盖完整备货、并发额度与仓库库存、撤回取消、重复收货、少收重报、冻结恢复、盘盈、版本过期、改价、跨店、销售取消/送达、退款回库/报损、退押正常并发、总部到货共享仓兼容。新增商品库组合筛选、楼栋商品 false/冻结/跨校区、审批关键词/类型/北京时间日期边界及非法筛选拒绝。
 2. `node scripts/test-night-stock-http.mjs`：通过真实 HTTP 校验 JWT 登录、负数量 DTO 拒绝、员工与后台隔离、跨校区列表/导入/审核/出库/取消/报损审批的 403 拒绝。只连接本地3150及独立预览 schema。
 3. `node scripts/test-night-stock-migration.mjs`：旧模型生成独立迁移 schema，带旧楼栋库存、已入库备货单、在配/取消订单、条码和菜单后执行迁移。验证旧库存数量不变、货值回填、已回库标识、缺仓库补链不造库存、旧备货不重复入库及菜单扩展。
 4. API `npm run build`；后台 `npm run build`；配送端 `npm run type-check`、`npm run build:h5:buchuqin`、指定测试 API 的 `npm run build:mp-weixin` 均通过。
@@ -88,4 +88,13 @@ VITE_API_PROXY_TARGET=http://localhost:3150 npm run dev -- --port 5191 --host 12
 
 验证：`node --test scripts/test-night-preview-login.mjs`（配送worktree，3项通过）、`npm run type-check`通过；浏览器从5188实际点击入口，确认跳转5192、显示方福宁且无登录失败提示。无需再将JWT粘贴到源码。
 
-迁移文件：`prisma/migrations/20261106100000_night_stock_workflow/migration.sql`。它包含旧库存货值/订单回填及现有夜宵菜单权限扩展，不能以只推 schema 替代业务迁移。
+迁移文件：`prisma/migrations/20261106100000_night_stock_workflow/migration.sql` 和 `20261106220000_night_product_management/migration.sql`。包含旧库存货值/订单回填及现有夜宵菜单权限扩展，不能以只推 schema 替代业务迁移。迁移兼容脚本已串行执行两份迁移并验证楼栋商品查看权限。
+
+后台 `test:admin-foundation`（5项）、`test:rbac-session`（20项）通过。
+
+### 商品管理与筛选补充验收
+
+- HTTP 新增楼栋商品未登录401、配送员工403、跨校区403、授权校区空结果200及超管本校区有库存筛选，非法日期/申报类型400，全部通过。
+- 独立预览初始数据：3栋楼、21种夜宵商品、34条楼栋商品、10笔订单；备货包含申请/批准/出库/实收/驳回/取消，含冻结报损、盘盈和已结算/待结算佣金。`test-night-preview-data.mjs` 验证库存流水合计、押金账本、额度、图片可访问及重复初始化保留手工操作，通过。
+- gstack浏览器：条码搜索命中茉莉绿茶；楼栋商品搜索方福宁命中20条，再筛有冻结库存命中2条；给西区10栋配置香辣魔芋爽后增加1条零库存商品，重新验账通过。备货搜索楼长、盘点报损筛库存盘点生效。
+- 配送H5在390×844和375×812下验证搜索、无结果、清除、分类与底部固定栏；选择1件绿茶后改关键词/分类保留1件及4元货值，清除选量恢复0；无控制台错误。微信测试API构建和H5构建通过，真机登录/拍照/支付仍需部署后验证。

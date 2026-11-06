@@ -3,6 +3,7 @@ import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { createRequire } from 'node:module';
+import { seedNightPreview } from './seed-night-preview.mjs';
 
 // Local-only preview. The shared test database/public schema and production are forbidden.
 const require = createRequire(import.meta.url);
@@ -25,6 +26,11 @@ const { NightInventoryService } = require('../dist/src/night/night-inventory.ser
 const { RbacService } = require('../dist/src/admin/rbac/rbac.service.js');
 const db = new PrismaClient({ transactionOptions: { timeout: 60000, maxWait: 10000 } });
 await new RbacService(db).syncRegistry();
+const menu = await db.adminMenu.findUnique({ where: { code: 'night-stores' } });
+if (menu && !menu.perms.split(',').includes('GET /admin/night/store-products')) {
+  await db.adminMenu.update({ where: { id: menu.id }, data: { perms: `${menu.perms},GET /admin/night/store-products` } });
+  await db.rbacState.update({ where: { id: 'global' }, data: { version: { increment: 1 } } });
+}
 const inventory = new NightInventoryService(db);
 const campus = await db.campus.upsert({ where: { id: 'night-preview-campus' }, update: {}, create: { id: 'night-preview-campus', name: '夜宵功能验收校区', shortName: '夜宵验收', warehouseName: '验收仓库', manualClosed: true, nightEnabled: true, nightStartAt: '00:00', nightEndAt: '23:59', nightDeliveryFee: 200 } });
 const building = await db.building.upsert({ where: { id: 'night-preview-building' }, update: {}, create: { id: 'night-preview-building', campusId: campus.id, name: '西区9栋' } });
@@ -37,9 +43,9 @@ for (const [i, name] of names.entries()) {
   const product = await db.product.upsert({ where: { id: `night-preview-official-${i}` }, update: {}, create: { id: `night-preview-official-${i}`, campusId: official.id, categoryId: category.id, catalogScope: 'platform', name, subtitle: '夜宵验收商品', price: 250 + 100 * i, originalPrice: 350 + 100 * i, barcode: `NIGHT-PREVIEW-${i}`, stock: 0, image: '', tag: '', weight: 0, retailUnit: i === 0 ? '听' : '袋' } });
   await inventory.importCatalog('night-preview-admin', campus.id, [product.id]);
   const catalog = await db.product.findFirstOrThrow({ where: { campusId: campus.id, nightCatalog: true, sourceProductId: product.id } });
-  await db.product.update({ where: { id: catalog.id }, data: { status: 'on-sale' } });
   const warehouse = await db.product.findUniqueOrThrow({ where: { id: catalog.warehouseProductId } });
   if (!await db.nightProduct.count({ where: { storeId: store.id, catalogProductId: catalog.id } })) {
+    await db.product.update({ where: { id: catalog.id }, data: { status: 'on-sale' } });
     await db.product.update({ where: { id: warehouse.id }, data: { stock: 100 } });
     const request = await inventory.createStockOrder(staff.id, { requestId: `preview-initial-stock-${i}`, items: [{ catalogProductId: catalog.id, quantity: 10 }] });
     await inventory.reviewStockOrder('night-preview-admin', request.id, true, '验收初始库存');
@@ -47,13 +53,16 @@ for (const [i, name] of names.entries()) {
     await inventory.receiveStockOrder(staff.id, request.id, [{ catalogProductId: catalog.id, quantity: 10 }]);
   }
 }
-const password = randomBytes(18).toString('base64url');
+let previousPreview;
+try { previousPreview = JSON.parse(fs.readFileSync('/tmp/night-stock-preview.json', 'utf8')); } catch {}
+const password = previousPreview?.adminUsername === 'night-preview' && typeof previousPreview.adminPassword === 'string' && previousPreview.adminPassword.length >= 16 ? previousPreview.adminPassword : randomBytes(18).toString('base64url');
 // One additional official item stays unimported for exercising the admin picker.
 await db.product.upsert({ where: { id: 'night-preview-official-extra' }, update: {}, create: { id: 'night-preview-official-extra', campusId: official.id, categoryId: category.id, catalogScope: 'platform', name: '奥利奥夹心饼干', subtitle: '官方库导入验收', price: 300, originalPrice: 500, barcode: 'NIGHT-PREVIEW-EXTRA', stock: 0, image: '', tag: '', weight: 0, retailUnit: '袋' } });
 const admin = await db.adminAccount.upsert({ where: { id: 'night-preview-admin' }, update: { passwordHash: await hash(password, 10) }, create: { id: 'night-preview-admin', username: 'night-preview', nickname: '夜宵验收管理员', passwordHash: await hash(password, 10), role: 'hq', campusId: campus.id, orgLevel: 'platform', rbacMigrated: true } });
 const superRole = await db.adminRole.upsert({ where: { code: 'super-admin' }, update: {}, create: { code: 'super-admin', name: '验收管理员', builtin: true, seeded: true, menusMigrated: true } });
 if (!await db.adminAccountRole.count({ where: { accountId: admin.id, roleId: superRole.id } })) await db.adminAccountRole.create({ data: { accountId: admin.id, roleId: superRole.id, scope: 'platform', grantedBy: 'local-preview' } });
 const jwt = new JwtService({ secret: env.JWT_SECRET });
+await seedNightPreview(db, inventory, env.DATABASE_URL);
 const preview = { campusId: campus.id, storeId: store.id, staffId: staff.id, staffToken: jwt.sign({ id: staff.id, campusId: campus.id, role: staff.role, appKind: 'delivery' }, { expiresIn: '1d' }), adminToken: jwt.sign({ id: admin.id, campusId: campus.id, role: 'hq', sv: admin.sessionVersion }, { expiresIn: '1d' }), adminUser: { id: admin.id, campusId: campus.id, role: 'hq', nickname: admin.nickname }, adminUsername: admin.username, adminPassword: password };
 fs.writeFileSync('/tmp/night-stock-preview.json', JSON.stringify(preview), { mode: 0o600 });
 await db.$disconnect();

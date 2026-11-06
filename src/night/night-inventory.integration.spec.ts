@@ -194,6 +194,159 @@ integration('已确认的夜宵备货库存流程（独立 PostgreSQL schema）'
     };
   }
 
+  it('商品库组合筛选支持条码、分类、来源和仓库库存，选项不跨校区', async () => {
+    const f = await fixture();
+    await db.product.update({
+      where: { id: f.catalog.id },
+      data: { nightBarcode: 'FILTER-69001' },
+    });
+    expect(
+      await service.catalog(f.campus.id, '69001', {
+        categoryId: f.catalog.categoryId,
+        status: 'on-sale',
+        source: 'manual',
+        stock: 'available',
+      }),
+    ).toHaveLength(1);
+    expect(
+      await service.catalog(f.campus.id, undefined, { source: 'official' }),
+    ).toHaveLength(0);
+    expect(
+      await service.catalog(f.campus.id, undefined, { stock: 'empty' }),
+    ).toHaveLength(0);
+    await db.product.update({
+      where: { id: f.warehouse.id },
+      data: { stock: 0 },
+    });
+    expect(
+      await service.catalog(f.campus.id, undefined, { stock: 'empty' }),
+    ).toHaveLength(1);
+    expect(
+      await service.catalog(f.campus.id, undefined, { stock: 'unlinked' }),
+    ).toHaveLength(0);
+    expect(await service.catalogCategories(f.campus.id)).toEqual([
+      { id: f.catalog.categoryId, name: '验收类目' },
+    ]);
+    await expect(
+      service.catalog(f.campus.id, undefined, { status: 'bad' }),
+    ).rejects.toThrow('筛选条件无效');
+  });
+
+  it('楼栋商品筛选正确处理 false、冻结、分类，并隔离其他校区', async () => {
+    const a = await fixture(),
+      b = await fixture();
+    await a.receive(5);
+    await b.receive(2);
+    const p = (await service.products(a.staff.id))[0];
+    await service.createReport(a.staff.id, {
+      requestId: randomUUID(),
+      kind: 'loss',
+      reason: '包装破损',
+      items: [
+        {
+          nightProductId: p.id,
+          quantity: 1,
+          inventoryVersion: p.inventoryVersion,
+        },
+      ],
+    });
+    await db.nightProduct.update({
+      where: { id: p.id },
+      data: { onShelf: false, saleAllowed: false },
+    });
+    const rows = await service.campusProducts(a.campus.id, {
+      stock: 'frozen',
+      saleAllowed: 'false',
+      onShelf: 'false',
+      categoryId: a.catalog.categoryId,
+      keyword: a.staff.name,
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      stock: 4,
+      frozenStock: 1,
+      inventoryValue: 2000,
+      purchasable: false,
+    });
+    expect((await service.summary(a.store.id)).usedQuota).toBe(2500);
+    expect(
+      await service.campusProducts(a.campus.id, { storeId: b.store.id }),
+    ).toHaveLength(0);
+    expect(
+      await service.campusProducts(a.campus.id, { saleAllowed: 'true' }),
+    ).toHaveLength(0);
+    await expect(
+      service.campusProducts(a.campus.id, { saleAllowed: 'no' }),
+    ).rejects.toThrow('筛选条件无效');
+  });
+
+  it('审批筛选按北京时间包含完整日期，支持状态、商品、楼长、类型和校区', async () => {
+    const a = await fixture(),
+      b = await fixture();
+    const order = await a.receive(5);
+    await b.request(1);
+    await db.nightStockOrder.update({
+      where: { id: order.id },
+      data: { createdAt: new Date('2026-11-06T15:59:59.999Z') },
+    });
+    expect(
+      await service.campusStockOrders(a.campus.id, 'received', a.store.id, {
+        keyword: a.catalog.name,
+        from: '2026-11-06',
+        to: '2026-11-06',
+      }),
+    ).toHaveLength(1);
+    expect(
+      await service.campusStockOrders(a.campus.id, undefined, undefined, {
+        from: '2026-11-07',
+      }),
+    ).toHaveLength(0);
+    expect(
+      await service.campusStockOrders(a.campus.id, undefined, b.store.id),
+    ).toHaveLength(0);
+    const p = (await service.products(a.staff.id))[0];
+    const report = await service.createReport(a.staff.id, {
+      requestId: randomUUID(),
+      kind: 'loss',
+      reason: '瓶身漏液待核对',
+      items: [
+        {
+          nightProductId: p.id,
+          quantity: 1,
+          inventoryVersion: p.inventoryVersion,
+        },
+      ],
+    });
+    await db.nightInventoryReport.update({
+      where: { id: report.id },
+      data: { createdAt: new Date('2026-11-05T16:00:00.000Z') },
+    });
+    expect(
+      await service.campusReports(a.campus.id, 'pending', undefined, {
+        kind: 'loss',
+        keyword: '漏液',
+        from: '2026-11-06',
+        to: '2026-11-06',
+      }),
+    ).toHaveLength(1);
+    expect(
+      await service.campusReports(a.campus.id, undefined, undefined, {
+        kind: 'stocktake',
+      }),
+    ).toHaveLength(0);
+    for (const filters of [
+      { from: '2026-02-30' },
+      { to: 'wrong' },
+      { from: '2026-11-07', to: '2026-11-06' },
+    ])
+      await expect(
+        service.campusStockOrders(a.campus.id, undefined, undefined, filters),
+      ).rejects.toThrow();
+    await expect(
+      service.campusReports(a.campus.id, undefined, undefined, { kind: 'bad' }),
+    ).rejects.toThrow('筛选条件无效');
+  });
+
   it('同店并发申请不能拆单绕过额度；同一请求重试只占用一次', async () => {
     const f = await fixture(1500);
     const results = await Promise.allSettled([f.request(2), f.request(2)]);
@@ -739,12 +892,51 @@ integration('已确认的夜宵备货库存流程（独立 PostgreSQL schema）'
         (p) => p.sourceProductId === official.id,
       )?.warehouseAvailable,
     ).toBe(37);
-    const batch = await db.restockBatch.create({ data: { name: '共享仓验收', startAt: new Date(), endAt: new Date(Date.now() + 3600000), createdBy: 'test-admin' } });
-    const restock = await db.restockOrder.create({ data: { batchId: batch.id, campusId: store.campusId, status: 'shipped', items: { create: { productId: official.id, cases: 2, unitsPerCase: 6 } } } });
-    await db.restockShipment.create({ data: { orderId: restock.id, batchId: batch.id, campusId: store.campusId, shippedBy: 'test-admin', items: { create: { productId: official.id, cases: 2, unitsPerCase: 6, costPerCase: 300, wholesalePerCase: 500 } } } });
+    const batch = await db.restockBatch.create({
+      data: {
+        name: '共享仓验收',
+        startAt: new Date(),
+        endAt: new Date(Date.now() + 3600000),
+        createdBy: 'test-admin',
+      },
+    });
+    const restock = await db.restockOrder.create({
+      data: {
+        batchId: batch.id,
+        campusId: store.campusId,
+        status: 'shipped',
+        items: {
+          create: { productId: official.id, cases: 2, unitsPerCase: 6 },
+        },
+      },
+    });
+    await db.restockShipment.create({
+      data: {
+        orderId: restock.id,
+        batchId: batch.id,
+        campusId: store.campusId,
+        shippedBy: 'test-admin',
+        items: {
+          create: {
+            productId: official.id,
+            cases: 2,
+            unitsPerCase: 6,
+            costPerCase: 300,
+            wholesalePerCase: 500,
+          },
+        },
+      },
+    });
     const admin = new AdminService(db, new BusinessService(db));
     await admin.confirmRestockReceipt(restock.id, 'test-admin', store.campusId);
-    expect((await service.catalog(store.campusId)).find(p => p.sourceProductId === official.id)?.warehouseAvailable).toBe(49);
-    expect((await admin.inventory(store.campusId)).find(p => p.id === day.id)?.availableStock).toBe(49);
+    expect(
+      (await service.catalog(store.campusId)).find(
+        (p) => p.sourceProductId === official.id,
+      )?.warehouseAvailable,
+    ).toBe(49);
+    expect(
+      (await admin.inventory(store.campusId)).find((p) => p.id === day.id)
+        ?.availableStock,
+    ).toBe(49);
   });
 });

@@ -52,6 +52,7 @@ try {
   await client.query('INSERT INTO "NightOrder" SELECT (jsonb_populate_record(NULL::"NightOrder", $1::jsonb)).*', [JSON.stringify({ ...orderRow, id: 'legacy-cancelled-order', orderNo: 'LEGACY-YX-002', storeId: 'night-preview-store', managerStaffId: 'night-preview-staff', couponId: null, status: 'cancelled', items: [{ nightProductId: 'legacy-night-product', quantity: 1, price: 777 }] })]);
   await client.query('BEGIN');
   await client.query(fs.readFileSync('prisma/migrations/20261106100000_night_stock_workflow/migration.sql', 'utf8'));
+  await client.query(fs.readFileSync('prisma/migrations/20261106220000_night_product_management/migration.sql', 'utf8'));
   await client.query('COMMIT');
   const p = (await client.query('SELECT * FROM "NightProduct" WHERE id = $1', ['legacy-night-product'])).rows[0];
   assert.equal(p.stock, 7); assert.equal(p.inventoryValue, 5439); assert.equal(p.frozenStock, 0);
@@ -63,5 +64,6 @@ try {
   assert.equal((await client.query('SELECT "inventoryRestocked" FROM "NightOrder" WHERE id = $1', ['legacy-cancelled-order'])).rows[0].inventoryRestocked, true);
   assert.deepEqual((await client.query('SELECT status, "heldValue" FROM "NightStockOrder" WHERE id = $1', ['legacy-stock-order'])).rows[0], { status: 'completed', heldValue: 0 });
   assert.ok((await client.query('SELECT perms FROM "AdminMenu" WHERE id = $1', ['legacy-menu'])).rows[0].perms.includes('GET /admin/night/stock-orders'));
+  assert.ok((await client.query('SELECT perms FROM "AdminMenu" WHERE id = $1', ['legacy-menu'])).rows[0].perms.includes('GET /admin/night/store-products'));
   console.log(`迁移兼容验收通过：旧库存/历史备货单/在配订单/条码迁移/缺仓库补链/菜单授权，独立 schema ${schema}`);
 } finally { await client.end(); }

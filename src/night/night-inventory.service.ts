@@ -10,6 +10,24 @@ import { PrismaService } from '../database/prisma.service';
 import { OFFICIAL_CAMPUS_ID } from '../common/campus';
 
 type Tx = Prisma.TransactionClient;
+export interface NightCatalogFilters {
+  status?: string;
+  categoryId?: string;
+  stock?: string;
+  source?: string;
+}
+export interface NightOperationFilters {
+  keyword?: string;
+  from?: string;
+  to?: string;
+  kind?: string;
+}
+export interface NightBuildingProductFilters extends NightCatalogFilters {
+  storeId?: string;
+  keyword?: string;
+  saleAllowed?: string;
+  onShelf?: string;
+}
 export interface StockLine {
   catalogProductId: string;
   warehouseProductId: string;
@@ -56,35 +74,215 @@ export function allocateInventoryValue(
 export class NightInventoryService {
   constructor(private readonly db: PrismaService) {}
 
-  async catalog(campusId: string, keyword?: string) {
+  async catalog(
+    campusId: string,
+    keyword?: string,
+    filters: NightCatalogFilters = {},
+  ) {
+    this.checkChoice(filters.status, ['on-sale', 'off-sale']);
+    this.checkChoice(filters.stock, ['available', 'empty', 'unlinked']);
+    this.checkChoice(filters.source, ['official', 'manual']);
     const rows = await this.db.product.findMany({
       where: {
         campusId,
         nightCatalog: true,
+        ...(filters.status ? { status: filters.status } : {}),
+        ...(filters.categoryId ? { categoryId: filters.categoryId } : {}),
+        ...(filters.source
+          ? {
+              sourceProductId:
+                filters.source === 'official' ? { not: null } : null,
+            }
+          : {}),
         ...(keyword
-          ? { name: { contains: keyword, mode: 'insensitive' } }
+          ? {
+              OR: [
+                { name: { contains: keyword, mode: 'insensitive' as const } },
+                {
+                  nightBarcode: {
+                    contains: keyword,
+                    mode: 'insensitive' as const,
+                  },
+                },
+                {
+                  warehouseProduct: {
+                    barcode: {
+                      contains: keyword,
+                      mode: 'insensitive' as const,
+                    },
+                  },
+                },
+              ],
+            }
           : {}),
       },
-      include: { warehouseProduct: true },
+      include: {
+        warehouseProduct: true,
+        category: { select: { id: true, name: true } },
+      },
       orderBy: { updatedAt: 'desc' },
+    });
+    return rows
+      .map((p) => ({
+        id: p.id,
+        name: p.name,
+        subtitle: p.subtitle,
+        categoryId: p.categoryId,
+        categoryName: p.category.name,
+        image: p.image,
+        price: p.price,
+        originalPrice: p.originalPrice,
+        barcode: p.nightBarcode || p.warehouseProduct?.barcode || p.barcode,
+        status: p.status,
+        sourceProductId: p.sourceProductId,
+        warehouseProductId: p.warehouseProductId,
+        warehouseAvailable: p.warehouseProduct
+          ? p.warehouseProduct.stock - p.warehouseProduct.lockedStock
+          : 0,
+        warehouseReserved: p.warehouseProduct?.nightReservedStock ?? 0,
+        retailUnit: p.retailUnit,
+        updatedAt: p.updatedAt.toISOString(),
+      }))
+      .filter(
+        (p) =>
+          !filters.stock ||
+          (filters.stock === 'unlinked'
+            ? !p.warehouseProductId
+            : filters.stock === 'available'
+              ? p.warehouseAvailable > 0
+              : Boolean(p.warehouseProductId) && p.warehouseAvailable <= 0),
+      );
+  }
+
+  private checkChoice(value: string | undefined, choices: string[]) {
+    if (value && !choices.includes(value))
+      throw new BadRequestException('筛选条件无效，请刷新页面');
+  }
+
+  async catalogCategories(campusId: string) {
+    return this.db.category.findMany({
+      where: { campusId, products: { some: { nightCatalog: true } } },
+      select: { id: true, name: true },
+      orderBy: { name: 'asc' },
+    });
+  }
+
+  private createdRange(filters: NightOperationFilters) {
+    const result: { gte?: Date; lte?: Date } = {};
+    for (const [key, value] of [
+      ['gte', filters.from],
+      ['lte', filters.to],
+    ] as const) {
+      if (!value) continue;
+      const date = new Date(
+        `${value}T${key === 'gte' ? '00:00:00.000' : '23:59:59.999'}+08:00`,
+      );
+      if (
+        !/^\d{4}-\d{2}-\d{2}$/.test(value) ||
+        !Number.isFinite(date.getTime()) ||
+        new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai' }).format(
+          date,
+        ) !== value
+      )
+        throw new BadRequestException('日期格式无效');
+      result[key] = date;
+    }
+    if (result.gte && result.lte && result.gte > result.lte)
+      throw new BadRequestException('开始日期不能晚于结束日期');
+    return Object.keys(result).length ? result : undefined;
+  }
+
+  async campusProducts(
+    campusId: string,
+    filters: NightBuildingProductFilters = {},
+  ) {
+    if (!campusId) throw new BadRequestException('请先选择校区');
+    this.checkChoice(filters.stock, ['available', 'empty', 'frozen']);
+    this.checkChoice(filters.saleAllowed, ['true', 'false']);
+    this.checkChoice(filters.onShelf, ['true', 'false']);
+    const q = filters.keyword?.trim();
+    const rows = await this.db.nightProduct.findMany({
+      where: {
+        store: { campusId },
+        ...(filters.storeId ? { storeId: filters.storeId } : {}),
+        ...(filters.categoryId
+          ? { catalogProduct: { categoryId: filters.categoryId } }
+          : {}),
+        ...(filters.saleAllowed
+          ? { saleAllowed: filters.saleAllowed === 'true' }
+          : {}),
+        ...(filters.onShelf ? { onShelf: filters.onShelf === 'true' } : {}),
+        ...(filters.stock === 'available'
+          ? { stock: { gt: 0 } }
+          : filters.stock === 'empty'
+            ? { stock: 0 }
+            : filters.stock === 'frozen'
+              ? { frozenStock: { gt: 0 } }
+              : {}),
+        ...(q
+          ? {
+              OR: [
+                {
+                  catalogProduct: {
+                    name: { contains: q, mode: 'insensitive' as const },
+                  },
+                },
+                {
+                  catalogProduct: {
+                    nightBarcode: { contains: q, mode: 'insensitive' as const },
+                  },
+                },
+                {
+                  store: {
+                    building: {
+                      name: { contains: q, mode: 'insensitive' as const },
+                    },
+                  },
+                },
+                {
+                  store: {
+                    managerStaff: {
+                      name: { contains: q, mode: 'insensitive' as const },
+                    },
+                  },
+                },
+              ],
+            }
+          : {}),
+      },
+      include: {
+        catalogProduct: { include: { category: { select: { name: true } } } },
+        store: {
+          include: {
+            building: { select: { name: true } },
+            managerStaff: { select: { name: true } },
+          },
+        },
+      },
+      orderBy: [{ storeId: 'asc' }, { createdAt: 'asc' }],
     });
     return rows.map((p) => ({
       id: p.id,
-      name: p.name,
-      subtitle: p.subtitle,
-      image: p.image,
-      price: p.price,
-      originalPrice: p.originalPrice,
-      barcode: p.nightBarcode || p.warehouseProduct?.barcode || p.barcode,
-      status: p.status,
-      sourceProductId: p.sourceProductId,
-      warehouseProductId: p.warehouseProductId,
-      warehouseAvailable: p.warehouseProduct
-        ? p.warehouseProduct.stock - p.warehouseProduct.lockedStock
-        : 0,
-      warehouseReserved: p.warehouseProduct?.nightReservedStock ?? 0,
-      retailUnit: p.retailUnit,
-      updatedAt: p.updatedAt.toISOString(),
+      storeId: p.storeId,
+      buildingName: p.store.building.name,
+      managerName: p.store.managerStaff?.name ?? '',
+      catalogProductId: p.catalogProductId,
+      name: p.catalogProduct.name,
+      barcode: p.catalogProduct.nightBarcode,
+      image: p.catalogProduct.image,
+      categoryName: p.catalogProduct.category.name,
+      price: p.catalogProduct.price,
+      catalogStatus: p.catalogProduct.status,
+      stock: p.stock,
+      frozenStock: p.frozenStock,
+      inventoryValue: p.inventoryValue,
+      onShelf: p.onShelf,
+      saleAllowed: p.saleAllowed,
+      purchasable:
+        p.stock > 0 &&
+        p.onShelf &&
+        p.saleAllowed &&
+        p.catalogProduct.status === 'on-sale',
     }));
   }
 
@@ -95,7 +293,14 @@ export class NightInventoryService {
         catalogScope: 'platform',
         status: 'on-sale',
         ...(keyword
-          ? { name: { contains: keyword, mode: 'insensitive' } }
+          ? {
+              OR: [
+                { name: { contains: keyword, mode: 'insensitive' as const } },
+                {
+                  barcode: { contains: keyword, mode: 'insensitive' as const },
+                },
+              ],
+            }
           : {}),
       },
       select: {
@@ -329,7 +534,10 @@ export class NightInventoryService {
           nightCatalog: true,
           status: 'on-sale',
         },
-        include: { warehouseProduct: true },
+        include: {
+          warehouseProduct: true,
+          category: { select: { name: true } },
+        },
         orderBy: { name: 'asc' },
       }),
       this.db.nightProduct.findMany({ where: { storeId: store.id } }),
@@ -341,6 +549,8 @@ export class NightInventoryService {
         !p.warehouseProduct?.nightCatalog;
       return {
         catalogProductId: p.id,
+        barcode: p.nightBarcode || p.warehouseProduct?.barcode || p.barcode,
+        categoryName: p.category.name,
         name: p.name,
         image: p.image,
         price: p.price,
@@ -585,13 +795,29 @@ export class NightInventoryService {
     if (!row) throw new NotFoundException('报告不存在');
     return row.storeId;
   }
-  async campusStockOrders(campusId: string, status?: string, storeId?: string) {
+  async campusStockOrders(
+    campusId: string,
+    status?: string,
+    storeId?: string,
+    filters: NightOperationFilters = {},
+  ) {
     if (!campusId && !storeId) throw new BadRequestException('请先选择校区');
+    this.checkChoice(status, [
+      'all',
+      'requested',
+      'approved',
+      'shipped',
+      'received',
+      'rejected',
+      'cancelled',
+      'completed',
+    ]);
     const rows = await this.db.nightStockOrder.findMany({
       where: {
         store: { ...(campusId ? { campusId } : {}) },
         ...(storeId ? { storeId } : {}),
         ...(status && status !== 'all' ? { status } : {}),
+        createdAt: this.createdRange(filters),
       },
       include: {
         store: {
@@ -602,21 +828,37 @@ export class NightInventoryService {
         },
       },
       orderBy: { createdAt: 'desc' },
-      take: 500,
     });
-    return rows.map((o) => ({
-      ...this.stockView(o),
-      buildingName: o.store.building.name,
-      managerName: o.store.managerStaff?.name ?? '',
-    }));
+    return rows
+      .map((o) => ({
+        ...this.stockView(o),
+        buildingName: o.store.building.name,
+        managerName: o.store.managerStaff?.name ?? '',
+      }))
+      .filter((row) => this.matchesOperation(row, filters.keyword))
+      .slice(0, 500);
   }
-  async campusReports(campusId: string, status?: string, storeId?: string) {
+  async campusReports(
+    campusId: string,
+    status?: string,
+    storeId?: string,
+    filters: NightOperationFilters = {},
+  ) {
     if (!campusId && !storeId) throw new BadRequestException('请先选择校区');
+    this.checkChoice(status, ['all', 'pending', 'approved', 'rejected']);
+    this.checkChoice(filters.kind, [
+      'loss',
+      'stocktake',
+      'receipt-shortage',
+      'order-loss',
+    ]);
     const rows = await this.db.nightInventoryReport.findMany({
       where: {
         store: { ...(campusId ? { campusId } : {}) },
         ...(storeId ? { storeId } : {}),
         ...(status && status !== 'all' ? { status } : {}),
+        ...(filters.kind ? { kind: filters.kind } : {}),
+        createdAt: this.createdRange(filters),
       },
       include: {
         store: {
@@ -627,13 +869,35 @@ export class NightInventoryService {
         },
       },
       orderBy: { createdAt: 'desc' },
-      take: 500,
     });
-    return rows.map((r) => ({
-      ...r,
-      buildingName: r.store.building.name,
-      managerName: r.store.managerStaff?.name ?? '',
-    }));
+    return rows
+      .map((r) => ({
+        ...r,
+        buildingName: r.store.building.name,
+        managerName: r.store.managerStaff?.name ?? '',
+      }))
+      .filter((row) => this.matchesOperation(row, filters.keyword))
+      .slice(0, 500);
+  }
+
+  private matchesOperation(
+    row: {
+      id: string;
+      buildingName: string;
+      managerName: string;
+      reason: string;
+      items: unknown;
+      reviewReason?: string;
+    },
+    keyword?: string,
+  ) {
+    const q = keyword?.trim().toLowerCase();
+    return (
+      !q ||
+      `${row.id} ${row.buildingName} ${row.managerName} ${row.reason} ${row.reviewReason ?? ''} ${JSON.stringify(row.items)}`
+        .toLowerCase()
+        .includes(q)
+    );
   }
   async transactions(storeId: string, productId?: string) {
     return this.db.nightStockTxn.findMany({
