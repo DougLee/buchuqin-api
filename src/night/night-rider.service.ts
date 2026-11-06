@@ -7,8 +7,13 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
 import { campusOrganizationId } from '../common/organization';
 import { NightOrderService } from './night-order.service';
-import { commissionOf, inNightWindow, nextDepositTier } from './night.helpers';
-import { NightStockOrderDto } from './night.dto';
+import {
+  commissionOf,
+  inNightWindow,
+  nextDepositTier,
+  nightBusinessDate,
+} from './night.helpers';
+import { NightStockOrderDto, NightDeliverDto } from './night.dto';
 
 const json = (value: unknown) =>
   JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
@@ -25,10 +30,52 @@ export class NightRiderService {
     private readonly orders: NightOrderService,
   ) {}
 
+  /** 所有履约员工均可查询；时间和资格由服务端裁决。 */
+  async businessContext(staffId: string) {
+    const staff = await this.db.staff.findUnique({
+      where: { id: staffId },
+      include: { campus: true },
+    });
+    if (!staff) throw new NotFoundException('员工不存在');
+    const campus = staff.campus;
+    const dayClosed =
+      campus.manualClosed || inNightWindow(campus.closeStart, campus.closeEnd);
+    const store = ['building-manager', 'intern-building-manager'].includes(
+      staff.role,
+    )
+      ? await this.db.nightStore.findFirst({
+          where: { managerStaffId: staffId, campusId: staff.campusId },
+        })
+      : null;
+    const nightWindow =
+      campus.nightEnabled &&
+      inNightWindow(campus.nightStartAt, campus.nightEndAt);
+    return {
+      mode: !dayClosed ? 'day' : nightWindow && store ? 'night' : 'rest',
+      hasNightStore: Boolean(store),
+      campusName: campus.name,
+      nightStartAt: campus.nightStartAt,
+      nightEndAt: campus.nightEndAt,
+      reason: !dayClosed
+        ? ''
+        : !store
+          ? '当前已休息，暂无夜宵经营资格'
+          : !campus.nightEnabled
+            ? '校区尚未开放夜宵经营'
+            : '尚未进入夜宵营业时间',
+    };
+  }
+
   /** 本人夜宵店（未绑定=404；解绑/换人后旧 token 立即失效口径）。 */
   private async myStore(staffId: string) {
+    const staff = await this.db.staff.findUnique({ where: { id: staffId } });
+    if (
+      !staff ||
+      !['building-manager', 'intern-building-manager'].includes(staff.role)
+    )
+      throw new NotFoundException('楼长账号不存在');
     const store = await this.db.nightStore.findFirst({
-      where: { managerStaffId: staffId },
+      where: { managerStaffId: staffId, campusId: staff.campusId },
       include: {
         building: { select: { id: true, name: true } },
         campus: {
@@ -93,7 +140,7 @@ export class NightRiderService {
   }
 
   /** 发起押金缴纳（微信支付；复用 payments JSAPI 通道，ND 业务标记）。 */
-  async initiateDepositPay(staffId: string) {
+  async initiateDepositPay(staffId: string, targetTier?: number) {
     const store = await this.myStore(staffId);
     const staff = await this.db.staff.findUniqueOrThrow({
       where: { id: staffId },
@@ -112,6 +159,7 @@ export class NightRiderService {
       store.campusId,
       staff.openid,
       payerAppId,
+      targetTier,
     );
   }
 
@@ -196,12 +244,56 @@ export class NightRiderService {
         (merged.get(item.catalogProductId) ?? 0) + item.quantity,
       );
     const result = await this.db.$transaction(async (tx) => {
+      // 串行化同店备货，防止两个请求同时通过押金额度检查。
+      await tx.$queryRaw`SELECT id FROM "NightStore" WHERE id = ${store.id} FOR UPDATE`;
+      if (dto.requestId) {
+        const previous = await tx.nightStockOrder.findUnique({
+          where: {
+            storeId_requestId: { storeId: store.id, requestId: dto.requestId },
+          },
+        });
+        if (previous) {
+          if (previous.managerStaffId !== staffId)
+            throw new BadRequestException('该备货单不属于当前经营者');
+          return { stockOrder: previous, totalValue: previous.totalValue };
+        }
+      }
       const fresh = await tx.nightStore.findUnique({ where: { id: store.id } });
       if (!fresh) throw new NotFoundException('夜宵店不存在');
+      if (fresh.managerStaffId !== staffId)
+        throw new BadRequestException('经营资格已变更，请刷新');
+      if (fresh.status === 'suspended')
+        throw new BadRequestException('店铺已停业，暂不能进货');
+      const catalog = await tx.product.findMany({
+        where: {
+          id: { in: [...merged.keys()] },
+          campusId: store.campusId,
+          nightCatalog: true,
+          status: 'on-sale',
+        },
+        select: { id: true },
+      });
+      if (catalog.length !== merged.size)
+        throw new BadRequestException('存在不可进货或不属于本校区的商品');
+      for (const item of catalog)
+        await tx.nightProduct.upsert({
+          where: {
+            storeId_catalogProductId: {
+              storeId: store.id,
+              catalogProductId: item.id,
+            },
+          },
+          create: {
+            storeId: store.id,
+            catalogProductId: item.id,
+            stock: 0,
+            onShelf: true,
+          },
+          update: {},
+        });
       const rows = await tx.nightProduct.findMany({
         where: {
           storeId: store.id,
-          catalogProductId: { in: [...merged.keys()] },
         },
         include: {
           catalogProduct: {
@@ -209,21 +301,24 @@ export class NightRiderService {
           },
         },
       });
-      if (rows.length !== merged.size)
+      const selected = rows.filter((r) => merged.has(r.catalogProductId));
+      if (selected.length !== merged.size)
         throw new BadRequestException(
           '存在未配置商品，请联系后台先给本店配置商品',
         );
       // 押金额度校验（现有库存×售价 + 本次×售价 ≤ 押金）
-      let currentValue = 0;
+      const currentValue = rows.reduce(
+        (sum, row) => sum + row.stock * row.catalogProduct.price,
+        0,
+      );
       let orderValue = 0;
-      for (const row of rows) {
+      for (const row of selected) {
         const qty = merged.get(row.catalogProductId)!;
         if (row.catalogProduct.status !== 'on-sale')
           throw new BadRequestException(
             `${row.catalogProduct.name}夜主档已停售`,
           );
         if (qty <= 0) throw new BadRequestException('备货数量不合法');
-        currentValue += row.stock * row.catalogProduct.price;
         orderValue += qty * row.catalogProduct.price;
       }
       const gap = currentValue + orderValue - fresh.deposit;
@@ -231,7 +326,7 @@ export class NightRiderService {
         throw new BadRequestException(
           `押金额度不足：库存货值 + 本次备货货值超出押金 ${(gap / 100).toFixed(2)} 元，请先补缴押金（500 元档递增）`,
         );
-      const items = rows.map((row) => ({
+      const items = selected.map((row) => ({
         nightProductId: row.id,
         catalogProductId: row.catalogProductId,
         name: row.catalogProduct.name,
@@ -243,6 +338,7 @@ export class NightRiderService {
         data: {
           storeId: store.id,
           managerStaffId: staffId,
+          requestId: dto.requestId,
           items: json(items),
           totalValue,
         },
@@ -280,7 +376,7 @@ export class NightRiderService {
   async stockOrders(staffId: string) {
     const store = await this.myStore(staffId);
     const rows = await this.db.nightStockOrder.findMany({
-      where: { storeId: store.id },
+      where: { storeId: store.id, managerStaffId: staffId },
       orderBy: { createdAt: 'desc' },
       take: 100,
     });
@@ -367,9 +463,7 @@ export class NightRiderService {
   /** 工作台：场次/营业态/押金/待接单/今日销售额/库存货值/佣金汇总。 */
   async dashboard(staffId: string) {
     const store = await this.myStore(staffId);
-    const today = new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'Asia/Shanghai',
-    }).format(new Date());
+    const today = nightBusinessDate();
     const [pendingOrders, todayAgg, products, commissionAgg] =
       await Promise.all([
         this.db.nightOrder.count({
@@ -482,6 +576,10 @@ export class NightRiderService {
     });
     if (!product) throw new NotFoundException('商品不存在');
     if (onShelf) {
+      if (!product.saleAllowed)
+        throw new BadRequestException('商品已被后台停售，暂不能上架');
+      if (product.stock <= 0)
+        throw new BadRequestException('暂无库存，请先进货');
       if (product.catalogProduct.status !== 'on-sale')
         throw new BadRequestException(
           `${product.catalogProduct.name}已被后台停售，暂不能上架`,
@@ -502,6 +600,7 @@ export class NightRiderService {
     const rows = await this.db.nightOrder.findMany({
       where: {
         storeId: store.id,
+        managerStaffId: staffId,
         ...(status && status !== 'all'
           ? status === 'todo'
             ? { status: { in: ['pending-accept', 'delivering'] } }
@@ -521,16 +620,16 @@ export class NightRiderService {
   }
 
   /** 送达（delivering → delivered）。 */
-  async deliver(staffId: string, orderId: string) {
+  async deliver(staffId: string, orderId: string, proof: NightDeliverDto) {
     const store = await this.myStore(staffId);
-    return this.orders.deliverOrder(staffId, store.id, orderId);
+    return this.orders.deliverOrder(staffId, store.id, orderId, proof);
   }
 
   /** 本店订单详情（楼长视角：含地址联系方式，仅本店单）。 */
   async storeOrderDetail(staffId: string, orderId: string) {
     const store = await this.myStore(staffId);
     const order = await this.db.nightOrder.findFirst({
-      where: { id: orderId, storeId: store.id },
+      where: { id: orderId, storeId: store.id, managerStaffId: staffId },
     });
     if (!order) throw new NotFoundException('订单不存在');
     return this.orders.orderView(order);
@@ -588,7 +687,7 @@ export class NightRiderService {
   async orderEarning(staffId: string, orderId: string) {
     const store = await this.myStore(staffId);
     const order = await this.db.nightOrder.findFirst({
-      where: { id: orderId, storeId: store.id },
+      where: { id: orderId, storeId: store.id, managerStaffId: staffId },
     });
     if (!order) throw new NotFoundException('订单不存在');
     const base = order.productAmount - order.couponDiscount;

@@ -1620,6 +1620,7 @@ model NightStockOrder {
   storeId        String
   store          NightStore @relation(fields: [storeId], references: [id])
   managerStaffId String
+  requestId      String?
   /// [{nightProductId, catalogProductId, name, price, quantity}]
   items          Json
   /// 货值合计（分，校验通过瞬间计算值留痕）
@@ -1628,6 +1629,7 @@ model NightStockOrder {
   createdAt      DateTime   @default(now())
 
   @@index([storeId, createdAt])
+  @@unique([storeId, requestId])
 }
 
 /// 夜宵库存流水（NightProduct.stock 的全量变动账本；

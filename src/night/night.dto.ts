@@ -1,6 +1,7 @@
 import { Type } from 'class-transformer';
 import {
   ArrayMinSize,
+  ArrayMaxSize,
   IsArray,
   IsBoolean,
   IsIn,
@@ -120,6 +121,7 @@ export class NightDepositRefundDto {
 /* ==================== 楼长端 /night-rider/* ==================== */
 
 export class NightStockOrderDto {
+  @IsOptional() @IsString() @MinLength(8) @MaxLength(100) requestId?: string;
   @IsArray()
   @ArrayMinSize(1)
   @ValidateNested({ each: true })
@@ -134,6 +136,19 @@ export class NightStockItemDto {
 
 export class NightShelfDto {
   @IsBoolean() onShelf!: boolean;
+}
+
+export class NightDeliverDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(3)
+  @IsString({ each: true })
+  images!: string[];
+  @IsOptional() @IsString() @MaxLength(200) remark?: string;
+}
+
+export class NightDepositPayDto {
+  @IsOptional() @IsInt() @Min(50000) @Max(5000000) targetTier?: number;
 }
 
 /* ==================== 用户端 /night/* ==================== */

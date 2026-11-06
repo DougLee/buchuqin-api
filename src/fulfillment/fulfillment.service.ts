@@ -10,10 +10,7 @@ import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
 import { AdminService } from '../admin/admin.service';
 import { NotificationsService } from '../notifications/notifications.service';
-import {
-  markTimelineStep,
-  ORDER_STATUS_TEXT,
-} from '../common/order-state';
+import { markTimelineStep, ORDER_STATUS_TEXT } from '../common/order-state';
 import {
   campusOrganizationId,
   campusStaffDelivery,
@@ -108,8 +105,7 @@ export class FulfillmentService {
    *  getPhoneNumber code → 组织履约凭证换手机号 → 直写本人 phone。
    *  push 未注入（部分单测）或微信侧失败抛错，前端引导手输兜底。 */
   async updateProfilePhoneByWechat(staffId: string, code: string) {
-    if (!this.push)
-      throw new BadRequestException('手机号获取通道未启用');
+    if (!this.push) throw new BadRequestException('手机号获取通道未启用');
     const s = await this.profile(staffId);
     let phone: string;
     try {
@@ -292,9 +288,7 @@ export class FulfillmentService {
     orders: T[],
   ): T[] {
     return ['building-manager', 'intern-building-manager'].includes(staff.role)
-      ? orders.filter((x) =>
-          this.isOwnBuilding(staff, x.address as JsonMap),
-        )
+      ? orders.filter((x) => this.isOwnBuilding(staff, x.address as JsonMap))
       : orders;
   }
   /** 同楼判定（IKAFP4）：buildingId 为准（快照含真实 id，改名不影响归属）；
@@ -318,24 +312,22 @@ export class FulfillmentService {
     );
     const orders = this.attributedOrders(
       staff,
-      (
-        await this.db.order.findMany({
-          where: {
-            campusId: staff.campusId,
-            status: { notIn: ['pending-payment', 'cancelled', 'refunded'] },
-            // 骑手视图：已被其他配送员接走的单不再出现在任务池。
-            ...(!manager
-              ? { OR: [{ riderId: null }, { riderId: staffId }] }
-              : {}),
-          },
-          orderBy: { createdAt: 'desc' },
-        })),
+      await this.db.order.findMany({
+        where: {
+          campusId: staff.campusId,
+          status: { notIn: ['pending-payment', 'cancelled', 'refunded'] },
+          // 骑手视图：已被其他配送员接走的单不再出现在任务池。
+          ...(!manager
+            ? { OR: [{ riderId: null }, { riderId: staffId }] }
+            : {}),
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
     )
       .filter(
         (order) =>
           !manager ||
-          (order.package as JsonMap | null)?.lastMileMode !==
-          'customer-pickup',
+          (order.package as JsonMap | null)?.lastMileMode !== 'customer-pickup',
       )
       .filter((o) => {
         // IKRMQF（道哥 2026-10-30）：楼栋筛选——骑手看板按地址快照 buildingId 精确过滤
@@ -346,9 +338,7 @@ export class FulfillmentService {
     // 提成展示口径统一（IK8W5L）：已生成的 Commission 记录优先，未送达单按规则预览。
     const riderIds = [
       ...new Set(
-        orders
-          .map((o) => o.riderId)
-          .filter((v): v is string => Boolean(v)),
+        orders.map((o) => o.riderId).filter((v): v is string => Boolean(v)),
       ),
     ];
     // IKQFG4：提成预览改校区配送费直取（规则表废弃），不再 loadRules
@@ -390,7 +380,12 @@ export class FulfillmentService {
       ),
     );
     return result.filter(
-      (x) => !status || status === 'all' || x.status === status,
+      (x) =>
+        !status ||
+        status === 'all' ||
+        (status === 'unfinished'
+          ? x.status !== 'completed' && x.status !== 'available'
+          : x.status === status),
     );
   }
   async task(staffId: string, id: string) {
@@ -493,11 +488,9 @@ export class FulfillmentService {
           // 抢到后即可转单——待取货/配送中/待交接均可；已到店（arrived）不转
           //（马上取货，转单无意义）。
           if (
-            ![
-              'waiting-first-mile',
-              'first-mile',
-              'waiting-handover',
-            ].includes(order.status)
+            !['waiting-first-mile', 'first-mile', 'waiting-handover'].includes(
+              order.status,
+            )
           )
             throw new BadRequestException(
               `当前订单状态为「${order.statusText}」，不能转单`,
@@ -641,11 +634,7 @@ export class FulfillmentService {
           !payload.reason
         )
           throw new BadRequestException('请上传送达凭证或填写备注');
-        if (
-          action === 'delivered' &&
-          customerPickup &&
-          !payload.images?.length
-        )
+        if (action === 'delivered' && customerPickup && !payload.images?.length)
           throw new BadRequestException('用户楼下取货必须上传送达凭证照片');
         // 进入目标状态时点亮对应 timeline 节点（楼下待交接节点由 arrive 写入）。
         const timeline = markTimelineStep(order.timeline, next.status);
@@ -953,7 +942,9 @@ export class FulfillmentService {
       select: { buildingManagerBaseSalary: true },
     });
     const base =
-      s.role === 'building-manager' ? campus?.buildingManagerBaseSalary ?? 0 : 0;
+      s.role === 'building-manager'
+        ? (campus?.buildingManagerBaseSalary ?? 0)
+        : 0;
     return {
       month: period,
       baseSalary: base,
@@ -989,7 +980,7 @@ export class FulfillmentService {
     const ids = [
       ...new Set(
         orders
-          .map((o) => String((o.address as JsonMap | null)?.buildingId ?? ""))
+          .map((o) => String((o.address as JsonMap | null)?.buildingId ?? ''))
           .filter(Boolean),
       ),
     ];
@@ -1084,8 +1075,8 @@ export class FulfillmentService {
       building: String(a.buildingName),
       // IKRMQF：楼栋性别（male/female/mixed）——配送端显示男寝/女寝徽标
       buildingGender: a.buildingId
-        ? (buildingGenderById?.get(String(a.buildingId)) ?? "mixed")
-        : "mixed",
+        ? (buildingGenderById?.get(String(a.buildingId)) ?? 'mixed')
+        : 'mixed',
       floor: Number(a.floor),
       room: String(a.room),
       // 收件人联系渠道（IK9AWW）：配送员「用户不在」时可直接拨打；

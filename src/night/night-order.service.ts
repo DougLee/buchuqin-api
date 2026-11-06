@@ -547,33 +547,60 @@ export class NightOrderService implements NightPaymentHandler {
     return { id, status: 'delivering' };
   }
 
-  async deliverOrder(staffId: string, storeId: string, id: string) {
-    const order = await this.db.nightOrder.findUnique({ where: { id } });
-    if (!order) throw new NotFoundException('订单不存在');
-    if (order.storeId !== storeId) throw new ForbiddenException('非本店订单');
-    if (order.status !== 'delivering')
-      throw new BadRequestException('当前状态不可标记送达');
-    const won = await this.db.nightOrder.updateMany({
-      where: { id, status: 'delivering' },
-      data: {
-        status: 'delivered',
-        statusText: STATUS_TEXT.delivered,
-        timeline: json([
-          ...asTimeline(order.timeline),
-          { key: 'delivered', title: '已送达', time: new Date().toISOString() },
-        ]),
-      },
+  async deliverOrder(
+    staffId: string,
+    storeId: string,
+    id: string,
+    proof: { images: string[]; remark?: string },
+  ) {
+    if (
+      !proof?.images?.length ||
+      proof.images.some((url) => !/^https?:\/\//.test(url))
+    )
+      throw new BadRequestException('请上传有效的送达照片');
+    await this.db.$transaction(async (tx) => {
+      const order = await tx.nightOrder.findUnique({ where: { id } });
+      if (!order) throw new NotFoundException('订单不存在');
+      if (order.storeId !== storeId) throw new ForbiddenException('非本店订单');
+      if (order.managerStaffId !== staffId)
+        throw new ForbiddenException('非本人经营订单');
+      if (order.status === 'completed') return;
+      if (order.status !== 'delivering')
+        throw new BadRequestException('当前状态不可标记送达');
+      const won = await tx.nightOrder.updateMany({
+        where: { id, status: 'delivering' },
+        data: {
+          status: 'completed',
+          statusText: STATUS_TEXT.completed,
+          completedAt: new Date(),
+          timeline: json([
+            ...asTimeline(order.timeline),
+            {
+              key: 'completed',
+              title: '已送达并完成',
+              time: new Date().toISOString(),
+              proof,
+              operatorId: staffId,
+            },
+          ]),
+        },
+      });
+      if (!won.count) throw new BadRequestException('订单状态已变化');
+      if (order.afterSaleStatus !== 'requested')
+        await tx.nightCommissionTxn.updateMany({
+          where: { orderId: id, status: 'estimated' },
+          data: { status: 'pending' },
+        });
+      await tx.notification.create({
+        data: {
+          userId: order.userId,
+          type: 'delivery',
+          title: '夜宵订单已送达',
+          content: `订单 ${order.orderNo} 已送达并完成，可在订单详情查看。`,
+        },
+      });
     });
-    if (!won.count) throw new BadRequestException('订单状态已变化');
-    await this.db.notification.create({
-      data: {
-        userId: order.userId,
-        type: 'delivery',
-        title: '夜宵订单已送达',
-        content: `订单 ${order.orderNo} 已送达，请确认收货。`,
-      },
-    });
-    return { id, status: 'delivered' };
+    return { id, status: 'completed' };
   }
 
   /* ==================== 支付 ==================== */
@@ -1318,15 +1345,24 @@ export class NightOrderService implements NightPaymentHandler {
     campusId: string,
     openid: string,
     payerAppId?: string,
+    requestedTier?: number,
   ) {
     const store = await this.db.nightStore.findUnique({
       where: { id: storeId },
     });
     if (!store) throw new NotFoundException('夜宵店不存在');
-    const targetTier = Math.max(
+    const minimumTier = Math.max(
       50000,
       (Math.floor(store.deposit / 50000) + 1) * 50000,
     );
+    const targetTier = requestedTier ?? minimumTier;
+    if (
+      !Number.isSafeInteger(targetTier) ||
+      targetTier % 50000 !== 0 ||
+      targetTier < minimumTier ||
+      targetTier > 5000000
+    )
+      throw new BadRequestException('请选择有效的 500 元押金档位');
     const amount = targetTier - store.deposit;
     if (amount <= 0) throw new BadRequestException('押金已足额，无需缴纳');
     // 复用未支付旧单（幂等；避免堆积死单）

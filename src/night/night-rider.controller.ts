@@ -16,7 +16,12 @@ import type { AuthRequest } from '../auth/jwt-auth.guard';
 import { ok, type ApiResponse } from '../common/api-response';
 import { paginate } from '../common/pagination';
 import { NightRiderService } from './night-rider.service';
-import { NightShelfDto, NightStockOrderDto } from './night.dto';
+import {
+  NightShelfDto,
+  NightStockOrderDto,
+  NightDeliverDto,
+  NightDepositPayDto,
+} from './night.dto';
 
 /**
  * 楼长端夜宵接口（IKSW1F）：/night-rider/night/*。
@@ -54,8 +59,10 @@ export class NightRiderController {
 
   @Post('night/deposit/pay')
   @ApiOperation({ summary: '发起押金缴纳（微信支付，500 档递增补缴）' })
-  async depositPay(@Req() r: AuthRequest) {
-    return ok(await this.service.initiateDepositPay(this.auth(r)));
+  async depositPay(@Req() r: AuthRequest, @Body() d: NightDepositPayDto) {
+    return ok(
+      await this.service.initiateDepositPay(this.auth(r), d.targetTier),
+    );
   }
 
   @Get('night/deposit/pay-status')
@@ -185,9 +192,13 @@ export class NightRiderController {
   }
 
   @Post('night/orders/:id/deliver')
-  @ApiOperation({ summary: '送达（delivering → delivered）' })
-  async deliver(@Req() r: AuthRequest, @Param('id') id: string) {
-    return ok(await this.service.deliver(this.auth(r), id), '已送达');
+  @ApiOperation({ summary: '上传凭证并送达完成（delivering → completed）' })
+  async deliver(
+    @Req() r: AuthRequest,
+    @Param('id') id: string,
+    @Body() d: NightDeliverDto,
+  ) {
+    return ok(await this.service.deliver(this.auth(r), id, d), '已送达完成');
   }
 
   /* ---------- 收入 ---------- */
