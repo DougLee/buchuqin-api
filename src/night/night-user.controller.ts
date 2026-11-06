@@ -62,8 +62,8 @@ export class NightUserController {
 
   @Get('stores/:id/products')
   @ApiOperation({ summary: '本店可购商品（上架+售卖许可+库存>0）' })
-  async storeProducts(@Param('id') id: string) {
-    return ok(await this.service.storeProducts(id));
+  async storeProducts(@Req() req: AuthRequest, @Param('id') id: string) {
+    return ok(await this.service.storeProducts(this.campusId(req), id));
   }
 
   /* ---------- 订单 ---------- */
@@ -76,8 +76,8 @@ export class NightUserController {
 
   @Get('orders')
   @ApiOperation({ summary: '我的夜宵订单（?status 过滤）' })
-  async orders(@Req() req: AuthRequest, @Query('status') status?: string) {
-    return ok(await this.service.orders(req.user.id, status));
+  async orders(@Req() req: AuthRequest, @Query('status') status?: string, @Query('page') page?: string, @Query('pageSize') pageSize?: string) {
+    return ok(await this.service.orders(req.user.id, status, page, pageSize));
   }
 
   @Get('orders/:id')
@@ -93,10 +93,9 @@ export class NightUserController {
     @Param('id') id: string,
     @Body() d: CancelReasonDto,
   ) {
-    return ok(
-      await this.service.cancelOrder(req.user.id, id, d.reason),
-      '订单已取消',
-    );
+    const order = await this.service.cancelOrder(req.user.id, id, d.reason);
+    const message = ['cancelled', 'refunded'].includes(order.status) ? '订单已取消' : order.refund?.status === 'failed' ? '退款未完成' : order.status === 'cancelling' ? '退款处理中' : '订单状态已更新，请核对';
+    return ok(order, message);
   }
 
   @Post('orders/:id/confirm')

@@ -57,15 +57,27 @@ export function inNightWindow(
  * PRD 口径）；06:00 起视为新一天（白天兜底时段不存在夜宵单，该分界
  * 只影响脏数据展示）。
  */
-export function nightBusinessDate(now = new Date()): string {
+export function nightBusinessDate(now = new Date(), start?: string | null, end?: string | null): string {
   const d = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Shanghai',
   }).format(now);
-  if (beijingMinutes(now) >= 6 * 60) return d;
+  const boundary = nightDayBoundary(start, end);
+  if (beijingMinutes(now) >= boundary) return d;
   const prev = new Date(now.getTime() - 24 * 3600 * 1000);
   return new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Shanghai',
   }).format(prev);
+}
+
+/** Business day rolls over at the configured overnight closing time. */
+export function nightDayBoundary(start?: string | null, end?: string | null): number {
+  if (start === undefined && end === undefined) return 360; // legacy caller fallback
+  const s = hhmmToMinutes(start), e = hhmmToMinutes(end);
+  return s !== null && e !== null && s > e ? e : 0;
+}
+
+export function nightDayStart(day: string, start?: string | null, end?: string | null) {
+  return new Date(new Date(`${day}T00:00:00+08:00`).getTime() + nightDayBoundary(start, end) * 60000);
 }
 
 /** YX 前缀夜宵订单号：时间戳 + 随机后缀（同毫秒并发防撞，约束唯一兜底）。 */

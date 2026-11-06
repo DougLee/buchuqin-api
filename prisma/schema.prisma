@@ -970,6 +970,8 @@ model Coupon {
   id               String       @id @default(cuid())
   campusId         String
   businessType     String       @default("day")
+  /// 夜宵券适用的校区夜商品主档ID；空数组表示本校区全部夜宵商品。
+  nightProductIds  String[]     @default([])
   name             String
   // IKDCVO：kind 券品种（platform 金额券下单抵扣 | partner 异业券到店展示暂不核销）；
   // trigger 发放方式（manual 手动领取 | lottery 转盘 | signup 注册自动发）。
@@ -1499,10 +1501,12 @@ model NightStore {
   orders        NightOrder[]
   depositTxns   NightDepositTxn[]
   depositOrders NightDepositOrder[]
+  depositRefunds NightDepositRefund[]
   stockOrders   NightStockOrder[]
   stockTxns     NightStockTxn[]
   inventoryReports NightInventoryReport[]
   commissionTxns NightCommissionTxn[]
+  refunds        NightRefund[]
 }
 
 /// 夜宵商品楼栋行（每栋各选各的货；资料与售价引主档 Product 夜宵行）
@@ -1555,6 +1559,11 @@ model NightOrder {
   id             String   @id @default(cuid())
   /// YX 前缀唯一单号
   orderNo        String   @unique
+  requestId      String?  @db.VarChar(80)
+  requestHash    String?
+  payMerchantId  String?
+  payAppId       String?
+  wxTransactionId String?
   storeId        String
   store          NightStore @relation(fields: [storeId], references: [id])
   /// 楼长快照（软引用，下单时定）
@@ -1597,11 +1606,45 @@ model NightOrder {
   completedAt    DateTime?
 
   commissionTxns NightCommissionTxn[]
+  refund         NightRefund?
 
   @@index([storeId, status])
   @@index([managerStaffId, status])
   @@index([businessDate])
   @@index([userId, status])
+  @@unique([userId, requestId])
+}
+
+/// 一期每单一次退款；网关资金状态持久化，成功后才释放券/库存和冲回佣金。
+model NightRefund {
+  id                      String     @id @default(cuid())
+  orderId                 String     @unique
+  order                   NightOrder @relation(fields: [orderId], references: [id])
+  storeId                 String
+  store                   NightStore @relation(fields: [storeId], references: [id])
+  outRefundNo             String     @unique
+  kind                    String
+  status                  String     @default("requested")
+  originalStatus          String
+  originalAfterSaleStatus String?
+  productAmount           Int
+  deliveryFeeAmount       Int
+  totalAmount             Int
+  restock                 Boolean    @default(true)
+  fullProductRefund       Boolean    @default(false)
+  heldValue               Int        @default(0)
+  reason                  String
+  operatorId              String
+  gatewayRefundId         String?
+  errorMessage            String     @default("")
+  attempts                Int        @default(0)
+  leaseUntil              DateTime?
+  completedAt             DateTime?
+  createdAt               DateTime   @default(now())
+  updatedAt               DateTime   @updatedAt
+
+  @@index([status, leaseUntil])
+  @@index([storeId, createdAt])
 }
 
 /// 佣金流水（每单两条：商品佣金 commission + 配送费收入 deliveryFee；
@@ -1720,6 +1763,9 @@ model NightDepositOrder {
   outTradeNo String     @unique
   /// 本次缴纳金额（分）= 目标档位 − 当前押金余额；按 500 元档递增
   amount     Int
+  payMerchantId String?
+  payAppId String?
+  wxTransactionId String?
   /// 目标押金档位（分，留痕：50000/100000/…）
   targetTier Int
   /// pending 待支付 / paid 已到账 / closed 已关闭（超时未付）
@@ -1728,4 +1774,31 @@ model NightDepositOrder {
   createdAt  DateTime   @default(now())
 
   @@index([storeId, status])
+}
+
+/// 每次退押申请按原缴款分配。渠道确认成功后才扣余额，处理中保留额度。
+model NightDepositRefund {
+  id String @id @default(cuid())
+  storeId String
+  store NightStore @relation(fields: [storeId], references: [id])
+  requestId String @db.VarChar(80)
+  payOrderNo String
+  outRefundNo String @unique
+  originalAmount Int
+  amount Int
+  payMerchantId String?
+  status String @default("requested")
+  operatorId String
+  reason String
+  errorMessage String @default("")
+  gatewayRefundId String?
+  attempts Int @default(0)
+  leaseUntil DateTime?
+  completedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([storeId, requestId, payOrderNo])
+  @@index([storeId, createdAt])
+  @@index([status, leaseUntil])
 }

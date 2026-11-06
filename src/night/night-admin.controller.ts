@@ -409,7 +409,7 @@ export class NightAdminController {
     @Query('pageSize') pageSize?: string,
   ) {
     await this.guardStoreCampus(req, storeId);
-    return ok(paginate(await this.service.stockTxns(storeId), page, pageSize));
+    return ok(await this.service.stockTxnsPage(storeId, page, pageSize));
   }
 
   /* ---------- 校区配置 ---------- */
@@ -439,27 +439,28 @@ export class NightAdminController {
     @Query('storeId') storeId?: string,
     @Query('status') status?: string,
     @Query('date') date?: string,
+    @Query('keyword') keyword?: string,
+    @Query('afterSaleStatus') afterSaleStatus?: string,
     @Query('campus') campus?: string,
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
   ) {
     const campusId = await this.campusScope(req, campus);
     if (storeId) await this.guardStoreCampus(req, storeId);
-    const rows = await this.service.adminOrders(campusId, {
+    return ok(await this.service.adminOrdersPage(campusId, {
       storeId,
       status,
       date,
-    });
-    return ok(paginate(rows, page, pageSize));
+      keyword,
+      afterSaleStatus,
+    }, page, pageSize));
   }
 
   @Get('orders/:id')
   @ApiOperation({ summary: '夜宵订单详情（含佣金流水）' })
   async orderDetail(@Req() req: AuthRequest, @Param('id') id: string) {
     const detail = await this.service.adminOrderDetail(id);
-    const campusId = (detail as { store?: { campusId?: string } }).store
-      ?.campusId;
-    if (campusId) await this.campusScope(req, campusId);
+    await this.guardStoreCampus(req, detail.store!.id);
     return ok(detail);
   }
 
@@ -471,13 +472,27 @@ export class NightAdminController {
     @Body() body: NightRefundDto,
   ) {
     const detail = await this.service.adminOrderDetail(id);
-    const campusId = (detail as { store?: { campusId?: string } }).store
-      ?.campusId;
-    if (campusId) await this.campusScope(req, campusId);
+    await this.guardStoreCampus(req, detail.store!.id);
     return ok(
       await this.service.adminRefund(req.user.id, id, body),
       '退款已发起',
     );
+  }
+
+  @Post('orders/:id/refund/sync')
+  @ApiOperation({ summary: '核对原退款申请，不重复发起退款' })
+  async syncRefund(@Req() req: AuthRequest, @Param('id') id: string) {
+    const detail = await this.service.adminOrderDetail(id);
+    await this.guardStoreCampus(req, detail.store!.id);
+    return ok(await this.service.syncRefund(id));
+  }
+
+  @Post('orders/:id/after-sale/reject')
+  @ApiOperation({ summary: '驳回售后申请并留痕，已完成订单恢复待结算资格' })
+  async rejectAfterSale(@Req() req: AuthRequest, @Param('id') id: string, @Body() body: NightReasonDto) {
+    const detail = await this.service.adminOrderDetail(id);
+    await this.guardStoreCampus(req, detail.store!.id);
+    return ok(await this.service.rejectAfterSale(req.user.id, id, body.reason));
   }
 
   /* ---------- 券（夜宵 Tab：模板数据复用现有券管理） ---------- */
@@ -518,6 +533,7 @@ export class NightAdminController {
     const campusId = body.campusId
       ? await this.campusScope(req, body.campusId)
       : await this.campusScope(req);
+    for (const storeId of body.storeIds ?? []) await this.guardStoreCampus(req, storeId);
     return ok(
       await this.service.settleBatch(campusId, body.storeIds),
       '出账完成',
@@ -531,6 +547,7 @@ export class NightAdminController {
     @Param('batch') batch: string,
     @Body() body: { remark?: string },
   ) {
+    for (const campusId of await this.service.settlementCampusIds(batch)) await this.campusScope(req, campusId);
     return ok(
       await this.service.markBatchPaid(req.user.id, batch, body.remark ?? ''),
       '已标记打款',
@@ -570,6 +587,24 @@ export class NightAdminController {
   async liquidation(@Req() req: AuthRequest, @Param('id') storeId: string) {
     await this.guardStoreCampus(req, storeId);
     return ok(await this.service.liquidation(storeId));
+  }
+
+  @Get('stores/:id/deposit-refunds')
+  async depositRefunds(@Req() req: AuthRequest, @Param('id') storeId: string, @Query('page') page?: string, @Query('pageSize') pageSize?: string) {
+    await this.guardStoreCampus(req, storeId);
+    return ok(await this.service.depositRefunds(storeId, page, pageSize));
+  }
+
+  @Get('stores/:id/deposit-txns')
+  async depositTransactions(@Req() req: AuthRequest, @Param('id') storeId: string, @Query('page') page?: string, @Query('pageSize') pageSize?: string, @Query('kind') kind?: string) {
+    await this.guardStoreCampus(req, storeId);
+    return ok(await this.service.depositTransactions(storeId, page, pageSize, kind));
+  }
+
+  @Post('stores/:id/deposit/refunds/:requestId/sync')
+  async syncDepositRefund(@Req() req: AuthRequest, @Param('id') storeId: string, @Param('requestId') requestId: string) {
+    await this.guardStoreCampus(req, storeId);
+    return ok(await this.service.syncDepositRefund(storeId, requestId));
   }
 
   /* ---------- 店铺/主档归属校验（campusScope 落地到资源） ---------- */

@@ -4,6 +4,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { seedNightPreview } from './seed-night-preview.mjs';
+import { prepareNightRequestIndex } from './prepare-night-request-index.mjs';
 
 // Local-only preview. The shared test database/public schema and production are forbidden.
 const require = createRequire(import.meta.url);
@@ -14,7 +15,10 @@ url.searchParams.set('schema', 'night_stock_preview_20261106');
 const secretPath = '/tmp/night-stock-preview-secret';
 if (!fs.existsSync(secretPath)) fs.writeFileSync(secretPath, randomBytes(48).toString('hex'), { mode: 0o600 });
 const env = { ...process.env, DATABASE_URL: url.toString(), PORT: '3150', JWT_SECRET: fs.readFileSync(secretPath, 'utf8'), NODE_ENV: 'test', SWAGGER_ENABLED: 'false', WX_MCH_ID: '', WX_APIV3_KEY: '', WX_APPID_USER: '', WX_APPID_DELIVERY: '', WX_NOTIFY_URL: '', CORS_ORIGINS: 'http://localhost:5192,http://127.0.0.1:5192,http://localhost:5191' };
+Object.assign(env, { COS_SECRET_ID: '', COS_SECRET_KEY: '', COS_BUCKET: '', COS_REGION: '', COS_PUBLIC_BASE_URL: '' });
+Object.assign(env, { NIGHT_LOCAL_GATEWAY: '1', NIGHT_LOCAL_UPLOADS: '1' });
 if (!process.argv.includes('--skip-push')) {
+  await prepareNightRequestIndex(env.DATABASE_URL);
   const push = spawnSync(path.resolve('node_modules/.bin/prisma'), ['db', 'push', '--skip-generate'], { env, stdio: 'inherit' });
   if (push.status) process.exit(push.status);
 }
@@ -31,8 +35,33 @@ if (menu && !menu.perms.split(',').includes('GET /admin/night/store-products')) 
   await db.adminMenu.update({ where: { id: menu.id }, data: { perms: `${menu.perms},GET /admin/night/store-products` } });
   await db.rbacState.update({ where: { id: 'global' }, data: { version: { increment: 1 } } });
 }
+const refundMenu = await db.adminMenu.findUnique({ where: { code: 'night-orders.refund' } });
+if (refundMenu) {
+  const perms = new Set(refundMenu.perms.split(','));
+  for (const permission of ['POST /admin/night/orders/:id/refund/sync', 'POST /admin/night/orders/:id/after-sale/reject']) perms.add(permission);
+  if (perms.size !== refundMenu.perms.split(',').length) {
+    await db.adminMenu.update({ where: { id: refundMenu.id }, data: { perms: [...perms].join(',') } });
+    await db.rbacState.update({ where: { id: 'global' }, data: { version: { increment: 1 } } });
+  }
+}
 const inventory = new NightInventoryService(db);
+if (menu && !menu.perms.split(',').includes('GET /admin/night/stores/:id/deposit-txns')) {
+  const current = await db.adminMenu.findUniqueOrThrow({ where: { id: menu.id } });
+  await db.adminMenu.update({ where: { id: menu.id }, data: { perms: `${current.perms},GET /admin/night/stores/:id/deposit-txns` } });
+  await db.rbacState.update({ where: { id: 'global' }, data: { version: { increment: 1 } } });
+}
+const depositMenu = await db.adminMenu.findUnique({ where: { code: 'night-deposit' } });
+if (depositMenu) {
+  const perms = new Set(depositMenu.perms.split(','));
+  for (const permission of ['GET /admin/night/stores/:id/deposit-refunds', 'POST /admin/night/stores/:id/deposit/refunds/:requestId/sync']) perms.add(permission);
+  if (perms.size !== depositMenu.perms.split(',').length) {
+    await db.adminMenu.update({ where: { id: depositMenu.id }, data: { perms: [...perms].join(',') } });
+    await db.rbacState.update({ where: { id: 'global' }, data: { version: { increment: 1 } } });
+  }
+}
 const campus = await db.campus.upsert({ where: { id: 'night-preview-campus' }, update: {}, create: { id: 'night-preview-campus', name: '夜宵功能验收校区', shortName: '夜宵验收', warehouseName: '验收仓库', manualClosed: true, nightEnabled: true, nightStartAt: '00:00', nightEndAt: '23:59', nightDeliveryFee: 200 } });
+await db.organization.upsert({ where: { id: 'night-preview-org' }, update: {}, create: { id: 'night-preview-org', name: '夜宵本机验收组织', shortName: '夜宵验收' } });
+await db.campus.updateMany({ where: { id: campus.id, organizationId: null }, data: { organizationId: 'night-preview-org' } });
 const building = await db.building.upsert({ where: { id: 'night-preview-building' }, update: {}, create: { id: 'night-preview-building', campusId: campus.id, name: '西区9栋' } });
 const staff = await db.staff.upsert({ where: { id: 'night-preview-staff' }, update: {}, create: { id: 'night-preview-staff', campusId: campus.id, name: '方福宁（验收）', role: 'building-manager', roleText: '楼长', staffNo: 'NIGHT-PREVIEW', building: building.name, buildingId: building.id, onTimeRate: 100, income: 0 } });
 const store = await db.nightStore.upsert({ where: { id: 'night-preview-store' }, update: {}, create: { id: 'night-preview-store', campusId: campus.id, buildingId: building.id, managerStaffId: staff.id, deposit: 50000, commissionRate: 2000 } });
@@ -63,11 +92,14 @@ const superRole = await db.adminRole.upsert({ where: { code: 'super-admin' }, up
 if (!await db.adminAccountRole.count({ where: { accountId: admin.id, roleId: superRole.id } })) await db.adminAccountRole.create({ data: { accountId: admin.id, roleId: superRole.id, scope: 'platform', grantedBy: 'local-preview' } });
 const jwt = new JwtService({ secret: env.JWT_SECRET });
 await seedNightPreview(db, inventory, env.DATABASE_URL);
+await db.user.update({ where: { id: 'night-demo-customer-0' }, data: { openid: 'LOCAL_PREVIEW_USER_0' } });
+await db.staff.update({ where: { id: staff.id }, data: { openid: 'LOCAL_PREVIEW_STAFF' } });
 const preview = { campusId: campus.id, storeId: store.id, staffId: staff.id, staffToken: jwt.sign({ id: staff.id, campusId: campus.id, role: staff.role, appKind: 'delivery' }, { expiresIn: '1d' }), adminToken: jwt.sign({ id: admin.id, campusId: campus.id, role: 'hq', sv: admin.sessionVersion }, { expiresIn: '1d' }), adminUser: { id: admin.id, campusId: campus.id, role: 'hq', nickname: admin.nickname }, adminUsername: admin.username, adminPassword: password };
 fs.writeFileSync('/tmp/night-stock-preview.json', JSON.stringify(preview), { mode: 0o600 });
 await db.$disconnect();
 console.log('独立 schema 预览已准备，API http://localhost:3150，凭证仅存 /tmp/night-stock-preview.json');
-const server = spawn(process.execPath, ['dist/src/main.js'], { env, stdio: 'inherit' });
+if (process.argv.includes('--prepare-only')) process.exit(0);
+const server = spawn(process.execPath, ['--import', path.resolve('scripts/night-preview-network-guard.mjs'), '--import', path.resolve('scripts/night-preview-payments.mjs'), 'dist/src/main.js'], { env, stdio: 'inherit' });
 process.on('SIGTERM', () => server.kill('SIGTERM'));
 process.on('SIGINT', () => server.kill('SIGINT'));
 server.on('exit', code => process.exit(code || 0));

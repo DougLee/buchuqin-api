@@ -206,7 +206,9 @@ describe('Night store PostgreSQL integration (IKSW1F)', () => {
     await db.nightStockTxn.deleteMany({ where: { storeId } });
     await db.nightStockOrder.deleteMany({ where: { storeId } });
     await db.nightDepositTxn.deleteMany({ where: { storeId } });
+    await db.nightDepositRefund.deleteMany({ where: { storeId } });
     await db.nightDepositOrder.deleteMany({ where: { storeId } });
+    await db.nightRefund.deleteMany({ where: { storeId } });
     await db.nightOrder.deleteMany({ where: { storeId } });
     await db.userCoupon.deleteMany({ where: { userId } });
     await db.notification.deleteMany({ where: { userId } });

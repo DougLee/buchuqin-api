@@ -8471,7 +8471,8 @@ export class AdminService {
           orderBy: { paidAt: 'desc' },
         })
       : [];
-    const usedBy = new Map(usedOrders.map((o) => [o.couponId, o]));
+    const nightUsedOrders = usedIds.length ? await this.db.nightOrder.findMany({ where: { couponId: { in: usedIds } }, select: { couponId: true, orderNo: true, paidAt: true }, orderBy: { paidAt: 'desc' } }) : [];
+    const usedBy = new Map([...usedOrders, ...nightUsedOrders].map((o) => [o.couponId, o]));
     return rows.map((r) => {
       const used = usedBy.get(r.id);
       return {
@@ -8494,6 +8495,8 @@ export class AdminService {
     operator: string,
     campusId: string,
   ) {
+    const nightProductIds = [...new Set(body.nightProductIds ?? [])];
+    if (nightProductIds.length && (body.businessType !== 'night' || body.kind === 'partner' || await this.db.product.count({ where: { id: { in: nightProductIds }, campusId, nightCatalog: true } }) !== nightProductIds.length)) throw new BadRequestException('适用商品必须来自本校区夜宵商品库');
     // IKDCVO：长期券不传 expiresAt（null=长期有效）；传了则须合法且晚于当前。
     let expiresAt: Date | null = null;
     if (body.expiresAt) {
@@ -8519,6 +8522,7 @@ export class AdminService {
         trigger,
         // IKSW1F 券双向隔离（T52）：businessType 缺省 day=存量行为零变化
         businessType: body.businessType === 'night' ? 'night' : 'day',
+        nightProductIds,
         remark: body.remark?.trim() ?? '',
         amount: kind === 'partner' ? 0 : body.amount,
         threshold: kind === 'partner' ? 0 : body.threshold,
@@ -8589,6 +8593,9 @@ export class AdminService {
       where: { id, campusId },
     });
     if (!before) throw new NotFoundException('优惠券不存在');
+    const nightProductIds = body.nightProductIds ? [...new Set(body.nightProductIds)] : undefined;
+    if (nightProductIds?.length && (before.businessType !== 'night' || before.kind === 'partner' || await this.db.product.count({ where: { id: { in: nightProductIds }, campusId, nightCatalog: true } }) !== nightProductIds.length)) throw new BadRequestException('适用商品必须来自本校区夜宵商品库');
+    if (nightProductIds && before.claimed > 0 && JSON.stringify([...before.nightProductIds].sort()) !== JSON.stringify([...nightProductIds].sort())) throw new BadRequestException('已发放优惠券的适用商品不可修改');
     // 编辑语义：amount/threshold 不存在「清空」，null 一律视为未传
     const amount = body.amount ?? undefined;
     const threshold = body.threshold ?? undefined;
@@ -8613,6 +8620,7 @@ export class AdminService {
     if (amount !== undefined && before.kind === 'platform' && amount <= 0)
       throw new BadRequestException('金额券面额必须大于 0');
     const data: Prisma.CouponUpdateInput = {};
+    if (nightProductIds) data.nightProductIds = nightProductIds;
     if (body.status !== undefined) data.status = body.status;
     if (body.name !== undefined) data.name = body.name;
     if (body.remark !== undefined) data.remark = body.remark;
@@ -8630,9 +8638,12 @@ export class AdminService {
       data.expiresAt = body.expiresAt ? new Date(body.expiresAt) : null;
     if (!Object.keys(data).length)
       throw new BadRequestException('没有要修改的字段');
-    const after = await this.db.coupon.update({
-      where: { id },
-      data,
+    const after = await this.db.$transaction(async tx => {
+      await tx.$queryRaw`SELECT id FROM "Coupon" WHERE id = ${id} FOR UPDATE`;
+      const fresh = await tx.coupon.findUniqueOrThrow({ where: { id } });
+      if (fresh.claimed > 0 && (amount !== undefined || threshold !== undefined || (nightProductIds && JSON.stringify([...fresh.nightProductIds].sort()) !== JSON.stringify([...nightProductIds].sort())))) throw new BadRequestException('该券已发放，面额、门槛和适用商品不可修改');
+      if (body.total != null && body.total < fresh.claimed) throw new BadRequestException('发放总量不能小于已发放数');
+      return tx.coupon.update({ where: { id }, data });
     });
     await this.audit(
       operator,

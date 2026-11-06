@@ -49,10 +49,14 @@ try {
   await client.query('INSERT INTO "User" SELECT (jsonb_populate_record(NULL::"User", $1::jsonb)).*', [JSON.stringify({ ...userRow, campusId: 'night-preview-campus' })]);
   await client.query('INSERT INTO "NightOrder" SELECT (jsonb_populate_record(NULL::"NightOrder", $1::jsonb)).*', [JSON.stringify({ ...orderRow, id: 'legacy-active-order', orderNo: 'LEGACY-YX-001', storeId: 'night-preview-store', managerStaffId: 'night-preview-staff', couponId: null, status: 'delivering', items: [{ nightProductId: 'legacy-night-product', quantity: 2, price: 777 }] })]);
   await client.query(`INSERT INTO "AdminMenu" (id,code,name,perms,"updatedAt") VALUES ('legacy-menu','night-stores','夜宵','GET /admin/night/stores',NOW())`);
+  await client.query(`INSERT INTO "AdminMenu" (id,code,name,perms,"updatedAt") VALUES ('legacy-refund-menu','night-orders.refund','退款','POST /admin/night/orders/:id/refund',NOW()), ('legacy-deposit-menu','night-deposit','押金','POST /admin/night/stores/:id/deposit/refund',NOW())`);
   await client.query('INSERT INTO "NightOrder" SELECT (jsonb_populate_record(NULL::"NightOrder", $1::jsonb)).*', [JSON.stringify({ ...orderRow, id: 'legacy-cancelled-order', orderNo: 'LEGACY-YX-002', storeId: 'night-preview-store', managerStaffId: 'night-preview-staff', couponId: null, status: 'cancelled', items: [{ nightProductId: 'legacy-night-product', quantity: 1, price: 777 }] })]);
   await client.query('BEGIN');
   await client.query(fs.readFileSync('prisma/migrations/20261106100000_night_stock_workflow/migration.sql', 'utf8'));
   await client.query(fs.readFileSync('prisma/migrations/20261106220000_night_product_management/migration.sql', 'utf8'));
+  await client.query(fs.readFileSync('prisma/migrations/20261106233000_night_refund_state/migration.sql', 'utf8'));
+  await client.query(fs.readFileSync('prisma/migrations/20261106234500_night_order_request_coupon_scope/migration.sql', 'utf8'));
+  await client.query(fs.readFileSync('prisma/migrations/20261107010000_night_deposit_refund_state/migration.sql', 'utf8'));
   await client.query('COMMIT');
   const p = (await client.query('SELECT * FROM "NightProduct" WHERE id = $1', ['legacy-night-product'])).rows[0];
   assert.equal(p.stock, 7); assert.equal(p.inventoryValue, 5439); assert.equal(p.frozenStock, 0);
@@ -65,5 +69,12 @@ try {
   assert.deepEqual((await client.query('SELECT status, "heldValue" FROM "NightStockOrder" WHERE id = $1', ['legacy-stock-order'])).rows[0], { status: 'completed', heldValue: 0 });
   assert.ok((await client.query('SELECT perms FROM "AdminMenu" WHERE id = $1', ['legacy-menu'])).rows[0].perms.includes('GET /admin/night/stock-orders'));
   assert.ok((await client.query('SELECT perms FROM "AdminMenu" WHERE id = $1', ['legacy-menu'])).rows[0].perms.includes('GET /admin/night/store-products'));
+  assert.equal((await client.query('SELECT COUNT(*)::int AS n FROM "NightRefund"')).rows[0].n, 0, '不得将旧订单状态伪造成已到账退款');
+  assert.equal((await client.query('SELECT COUNT(*)::int AS n FROM "NightDepositRefund"')).rows[0].n, 0, '不伪造历史退押申请');
+  assert.ok((await client.query('SELECT perms FROM "AdminMenu" WHERE id = $1', ['legacy-refund-menu'])).rows[0].perms.includes('POST /admin/night/orders/:id/refund/sync'));
+  assert.ok((await client.query('SELECT perms FROM "AdminMenu" WHERE id = $1', ['legacy-deposit-menu'])).rows[0].perms.includes('POST /admin/night/stores/:id/deposit/refunds/:requestId/sync'));
+  assert.equal((await client.query('SELECT "requestId" FROM "NightOrder" WHERE id = $1', ['legacy-active-order'])).rows[0].requestId, null);
+  await client.query('UPDATE "NightOrder" SET "requestId" = $1 WHERE id = $2', ['migration-idempotency', 'legacy-active-order']);
+  await assert.rejects(client.query('UPDATE "NightOrder" SET "requestId" = $1 WHERE id = $2', ['migration-idempotency', 'legacy-cancelled-order']), error => error.code === '23505');
   console.log(`迁移兼容验收通过：旧库存/历史备货单/在配订单/条码迁移/缺仓库补链/菜单授权，独立 schema ${schema}`);
 } finally { await client.end(); }

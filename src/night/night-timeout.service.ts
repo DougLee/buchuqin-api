@@ -23,6 +23,10 @@ export class NightTimeoutService {
 
   @Cron(CronExpression.EVERY_MINUTE)
   async sweep() {
+    try { await this.orders.reconcilePendingRefunds(NightTimeoutService.BATCH_LIMIT); }
+    catch (error) { this.logger.warn(`夜宵退款核对待重试: ${error instanceof Error ? error.message : 'unknown'}`); }
+    try { await this.orders.reconcilePendingDepositRefunds(NightTimeoutService.BATCH_LIMIT); }
+    catch (error) { this.logger.warn(`夜宵退押核对待重试: ${error instanceof Error ? error.message : 'unknown'}`); }
     try {
       const stale = await this.db.nightOrder.findMany({
         where: { status: 'pending-payment', timeoutAt: { lt: new Date() } },

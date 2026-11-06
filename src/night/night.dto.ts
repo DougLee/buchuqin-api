@@ -44,10 +44,13 @@ export class NightCatalogCreateDto {
   @IsOptional() @IsString() subtitle?: string;
   /** 缺省自动挂本校区「夜宵专供」隐藏分类 */
   @IsOptional() @IsString() categoryId?: string;
+  @IsOptional() @IsString() @MinLength(1) @MaxLength(20) retailUnit?: string;
   @IsOptional() @IsString() barcode?: string;
 }
 
 export class NightCatalogUpdateDto {
+  @IsOptional() @IsString() @MinLength(1) categoryId?: string;
+  @IsOptional() @IsString() @MinLength(1) @MaxLength(20) retailUnit?: string;
   @IsOptional() @IsString() @MinLength(1) @MaxLength(60) name?: string;
   @IsOptional() @IsInt() @Min(1) price?: number;
   @IsOptional() @IsInt() @Min(0) originalPrice?: number;
@@ -93,7 +96,7 @@ export class NightConfigDto {
 
 export class NightRefundDto {
   /** 商品退款金额（分）；缺省=整单商品部分全额（productAmount−券优惠） */
-  @IsOptional() @IsInt() @Min(1) productRefund?: number;
+  @IsOptional() @IsInt() @Min(0) productRefund?: number;
   /** 是否退配送费（整单取消/未履约场景；配送费退款触发楼长侧 clawback） */
   @IsOptional() @IsBoolean() refundDeliveryFee?: boolean;
   /** 退款商品是否回库（默认 true；已送出/损耗场景传 false 只退钱不回库） */
@@ -113,6 +116,7 @@ export class NightDepositDeductDto {
 }
 
 export class NightDepositRefundDto {
+  @IsString() @MinLength(8) @MaxLength(80) requestId!: string;
   /** 缺省=全额退当前押金余额 */
   @IsOptional() @IsInt() @Min(1) amount?: number;
   @IsOptional() @IsString() @MaxLength(200) reason?: string;
@@ -206,10 +210,14 @@ export class NightDepositPayDto {
 export class NightOrderItemDto {
   /** NightProduct 楼栋行 id */
   @IsString() productId!: string;
-  @IsInt() @Min(1) quantity!: number;
+  @IsInt() @Min(1) @Max(999) quantity!: number;
 }
 
 export class NightOrderCreateDto {
+  @IsOptional() @IsString() @MinLength(8) @MaxLength(80) requestId?: string;
+  /** 客户端展示过的金额仅用于变化提示，服务端仍独立重算。 */
+  @IsOptional() @IsInt() @Min(0) expectedProductAmount?: number;
+  @IsOptional() @IsInt() @Min(0) expectedDeliveryFee?: number;
   @IsString() storeId!: string;
   @IsArray()
   @ArrayMinSize(1)
@@ -228,6 +236,6 @@ export class NightOrderCreateDto {
 export class NightAfterSaleDto {
   @IsIn(['quality', 'missing', 'damaged', 'wrong', 'other']) type!:
     'quality' | 'missing' | 'damaged' | 'wrong' | 'other';
-  @IsString() @MinLength(1) @MaxLength(300) description!: string;
-  @IsOptional() @IsArray() @IsString({ each: true }) images?: string[];
+  @IsString() @MinLength(5) @MaxLength(300) description!: string;
+  @IsOptional() @IsArray() @ArrayMaxSize(6) @IsString({ each: true }) @MaxLength(2048, { each: true }) images?: string[];
 }

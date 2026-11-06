@@ -8,6 +8,7 @@ import { Prisma } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../database/prisma.service';
 import { OFFICIAL_CAMPUS_ID } from '../common/campus';
+import { parsePagination } from '../common/pagination';
 
 type Tx = Prisma.TransactionClient;
 export interface NightCatalogFilters {
@@ -161,7 +162,7 @@ export class NightInventoryService {
 
   async catalogCategories(campusId: string) {
     return this.db.category.findMany({
-      where: { campusId, products: { some: { nightCatalog: true } } },
+      where: { campusId },
       select: { id: true, name: true },
       orderBy: { name: 'asc' },
     });
@@ -484,7 +485,7 @@ export class NightInventoryService {
 
   /** 所有占用均保存历史货值。暂停/下架/调价不会释放或重估。 */
   async summary(storeId: string, tx: Tx = this.db) {
-    const [store, available, orders, requests, reports] = await Promise.all([
+    const [store, available, orders, requests, reports, refunds, depositRefunds] = await Promise.all([
       tx.nightStore.findUniqueOrThrow({ where: { id: storeId } }),
       tx.nightProduct.aggregate({
         where: { storeId },
@@ -502,6 +503,8 @@ export class NightInventoryService {
         where: { storeId, heldValue: { gt: 0 } },
         select: { kind: true, heldValue: true },
       }),
+      tx.nightRefund.aggregate({ where: { storeId }, _sum: { heldValue: true } }),
+      tx.nightDepositRefund.aggregate({ where: { storeId, status: { in: ['requested', 'submitting', 'processing', 'unknown'] } }, _sum: { amount: true } }),
     ]);
     const frozenValue = reports
       .filter((r) => r.kind !== 'receipt-shortage')
@@ -513,16 +516,31 @@ export class NightInventoryService {
       (available._sum.inventoryValue ?? 0) +
       (orders._sum.quotaHeld ?? 0) +
       frozenValue;
-    const reservedValue = (requests._sum.heldValue ?? 0) + shortageValue;
+    const refundReservedValue = refunds._sum.heldValue ?? 0;
+    const depositRefundReservedValue = depositRefunds._sum.amount ?? 0;
+    const reservedValue = (requests._sum.heldValue ?? 0) + shortageValue + refundReservedValue + depositRefundReservedValue;
     return {
       deposit: store.deposit,
       stockValue,
       reservedValue,
+      refundReservedValue,
+      depositRefundReservedValue,
       frozenValue,
       shortageValue,
       usedQuota: stockValue + reservedValue,
       usableQuota: Math.max(0, store.deposit - stockValue - reservedValue),
     };
+  }
+
+  async depositTransactions(storeId: string, page?: string, pageSize?: string, kind?: string) {
+    this.checkChoice(kind, ['deposit', 'deduct', 'refund']);
+    const paging = parsePagination(page, pageSize);
+    const where = { storeId, ...(kind ? { type: kind } : {}) };
+    const [items, total] = await Promise.all([
+      this.db.nightDepositTxn.findMany({ where, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], skip: (paging.page - 1) * paging.pageSize, take: paging.pageSize }),
+      this.db.nightDepositTxn.count({ where }),
+    ]);
+    return { items: items.map(row => ({ ...row, createdAt: row.createdAt.toISOString() })), total, ...paging };
   }
 
   async stockPool(staffId: string) {
@@ -774,9 +792,19 @@ export class NightInventoryService {
     const orders = await this.db.nightStockOrder.findMany({
       where: { storeId, ...(staffId ? { managerStaffId: staffId } : {}) },
       orderBy: { createdAt: 'desc' },
-      take: 300,
     });
     return orders.map((o) => this.stockView(o));
+  }
+
+  async stockOrdersPage(storeId: string, staffId: string, status?: string, page?: string, pageSize?: string) {
+    this.checkChoice(status, ['all', 'requested', 'approved', 'shipped', 'received', 'rejected', 'cancelled', 'completed']);
+    const paging = parsePagination(page, pageSize);
+    const where = { storeId, managerStaffId: staffId, ...(status && status !== 'all' ? { status } : {}) };
+    const [rows, total] = await Promise.all([
+      this.db.nightStockOrder.findMany({ where, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], skip: (paging.page - 1) * paging.pageSize, take: paging.pageSize }),
+      this.db.nightStockOrder.count({ where }),
+    ]);
+    return { items: rows.map(row => this.stockView(row)), total, ...paging };
   }
 
   async stockOrderStore(id: string) {
@@ -835,8 +863,7 @@ export class NightInventoryService {
         buildingName: o.store.building.name,
         managerName: o.store.managerStaff?.name ?? '',
       }))
-      .filter((row) => this.matchesOperation(row, filters.keyword))
-      .slice(0, 500);
+      .filter((row) => this.matchesOperation(row, filters.keyword));
   }
   async campusReports(
     campusId: string,
@@ -876,8 +903,7 @@ export class NightInventoryService {
         buildingName: r.store.building.name,
         managerName: r.store.managerStaff?.name ?? '',
       }))
-      .filter((row) => this.matchesOperation(row, filters.keyword))
-      .slice(0, 500);
+      .filter((row) => this.matchesOperation(row, filters.keyword));
   }
 
   private matchesOperation(
@@ -906,8 +932,17 @@ export class NightInventoryService {
         product: { select: { catalogProduct: { select: { name: true } } } },
       },
       orderBy: { createdAt: 'desc' },
-      take: 200,
     });
+  }
+
+  async transactionsPage(storeId: string, productId?: string, page?: string, pageSize?: string) {
+    const paging = parsePagination(page, pageSize);
+    const where = { storeId, ...(productId ? { nightProductId: productId } : {}) };
+    const [items, total] = await Promise.all([
+      this.db.nightStockTxn.findMany({ where, include: { product: { select: { catalogProduct: { select: { name: true } } } } }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], skip: (paging.page - 1) * paging.pageSize, take: paging.pageSize }),
+      this.db.nightStockTxn.count({ where }),
+    ]);
+    return { items, total, ...paging };
   }
 
   private warehouseQuantities(items: StockLine[]) {
@@ -1213,8 +1248,17 @@ export class NightInventoryService {
     return this.db.nightInventoryReport.findMany({
       where: { storeId, ...(staffId ? { managerStaffId: staffId } : {}) },
       orderBy: { createdAt: 'desc' },
-      take: 300,
     });
+  }
+
+  async reportsPage(storeId: string, staffId: string, page?: string, pageSize?: string) {
+    const paging = parsePagination(page, pageSize);
+    const where = { storeId, managerStaffId: staffId };
+    const [items, total] = await Promise.all([
+      this.db.nightInventoryReport.findMany({ where, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], skip: (paging.page - 1) * paging.pageSize, take: paging.pageSize }),
+      this.db.nightInventoryReport.count({ where }),
+    ]);
+    return { items, total, ...paging };
   }
 
   async createReport(

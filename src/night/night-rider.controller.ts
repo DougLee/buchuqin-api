@@ -14,7 +14,6 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import type { AuthRequest } from '../auth/jwt-auth.guard';
 import { ok, type ApiResponse } from '../common/api-response';
-import { paginate } from '../common/pagination';
 import { NightRiderService } from './night-rider.service';
 import { NightInventoryService } from './night-inventory.service';
 import {
@@ -60,8 +59,8 @@ export class NightRiderController {
 
   @Get('night/deposit')
   @ApiOperation({ summary: '押金详情（余额+流水）' })
-  async depositDetail(@Req() r: AuthRequest) {
-    return ok(await this.service.depositDetail(this.auth(r)));
+  async depositDetail(@Req() r: AuthRequest, @Query('page') page?: string, @Query('pageSize') pageSize?: string) {
+    return ok(await this.service.depositDetail(this.auth(r), page, pageSize));
   }
 
   @Post('night/deposit/pay')
@@ -104,9 +103,10 @@ export class NightRiderController {
     @Req() r: AuthRequest,
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
+    @Query('status') status?: string,
   ) {
     return ok(
-      paginate(await this.service.stockOrders(this.auth(r)), page, pageSize),
+      await this.service.stockOrdersPage(this.auth(r), status, page, pageSize),
     );
   }
 
@@ -140,10 +140,10 @@ export class NightRiderController {
   }
 
   @Get('night/inventory/reports')
-  async inventoryReports(@Req() r: AuthRequest) {
+  async inventoryReports(@Req() r: AuthRequest, @Query('page') page?: string, @Query('pageSize') pageSize?: string) {
     const staffId = this.auth(r),
       store = await this.inventory.myStore(staffId);
-    return ok(await this.inventory.reports(store.id, staffId));
+    return ok(await this.inventory.reportsPage(store.id, staffId, page, pageSize));
   }
 
   @Post('night/inventory/reports')
@@ -177,9 +177,11 @@ export class NightRiderController {
   async inventoryTransactions(
     @Req() r: AuthRequest,
     @Query('productId') productId?: string,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
   ) {
     const store = await this.inventory.myStore(this.auth(r));
-    return ok(await this.inventory.transactions(store.id, productId));
+    return ok(await this.inventory.transactionsPage(store.id, productId, page, pageSize));
   }
 
   @Get('night/dashboard')
@@ -278,8 +280,8 @@ export class NightRiderController {
 
   @Get('night/income')
   @ApiOperation({ summary: '收入（佣金/配送费两列流水+汇总+押金余额）' })
-  async income(@Req() r: AuthRequest) {
-    return ok(await this.service.income(this.auth(r)));
+  async income(@Req() r: AuthRequest, @Query('month') month?: string, @Query('status') status?: string, @Query('page') page?: string, @Query('pageSize') pageSize?: string) {
+    return ok(await this.service.income(this.auth(r), { month, status, page, pageSize }));
   }
 
   @Get('night/orders/:id/earning')

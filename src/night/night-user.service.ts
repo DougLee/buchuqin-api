@@ -112,7 +112,7 @@ export class NightUserService {
         const state =
           !store || !store.managerStaffId
             ? 'no-manager'
-            : store.status === 'open'
+            : store.status === 'open' && cfg.inNightSession
               ? 'open'
               : 'resting';
         return {
@@ -141,9 +141,9 @@ export class NightUserService {
    * 本店可购商品：上架 + 后台售卖许可 + 主档在售 + 库存>0。
    * 图/名/价引夜主档 Product（夜宵统一售价）。
    */
-  async storeProducts(storeId: string) {
-    const store = await this.db.nightStore.findUnique({
-      where: { id: storeId },
+  async storeProducts(campusId: string, storeId: string) {
+    const store = await this.db.nightStore.findFirst({
+      where: { id: storeId, campusId },
     });
     if (!store) throw new NotFoundException('夜宵店不存在');
     const rows = await this.db.nightProduct.findMany({
@@ -161,20 +161,26 @@ export class NightUserService {
             image: true,
             subtitle: true,
             price: true,
+            categoryId: true,
+            category: { select: { name: true } },
+            retailUnit: true,
+            nightBarcode: true,
           },
         },
       },
       orderBy: { createdAt: 'asc' },
     });
-    return rows
-      .filter((r) => r.stock > 0)
-      .map((r) => ({
+    return rows.map((r) => ({
         id: r.id,
         catalogProductId: r.catalogProductId,
         name: r.catalogProduct.name,
         image: r.catalogProduct.image,
         subtitle: r.catalogProduct.subtitle,
         price: r.catalogProduct.price,
+        categoryId: r.catalogProduct.categoryId,
+        categoryName: r.catalogProduct.category.name,
+        retailUnit: r.catalogProduct.retailUnit,
+        barcode: r.catalogProduct.nightBarcode,
         stock: r.stock,
         soldOut: r.stock <= 0,
       }));
@@ -186,8 +192,8 @@ export class NightUserService {
     return this.orderSvc.submitOrder(userId, dto);
   }
 
-  orders(userId: string, status?: string) {
-    return this.orderSvc.myOrders(userId, status);
+  orders(userId: string, status?: string, page?: string, pageSize?: string) {
+    return this.orderSvc.myOrdersPage(userId, status, page, pageSize);
   }
 
   order(userId: string, id: string) {

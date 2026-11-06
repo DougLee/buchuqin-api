@@ -15,6 +15,12 @@ export async function seedNightPreview(db, inventory, databaseUrl) {
   )
     throw new Error('模拟数据只允许独立夜宵预览 schema');
   const campusId = 'night-preview-campus';
+  // Additive fixtures remain available on later runs without resetting manual business operations.
+  const recruitBuilding = await db.building.upsert({ where: { id: 'night-preview-recruit-building' }, update: {}, create: { id: 'night-preview-recruit-building', campusId, name: '南区12栋' } });
+  await db.staff.upsert({ where: { id: 'night-preview-new-manager' }, update: {}, create: { id: 'night-preview-new-manager', campusId, name: '周予安（建店验收）', staffNo: 'NIGHT-NEW12', role: 'building-manager', roleText: '楼长', building: recruitBuilding.name, buildingId: recruitBuilding.id, phone: '13800001012', onTimeRate: 100, income: 0 } });
+  for (const buildingId of ['night-preview-building', recruitBuilding.id]) for (const roomNo of ['201', '202']) {
+    await db.room.upsert({ where: { buildingId_floor_roomNo: { buildingId, floor: 2, roomNo } }, update: {}, create: { buildingId, floor: 2, roomNo, qrToken: `${buildingId}-room-${roomNo}-local` } });
+  }
   if (await db.auditLog.findFirst({ where: { campusId, action: marker } }))
     return;
   require('ts-node').register({

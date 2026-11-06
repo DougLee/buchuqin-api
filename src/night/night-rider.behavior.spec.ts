@@ -54,6 +54,9 @@ describe('配送端夜宵经营边界（内存测试，不连接数据库）', (
   it('押金档位由服务端校验，选择1500元档只收当前余额到目标档的差额', async () => {
     const db = {
       nightStore: { findUnique: jest.fn().mockResolvedValue(store) },
+      $queryRaw: jest.fn(),
+      $transaction: jest.fn(),
+      nightDepositRefund: { count: jest.fn().mockResolvedValue(0) },
       nightDepositOrder: {
         findFirst: jest.fn().mockResolvedValue(null),
         updateMany: jest.fn(),
@@ -62,6 +65,7 @@ describe('配送端夜宵经营边界（内存测试，不连接数据库）', (
           .mockImplementation(({ data }) => ({ ...data, id: 'intent' })),
       },
     };
+    db.$transaction.mockImplementation(work => work(db));
     const payments = {
       registerNightPaymentHandler: jest.fn(),
       nightPrepay: jest.fn().mockResolvedValue({}),
@@ -122,6 +126,16 @@ describe('配送端夜宵经营边界（内存测试，不连接数据库）', (
       {} as NightOrderService,
     );
     expect((await service.businessContext('staff')).mode).toBe('rest');
+  });
+
+  it.each(['building-manager', 'intern-building-manager', 'fulltime-rider', 'parttime-rider'])('切换资格由服务端员工角色与绑定决定：%s', async (role) => {
+    const db = mocked();
+    db.staff.findUnique.mockResolvedValue({ ...staff, role });
+    const service = new NightRiderService(db as unknown as PrismaService, {} as NightOrderService);
+    expect(await service.businessContext('staff')).toMatchObject({ staffId: staff.id, staffRole: role, canSwitchWorkspace: role === 'building-manager' });
+    if (!role.includes('manager')) expect(db.nightStore.findFirst).not.toHaveBeenCalled();
+    db.nightStore.findFirst.mockResolvedValue(null);
+    expect((await service.businessContext('staff')).canSwitchWorkspace).toBe(false);
   });
 
   it('送达原子完成并保存照片；售后进行中不提前解冻佣金', async () => {

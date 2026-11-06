@@ -6,7 +6,10 @@ import {
   NotFoundException,
   Optional,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { NightRefund, Prisma } from '@prisma/client';
+import { createHash } from 'node:crypto';
+import { NightRefundService } from './night-refund.service';
+import { NightDepositRefundService } from './night-deposit-refund.service';
 import { PrismaService } from '../database/prisma.service';
 import { PaymentsService } from '../payments/payments.service';
 import { NightPaymentHandler } from '../payments/payments.service';
@@ -23,6 +26,7 @@ import {
   nightOrderNo,
 } from './night.helpers';
 import { NightOrderCreateDto, NightRefundDto } from './night.dto';
+import { parsePagination } from '../common/pagination';
 import {
   allocateInventoryValue,
   NightInventoryService,
@@ -31,6 +35,14 @@ import {
 /** JSON → 时间线（json() 自写自读，形状恒定；round-trip 避开 any 断言规则）。 */
 const asTimeline = (v: unknown): NightTimelineStep[] =>
   JSON.parse(JSON.stringify(Array.isArray(v) ? v : [])) as NightTimelineStep[];
+const USER_ORDER_INCLUDE = {
+  refund: true,
+  store: { include: {
+    building: { select: { name: true } },
+    campus: { select: { servicePhone: true, serviceQrcode: true, serviceKfUrl: true, serviceKfCorpId: true, showDeliveryContacts: true } },
+    managerStaff: { select: { id: true, name: true, phone: true } },
+  } },
+} satisfies Prisma.NightOrderInclude;
 
 /** 夜宵订单行快照（items JSON）。 */
 export interface NightOrderLine {
@@ -48,6 +60,9 @@ export interface NightTimelineStep {
   key: string;
   title: string;
   time?: string;
+  description?: string;
+  images?: string[];
+  proof?: { images: string[]; remark?: string };
 }
 
 const STATUS_TEXT: Record<string, string> = {
@@ -57,6 +72,7 @@ const STATUS_TEXT: Record<string, string> = {
   delivered: '已送达',
   completed: '已完成',
   cancelled: '已取消',
+  cancelling: '退款处理中',
   refunded: '已退款',
   exception: '支付异常',
 };
@@ -79,6 +95,7 @@ const json = (value: unknown) =>
 @Injectable()
 export class NightOrderService implements NightPaymentHandler {
   private readonly logger = new Logger(NightOrderService.name);
+  private readonly refunds: NightRefundService;
 
   constructor(
     private readonly db: PrismaService,
@@ -89,6 +106,7 @@ export class NightOrderService implements NightPaymentHandler {
       db,
     ),
   ) {
+    this.refunds = new NightRefundService(db, payments, inventory, (tx, request) => this.finalizeRefund(tx, request));
     // 注册微信回调分发（YX/ND 前缀）；setter 注入避免模块循环依赖
     this.payments.registerNightPaymentHandler(this);
   }
@@ -117,9 +135,13 @@ export class NightOrderService implements NightPaymentHandler {
     completedAt: Date | null;
     cancelReason: string | null;
     afterSaleStatus: string | null;
+    managerStaffId?: string | null;
+    refund?: NightRefund | null;
     store?: {
       id: string;
       building: { name: string };
+      campus?: { servicePhone: string; serviceQrcode: string; serviceKfUrl: string; serviceKfCorpId: string; showDeliveryContacts: boolean };
+      managerStaff?: { id: string; name: string; phone?: string } | null;
     } | null;
   }) {
     return {
@@ -144,6 +166,9 @@ export class NightOrderService implements NightPaymentHandler {
       completedAt: order.completedAt?.toISOString() ?? null,
       cancelReason: order.cancelReason,
       afterSaleStatus: order.afterSaleStatus,
+      support: order.store?.campus ? { phone: order.store.campus.servicePhone, qrcode: order.store.campus.serviceQrcode, kfUrl: order.store.campus.serviceKfUrl, corpId: order.store.campus.serviceKfCorpId } : null,
+      deliveryContact: order.paidAt && ['pending-accept', 'delivering', 'delivered'].includes(order.status) && order.store?.campus?.showDeliveryContacts && order.store.managerStaff?.id === order.managerStaffId && order.store.managerStaff?.phone ? { name: order.store.managerStaff.name, phone: order.store.managerStaff.phone } : null,
+      refund: order.refund ? { id: order.refund.id, kind: order.refund.kind, fullProductRefund: order.refund.fullProductRefund, restock: order.refund.restock, reason: order.refund.reason, status: order.refund.status, amount: order.refund.totalAmount, productAmount: order.refund.productAmount, deliveryFeeAmount: order.refund.deliveryFeeAmount, message: order.refund.errorMessage, createdAt: order.refund.createdAt.toISOString(), completedAt: order.refund.completedAt?.toISOString() ?? null } : null,
       store: order.store
         ? { id: order.store.id, buildingName: order.store.building.name }
         : null,
@@ -159,6 +184,28 @@ export class NightOrderService implements NightPaymentHandler {
    * 库存在下单即扣（预占口径），支付成功只是状态推进；超时关单回补。
    */
   async submitOrder(userId: string, dto: NightOrderCreateDto) {
+    if (!Array.isArray(dto.items) || !dto.items.length || dto.items.length > 100 || dto.items.some(line => !Number.isSafeInteger(line.quantity) || line.quantity < 1 || line.quantity > 999)) throw new BadRequestException('商品数量不合法');
+    const quantities = new Map<string, number>();
+    for (const line of dto.items) quantities.set(line.productId, (quantities.get(line.productId) ?? 0) + line.quantity);
+    if ([...quantities.values()].some(qty => qty > 999)) throw new BadRequestException('单品数量最多999件');
+    const requestHash = createHash('sha256').update(JSON.stringify({ storeId: dto.storeId, addressId: dto.addressId, couponId: dto.couponId ?? null, remark: dto.remark?.trim() ?? '', expectedProductAmount: dto.expectedProductAmount ?? null, expectedDeliveryFee: dto.expectedDeliveryFee ?? null, items: [...quantities].sort(([a], [b]) => a.localeCompare(b)) })).digest('hex');
+    const priorOrder = async () => {
+      if (!dto.requestId) return null;
+      const old = await this.db.nightOrder.findUnique({ where: { userId_requestId: { userId, requestId: dto.requestId } } });
+      if (old && old.requestHash !== requestHash) throw new BadRequestException('下单请求标识已用于其他内容，请重新确认订单');
+      return old;
+    };
+    const prior = await priorOrder();
+    if (prior) return this.myOrder(userId, prior.id);
+    try { return await this.createOrder(userId, dto, requestHash); }
+    catch (error) {
+      const won = await priorOrder();
+      if (won) return this.myOrder(userId, won.id);
+      throw error;
+    }
+  }
+
+  private async createOrder(userId: string, dto: NightOrderCreateDto, requestHash: string) {
     const store = await this.db.nightStore.findUnique({
       where: { id: dto.storeId },
       include: {
@@ -179,6 +226,10 @@ export class NightOrderService implements NightPaymentHandler {
       },
     });
     if (!store) throw new NotFoundException('夜宵店不存在');
+    const buyer = await this.db.user.findUnique({ where: { id: userId }, select: { campusId: true, phone: true, role: true } });
+    if (!buyer || buyer.role !== 'user') throw new ForbiddenException('当前账号无用户下单资格');
+    if (buyer.campusId !== store.campusId) throw new BadRequestException('请选择当前校区的夜宵店');
+    if (!buyer.phone) throw new BadRequestException('请先绑定手机号后再下单');
     if (!store.managerStaffId)
       throw new BadRequestException('本楼夜宵店暂无楼长经营');
     if (store.status !== 'open')
@@ -230,27 +281,41 @@ export class NightOrderService implements NightPaymentHandler {
     const productAmount = lines.reduce((s, l) => s + l.price * l.quantity, 0);
     const deliveryFee =
       store.campus.nightDeliveryFee ?? store.campus.deliveryFeeInstant;
+    if ((dto.expectedProductAmount !== undefined && dto.expectedProductAmount !== productAmount) || (dto.expectedDeliveryFee !== undefined && dto.expectedDeliveryFee !== deliveryFee)) throw new BadRequestException('商品价格或配送费已变化，请刷新后确认金额');
 
     // 夜宵券校验（businessType=night 强隔离：白天券在夜宵结算不可用）
     const userCoupon = dto.couponId
       ? await this.validateNightCoupon(userId, dto.couponId, store.campusId)
       : null;
     const couponDiscount = userCoupon ? userCoupon.coupon.amount : 0;
-    if (userCoupon && productAmount < userCoupon.coupon.threshold)
+    const eligibleAmount = userCoupon?.coupon.nightProductIds.length ? lines.filter(line => userCoupon.coupon.nightProductIds.includes(line.catalogProductId)).reduce((sum, line) => sum + line.price * line.quantity, 0) : productAmount;
+    if (userCoupon && (eligibleAmount === 0 || eligibleAmount < userCoupon.coupon.threshold))
       throw new BadRequestException('商品金额未达到夜宵券使用门槛');
     // 无门槛大额券防负数单：抵扣超过商品金额的差额不生效（券不抵配送费，
     // PRD 6.9「券优惠不超过适用商品金额，不找零」）
-    const effectiveDiscount = Math.min(couponDiscount, productAmount);
+    const effectiveDiscount = Math.min(couponDiscount, eligibleAmount);
     const payableAmount = productAmount - effectiveDiscount + deliveryFee;
 
     const order = await this.db.$transaction(async (tx) => {
       const freshStore = await this.inventory.lockStore(tx, store.id);
+      if (dto.requestId) {
+        const old = await tx.nightOrder.findUnique({ where: { userId_requestId: { userId, requestId: dto.requestId } } });
+        if (old) {
+          if (old.requestHash !== requestHash) throw new BadRequestException('下单请求标识已用于其他内容');
+          return old;
+        }
+      }
       if (
         freshStore.status !== 'open' ||
         freshStore.managerStaffId !== store.managerStaffId
       )
         throw new BadRequestException('店铺经营状态已变化，请刷新');
+      const currentCampus = await tx.campus.findUniqueOrThrow({ where: { id: store.campusId } });
+      this.assertNightWindow(currentCampus);
+      if ((currentCampus.nightDeliveryFee ?? currentCampus.deliveryFeeInstant) !== deliveryFee) throw new BadRequestException('配送费已变化，请重新确认金额');
       if (userCoupon) {
+        const freshCoupon = await tx.coupon.findUniqueOrThrow({ where: { id: userCoupon.couponId } });
+        if ((freshCoupon.expiresAt && freshCoupon.expiresAt <= new Date()) || freshCoupon.amount !== userCoupon.coupon.amount || freshCoupon.threshold !== userCoupon.coupon.threshold || JSON.stringify(freshCoupon.nightProductIds) !== JSON.stringify(userCoupon.coupon.nightProductIds)) throw new BadRequestException('优惠券状态已变化，请重新选择');
         // 下单锁定优惠券：claimed/released -> locked（与白天同构，防并发双占）
         const locked = await tx.userCoupon.updateMany({
           where: {
@@ -304,10 +369,12 @@ export class NightOrderService implements NightPaymentHandler {
       const created = await tx.nightOrder.create({
         data: {
           orderNo: nightOrderNo(),
+          requestId: dto.requestId ?? null,
+          requestHash,
           storeId: store.id,
           managerStaffId: store.managerStaffId,
           userId,
-          businessDate: nightBusinessDate(now),
+          businessDate: nightBusinessDate(now, store.campus.nightStartAt, store.campus.nightEndAt),
           status: 'pending-payment',
           statusText: STATUS_TEXT['pending-payment'],
           items: json(lines),
@@ -325,6 +392,7 @@ export class NightOrderService implements NightPaymentHandler {
                 name: userCoupon.coupon.name,
                 amount: userCoupon.coupon.amount,
                 threshold: userCoupon.coupon.threshold,
+                nightProductIds: userCoupon.coupon.nightProductIds,
               })
             : Prisma.JsonNull,
           commissionRate: store.commissionRate,
@@ -362,6 +430,10 @@ export class NightOrderService implements NightPaymentHandler {
       }
       return created;
     });
+    if (order.payableAmount === 0) {
+      await this.applyNightOrderPaid(order.orderNo, 'NO_CHARGE');
+      return this.myOrder(userId, order.id);
+    }
     return this.orderView(order);
   }
 
@@ -418,18 +490,29 @@ export class NightOrderService implements NightPaymentHandler {
         userId,
         ...(status && status !== 'all' ? { status } : {}),
       },
-      include: { store: { include: { building: { select: { name: true } } } } },
+      include: USER_ORDER_INCLUDE,
       orderBy: { createdAt: 'desc' },
-      take: 100,
     });
     return rows.map((o) => this.orderView(o));
+  }
+
+  async myOrdersPage(userId: string, status?: string, page?: string, pageSize?: string) {
+    if (status && status !== 'all' && !(status in STATUS_TEXT)) throw new BadRequestException('订单状态无效');
+    await this.expireMyPendingOrders(userId);
+    const paging = parsePagination(page, pageSize);
+    const where = { userId, ...(status && status !== 'all' ? { status } : {}) };
+    const [rows, total] = await Promise.all([
+      this.db.nightOrder.findMany({ where, include: USER_ORDER_INCLUDE, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], skip: (paging.page - 1) * paging.pageSize, take: paging.pageSize }),
+      this.db.nightOrder.count({ where }),
+    ]);
+    return { items: rows.map(row => this.orderView(row)), total, ...paging };
   }
 
   async myOrder(userId: string, id: string) {
     await this.expireMyPendingOrders(userId);
     const order = await this.db.nightOrder.findFirst({
       where: { id, userId },
-      include: { store: { include: { building: { select: { name: true } } } } },
+      include: USER_ORDER_INCLUDE,
     });
     if (!order) throw new NotFoundException('订单不存在');
     return this.orderView(order);
@@ -446,46 +529,9 @@ export class NightOrderService implements NightPaymentHandler {
       await this.closePendingPayment(id, '用户取消');
       return this.myOrder(userId, id);
     }
-    if (order.status !== 'pending-accept')
-      throw new BadRequestException('楼长已接单，请联系客服处理售后');
-    // 已支付未接单：状态流转 + 资源释放在一个事务里（退款在事务外尝试）
-    await this.db.$transaction(async (tx) => {
-      await this.inventory.lockStore(tx, order.storeId);
-      const won = await tx.nightOrder.updateMany({
-        where: { id, status: 'pending-accept' },
-        data: {
-          status: 'cancelled',
-          statusText: '已取消',
-          cancelReason: (reason ?? '用户取消').slice(0, 120),
-          timeline: json([
-            ...asTimeline(order.timeline),
-            {
-              key: 'cancel',
-              title: '用户取消（退款原路退回中）',
-              time: new Date().toISOString(),
-            },
-          ]),
-        },
-      });
-      if (!won.count) throw new BadRequestException('订单状态已变化');
-      await this.releaseOrderResources(tx, order);
-      await this.reverseCommission(tx, order.id, '订单取消冲销');
-      await tx.notification.create({
-        data: {
-          userId,
-          type: 'order',
-          title: '夜宵订单已取消',
-          content: `订单 ${order.orderNo} 已取消，货款将原路退回。`,
-        },
-      });
-    });
-    // 原路退款：微信未配置（测试环境）留痕人工处理，不阻塞取消
-    await this.tryWechatRefund(
-      order,
-      order.payableAmount,
-      `NR${order.id}`,
-      reason ?? '用户取消',
-    );
+    if (order.status === 'cancelled') return this.myOrder(userId, id);
+    if (!['pending-accept', 'cancelling'].includes(order.status)) throw new BadRequestException('楼长已接单，请联系客服处理售后');
+    await this.refunds.request(id, { kind: 'cancel', operatorId: userId, reason: reason || '用户取消' });
     return this.myOrder(userId, id);
   }
 
@@ -527,6 +573,7 @@ export class NightOrderService implements NightPaymentHandler {
       images?: string[];
     },
   ) {
+    if (body.description.trim().length < 5 || body.description.length > 300 || (body.images?.length ?? 0) > 6 || body.images?.some(url => !/^https?:\/\//.test(url))) throw new BadRequestException('请填写5至300字售后说明，并上传最多6张有效图片');
     const order = await this.db.nightOrder.findFirst({ where: { id, userId } });
     if (!order) throw new NotFoundException('订单不存在');
     if (!['delivered', 'completed'].includes(order.status))
@@ -539,7 +586,9 @@ export class NightOrderService implements NightPaymentHandler {
           ...asTimeline(order.timeline),
           {
             key: 'after-sale',
-            title: `用户申请售后（${body.type}）：${body.description.slice(0, 60)}`,
+            title: '用户申请售后',
+            description: `${body.type}：${body.description.trim()}`,
+            images: body.images ?? [],
             time: new Date().toISOString(),
           },
         ]),
@@ -550,16 +599,33 @@ export class NightOrderService implements NightPaymentHandler {
     return { id, afterSaleStatus: 'requested' };
   }
 
+  async rejectAfterSale(operatorId: string, id: string, reason: string) {
+    if (!reason.trim()) throw new BadRequestException('请填写售后审核说明');
+    const raw = await this.db.nightOrder.findUniqueOrThrow({ where: { id } });
+    await this.db.$transaction(async tx => {
+      const store = await this.inventory.lockStore(tx, raw.storeId);
+      const order = await tx.nightOrder.findUniqueOrThrow({ where: { id } });
+      if (order.afterSaleStatus !== 'requested') throw new BadRequestException('售后状态已变化，请刷新');
+      await tx.nightOrder.update({ where: { id }, data: { afterSaleStatus: 'rejected', timeline: json([...asTimeline(order.timeline), { key: 'after-sale-review', title: '售后审核未通过', description: reason.trim(), time: new Date().toISOString() }]) } });
+      if (order.status === 'completed') await tx.nightCommissionTxn.updateMany({ where: { orderId: id, status: 'estimated' }, data: { status: 'pending' } });
+      await tx.auditLog.create({ data: { campusId: store.campusId, operator: operatorId, action: 'night.after-sale.reject', entityType: 'night-order', entityId: id, after: { reason } } });
+      await tx.notification.create({ data: { userId: order.userId, type: 'order', title: '夜宵售后审核结果', content: reason.trim() } });
+    });
+    return this.adminOrderDetail(id);
+  }
+
   /* ==================== 楼长端：接单/送达 ==================== */
 
   async acceptOrder(staffId: string, storeId: string, id: string) {
     const order = await this.db.nightOrder.findUnique({ where: { id } });
     if (!order) throw new NotFoundException('订单不存在');
     if (order.storeId !== storeId) throw new ForbiddenException('非本店订单');
+    if (order.managerStaffId !== staffId) throw new ForbiddenException('非本人经营订单');
+    if (order.afterSaleStatus === 'refund-processing') throw new BadRequestException('退款正在核对，暂不可接单');
     if (order.status !== 'pending-accept')
       throw new BadRequestException('当前状态不可接单');
     const won = await this.db.nightOrder.updateMany({
-      where: { id, status: 'pending-accept' },
+      where: { id, status: 'pending-accept', OR: [{ afterSaleStatus: null }, { afterSaleStatus: { not: 'refund-processing' } }] },
       data: {
         status: 'delivering',
         statusText: STATUS_TEXT.delivering,
@@ -603,6 +669,7 @@ export class NightOrderService implements NightPaymentHandler {
       if (order.storeId !== storeId) throw new ForbiddenException('非本店订单');
       if (order.managerStaffId !== staffId)
         throw new ForbiddenException('非本人经营订单');
+      if (order.afterSaleStatus === 'refund-processing') throw new BadRequestException('退款正在核对，暂不可送达');
       if (order.status === 'completed') return;
       if (order.status !== 'delivering')
         throw new BadRequestException('当前状态不可标记送达');
@@ -666,12 +733,16 @@ export class NightOrderService implements NightPaymentHandler {
       amount: order.payableAmount,
       openid: user.openid,
       description: `夜宵订单 ${order.orderNo}`,
+      expectedMerchantId: order.payMerchantId ?? undefined,
+      expectedAppId: order.payAppId ?? undefined,
     });
+    if (payParams.merchantId) await this.db.nightOrder.update({ where: { id: order.id }, data: { payMerchantId: payParams.merchantId, payAppId: payParams.appId } });
+    const { merchantId: _merchant, ...clientParams } = payParams;
     return {
       orderId: order.id,
       orderNo: order.orderNo,
       amount: order.payableAmount,
-      payParams,
+      payParams: clientParams,
     };
   }
 
@@ -720,10 +791,10 @@ export class NightOrderService implements NightPaymentHandler {
    * 库存已于下单扣减，此处只确认不再重复扣。
    */
   async applyNightOrderPaid(orderNo: string, transactionId?: string) {
-    void transactionId; // 留参对齐回调签名（交易号仅日志用，一期不落库）
     await this.db.$transaction(async (tx) => {
       const order = await tx.nightOrder.findUnique({ where: { orderNo } });
       if (!order) throw new NotFoundException('夜宵订单不存在');
+      if (order.paidAt) return;
       // 幂等：已支付直接返回（重复回调/并发回调只生效一次）
       if (order.status !== 'pending-payment') {
         if (order.status === 'cancelled') {
@@ -735,6 +806,7 @@ export class NightOrderService implements NightPaymentHandler {
               status: 'exception',
               statusText: '支付已收到但订单已关闭，请联系客服处理',
               paidAt: new Date(),
+              wxTransactionId: transactionId,
             },
           });
           if (frozen.count)
@@ -755,6 +827,7 @@ export class NightOrderService implements NightPaymentHandler {
           status: 'pending-accept',
           statusText: STATUS_TEXT['pending-accept'],
           paidAt: new Date(),
+          wxTransactionId: transactionId,
           timeline: json([
             ...asTimeline(order.timeline),
             { key: 'paid', title: '支付成功', time: new Date().toISOString() },
@@ -838,7 +911,6 @@ export class NightOrderService implements NightPaymentHandler {
    * + NightStore.deposit 原子增加。重复回调只落账一次。
    */
   async applyNightDepositPaid(outTradeNo: string, transactionId?: string) {
-    void transactionId; // 留参对齐回调签名（交易号仅日志用，一期不落库）
     await this.db.$transaction(async (tx) => {
       const intent = await tx.nightDepositOrder.findUnique({
         where: { outTradeNo },
@@ -847,7 +919,7 @@ export class NightOrderService implements NightPaymentHandler {
       // 幂等：条件抢占 paid 位，败者直接返回
       const won = await tx.nightDepositOrder.updateMany({
         where: { id: intent.id, status: { not: 'paid' } },
-        data: { status: 'paid', paidAt: new Date() },
+        data: { status: 'paid', paidAt: new Date(), wxTransactionId: transactionId },
       });
       if (!won.count) return;
       await tx.nightDepositTxn.create({
@@ -868,183 +940,63 @@ export class NightOrderService implements NightPaymentHandler {
 
   /* ==================== 退款（后台 + 用户取消共用通道） ==================== */
 
-  /**
-   * 尽力而为的原路退款：微信凭证未配置（本地/测试环境）时留痕跳过不阻塞
-   * 业务流；受理结果未知时同样留痕（资金状态由后台退款同步接口核对）。
-   * 返回实际是否已发起。
-   */
-  private async tryWechatRefund(
-    order: { orderNo: string; payableAmount: number; storeId: string },
-    refundFen: number,
-    refundNo: string,
-    reason: string,
-  ): Promise<boolean> {
-    try {
-      const store = await this.db.nightStore.findUnique({
-        where: { id: order.storeId },
-        select: { campusId: true },
-      });
-      await this.payments.applyWechatRefund(
-        order.orderNo,
-        order.payableAmount,
-        refundFen,
-        refundNo,
-        reason.slice(0, 80) || '夜宵订单退款',
-        store?.campusId,
-      );
-      return true;
-    } catch (error) {
-      this.logger.warn(
-        `夜宵退款未即时受理（已留痕）：refundNo=${refundNo} ` +
-          `reason=${error instanceof Error ? error.message : String(error)}`,
-      );
-      return false;
-    }
+  /** 网关结果持久化，成功后才结算库存/券/佣金；处理中可重复调用核对原申请。 */
+  async adminRefund(operatorId: string, orderId: string, body: NightRefundDto) {
+    const request = await this.refunds.request(orderId, { kind: 'admin', operatorId, productAmount: body.productRefund, refundDeliveryFee: body.refundDeliveryFee, restock: body.restock, reason: body.reason });
+    const order = await this.db.nightOrder.findUniqueOrThrow({ where: { id: orderId } });
+    return { id: orderId, refundId: request.id, refundStatus: request.status, refundAmount: request.totalAmount, fullRefund: request.totalAmount === order.payableAmount, message: request.errorMessage };
   }
 
-  /**
-   * 后台退款：整单（缺省）或部分商品金额；可选退配送费；可选回库。
-   * 佣金联动：商品退款按「重算应得−已记账」写 adjust 行（避免多次退款
-   * 舍入重复，PRD 6.6）；配送费退款写 clawback 冲回行。
-   * 全额退款（商品+配送费）成功 → 订单转 refunded + 券恢复（PRD 6.9）。
-   * 一期一单一次退款：已退过的单拒绝（二次退款走人工/财务通道）。
-   */
-  async adminRefund(operatorId: string, orderId: string, body: NightRefundDto) {
-    const order = await this.db.nightOrder.findUnique({
-      where: { id: orderId },
-    });
-    if (!order) throw new NotFoundException('订单不存在');
-    if (!order.paidAt) throw new BadRequestException('订单未支付，无需退款');
-    if (['cancelled', 'refunded'].includes(order.status))
-      throw new BadRequestException('订单当前状态不可退款');
-    const productPaid = order.productAmount - order.couponDiscount;
-    const productRefund = Math.min(
-      body.productRefund ?? productPaid,
-      productPaid,
-    );
-    if (productRefund <= 0) throw new BadRequestException('退款金额不合法');
-    const feeRefund = body.refundDeliveryFee ? order.deliveryFee : 0;
-    const totalRefund = productRefund + feeRefund;
-    const fullRefund = totalRefund === order.payableAmount;
-    // 部分商品退款不支持自动回库（回库数量无法从金额推导）
-    if (body.restock !== false && productRefund !== productPaid)
-      throw new BadRequestException(
-        '部分退款不自动回库；如需回库请用库存调整接口',
-      );
-    // 一单一次退款守门（V1）：timeline 已有 refund 节点拒绝二次退款
-    const timelineSteps = asTimeline(order.timeline);
-    if (timelineSteps.some((s) => s.key === 'refund'))
-      throw new BadRequestException(
-        '该订单已发生过退款，二次退款请走人工财务通道',
-      );
+  async reconcilePendingRefunds(limit = 50) { return this.refunds.reconcileDue(limit); }
+  async reconcilePendingDepositRefunds(limit = 50) { return new NightDepositRefundService(this.db, this.payments, this.inventory).reconcileDue(limit); }
 
-    await this.db.$transaction(async (tx) => {
-      const inventory = this.inventory;
-      await inventory.lockStore(tx, order.storeId);
-      const freshOrder = await tx.nightOrder.findUniqueOrThrow({
-        where: { id: order.id },
-      });
-      if (asTimeline(freshOrder.timeline).some((step) => step.key === 'refund'))
-        throw new BadRequestException('该订单已发生退款');
-      const shouldRestock =
-        body.restock !== false && productRefund === productPaid;
-      if (
-        shouldRestock &&
-        !freshOrder.inventoryRestocked &&
-        freshOrder.quotaHeld === 0
-      ) {
-        const returnValue = (order.items as unknown as NightOrderLine[]).reduce(
-          (sum, line) =>
-            sum + (line.inventoryValue ?? line.price * line.quantity),
-          0,
-        );
-        if (
-          returnValue > (await inventory.summary(order.storeId, tx)).usableQuota
-        )
-          throw new BadRequestException('退货入库超出押金额度，请先补缴押金');
-      }
-      const won = await tx.nightOrder.updateMany({
-        where: { id: order.id, status: order.status },
-        data: {
-          status: fullRefund ? 'refunded' : order.status,
-          statusText: fullRefund
-            ? STATUS_TEXT.refunded
-            : STATUS_TEXT[order.status],
-          afterSaleStatus:
-            order.afterSaleStatus === 'requested'
-              ? 'resolved'
-              : order.afterSaleStatus,
-          timeline: json([
-            ...timelineSteps,
-            {
-              key: 'refund',
-              title: `后台退款 ¥${(totalRefund / 100).toFixed(2)}（${body.reason.slice(0, 40)}）`,
-              time: new Date().toISOString(),
-            },
-          ]),
-        },
-      });
-      if (!won.count) throw new BadRequestException('订单状态已变化');
-      // 商品退款回库（整单场景）：refundBack 流水 + 库存回补
-      if (shouldRestock) {
-        await this.releaseOrderResources(tx, order);
-      } else if (fullRefund && freshOrder.quotaHeld > 0) {
-        if (!order.managerStaffId)
-          throw new BadRequestException('订单缺少经营者，请先核对历史订单');
-        const items = (order.items as unknown as NightOrderLine[]).map(
-          (line) => ({
-            nightProductId: line.nightProductId,
-            name: line.name,
-            quantity: line.quantity,
-            delta: 0,
-            value: line.inventoryValue ?? line.price * line.quantity,
-            unitValue:
-              (line.inventoryValue ?? line.price * line.quantity) /
-              line.quantity,
-            bookQuantity: line.quantity,
-          }),
-        );
-        await tx.nightInventoryReport.create({
-          data: {
-            storeId: order.storeId,
-            managerStaffId: order.managerStaffId,
-            kind: 'order-loss',
-            requestId: `refund-${order.id}`,
-            items: json(items),
-            heldValue: freshOrder.quotaHeld,
-            reason: `订单退款未回库：${body.reason}`,
-          },
-        });
-        await tx.nightOrder.update({
-          where: { id: order.id },
-          data: { quotaHeld: 0 },
-        });
-      }
-      // 佣金联动：商品退款重算 adjust；配送费退款 clawback
-      await this.adjustCommissionOnRefund(tx, order, productRefund, feeRefund);
-      // 全额退款成功恢复原券（不延长有效期；used→released 可再次使用）
-      if (fullRefund && order.couponId) {
-        await tx.userCoupon.updateMany({
-          where: { id: order.couponId, status: 'used' },
-          data: { status: 'released' },
-        });
-      }
-      await tx.notification.create({
-        data: {
-          userId: order.userId,
-          type: 'refund',
-          title: fullRefund ? '夜宵订单已退款' : '夜宵订单部分退款',
-          content: `订单 ${order.orderNo} 退款 ¥${(totalRefund / 100).toFixed(2)} 将原路退回。`,
-        },
-      });
-    });
-    await this.tryWechatRefund(
-      order,
-      totalRefund,
-      `NR${order.id}`,
-      body.reason,
-    );
-    return { id: order.id, refundAmount: totalRefund, fullRefund };
+  async syncRefund(orderId: string) {
+    const request = await this.db.nightRefund.findUnique({ where: { orderId } });
+    if (!request) throw new BadRequestException('该订单尚未申请退款');
+    await this.refunds.reconcile(request.id);
+    return this.adminOrderDetail(orderId);
+  }
+
+  async settlementCampusIds(batch: string) {
+    const rows = await this.db.nightCommissionTxn.findMany({ where: { settleBatch: batch }, select: { store: { select: { campusId: true } } }, distinct: ['storeId'] });
+    if (!rows.length) throw new NotFoundException('批次不存在');
+    return [...new Set(rows.map(row => row.store.campusId))];
+  }
+
+  private async finalizeRefund(tx: Tx, request: NightRefund) {
+    const order = await tx.nightOrder.findUniqueOrThrow({ where: { id: request.orderId } });
+    const productPaid = order.productAmount - order.couponDiscount;
+    const productsReturned = request.fullProductRefund;
+    const fullRefund = request.totalAmount === order.payableAmount;
+    const timeline = asTimeline(order.timeline);
+    if (timeline.some(step => step.key === 'refund' && (step as NightTimelineStep & {refundId?: string}).refundId === request.id)) return;
+    const status = request.kind === 'cancel' ? 'cancelled' : productsReturned ? 'refunded' : request.originalStatus;
+    await tx.nightOrder.update({ where: { id: order.id }, data: {
+      status,
+      statusText: request.kind === 'cancel' ? '已取消并退款' : productsReturned && !fullRefund ? '商品已退款，配送费保留' : STATUS_TEXT[status] || order.statusText,
+      afterSaleStatus: 'resolved',
+      timeline: json([...timeline, { key: 'refund', title: '退款已到账 ¥' + (request.totalAmount / 100).toFixed(2), time: new Date().toISOString(), refundId: request.id, productRefund: request.productAmount, feeRefund: request.deliveryFeeAmount }]),
+    } });
+    if (request.restock && productsReturned) {
+      await this.releaseOrderResources(tx, order);
+    } else if (productsReturned && order.quotaHeld > 0) {
+      if (!order.managerStaffId) throw new BadRequestException('订单缺少原经营者，请核对');
+      const items = (order.items as unknown as NightOrderLine[]).map(line => ({
+        nightProductId: line.nightProductId, name: line.name, quantity: line.quantity, delta: 0,
+        value: line.inventoryValue ?? line.price * line.quantity,
+        unitValue: (line.inventoryValue ?? line.price * line.quantity) / line.quantity, bookQuantity: line.quantity,
+      }));
+      await tx.nightInventoryReport.create({ data: {
+        storeId: order.storeId, managerStaffId: order.managerStaffId, kind: 'order-loss', requestId: 'refund-' + order.id, items: json(items), heldValue: order.quotaHeld, reason: '订单退款未回库：' + request.reason,
+      } });
+      await tx.nightOrder.update({ where: { id: order.id }, data: { quotaHeld: 0 } });
+    }
+    if (request.kind === 'cancel') await this.reverseCommission(tx, order.id, '订单取消退款成功冲销');
+    else await this.adjustCommissionOnRefund(tx, order, request.productAmount, request.deliveryFeeAmount);
+    if (productsReturned && order.couponId) await tx.userCoupon.updateMany({ where: { id: order.couponId, status: 'used' }, data: { status: 'released' } });
+    // 商品全退但保留配送费时，保留部分应进入待结算，不遗留在预计收入中。
+    if (request.kind !== 'cancel' && productsReturned) await tx.nightCommissionTxn.updateMany({ where: { orderId: order.id, status: 'estimated' }, data: { status: 'pending' } });
+    await tx.notification.create({ data: { userId: order.userId, type: 'refund', title: request.kind === 'cancel' ? '夜宵订单已取消并退款' : '夜宵退款已完成', content: '订单 ' + order.orderNo + ' 已退款 ¥' + (request.totalAmount / 100).toFixed(2) + '。' } });
   }
 
   /** 佣金退款联动（PRD 6.6/T19/T20）：重算 adjust + 配送费 clawback。 */
@@ -1087,14 +1039,15 @@ export class NightOrderService implements NightPaymentHandler {
             base: newBase,
             rate: order.commissionRate,
             amount: delta, // 负向调整（跨期冲回）
-            status: commissionRow.status,
-            settleBatch: commissionRow.settleBatch,
+            status: commissionRow.status === 'settled' ? 'pending' : commissionRow.status,
+            settleBatch: null,
             remark: `退款重算：基数 ${newBase}，应得 ${newAmount}，调整 ${delta}`,
           },
         });
       }
     }
-    if (feeRefund > 0) {
+    const feeRow = originals.find(row => row.type === 'deliveryFee');
+    if (feeRefund > 0 && feeRow) {
       await tx.nightCommissionTxn.create({
         data: {
           orderId: order.id,
@@ -1104,7 +1057,7 @@ export class NightOrderService implements NightPaymentHandler {
           base: null,
           rate: null,
           amount: -feeRefund, // clawback：配送费退款同步冲回（V1.5 修订项 3）
-          status: 'estimated',
+          status: feeRow?.status === 'estimated' ? 'estimated' : 'pending',
           remark: '配送费退款冲回（clawback）',
         },
       });
@@ -1143,7 +1096,7 @@ export class NightOrderService implements NightPaymentHandler {
       select: { afterSaleStatus: true, status: true },
     });
     if (!order) return;
-    if (order.afterSaleStatus === 'requested') return; // 售后进行中暂缓
+    if (['requested', 'refund-processing'].includes(order.afterSaleStatus || '')) return;
     await this.db.nightCommissionTxn.updateMany({
       where: { orderId, status: 'estimated' },
       data: { status: 'pending' },
@@ -1273,38 +1226,39 @@ export class NightOrderService implements NightPaymentHandler {
 
   /* ==================== 后台：订单查询 / 结算 ==================== */
 
-  async adminOrders(
-    campusId: string,
-    filters: { storeId?: string; status?: string; date?: string },
-  ) {
-    const storeIds = filters.storeId
-      ? [filters.storeId]
-      : (
-          await this.db.nightStore.findMany({
-            where: { campusId },
-            select: { id: true },
-          })
-        ).map((s) => s.id);
-    const rows = await this.db.nightOrder.findMany({
-      where: {
-        storeId: { in: storeIds },
-        ...(filters.status ? { status: filters.status } : {}),
-        ...(filters.date ? { businessDate: filters.date } : {}),
-      },
-      include: {
-        store: { include: { building: { select: { name: true } } } },
-        user: { select: { id: true, nickname: true, phone: true } },
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 500,
-    });
-    return rows.map((o) => ({ ...this.orderView(o), user: o.user }));
+  async adminOrders(campusId: string, filters: { storeId?: string; status?: string; date?: string }) {
+    return (await this.adminOrdersPage(campusId, filters, '1', '100')).items;
+  }
+
+  async adminOrdersPage(campusId: string, filters: { storeId?: string; status?: string; date?: string; keyword?: string; afterSaleStatus?: string }, page?: string, pageSize?: string) {
+    if (filters.status && !Object.keys(STATUS_TEXT).includes(filters.status)) throw new BadRequestException('订单状态无效');
+    if (filters.date && !/^\\d{4}-\\d{2}-\\d{2}$/.test(filters.date)) throw new BadRequestException('营业日格式无效');
+    if (filters.afterSaleStatus && !['requested', 'refund-processing', 'resolved', 'rejected'].includes(filters.afterSaleStatus)) throw new BadRequestException('售后状态无效');
+    const keyword = filters.keyword?.trim().slice(0, 80);
+    const where: Prisma.NightOrderWhereInput = {
+      store: { ...(campusId ? { campusId } : {}) },
+      ...(filters.storeId ? { storeId: filters.storeId } : {}),
+      ...(filters.status ? { status: filters.status } : {}),
+      ...(filters.date ? { businessDate: filters.date } : {}),
+      ...(filters.afterSaleStatus ? { afterSaleStatus: filters.afterSaleStatus } : {}),
+      ...(keyword ? { OR: [
+        { orderNo: { contains: keyword } }, { user: { nickname: { contains: keyword } } }, { user: { phone: { contains: keyword } } },
+        { address: { path: ['buildingName'], string_contains: keyword } }, { address: { path: ['room'], string_contains: keyword } },
+      ] } : {}),
+    };
+    const paging = parsePagination(page, pageSize);
+    const [rows, total] = await Promise.all([
+      this.db.nightOrder.findMany({ where, include: { refund: true, store: { include: { building: { select: { name: true } } } }, user: { select: { id: true, nickname: true, phone: true } } }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], skip: (paging.page - 1) * paging.pageSize, take: paging.pageSize }),
+      this.db.nightOrder.count({ where }),
+    ]);
+    return { items: rows.map(o => ({ ...this.orderView(o), user: o.user })), total, ...paging };
   }
 
   async adminOrderDetail(id: string) {
     const order = await this.db.nightOrder.findUnique({
       where: { id },
       include: {
+        refund: true,
         store: {
           include: {
             building: { select: { name: true } },
@@ -1329,6 +1283,10 @@ export class NightOrderService implements NightPaymentHandler {
    * estimated（未完成订单）不进批次（PRD B13：完成且无进行中售后才可结算）。
    */
   async settleBatch(campusId: string, storeIds?: string[]) {
+    if (storeIds?.length) {
+      const allowed = await this.db.nightStore.count({ where: { id: { in: [...new Set(storeIds)] }, ...(campusId ? { campusId } : {}) } });
+      if (allowed !== new Set(storeIds).size) throw new ForbiddenException('结算店铺不属于当前校区或不存在');
+    }
     const scope = storeIds?.length
       ? storeIds
       : (
@@ -1347,6 +1305,7 @@ export class NightOrderService implements NightPaymentHandler {
         storeId: { in: scope },
         status: 'pending',
         settleBatch: null,
+        order: { OR: [{ afterSaleStatus: null }, { afterSaleStatus: { notIn: ['requested', 'refund-processing'] } }] },
       },
       data: { status: 'settled', settleBatch: batch },
     });
@@ -1365,59 +1324,33 @@ export class NightOrderService implements NightPaymentHandler {
     };
   }
 
-  /** 批次列表（含标记打款留痕 remark）。 */
+  /** 数据库按批次聚合全部流水，不按最近1000笔截断财务汇总。 */
   async settlements(campusId: string) {
-    const storeIds = (
-      await this.db.nightStore.findMany({
-        where: { campusId },
-        select: { id: true },
-      })
-    ).map((s) => s.id);
-    const rows = await this.db.nightCommissionTxn.findMany({
-      where: { storeId: { in: storeIds }, status: 'settled' },
-      orderBy: { createdAt: 'desc' },
-      take: 1000,
-    });
-    const byBatch = new Map<string, typeof rows>();
-    for (const r of rows) {
-      if (!r.settleBatch) continue;
-      const list = byBatch.get(r.settleBatch) ?? [];
-      list.push(r);
-      byBatch.set(r.settleBatch, list);
-    }
-    return [...byBatch.entries()].map(([batch, list]) => ({
-      batch,
-      txnCount: list.length,
-      commissionTotal: list
-        .filter((r) => r.type === 'commission')
-        .reduce((s, r) => s + r.amount, 0),
-      deliveryFeeTotal: list
-        .filter((r) => r.type === 'deliveryFee')
-        .reduce((s, r) => s + r.amount, 0),
-      latestAt: list
-        .map((r) => r.createdAt.toISOString())
-        .sort()
-        .at(-1),
-    }));
+    const rows = await this.db.$queryRaw<Array<{ batch: string; txnCount: number; commissionTotal: bigint; deliveryFeeTotal: bigint; latestAt: Date; markedPaid: boolean }>>`
+      SELECT t."settleBatch" AS batch, COUNT(*)::int AS "txnCount",
+        COALESCE(SUM(CASE WHEN t.type = 'commission' THEN t.amount ELSE 0 END), 0) AS "commissionTotal",
+        COALESCE(SUM(CASE WHEN t.type = 'deliveryFee' THEN t.amount ELSE 0 END), 0) AS "deliveryFeeTotal",
+        MAX(t."createdAt") AS "latestAt",
+        BOOL_AND(position(' | 已打款 ' in t.remark) > 0) AS "markedPaid"
+      FROM "NightCommissionTxn" t JOIN "NightStore" s ON s.id = t."storeId"
+      WHERE s."campusId" = ${campusId} AND t.status = 'settled' AND t."settleBatch" IS NOT NULL
+      GROUP BY t."settleBatch" ORDER BY MAX(t."createdAt") DESC, t."settleBatch" DESC`;
+    return rows.map(row => ({ ...row, commissionTotal: Number(row.commissionTotal), deliveryFeeTotal: Number(row.deliveryFeeTotal), latestAt: row.latestAt.toISOString() }));
   }
 
-  /** 标记打款（财务线下打款后留痕）：批次流水 remark 追加打款标记。 */
+  /** 仅登记财务已在线下完成打款；沿用既有备注，批次串行且重复登记不再追加。 */
   async markBatchPaid(batch: string, operatorId: string, remark: string) {
-    const list = await this.db.nightCommissionTxn.findMany({
-      where: { settleBatch: batch, status: 'settled' },
-      select: { id: true, remark: true },
-    });
-    if (!list.length) throw new NotFoundException('批次不存在或无已结算流水');
-    const stamp = ` | 已打款 ${new Date().toISOString()} by ${operatorId}${remark ? ` ${remark}` : ''}`;
-    await this.db.$transaction(
-      list.map((r) =>
-        this.db.nightCommissionTxn.update({
-          where: { id: r.id },
-          data: { remark: `${r.remark}${stamp}`.slice(0, 500) },
-        }),
-      ),
-    );
-    return { batch, txnCount: list.length };
+    return this.db.$transaction(async tx => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'night-settlement:' + batch}))`;
+      const list = await tx.nightCommissionTxn.findMany({ where: { settleBatch: batch, status: 'settled' }, select: { id: true, remark: true, store: { select: { campusId: true } } } });
+      if (!list.length) throw new NotFoundException('批次不存在或无已结算流水');
+      const outstanding = list.filter(row => !row.remark.includes(' | 已打款 '));
+      if (!outstanding.length) return { batch, txnCount: list.length, alreadyPaid: true };
+      const stamp = ` | 已打款 ${new Date().toISOString()} by ${operatorId}${remark.trim() ? ' ' + remark.trim().slice(0, 100) : ''}`;
+      await tx.$executeRaw`UPDATE "NightCommissionTxn" SET remark = LEFT(remark, ${Math.max(0, 500 - stamp.length)}::int) || ${stamp} WHERE "settleBatch" = ${batch} AND status = 'settled' AND position(' | 已打款 ' in remark) = 0`;
+      for (const campusId of new Set(list.map(row => row.store.campusId))) await tx.auditLog.create({ data: { campusId, operator: operatorId, action: 'night.settlement.markPaid', entityType: 'night-settlement', entityId: batch, after: { txnCount: outstanding.length, remark: remark.trim().slice(0, 100) } } });
+      return { batch, txnCount: list.length, alreadyPaid: false };
+    }, { timeout: 60000 });
   }
 
   /* ==================== 押金支付单（楼长端发起） ==================== */
@@ -1433,10 +1366,10 @@ export class NightOrderService implements NightPaymentHandler {
     payerAppId?: string,
     requestedTier?: number,
   ) {
-    const store = await this.db.nightStore.findUnique({
-      where: { id: storeId },
-    });
-    if (!store) throw new NotFoundException('夜宵店不存在');
+    const intent = await this.db.$transaction(async tx => {
+    const store = await this.inventory.lockStore(tx, storeId);
+    if (store.campusId !== campusId) throw new BadRequestException('店铺归属已变化，请刷新');
+    if (await tx.nightDepositRefund.count({ where: { storeId, status: { in: ['requested', 'submitting', 'processing', 'unknown'] } } })) throw new BadRequestException('押金退还处理中，请先完成核对再缴纳');
     const minimumTier = Math.max(
       50000,
       (Math.floor(store.deposit / 50000) + 1) * 50000,
@@ -1452,17 +1385,17 @@ export class NightOrderService implements NightPaymentHandler {
     const amount = targetTier - store.deposit;
     if (amount <= 0) throw new BadRequestException('押金已足额，无需缴纳');
     // 复用未支付旧单（幂等；避免堆积死单）
-    let intent = await this.db.nightDepositOrder.findFirst({
+    let intent = await tx.nightDepositOrder.findFirst({
       where: { storeId, status: 'pending', amount },
       orderBy: { createdAt: 'desc' },
     });
     if (!intent) {
       // 关闭过期旧单（不同金额的 pending 单）
-      await this.db.nightDepositOrder.updateMany({
+      await tx.nightDepositOrder.updateMany({
         where: { storeId, status: 'pending' },
         data: { status: 'closed' },
       });
-      intent = await this.db.nightDepositOrder.create({
+      intent = await tx.nightDepositOrder.create({
         data: {
           storeId,
           outTradeNo: nightDepositTradeNo(),
@@ -1471,6 +1404,8 @@ export class NightOrderService implements NightPaymentHandler {
         },
       });
     }
+    return intent;
+    }, { timeout: 20000 });
     const payParams = await this.payments.nightPrepay({
       campusId,
       outTradeNo: intent.outTradeNo,
@@ -1478,13 +1413,17 @@ export class NightOrderService implements NightPaymentHandler {
       openid,
       description: '夜宵店经营押金缴纳',
       payerAppId,
+      expectedMerchantId: intent.payMerchantId ?? undefined,
+      expectedAppId: intent.payAppId ?? undefined,
     });
+    if (payParams.merchantId) await this.db.nightDepositOrder.update({ where: { id: intent.id }, data: { payMerchantId: payParams.merchantId, payAppId: payParams.appId } });
+    const { merchantId: _merchant, ...clientParams } = payParams;
     return {
       depositOrderId: intent.id,
       outTradeNo: intent.outTradeNo,
       amount: intent.amount,
       targetTier: intent.targetTier,
-      payParams,
+      payParams: clientParams,
     };
   }
 
@@ -1602,7 +1541,7 @@ export class NightOrderService implements NightPaymentHandler {
                 (!c.expiresAt || c.expiresAt > now) &&
                 (c.total === null || c.claimed < c.total) &&
                 ((c.perUserLimit ?? 1) === 0 ||
-                  mine.filter((x) => x.couponId === c.id && x.status !== 'used')
+                  mine.filter((x) => x.couponId === c.id)
                     .length < (c.perUserLimit ?? 1)),
             )
             .map((c) => ({
@@ -1611,6 +1550,7 @@ export class NightOrderService implements NightPaymentHandler {
               amount: c.amount,
               threshold: c.threshold,
               businessType: c.businessType,
+              nightProductIds: c.nightProductIds,
               remain:
                 c.total === null ? null : Math.max(0, c.total - c.claimed),
               expiresAt: c.expiresAt ? c.expiresAt.toISOString() : null,
@@ -1627,6 +1567,7 @@ export class NightOrderService implements NightPaymentHandler {
           amount: x.coupon.amount,
           threshold: x.coupon.threshold,
           businessType: x.coupon.businessType,
+          nightProductIds: x.coupon.nightProductIds,
           expiresAt: x.coupon.expiresAt
             ? x.coupon.expiresAt.toISOString()
             : null,
@@ -1640,6 +1581,7 @@ export class NightOrderService implements NightPaymentHandler {
     if (!(await marketingEnabled(this.db, campusId)))
       throw new ForbiddenException('营销能力未开通');
     return this.db.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "Coupon" WHERE id = ${couponId} FOR UPDATE`;
       const coupon = await tx.coupon.findUnique({ where: { id: couponId } });
       if (!coupon) throw new NotFoundException('优惠券不存在');
       if (coupon.campusId !== campusId)
@@ -1663,7 +1605,6 @@ export class NightOrderService implements NightPaymentHandler {
           if (holding) return holding;
           throw new BadRequestException('该优惠券已使用');
         }
-        if (holding) return holding;
       }
       const won = await tx.coupon.updateMany({
         where: {

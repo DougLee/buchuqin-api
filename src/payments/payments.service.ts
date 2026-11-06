@@ -74,6 +74,15 @@ interface WxPayCreds {
   organizationId?: string;
 }
 
+interface WechatTrade {
+  out_trade_no?: string;
+  trade_state?: string;
+  transaction_id?: string;
+  appid?: string;
+  mchid?: string;
+  amount?: { total?: number; currency?: string };
+}
+
 /**
  * 夜宵支付成功处理器（IKSW1F）：PaymentsService 回调验签/解密后的业务分发口，
  * 由 night 模块实现并注册（setter 注入防循环依赖）。outTradeNo 前缀路由：
@@ -327,12 +336,15 @@ export class PaymentsService {
      *  AppID——传履约端 AppID 覆盖下单 appid（商户号必须已绑定该 AppID，
      *  未绑定微信侧报 appid/openid 不匹配，属上线配置项）。缺省=用户端口径。 */
     payerAppId?: string;
+    expectedMerchantId?: string;
+    expectedAppId?: string;
   }) {
     const creds = await this.campusCreds(opts.campusId);
     if (!creds)
       throw new HttpException('微信支付未配置', HttpStatus.NOT_IMPLEMENTED);
     const effective = opts.payerAppId ? { ...creds, appId: opts.payerAppId } : creds;
-    return this.jsapiPrepay(effective, opts);
+    if ((opts.expectedMerchantId && opts.expectedMerchantId !== effective.mchId) || (opts.expectedAppId && opts.expectedAppId !== effective.appId)) throw new BadRequestException('原支付单商户配置已变化，请联系平台处理');
+    return { ...await this.jsapiPrepay(effective, opts), merchantId: effective.mchId };
   }
 
   /**
@@ -346,8 +358,26 @@ export class PaymentsService {
     const creds = await this.campusCreds(campusId);
     if (!creds)
       throw new HttpException('微信支付未配置', HttpStatus.NOT_IMPLEMENTED);
-    const trade = await this.queryWechatTrade(outTradeNo);
+    const trade = await this.queryWechatTrade(outTradeNo, creds);
+    if (trade.trade_state === 'SUCCESS') await this.assertNightTrade(outTradeNo, trade, campusId);
     return { tradeState: trade.trade_state, transactionId: trade.transaction_id };
+  }
+
+  /** Verify the business amount and original merchant before applying a signed
+   * callback or a gateway query. A successful trade for another tenant is not payment. */
+  private async assertNightTrade(tradeNo: string, trade: WechatTrade, campusId?: string) {
+    const target = tradeNo.startsWith('ND')
+      ? await this.db.nightDepositOrder.findUnique({ where: { outTradeNo: tradeNo }, include: { store: { select: { campusId: true } } } }).then(row => row ? { ...row, expected: row.amount } : null)
+      : await this.db.nightOrder.findUnique({ where: { orderNo: tradeNo }, include: { store: { select: { campusId: true } } } }).then(row => row ? { ...row, expected: row.payableAmount } : null);
+    if (!target || (campusId && target.store.campusId !== campusId)) throw new BadRequestException('夜宵支付单归属不匹配');
+    const creds = await this.campusCreds(target.store.campusId);
+    if (!creds) throw new HttpException('微信支付未配置', HttpStatus.NOT_IMPLEMENTED);
+    let fallbackAppId = creds.appId;
+    if (tradeNo.startsWith('ND') && !target.payAppId) {
+      const org = creds.organizationId ? await this.db.organization.findUnique({ where: { id: creds.organizationId }, select: { deliveryWxAppId: true } }) : null;
+      fallbackAppId = org?.deliveryWxAppId || process.env.WX_APPID_DELIVERY || fallbackAppId;
+    }
+    if (!Number.isSafeInteger(trade.amount?.total) || trade.amount?.total !== target.expected || trade.amount?.currency !== 'CNY' || trade.mchid !== (target.payMerchantId || creds.mchId) || trade.appid !== (target.payAppId || fallbackAppId) || (trade.out_trade_no && trade.out_trade_no !== tradeNo)) throw new BadRequestException('夜宵支付金额、币种或商户信息不匹配，已阻止落账');
   }
 
   /**
@@ -369,12 +399,14 @@ export class PaymentsService {
     // 原收款校区路由凭证；缺省 undefined=白天路径（按 Refund→Order 回查），
     // 存量调用方行为零变化
     campusIdOverride?: string,
+    expectedMerchantId?: string,
   ): Promise<{ refundId: string; status: string }> {
     const creds = campusIdOverride
       ? await this.campusCreds(campusIdOverride)
       : await this.orderCreds(orderNo);
     if (!creds)
       throw new HttpException('微信支付未配置', HttpStatus.NOT_IMPLEMENTED);
+    if (expectedMerchantId && creds.mchId !== expectedMerchantId) throw new WechatRefundOutcomeUnknownError();
     const body = JSON.stringify({
       out_trade_no: orderNo,
       out_refund_no: refundNo,
@@ -428,6 +460,7 @@ export class PaymentsService {
     // IKSW1F 夜宵通道：夜宵退款单（NR 前缀）无 Refund 行，调用方显式带校区；
     // 缺省=白天路径（Refund 行回查）零变化
     campusIdOverride?: string,
+    options: { preserveUnknown?: boolean; expectedMerchantId?: string } = {},
   ): Promise<{
     status: string;
     refundId?: string;
@@ -437,6 +470,7 @@ export class PaymentsService {
       : await this.refundCreds(refundNo);
     if (!creds)
       throw new HttpException('微信支付未配置', HttpStatus.NOT_IMPLEMENTED);
+    if (options.expectedMerchantId && creds.mchId !== options.expectedMerchantId) throw new WechatRefundOutcomeUnknownError();
     const urlPath = `/v3/refund/domestic/refunds/${refundNo}`;
     let response: Response;
     try {
@@ -451,7 +485,7 @@ export class PaymentsService {
       throw new HttpException('微信查退款服务暂不可用', HttpStatus.BAD_GATEWAY);
     }
     if (response.status === 404)
-      return { status: 'ABNORMAL' }; // 微信侧无此退款单（从未受理）
+      return { status: options.preserveUnknown ? 'NOTFOUND' : 'ABNORMAL' };
     if (!response.ok) {
       // IK9SO7 教训：失败必留报文，只抛状态码无从排查
       const detail = await response.text();
@@ -555,6 +589,7 @@ export class PaymentsService {
       out_trade_no?: string;
       transaction_id?: string;
       trade_state?: string;
+      amount?: { total?: number; currency?: string };
     };
     if (event.trade_state !== 'SUCCESS')
       return { code: 'SUCCESS', message: '非成功交易，忽略' };
@@ -569,6 +604,7 @@ export class PaymentsService {
       const tradeNo = event.out_trade_no ?? '';
       if (this.nightHandler && (tradeNo.startsWith('YX') || tradeNo.startsWith('ND'))) {
         try {
+          await this.assertNightTrade(tradeNo, event);
           await this.nightHandler.onPaid(tradeNo, event.transaction_id);
         } catch (error) {
           this.logger.error(
@@ -711,11 +747,8 @@ export class PaymentsService {
    * 签名串的 url 必须带 query（微信 v3 规范），失败抛错由调用方决定兜底。
    * IKKRMT：凭证按订单所属组织路由（mchid 取对应商户号）。
    */
-  private async queryWechatTrade(orderNo: string): Promise<{
-    trade_state?: string;
-    transaction_id?: string;
-  }> {
-    const creds = await this.orderCreds(orderNo);
+  private async queryWechatTrade(orderNo: string, override?: WxPayCreds): Promise<WechatTrade> {
+    const creds = override ?? await this.orderCreds(orderNo);
     if (!creds)
       throw new HttpException('微信支付未配置', HttpStatus.NOT_IMPLEMENTED);
     const urlPath = `/v3/pay/transactions/out-trade-no/${orderNo}?mchid=${creds.mchId}`;
@@ -738,7 +771,7 @@ export class PaymentsService {
         `微信查单失败（${response.status}）`,
         HttpStatus.BAD_GATEWAY,
       );
-    return (await response.json()) as { trade_state?: string };
+    return (await response.json()) as WechatTrade;
   }
 
   /** APIv3 回调资源解密：AES-256-GCM（key=APIv3Key，尾 16 字节为 authTag）。

@@ -5,7 +5,8 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { createHash } from 'node:crypto';
+import { NightDepositRefundService } from './night-deposit-refund.service';
+import { NightReportingService } from './night-reporting.service';
 import { PrismaService } from '../database/prisma.service';
 import { PaymentsService } from '../payments/payments.service';
 import { NightOrderService } from './night-order.service';
@@ -226,9 +227,7 @@ export class NightAdminService {
 
   /** 店铺列表：含今日订单数/销售额、押金余额、营业状态、楼栋/楼长信息。 */
   async stores(campusId: string, status?: string) {
-    const today = new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'Asia/Shanghai',
-    }).format(new Date());
+    const campus = await this.db.campus.findUniqueOrThrow({ where: { id: campusId }, select: { nightStartAt: true, nightEndAt: true } });
     const rows = await this.db.nightStore.findMany({
       where: { campusId, ...(status ? { status } : {}) },
       include: {
@@ -237,20 +236,7 @@ export class NightAdminService {
       },
       orderBy: { createdAt: 'asc' },
     });
-    const storeIds = rows.map((r) => r.id);
-    const todayAggs = storeIds.length
-      ? await this.db.nightOrder.groupBy({
-          by: ['storeId'],
-          where: {
-            storeId: { in: storeIds },
-            businessDate: today,
-            status: { notIn: ['cancelled', 'pending-payment', 'exception'] },
-          },
-          _count: true,
-          _sum: { payableAmount: true },
-        })
-      : [];
-    const aggMap = new Map(todayAggs.map((a) => [a.storeId, a]));
+    const aggMap = await new NightReportingService(this.db).campusSales(campusId, campus);
     return rows.map((r) => ({
       id: r.id,
       campusId: r.campusId,
@@ -261,8 +247,8 @@ export class NightAdminService {
       deposit: r.deposit,
       commissionRate: r.commissionRate,
       depositGapToNextTier: nextDepositTier(r.deposit) - r.deposit,
-      todayOrders: aggMap.get(r.id)?._count ?? 0,
-      todaySales: aggMap.get(r.id)?._sum.payableAmount ?? 0,
+      todayOrders: aggMap.get(r.id)?.todayOrders ?? 0,
+      todaySales: aggMap.get(r.id)?.todaySales ?? 0,
       openedAt: r.openedAt?.toISOString() ?? null,
       closedAt: r.closedAt?.toISOString() ?? null,
     }));
@@ -305,6 +291,8 @@ export class NightAdminService {
     }
     return {
       ...store,
+      buildingName: store.building.name,
+      manager: store.managerStaff,
       commissionSummary: commission,
       depositGapToNextTier: nextDepositTier(store.deposit) - store.deposit,
     };
@@ -381,6 +369,7 @@ export class NightAdminService {
           catalogScope: 'campus',
           nightCatalog: true,
           categoryId,
+          retailUnit: body.retailUnit?.trim() || '件',
           name: body.name,
           subtitle: body.subtitle ?? '',
           price: body.price,
@@ -418,6 +407,15 @@ export class NightAdminService {
     });
     if (!product) throw new NotFoundException('夜主档商品不存在');
     const data: Prisma.ProductUpdateInput = {};
+    if (body.categoryId !== undefined) {
+      const category = await this.db.category.findFirst({ where: { id: body.categoryId, campusId: product.campusId } });
+      if (!category) throw new BadRequestException('分类不存在或不属于该校区');
+      data.category = { connect: { id: category.id } };
+    }
+    if (body.retailUnit !== undefined) {
+      if (!body.retailUnit.trim()) throw new BadRequestException('请填写零售单位');
+      data.retailUnit = body.retailUnit.trim();
+    }
     if (body.name !== undefined) data.name = body.name;
     if (body.price !== undefined) data.price = body.price;
     if (body.originalPrice !== undefined)
@@ -622,9 +620,9 @@ export class NightAdminService {
     return this.db.nightStockTxn.findMany({
       where: { storeId },
       orderBy: { createdAt: 'desc' },
-      take: 200,
     });
   }
+  stockTxnsPage(storeId: string, page?: string, pageSize?: string) { return this.inventory.transactionsPage(storeId, undefined, page, pageSize); }
 
   /* ==================== 校区夜宵配置 ==================== */
 
@@ -717,9 +715,9 @@ export class NightAdminService {
     body: NightDepositDeductDto,
   ) {
     const result = await this.db.$transaction(async (tx) => {
-      const store = await tx.nightStore.findUnique({ where: { id: storeId } });
-      if (!store) throw new NotFoundException('夜宵店不存在');
-      if (store.deposit < body.amount)
+      const store = await this.inventory.lockStore(tx, storeId);
+      const quota = await this.inventory.summary(storeId, tx);
+      if (store.deposit - quota.depositRefundReservedValue < body.amount)
         throw new BadRequestException('扣除金额超过押金余额（不得扣到负数）');
       const won = await tx.nightStore.updateMany({
         where: { id: storeId, deposit: { gte: body.amount } },
@@ -824,146 +822,19 @@ export class NightAdminService {
     };
   }
 
-  /**
-   * 押金退还（退出清算，人工触发）：按原路分配退还——FIFO 遍历 deposit
-   * 流水（缴纳单），逐笔调微信原路退款（累计不超过各笔实缴），每笔成功
-   * 即落 refund 流水 + 押金余额扣减（逐笔原子，中断可续）。微信未配置
-   * （测试环境）抛错提示，不落账。
-   */
-  async refundDeposit(
-    operator: string,
-    storeId: string,
-    body: NightDepositRefundDto,
-  ) {
-    const store = await this.db.nightStore.findUnique({
-      where: { id: storeId },
-    });
-    if (!store) throw new NotFoundException('夜宵店不存在');
-    const amount = Math.min(body.amount ?? store.deposit, store.deposit);
-    const quota = await this.inventory.summary(storeId);
-    if (quota.usedQuota > 0)
-      throw new BadRequestException(
-        '尚有库存、在途备货或待审核损耗占用，请先完成清算',
-      );
-    if (amount <= 0) throw new BadRequestException('无可退押金余额');
-    const depositTxns = await this.db.nightDepositTxn.findMany({
-      where: { storeId, type: 'deposit' },
-      orderBy: { createdAt: 'asc' },
-    });
-    // 已退/已扣金额不占分配池：剩余可退 = Σdeposit − Σrefund − Σdeduct = deposit（恒等式）
-    const allocations: Array<{
-      txnId: string;
-      payOrderNo: string;
-      txnTotal: number;
-      refunded: number;
-      amount: number;
-    }> = [];
-    let remaining = amount;
-    const refundedByPayOrder = new Map<string, number>();
-    const priorRefunds = await this.db.nightDepositTxn.findMany({
-      where: { storeId, type: 'refund' },
-    });
-    for (const r of priorRefunds) {
-      const payOrderNo = r.payOrderNo ?? '';
-      refundedByPayOrder.set(
-        payOrderNo,
-        (refundedByPayOrder.get(payOrderNo) ?? 0) + r.amount,
-      );
-    }
-    for (const t of depositTxns) {
-      if (remaining <= 0) break;
-      if (!t.payOrderNo) continue; // 无原路支付单号的流水（历史人工）跳过
-      const refunded = refundedByPayOrder.get(t.payOrderNo) ?? 0;
-      const refundable = t.amount - refunded;
-      if (refundable <= 0) continue;
-      const alloc = Math.min(refundable, remaining);
-      allocations.push({
-        txnId: t.id,
-        payOrderNo: t.payOrderNo,
-        txnTotal: t.amount,
-        refunded,
-        amount: alloc,
-      });
-      remaining -= alloc;
-    }
-    if (remaining > 0)
-      throw new BadRequestException(
-        '押金流水中可原路退还的金额不足，请人工核对后处理',
-      );
-    const results: Array<{
-      payOrderNo: string;
-      amount: number;
-      refundNo: string;
-      status: string;
-    }> = [];
-    for (const alloc of allocations) {
-      const refundNo = `NDR${createHash('sha256').update(`${storeId}:${alloc.payOrderNo}:${alloc.refunded}:${alloc.amount}`).digest('hex').slice(0, 28)}`;
-      // 固定清算资格直至退款落账；备货、收货、盘盈等操作共用此店锁。
-      const wx = await this.db.$transaction(
-        async (tx) => {
-          const inventory = this.inventory;
-          const fresh = await inventory.lockStore(tx, storeId);
-          if ((await inventory.summary(storeId, tx)).usedQuota > 0)
-            throw new BadRequestException(
-              '仍有库存、备货或报损占用，请先完成清算',
-            );
-          if (fresh.deposit < alloc.amount)
-            throw new BadRequestException('押金余额不足于本次退款落账，已中止');
-          const prior = await tx.nightDepositTxn.aggregate({
-            where: { storeId, type: 'refund', payOrderNo: alloc.payOrderNo },
-            _sum: { amount: true },
-          });
-          if ((prior._sum.amount ?? 0) !== alloc.refunded)
-            throw new BadRequestException(
-              '该笔押金退款进度已变化，请刷新后重试',
-            );
-          const result = await this.payments.applyWechatRefund(
-            alloc.payOrderNo,
-            alloc.txnTotal,
-            alloc.amount,
-            refundNo,
-            body.reason ? body.reason.slice(0, 80) : '夜宵店退出清算押金退还',
-            store.campusId,
-          );
-          await tx.nightStore.update({
-            where: { id: storeId },
-            data: { deposit: { decrement: alloc.amount } },
-          });
-          await tx.nightDepositTxn.create({
-            data: {
-              storeId,
-              type: 'refund',
-              amount: alloc.amount,
-              payOrderNo: alloc.payOrderNo,
-              operatorId: operator,
-              remark: `退出清算退还 ${refundNo}（wx ${result.refundId} ${result.status}）`,
-            },
-          });
-          return result;
-        },
-        { timeout: 60000, maxWait: 10000 },
-      );
-      results.push({
-        payOrderNo: alloc.payOrderNo,
-        amount: alloc.amount,
-        refundNo,
-        status: wx.status,
-      });
-    }
-    await this.audit(
-      operator,
-      'night.deposit.refund',
-      'nightStore',
-      storeId,
-      { deposit: store.deposit },
-      { refunded: amount },
-      store.campusId,
-    );
-    const after = await this.db.nightStore.findUniqueOrThrow({
-      where: { id: storeId },
-      select: { deposit: true },
-    });
-    return { refunded: amount, allocations: results, deposit: after.deposit };
+  /** 持久化退押申请：渠道确认成功才扣押金，处理中持续占用额度。 */
+  refundDeposit(operator: string, storeId: string, body: NightDepositRefundDto) {
+    return new NightDepositRefundService(this.db, this.payments, this.inventory).request(operator, storeId, body);
+  }
+
+  depositRefunds(storeId: string, page?: string, pageSize?: string) {
+    return new NightDepositRefundService(this.db, this.payments, this.inventory).history(storeId, page, pageSize);
+  }
+
+  depositTransactions(storeId: string, page?: string, pageSize?: string, kind?: string) { return this.inventory.depositTransactions(storeId, page, pageSize, kind); }
+
+  syncDepositRefund(storeId: string, requestId: string) {
+    return new NightDepositRefundService(this.db, this.payments, this.inventory).sync(storeId, requestId);
   }
 
   /* ==================== 订单/结算（委托 NightOrderService） ==================== */
@@ -1008,6 +879,9 @@ export class NightAdminService {
     return this.orders.adminOrders(campusId, filters);
   }
 
+  adminOrdersPage(campusId: string, filters: { storeId?: string; status?: string; date?: string; keyword?: string; afterSaleStatus?: string }, page?: string, pageSize?: string) { return this.orders.adminOrdersPage(campusId, filters, page, pageSize); }
+  rejectAfterSale(operator: string, orderId: string, reason: string) { return this.orders.rejectAfterSale(operator, orderId, reason); }
+
   adminOrderDetail(id: string) {
     return this.orders.adminOrderDetail(id);
   }
@@ -1015,6 +889,9 @@ export class NightAdminService {
   adminRefund(operator: string, orderId: string, body: NightRefundDto) {
     return this.orders.adminRefund(operator, orderId, body);
   }
+
+  syncRefund(orderId: string) { return this.orders.syncRefund(orderId); }
+  settlementCampusIds(batch: string) { return this.orders.settlementCampusIds(batch); }
 
   settleBatch(campusId: string, storeIds?: string[]) {
     return this.orders.settleBatch(campusId, storeIds);

@@ -410,6 +410,7 @@ export class CreateCouponDto {
   // 专用券（夜宵领券入口/夜宵订单可用，白天链路全拒）。创建后不可改
   // （UpdateCouponDto 不收此字段）。
   @IsOptional() @IsIn(['day', 'night']) businessType?: string;
+  @IsOptional() @IsArray() @ArrayMaxSize(200) @IsString({ each: true }) nightProductIds?: string[];
   @IsOptional() @IsIn(['manual', 'lottery', 'signup']) trigger?: string;
   @IsOptional() @IsString() @MaxLength(60) remark?: string;
   /** 支付后推荐（道哥 2026-09-08）：支付成功页领券卡展示 */
@@ -426,6 +427,7 @@ export class CreateCouponDto {
  * null=转不限量；expiresAt null=转长期。kind/trigger 不开放编辑。
  */
 export class UpdateCouponDto {
+  @IsOptional() @IsArray() @ArrayMaxSize(200) @IsString({ each: true }) nightProductIds?: string[];
   @IsOptional() @IsIn(['active', 'paused']) status?: 'active' | 'paused';
   /** 支付后推荐（道哥 2026-09-08）：支付成功页领券卡展示。 */
   @IsOptional() @IsBoolean() featuredAfterPay?: boolean;
