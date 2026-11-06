@@ -1,5 +1,7 @@
 # 夜宵备货、盘点报损与商品管理验收
 
+> 此文件保留2026-11-06阶段记录，不是本轮四端Goal最终结论。分页、资金恢复、用户端、完整回归和构建已继续完善；最新结果以 [ACCEPTANCE_REPORT.md](ACCEPTANCE_REPORT.md)、[ACCEPTANCE_MATRIX.md](ACCEPTANCE_MATRIX.md) 和 [TEST_DEPLOYMENT.md](TEST_DEPLOYMENT.md) 为准。下文“最近200条”等旧阶段描述不适用于新版。
+
 日期：2026-11-06。业务基线见 `APPROVED_STOCK_WORKFLOW.md`。
 
 ## 本期交付

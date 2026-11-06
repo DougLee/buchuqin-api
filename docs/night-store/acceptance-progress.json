@@ -1,0 +1,551 @@
+{
+  "acceptedWeight": 98,
+  "totalWeight": 100,
+  "completionPercent": 98,
+  "goalComplete": true,
+  "coreOutstanding": [],
+  "rows": [
+    {
+      "id": "A01",
+      "name": "商品来源与价格快照",
+      "weight": 2.5,
+      "result": "passed",
+      "evidence": [
+        "docs/night-store/evidence/20261107/api-night-69.log"
+      ],
+      "notes": "隔离PostgreSQL业务与并发验收、签名回调边界及HTTP权限已实际通过；外部微信渠道为明确隔离模拟，不计真机验收。"
+    },
+    {
+      "id": "A02",
+      "name": "备货状态与仓库预留",
+      "weight": 2.5,
+      "result": "passed",
+      "evidence": [
+        "docs/night-store/evidence/20261107/api-night-69.log"
+      ],
+      "notes": "隔离PostgreSQL业务与并发验收、签名回调边界及HTTP权限已实际通过；外部微信渠道为明确隔离模拟，不计真机验收。"
+    },
+    {
+      "id": "A03",
+      "name": "盘点与损耗账本",
+      "weight": 2.5,
+      "result": "passed",
+      "evidence": [
+        "docs/night-store/evidence/20261107/api-night-69.log"
+      ],
+      "notes": "隔离PostgreSQL业务与并发验收、签名回调边界及HTTP权限已实际通过；外部微信渠道为明确隔离模拟，不计真机验收。"
+    },
+    {
+      "id": "A04",
+      "name": "订单与并发幂等",
+      "weight": 2.5,
+      "result": "passed",
+      "evidence": [
+        "docs/night-store/evidence/20261107/api-night-69.log",
+        "docs/night-store/evidence/20261107/http-permissions-35.log"
+      ],
+      "notes": "隔离PostgreSQL业务与并发验收、签名回调边界及HTTP权限已实际通过；外部微信渠道为明确隔离模拟，不计真机验收。"
+    },
+    {
+      "id": "A05",
+      "name": "支付与超时状态",
+      "weight": 2.5,
+      "result": "passed",
+      "evidence": [
+        "docs/night-store/evidence/20261107/api-night-69.log"
+      ],
+      "notes": "隔离PostgreSQL业务与并发验收、签名回调边界及HTTP权限已实际通过；外部微信渠道为明确隔离模拟，不计真机验收。"
+    },
+    {
+      "id": "A06",
+      "name": "取消退款与佣金冲回",
+      "weight": 2.5,
+      "result": "passed",
+      "evidence": [
+        "docs/night-store/evidence/20261107/api-night-69.log"
+      ],
+      "notes": "隔离PostgreSQL业务与并发验收、签名回调边界及HTTP权限已实际通过；外部微信渠道为明确隔离模拟，不计真机验收。"
+    },
+    {
+      "id": "A07",
+      "name": "优惠券范围和额度",
+      "weight": 2.5,
+      "result": "passed",
+      "evidence": [
+        "docs/night-store/evidence/20261107/api-night-69.log"
+      ],
+      "notes": "隔离PostgreSQL业务与并发验收、签名回调边界及HTTP权限已实际通过；外部微信渠道为明确隔离模拟，不计真机验收。"
+    },
+    {
+      "id": "A08",
+      "name": "权限与跨租户边界",
+      "weight": 2.5,
+      "result": "passed",
+      "evidence": [
+        "docs/night-store/evidence/20261107/http-permissions-35.log",
+        "docs/night-store/evidence/20261107/workspace-http.log"
+      ],
+      "notes": "隔离PostgreSQL业务与并发验收、签名回调边界及HTTP权限已实际通过；外部微信渠道为明确隔离模拟，不计真机验收。"
+    },
+    {
+      "id": "A09",
+      "name": "押金收入与结算",
+      "weight": 2.5,
+      "result": "passed",
+      "evidence": [
+        "docs/night-store/evidence/20261107/api-night-71.log",
+        "docs/night-store/evidence/20261107/api-history-and-settlements.log",
+        "docs/night-store/evidence/20261107/preview-ledgers-latest.log",
+        "docs/night-store/evidence/20261107/admin-deposit-pending.png",
+        "docs/night-store/evidence/20261107/admin-deposit-partial.png"
+      ],
+      "notes": "押金到账/退押、占用守恒与佣金冲回、1205笔完整批次及并发登记通过；外部渠道仅为隔离模拟。"
+    },
+    {
+      "id": "A10",
+      "name": "营业时段与数据查询",
+      "weight": 2.5,
+      "result": "passed",
+      "evidence": [
+        "docs/night-store/evidence/20261107/api-night-71.log",
+        "docs/night-store/evidence/20261107/api-full-history-510.log",
+        "docs/night-store/evidence/20261107/api-pagination-finance.log"
+      ],
+      "notes": "跨午夜/营业日测试通过；全月聚合、订单/账本/备货/申报/流水分页和510条后台历史筛选通过，无静默硬截断。"
+    },
+    {
+      "id": "M01",
+      "name": "店铺及楼长绑定",
+      "weight": 2.5,
+      "result": "passed",
+      "evidence": [
+        "docs/night-store/evidence/20261107/admin-create-store-zero-commission.png",
+        "docs/night-store/evidence/20261107/admin-unbound-store-zero-commission.png",
+        "docs/night-store/evidence/20261107/new-store-ledgers.log",
+        "docs/night-store/evidence/20261107/api-night-74.log"
+      ],
+      "notes": "真实隔离数据库/API和本轮后台或H5操作通过；正常链路、主要失败和校区权限均有可复核证据。"
+    },
+    {
+      "id": "M02",
+      "name": "官方与夜宵商品库",
+      "weight": 2.5,
+      "result": "passed",
+      "evidence": [
+        "docs/night-store/evidence/20261107/catalog-browser-ledgers.log",
+        "docs/night-store/evidence/20261107/api-catalog-metadata.log",
+        "docs/night-store/evidence/20261107/api-night-74.log"
+      ],
+      "notes": "真实隔离数据库/API和本轮后台或H5操作通过；正常链路、主要失败和校区权限均有可复核证据。"
+    },
+    {
+      "id": "M03",
+      "name": "楼栋商品管理",
+      "weight": 2.5,
+      "result": "passed",
+      "evidence": [
+        "docs/night-store/evidence/20261107/admin-attached-zero-stock.png",
+        "docs/night-store/evidence/20261107/delivery-campus-sale-blocked-375.png",
+        "docs/night-store/evidence/20261107/catalog-browser-ledgers.log",
+        "docs/night-store/evidence/20261107/api-night-74.log"
+      ],
+      "notes": "真实隔离数据库/API和本轮后台或H5操作通过；正常链路、主要失败和校区权限均有可复核证据。"
+    },
+    {
+      "id": "M04",
+      "name": "备货审核与出库",
+      "weight": 2.5,
+      "result": "passed",
+      "evidence": [
+        "docs/night-store/evidence/20261107/admin-stock-approved.png",
+        "docs/night-store/evidence/20261107/delivery-shortage-approved-375.png",
+        "docs/night-store/evidence/20261107/api-night-74.log"
+      ],
+      "notes": "真实隔离数据库/API和本轮后台或H5操作通过；正常链路、主要失败和校区权限均有可复核证据。"
+    },
+    {
+      "id": "M05",
+      "name": "盘点与差异审核",
+      "weight": 2.5,
+      "result": "passed",
+      "evidence": [
+        "docs/night-store/evidence/20261107/inventory-reviewed-ledgers.log",
+        "docs/night-store/evidence/20261107/admin-loss-review.png",
+        "docs/night-store/evidence/20261107/delivery-inventory-reviewed-375.png"
+      ],
+      "notes": "本轮真实数据库、HTTP边界及本地H5跨端操作通过；订单、报损和出账记录可按归档ID复核。支付/打款仅为明确隔离模拟或留痕，不等同外部微信渠道验收。"
+    },
+    {
+      "id": "M06",
+      "name": "订单与售后处理",
+      "weight": 2.5,
+      "result": "passed",
+      "evidence": [
+        "docs/night-store/evidence/20261107/after-sale-refund-ledgers.log",
+        "docs/night-store/evidence/20261107/admin-after-sale-detail.png",
+        "docs/night-store/evidence/20261107/user-after-sale-refunded-375.png"
+      ],
+      "notes": "本轮真实数据库、HTTP边界及本地H5跨端操作通过；订单、报损和出账记录可按归档ID复核。支付/打款仅为明确隔离模拟或留痕，不等同外部微信渠道验收。"
+    },
+    {
+      "id": "M07",
+      "name": "押金佣金和结算",
+      "weight": 2.5,
+      "result": "passed",
+      "evidence": [
+        "docs/night-store/evidence/20261107/admin-settled-marked-paid.png",
+        "docs/night-store/evidence/20261107/admin-deposit-partial.png",
+        "docs/night-store/evidence/20261107/api-night-72.log"
+      ],
+      "notes": "本轮真实数据库、HTTP边界及本地H5跨端操作通过；订单、报损和出账记录可按归档ID复核。支付/打款仅为明确隔离模拟或留痕，不等同外部微信渠道验收。"
+    },
+    {
+      "id": "M08",
+      "name": "营业规则券与审计",
+      "weight": 2.5,
+      "result": "passed",
+      "evidence": [
+        "docs/night-store/evidence/20261107/admin-night-config-restored.png",
+        "docs/night-store/evidence/20261107/user-free-delivery-checkout-375.png",
+        "docs/night-store/evidence/20261107/user-fee-change-reconfirmed-375.png",
+        "docs/night-store/evidence/20261107/user-coupon-checkout-375.png",
+        "docs/night-store/evidence/20261107/api-night-74.log",
+        "docs/night-store/evidence/20261107/night-final-admin-config-disabled-save-1024.png",
+        "docs/night-store/evidence/20261107/night-final-user-campus-disabled-430.png",
+        "docs/night-store/evidence/20261107/night-final-user-campus-enabled-again-430.png"
+      ],
+      "notes": "真实隔离数据库/API和本轮后台或H5操作通过；正常链路、主要失败和校区权限均有可复核证据。 实际关闭夜宵后仍可保存，用户端停用，再开启恢复；跨校区配置不混用。"
+    },
+    {
+      "id": "U01",
+      "name": "入口与楼栋场景",
+      "weight": 2,
+      "result": "passed",
+      "evidence": [
+        "docs/night-store/evidence/20261107/user-buildings-three-states-375.png",
+        "docs/night-store/evidence/20261107/user-night-recruit-prefill-375.png",
+        "docs/night-store/evidence/20261107/http-closed-store.log",
+        "docs/night-store/evidence/20261107/api-night-74.log"
+      ],
+      "notes": "真实隔离数据库/API和本轮后台或H5操作通过；正常链路、主要失败和校区权限均有可复核证据。"
+    },
+    {
+      "id": "U02",
+      "name": "商品浏览详情与检索",
+      "weight": 2,
+      "result": "passed",
+      "evidence": [
+        "docs/night-store/evidence/20261107/user-category-shared-shelf-375.png",
+        "docs/night-store/evidence/20261107/user-category-product-detail-fixed-375.png",
+        "docs/night-store/evidence/20261107/user-home-category-shared-cart-375.png",
+        "docs/night-store/evidence/20261107/api-night-74.log"
+      ],
+      "notes": "本轮H5实际操作与跨端数据核对通过；共享组件、账本分页和会话轮询分别有截图、真实数据库或行为测试证据。"
+    },
+    {
+      "id": "U03",
+      "name": "独立购物车",
+      "weight": 2,
+      "result": "passed",
+      "evidence": [
+        "docs/night-store/evidence/20261107/user-cart-5.log",
+        "docs/night-store/evidence/20261107/user-completed-order-375.png",
+        "docs/night-store/evidence/20261107/api-night-71.log"
+      ],
+      "notes": "实际Pinia模块5项通过，按用户店铺隔离/数量/刷新调价；真实H5选购付款链已验证，按订单扣除购买数量且重复查单不重复清除后来加购。"
+    },
+    {
+      "id": "U04",
+      "name": "地址与配送范围",
+      "weight": 2,
+      "result": "passed",
+      "evidence": [
+        "docs/night-store/evidence/20261107/user-managed-address-checkout-375.png",
+        "docs/night-store/evidence/20261107/user-address-chinese-picker-375.png",
+        "docs/night-store/evidence/20261107/http-permissions-latest-35.log",
+        "docs/night-store/evidence/20261107/address-pages-2.log"
+      ],
+      "notes": "真实隔离数据库/API和本轮后台或H5操作通过；正常链路、主要失败和校区权限均有可复核证据。"
+    },
+    {
+      "id": "U05",
+      "name": "券与账单确认",
+      "weight": 2,
+      "result": "passed",
+      "evidence": [
+        "docs/night-store/evidence/20261107/user-coupon-checkout-375.png",
+        "docs/night-store/evidence/20261107/after-sale-refund-ledgers.log",
+        "docs/night-store/evidence/20261107/api-night-72.log"
+      ],
+      "notes": "本轮真实数据库、HTTP边界及本地H5跨端操作通过；订单、报损和出账记录可按归档ID复核。支付/打款仅为明确隔离模拟或留痕，不等同外部微信渠道验收。"
+    },
+    {
+      "id": "U06",
+      "name": "下单支付及继续支付",
+      "weight": 2,
+      "result": "passed",
+      "evidence": [
+        "docs/night-store/evidence/20261107/user-pay-query-outage-375.png",
+        "docs/night-store/evidence/20261107/user-pay-recovered-375.png",
+        "docs/night-store/evidence/20261107/unpaid-cancel-ledgers.log",
+        "docs/night-store/evidence/20261107/api-cancel-payment-race.log"
+      ],
+      "notes": "本轮真实数据库、HTTP边界及本地H5跨端操作通过；订单、报损和出账记录可按归档ID复核。支付/打款仅为明确隔离模拟或留痕，不等同外部微信渠道验收。"
+    },
+    {
+      "id": "U07",
+      "name": "订单列表详情进度",
+      "weight": 2,
+      "result": "passed",
+      "evidence": [
+        "docs/night-store/evidence/20261107/user-order-list-all-375.png",
+        "docs/night-store/evidence/20261107/user-orders-refunded-375.png",
+        "docs/night-store/evidence/20261107/user-orders-empty-375.png",
+        "docs/night-store/evidence/20261107/api-night-74.log"
+      ],
+      "notes": "本轮H5实际操作与跨端数据核对通过；共享组件、账本分页和会话轮询分别有截图、真实数据库或行为测试证据。"
+    },
+    {
+      "id": "U08",
+      "name": "取消售后与退款",
+      "weight": 2,
+      "result": "passed",
+      "evidence": [
+        "docs/night-store/evidence/20261107/user-after-sale-form-375.png",
+        "docs/night-store/evidence/20261107/user-after-sale-refunded-375.png",
+        "docs/night-store/evidence/20261107/after-sale-refund-ledgers.log",
+        "docs/night-store/evidence/20261107/api-cancel-payment-race.log"
+      ],
+      "notes": "本轮真实数据库、HTTP边界及本地H5跨端操作通过；订单、报损和出账记录可按归档ID复核。支付/打款仅为明确隔离模拟或留痕，不等同外部微信渠道验收。"
+    },
+    {
+      "id": "U09",
+      "name": "异常与时段变化",
+      "weight": 2,
+      "result": "passed",
+      "evidence": [
+        "docs/night-store/evidence/20261107/api-night-75.log",
+        "docs/night-store/evidence/20261107/http-permissions-final-35.log",
+        "docs/night-store/evidence/20261107/user-store-outside-session-375.png",
+        "docs/night-store/evidence/20261107/user-home-offline-final-375.png",
+        "docs/night-store/evidence/20261107/user-final-details.log"
+      ],
+      "notes": "真实PG覆盖时段/开关/营业三态与下单拒绝、缺货停售/重复/价格变更；H5暂停/打烊、原单断网恢复、首页/地址/详情重试已实际完成，保留楼栋/车/备注。"
+    },
+    {
+      "id": "U10",
+      "name": "联系通知与招募入口",
+      "weight": 2,
+      "result": "passed",
+      "evidence": [
+        "docs/night-store/evidence/20261107/user-notifications-read-375.png",
+        "docs/night-store/evidence/20261107/user-night-notifications-375.png",
+        "docs/night-store/evidence/20261107/user-order-campus-support-375.png",
+        "docs/night-store/evidence/20261107/user-night-recruit-pending-375.png",
+        "docs/night-store/evidence/20261107/http-permissions-latest-35.log"
+      ],
+      "notes": "本轮H5实际操作与跨端数据核对通过；共享组件、账本分页和会话轮询分别有截图、真实数据库或行为测试证据。"
+    },
+    {
+      "id": "D01",
+      "name": "身份与工作台切换",
+      "weight": 2.5,
+      "result": "passed",
+      "evidence": [
+        "docs/night-store/evidence/20261107/workspace-switch-13.log",
+        "docs/night-store/evidence/20261107/workspace-http.log"
+      ],
+      "notes": "五类身份真实HTTP、工作台模块13项及此前双向切换浏览器验证通过；仅正式且绑定楼长显示。"
+    },
+    {
+      "id": "D02",
+      "name": "经营首页与真实统计",
+      "weight": 2.5,
+      "result": "passed",
+      "evidence": [
+        "docs/night-store/evidence/20261107/api-pagination-finance.log",
+        "docs/night-store/evidence/20261107/delivery-dashboard-375.png"
+      ],
+      "notes": "真实API与账本计算今日/月净商品销售额、收入，375px浏览器实看；无占位统计。"
+    },
+    {
+      "id": "D03",
+      "name": "开店暂停与打烊",
+      "weight": 2.5,
+      "result": "passed",
+      "evidence": [
+        "docs/night-store/evidence/20261107/delivery-closed-paid-todo-375.png",
+        "docs/night-store/evidence/20261107/http-closed-store.log",
+        "docs/night-store/evidence/20261107/api-store-status-races.log"
+      ],
+      "notes": "本轮真实数据库、HTTP边界及本地H5跨端操作通过；订单、报损和出账记录可按归档ID复核。支付/打款仅为明确隔离模拟或留痕，不等同外部微信渠道验收。"
+    },
+    {
+      "id": "D04",
+      "name": "商品与库存管理",
+      "weight": 2.5,
+      "result": "passed",
+      "evidence": [
+        "docs/night-store/evidence/20261107/delivery-product-off-shelf-375.png",
+        "docs/night-store/evidence/20261107/delivery-campus-sale-blocked-375.png",
+        "docs/night-store/evidence/20261107/delivery-zero-stock-product-375.png",
+        "docs/night-store/evidence/20261107/after-income-ledgers.log",
+        "docs/night-store/evidence/20261107/api-night-74.log"
+      ],
+      "notes": "本轮H5实际操作与跨端数据核对通过；共享组件、账本分页和会话轮询分别有截图、真实数据库或行为测试证据。"
+    },
+    {
+      "id": "D05",
+      "name": "备货选择与提交",
+      "weight": 2.5,
+      "result": "passed",
+      "evidence": [
+        "docs/night-store/evidence/20261107/delivery-stock-confirm-chinese-375.png",
+        "docs/night-store/evidence/20261107/delivery-stock-quota-gap-modal-375.png",
+        "docs/night-store/evidence/20261107/api-night-71.log"
+      ],
+      "notes": "H5实际搜索可乐、数量选择、3听提交；负数失焦回正、防重复确认；1190元申请对796元额度准确提示差394元并进入500元档补缴，返回保留草稿。"
+    },
+    {
+      "id": "D06",
+      "name": "备货进度与实收",
+      "weight": 2.5,
+      "result": "passed",
+      "evidence": [
+        "docs/night-store/evidence/20261107/delivery-stock-received-375.png",
+        "docs/night-store/evidence/20261107/delivery-stock-withdrawn-375.png",
+        "docs/night-store/evidence/20261107/browser-stock-before-approval.log",
+        "docs/night-store/evidence/20261107/browser-stock-after-approval.log",
+        "docs/night-store/evidence/20261107/browser-stock-after-withdraw.log",
+        "docs/night-store/evidence/20261107/api-night-71.log"
+      ],
+      "notes": "H5一次实收2/3听、少收报损、审批后释放350分；另1听申请主动撤回且预占归零。数据库并发/重复实收与驳回重报专项通过。"
+    },
+    {
+      "id": "D07",
+      "name": "盘点报损与审批回看",
+      "weight": 2.5,
+      "result": "passed",
+      "evidence": [
+        "docs/night-store/evidence/20261107/delivery-inventory-loss-confirm-375.png",
+        "docs/night-store/evidence/20261107/delivery-inventory-reviewed-375.png",
+        "docs/night-store/evidence/20261107/inventory-reviewed-ledgers.log"
+      ],
+      "notes": "本轮真实数据库、HTTP边界及本地H5跨端操作通过；订单、报损和出账记录可按归档ID复核。支付/打款仅为明确隔离模拟或留痕，不等同外部微信渠道验收。"
+    },
+    {
+      "id": "D08",
+      "name": "接单配送与凭证",
+      "weight": 2.5,
+      "result": "passed",
+      "evidence": [
+        "docs/night-store/evidence/20261107/user-completed-order-375.png",
+        "docs/night-store/evidence/20261107/http-permissions-35.log"
+      ],
+      "notes": "用户本机H5付款→楼长接单→原生选图真实上传→送达→用户确认凭证的同一订单链已跑通。"
+    },
+    {
+      "id": "D09",
+      "name": "押金与佣金明细",
+      "weight": 2.5,
+      "result": "passed",
+      "evidence": [
+        "docs/night-store/evidence/20261107/delivery-deposit-paid-375.png",
+        "docs/night-store/evidence/20261107/admin-deposit-confirmed.png",
+        "docs/night-store/evidence/20261107/api-pagination-finance.log",
+        "docs/night-store/evidence/20261107/preview-ledgers-latest.log"
+      ],
+      "notes": "H5取消缴纳不落账、补缴500元至2000元只记一次；历史流水分页，账号店铺隔离待确认单。每单收入取券后佣金和配送费实际账本净额，退款后的单笔对账通过。"
+    },
+    {
+      "id": "D10",
+      "name": "收入通知及前后台",
+      "weight": 2.5,
+      "result": "passed",
+      "evidence": [
+        "docs/night-store/evidence/20261107/delivery-new-order-polled-375.png",
+        "docs/night-store/evidence/20261107/delivery-income-page1-375.png",
+        "docs/night-store/evidence/20261107/delivery-income-page2-375.png",
+        "docs/night-store/evidence/20261107/delivery-income-pending-375.png",
+        "docs/night-store/evidence/20261107/delivery-income-history-empty-375.png",
+        "docs/night-store/evidence/20261107/new-order-poller-4.log",
+        "docs/night-store/evidence/20261107/income-pagination-fixtures.log",
+        "docs/night-store/evidence/20261107/api-night-74.log"
+      ],
+      "notes": "本轮H5实际操作与跨端数据核对通过；共享组件、账本分页和会话轮询分别有截图、真实数据库或行为测试证据。"
+    },
+    {
+      "id": "X01",
+      "name": "日夜视觉与响应式",
+      "weight": 2,
+      "result": "passed",
+      "evidence": [
+        "docs/night-store/evidence/20261107/layout-final-90.json",
+        "docs/night-store/evidence/20261107/night-final-delivery-home-375.png",
+        "docs/night-store/evidence/20261107/night-final-delivery-day-home-375.png",
+        "docs/night-store/evidence/20261107/night-final-delivery-income-390.png",
+        "docs/night-store/evidence/20261107/night-final-user-checkout-375.png",
+        "docs/night-store/evidence/20261107/night-final-user-product-modal-430.png",
+        "docs/night-store/evidence/20261107/night-final-admin-stock-ledger-1024.png"
+      ],
+      "notes": "90个主要页面/尺寸组合，手机375/390/430及后台1440/1024；手机按钮不足44px、弹层遮挡和后台溢出已修复并复测。宽表/长Tab按设计内部滚动，真机安全区/胶囊仍单列X05。"
+    },
+    {
+      "id": "X02",
+      "name": "交互状态与可恢复性",
+      "weight": 2,
+      "result": "passed",
+      "evidence": [
+        "docs/night-store/evidence/20261107/console-final-summary.json",
+        "docs/night-store/evidence/20261107/user-home-offline-final-375.png",
+        "docs/night-store/evidence/20261107/admin-building-products-offline.png",
+        "docs/night-store/evidence/20261107/user-final-details.log",
+        "docs/night-store/evidence/20261107/delivery-unit-final-17.log",
+        "docs/night-store/evidence/20261107/user-unit-final-7.log"
+      ],
+      "notes": "实际中断3150检查各端失败/重试、配置禁止保存、旧数据提示与草稿保留；恢复后继续操作，跨校区配置未混用。防重/轮询/购物车/地址行为测试通过；浏览器无未捕获异常、未处理Promise或Vue运行时警告。"
+    },
+    {
+      "id": "X03",
+      "name": "隔离环境与真实夹具",
+      "weight": 2,
+      "result": "passed",
+      "evidence": [
+        "docs/night-store/evidence/20261107/isolation-offline-3.log",
+        "docs/night-store/evidence/20261107/http-permissions-latest-35.log",
+        "docs/night-store/evidence/20261107/workspace-switch-13.log",
+        "docs/night-store/evidence/20261107/migrations.log"
+      ],
+      "notes": "独立_spec/schema与固定夹具；离线桩确认拒绝业务库名/public/非test和HTTP主机覆盖，fetch不自动跟随重定向。否定场景没有发送真实网络请求。DEV适配器不进入发布版路由，原生能力不冒充通过。"
+    },
+    {
+      "id": "X04",
+      "name": "四端构建迁移及交付",
+      "weight": 2,
+      "result": "passed",
+      "evidence": [
+        "docs/night-store/evidence/20261107/api-night-75.log",
+        "docs/night-store/evidence/20261107/migrations-final.log",
+        "docs/night-store/evidence/20261107/final-api-build.log",
+        "docs/night-store/evidence/20261107/final-admin-status.json",
+        "docs/night-store/evidence/20261107/final-user-weapp-status.json",
+        "docs/night-store/evidence/20261107/final-delivery-weapp-status.json",
+        "docs/night-store/evidence/20261107/night-final-artifact-inspection.json",
+        "docs/night-store/RELEASE_VERSIONS.json",
+        "docs/night-store/TEST_DEPLOYMENT.md",
+        "docs/night-store/ACCEPTANCE_REPORT.md"
+      ],
+      "notes": "四仓库代码已提交；最终API/后台/双端类型、H5/MP构建均通过，五迁移兼容通过，完整浏览器/账本证据已归档；发布产物使用测试API且无本机模拟入口，启动账号位置/迁移/RBAC/部署顺序及验收清单齐全。API最终验收文档随后以独立提交封存。"
+    },
+    {
+      "id": "X05",
+      "name": "微信原生真机能力",
+      "weight": 2,
+      "result": "external-blocked",
+      "evidence": [
+        "docs/night-store/NATIVE_VERIFICATION.md"
+      ],
+      "notes": "真实微信登录/收银台/原路渠道/订阅消息和真机相机胶囊安全区未执行，H5模拟不计通过；完整外部验收清单已交付。"
+    }
+  ]
+}

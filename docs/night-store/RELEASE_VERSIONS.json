@@ -1,0 +1,34 @@
+{
+  "date": "2026-11-07",
+  "purpose": "测试环境四端配套版本；API验收文档在该代码提交之后单独提交，部署同分支最新HEAD包含本文档",
+  "testApi": "https://admin-test.buchuqin.com/api/v1",
+  "productionTested": false,
+  "completionPercent": 98,
+  "nativeVerification": "external-blocked (X05, 2%)",
+  "repositories": [
+    {
+      "repository": "buchuqin-api",
+      "branch": "feature/night-store",
+      "codeCommit": "d7c78d8b2924745c5cf717b3892b2e1d15445efd",
+      "remote": "https://gitee.com/buchuqin-group/buchuqin-api.git"
+    },
+    {
+      "repository": "buchuqin-admin",
+      "branch": "feature/night-store",
+      "codeCommit": "75314b1e71a38fbcbf0c7407ebf2b1c5ee6a3c2c",
+      "remote": "https://gitee.com/buchuqin-group/buchuqin-admin.git"
+    },
+    {
+      "repository": "buchuqin-user-weapp",
+      "branch": "feature/night-store",
+      "codeCommit": "bbbe73e4370a4afd464c347cc454a538e6a0ca73",
+      "remote": "https://gitee.com/buchuqin-group/buchuqin-user-weapp.git"
+    },
+    {
+      "repository": "buchuqin-delivery-weapp",
+      "branch": "feature/night-store",
+      "codeCommit": "5f8febe40cda3e782aec8efad4bafa564d3e9cc4",
+      "remote": "https://gitee.com/buchuqin-group/buchuqin-delivery-weapp.git"
+    }
+  ]
+}

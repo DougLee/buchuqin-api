@@ -1,0 +1,18 @@
+[
+  {
+    "kind": "admin",
+    "check": "types",
+    "exitCode": 0,
+    "durationMs": 11453,
+    "log": "/tmp/night-goal-final-admin-types.log",
+    "apiTarget": "https://admin-test.buchuqin.com/api/v1"
+  },
+  {
+    "kind": "admin",
+    "check": "build",
+    "exitCode": 0,
+    "durationMs": 18298,
+    "log": "/tmp/night-goal-final-admin-build.log",
+    "apiTarget": "https://admin-test.buchuqin.com/api/v1"
+  }
+]

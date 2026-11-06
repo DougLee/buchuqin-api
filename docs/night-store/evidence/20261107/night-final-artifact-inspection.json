@@ -1,0 +1,34 @@
+[
+  {
+    "app": "delivery",
+    "platform": "h5",
+    "files": 29,
+    "localHelpers": 0,
+    "productionBusinessUrls": 0,
+    "testUrls": 1
+  },
+  {
+    "app": "delivery",
+    "platform": "mp-weixin",
+    "files": 57,
+    "localHelpers": 0,
+    "productionBusinessUrls": 0,
+    "testUrls": 1
+  },
+  {
+    "app": "user",
+    "platform": "h5",
+    "files": 42,
+    "localHelpers": 0,
+    "productionBusinessUrls": 0,
+    "testUrls": 1
+  },
+  {
+    "app": "user",
+    "platform": "mp-weixin",
+    "files": 102,
+    "localHelpers": 0,
+    "productionBusinessUrls": 0,
+    "testUrls": 1
+  }
+]

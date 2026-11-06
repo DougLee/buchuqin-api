@@ -1,0 +1,3842 @@
+{
+  "testedCombinations": 90,
+  "unexpectedPageOverflow": 0,
+  "phoneSmallButtons": 0,
+  "note": "后台楼栋商品宽表、校区配置长Tab为内部滚动，DOM候选越界不属于整页溢出；截图逐页复核。",
+  "pages": [
+    {
+      "kind": "user",
+      "name": "home",
+      "url": "#/pages/index/index",
+      "width": 375,
+      "bodyWidth": 375,
+      "overflow": [],
+      "smallButtons": [],
+      "screenshot": "night-final-user-home-375.png"
+    },
+    {
+      "kind": "user",
+      "name": "home",
+      "url": "#/pages/index/index",
+      "width": 390,
+      "bodyWidth": 390,
+      "overflow": [],
+      "smallButtons": [],
+      "screenshot": "night-final-user-home-390.png"
+    },
+    {
+      "kind": "user",
+      "name": "home",
+      "url": "#/pages/index/index",
+      "width": 430,
+      "bodyWidth": 430,
+      "overflow": [],
+      "smallButtons": [],
+      "screenshot": "night-final-user-home-430.png"
+    },
+    {
+      "kind": "user",
+      "name": "category",
+      "url": "#/pages/category/index",
+      "width": 375,
+      "bodyWidth": 375,
+      "overflow": [],
+      "smallButtons": [],
+      "screenshot": "night-final-user-category-375.png"
+    },
+    {
+      "kind": "user",
+      "name": "category",
+      "url": "#/pages/category/index",
+      "width": 390,
+      "bodyWidth": 390,
+      "overflow": [],
+      "smallButtons": [],
+      "screenshot": "night-final-user-category-390.png"
+    },
+    {
+      "kind": "user",
+      "name": "category",
+      "url": "#/pages/category/index",
+      "width": 430,
+      "bodyWidth": 430,
+      "overflow": [],
+      "smallButtons": [],
+      "screenshot": "night-final-user-category-430.png"
+    },
+    {
+      "kind": "user",
+      "name": "buildings",
+      "url": "#/pages/night/buildings",
+      "width": 375,
+      "bodyWidth": 375,
+      "overflow": [],
+      "smallButtons": [],
+      "screenshot": "night-final-user-buildings-375.png"
+    },
+    {
+      "kind": "user",
+      "name": "buildings",
+      "url": "#/pages/night/buildings",
+      "width": 390,
+      "bodyWidth": 390,
+      "overflow": [],
+      "smallButtons": [],
+      "screenshot": "night-final-user-buildings-390.png"
+    },
+    {
+      "kind": "user",
+      "name": "buildings",
+      "url": "#/pages/night/buildings",
+      "width": 430,
+      "bodyWidth": 430,
+      "overflow": [],
+      "smallButtons": [],
+      "screenshot": "night-final-user-buildings-430.png"
+    },
+    {
+      "kind": "user",
+      "name": "store",
+      "url": "#/pages/night/store?storeId=night-preview-store&buildingId=night-preview-building",
+      "width": 375,
+      "bodyWidth": 375,
+      "overflow": [],
+      "smallButtons": [],
+      "screenshot": "night-final-user-store-375.png"
+    },
+    {
+      "kind": "user",
+      "name": "store",
+      "url": "#/pages/night/store?storeId=night-preview-store&buildingId=night-preview-building",
+      "width": 390,
+      "bodyWidth": 390,
+      "overflow": [],
+      "smallButtons": [],
+      "screenshot": "night-final-user-store-390.png"
+    },
+    {
+      "kind": "user",
+      "name": "store",
+      "url": "#/pages/night/store?storeId=night-preview-store&buildingId=night-preview-building",
+      "width": 430,
+      "bodyWidth": 430,
+      "overflow": [],
+      "smallButtons": [],
+      "screenshot": "night-final-user-store-430.png"
+    },
+    {
+      "kind": "user",
+      "name": "checkout",
+      "url": "#/pages/night/checkout?storeId=night-preview-store&buildingId=night-preview-building",
+      "width": 375,
+      "bodyWidth": 375,
+      "overflow": [],
+      "smallButtons": [],
+      "screenshot": "night-final-user-checkout-375.png"
+    },
+    {
+      "kind": "user",
+      "name": "checkout",
+      "url": "#/pages/night/checkout?storeId=night-preview-store&buildingId=night-preview-building",
+      "width": 390,
+      "bodyWidth": 390,
+      "overflow": [],
+      "smallButtons": [],
+      "screenshot": "night-final-user-checkout-390.png"
+    },
+    {
+      "kind": "user",
+      "name": "checkout",
+      "url": "#/pages/night/checkout?storeId=night-preview-store&buildingId=night-preview-building",
+      "width": 430,
+      "bodyWidth": 430,
+      "overflow": [],
+      "smallButtons": [],
+      "screenshot": "night-final-user-checkout-430.png"
+    },
+    {
+      "kind": "user",
+      "name": "orders",
+      "url": "#/pages/night/orders",
+      "width": 375,
+      "bodyWidth": 375,
+      "overflow": [],
+      "smallButtons": [],
+      "screenshot": "night-final-user-orders-375.png"
+    },
+    {
+      "kind": "user",
+      "name": "orders",
+      "url": "#/pages/night/orders",
+      "width": 390,
+      "bodyWidth": 390,
+      "overflow": [],
+      "smallButtons": [],
+      "screenshot": "night-final-user-orders-390.png"
+    },
+    {
+      "kind": "user",
+      "name": "orders",
+      "url": "#/pages/night/orders",
+      "width": 430,
+      "bodyWidth": 430,
+      "overflow": [],
+      "smallButtons": [],
+      "screenshot": "night-final-user-orders-430.png"
+    },
+    {
+      "kind": "user",
+      "name": "detail",
+      "url": "#/pages/night/order-detail?id=cmw58yokp0003zzb11jq6tpl4",
+      "width": 375,
+      "bodyWidth": 375,
+      "overflow": [],
+      "smallButtons": [],
+      "screenshot": "night-final-user-detail-375.png"
+    },
+    {
+      "kind": "user",
+      "name": "detail",
+      "url": "#/pages/night/order-detail?id=cmw58yokp0003zzb11jq6tpl4",
+      "width": 390,
+      "bodyWidth": 390,
+      "overflow": [],
+      "smallButtons": [],
+      "screenshot": "night-final-user-detail-390.png"
+    },
+    {
+      "kind": "user",
+      "name": "detail",
+      "url": "#/pages/night/order-detail?id=cmw58yokp0003zzb11jq6tpl4",
+      "width": 430,
+      "bodyWidth": 430,
+      "overflow": [],
+      "smallButtons": [],
+      "screenshot": "night-final-user-detail-430.png"
+    },
+    {
+      "kind": "user",
+      "name": "address",
+      "url": "#/pages/address/index",
+      "width": 375,
+      "bodyWidth": 375,
+      "overflow": [],
+      "smallButtons": [],
+      "screenshot": "night-final-user-address-375.png"
+    },
+    {
+      "kind": "user",
+      "name": "address",
+      "url": "#/pages/address/index",
+      "width": 390,
+      "bodyWidth": 390,
+      "overflow": [],
+      "smallButtons": [],
+      "screenshot": "night-final-user-address-390.png"
+    },
+    {
+      "kind": "user",
+      "name": "address",
+      "url": "#/pages/address/index",
+      "width": 430,
+      "bodyWidth": 430,
+      "overflow": [],
+      "smallButtons": [],
+      "screenshot": "night-final-user-address-430.png"
+    },
+    {
+      "kind": "user",
+      "name": "address-edit",
+      "url": "#/pages/address/edit?id=cmw59qjmt000gzzphq9w8v871",
+      "width": 375,
+      "bodyWidth": 375,
+      "overflow": [],
+      "smallButtons": [],
+      "screenshot": "night-final-user-address-edit-375.png"
+    },
+    {
+      "kind": "user",
+      "name": "address-edit",
+      "url": "#/pages/address/edit?id=cmw59qjmt000gzzphq9w8v871",
+      "width": 390,
+      "bodyWidth": 390,
+      "overflow": [],
+      "smallButtons": [],
+      "screenshot": "night-final-user-address-edit-390.png"
+    },
+    {
+      "kind": "user",
+      "name": "address-edit",
+      "url": "#/pages/address/edit?id=cmw59qjmt000gzzphq9w8v871",
+      "width": 430,
+      "bodyWidth": 430,
+      "overflow": [],
+      "smallButtons": [],
+      "screenshot": "night-final-user-address-edit-430.png"
+    },
+    {
+      "kind": "user",
+      "name": "messages",
+      "url": "#/pages/messages/index",
+      "width": 375,
+      "bodyWidth": 375,
+      "overflow": [],
+      "smallButtons": [],
+      "screenshot": "night-final-user-messages-375.png"
+    },
+    {
+      "kind": "user",
+      "name": "messages",
+      "url": "#/pages/messages/index",
+      "width": 390,
+      "bodyWidth": 390,
+      "overflow": [],
+      "smallButtons": [],
+      "screenshot": "night-final-user-messages-390.png"
+    },
+    {
+      "kind": "user",
+      "name": "messages",
+      "url": "#/pages/messages/index",
+      "width": 430,
+      "bodyWidth": 430,
+      "overflow": [],
+      "smallButtons": [],
+      "screenshot": "night-final-user-messages-430.png"
+    },
+    {
+      "kind": "delivery",
+      "name": "home",
+      "url": "#/pages/night/home",
+      "width": 375,
+      "bodyWidth": 375,
+      "overflow": [],
+      "smallButtons": [],
+      "screenshot": "night-final-delivery-home-375.png"
+    },
+    {
+      "kind": "delivery",
+      "name": "home",
+      "url": "#/pages/night/home",
+      "width": 390,
+      "bodyWidth": 390,
+      "overflow": [],
+      "smallButtons": [],
+      "screenshot": "night-final-delivery-home-390.png"
+    },
+    {
+      "kind": "delivery",
+      "name": "home",
+      "url": "#/pages/night/home",
+      "width": 430,
+      "bodyWidth": 430,
+      "overflow": [],
+      "smallButtons": [],
+      "screenshot": "night-final-delivery-home-430.png"
+    },
+    {
+      "kind": "delivery",
+      "name": "products",
+      "url": "#/pages/night/products",
+      "width": 375,
+      "bodyWidth": 375,
+      "overflow": [],
+      "smallButtons": [],
+      "screenshot": "night-final-delivery-products-375.png"
+    },
+    {
+      "kind": "delivery",
+      "name": "products",
+      "url": "#/pages/night/products",
+      "width": 390,
+      "bodyWidth": 390,
+      "overflow": [],
+      "smallButtons": [],
+      "screenshot": "night-final-delivery-products-390.png"
+    },
+    {
+      "kind": "delivery",
+      "name": "products",
+      "url": "#/pages/night/products",
+      "width": 430,
+      "bodyWidth": 430,
+      "overflow": [],
+      "smallButtons": [],
+      "screenshot": "night-final-delivery-products-430.png"
+    },
+    {
+      "kind": "delivery",
+      "name": "stock",
+      "url": "#/pages/night/stock",
+      "width": 375,
+      "bodyWidth": 375,
+      "overflow": [],
+      "smallButtons": [],
+      "screenshot": "night-final-delivery-stock-375.png"
+    },
+    {
+      "kind": "delivery",
+      "name": "stock",
+      "url": "#/pages/night/stock",
+      "width": 390,
+      "bodyWidth": 390,
+      "overflow": [],
+      "smallButtons": [],
+      "screenshot": "night-final-delivery-stock-390.png"
+    },
+    {
+      "kind": "delivery",
+      "name": "stock",
+      "url": "#/pages/night/stock",
+      "width": 430,
+      "bodyWidth": 430,
+      "overflow": [],
+      "smallButtons": [],
+      "screenshot": "night-final-delivery-stock-430.png"
+    },
+    {
+      "kind": "delivery",
+      "name": "progress",
+      "url": "#/pages/night/stock-orders",
+      "width": 375,
+      "bodyWidth": 375,
+      "overflow": [],
+      "smallButtons": [],
+      "screenshot": "night-final-delivery-progress-375.png"
+    },
+    {
+      "kind": "delivery",
+      "name": "progress",
+      "url": "#/pages/night/stock-orders",
+      "width": 390,
+      "bodyWidth": 390,
+      "overflow": [],
+      "smallButtons": [],
+      "screenshot": "night-final-delivery-progress-390.png"
+    },
+    {
+      "kind": "delivery",
+      "name": "progress",
+      "url": "#/pages/night/stock-orders",
+      "width": 430,
+      "bodyWidth": 430,
+      "overflow": [],
+      "smallButtons": [],
+      "screenshot": "night-final-delivery-progress-430.png"
+    },
+    {
+      "kind": "delivery",
+      "name": "inventory",
+      "url": "#/pages/night/inventory",
+      "width": 375,
+      "bodyWidth": 375,
+      "overflow": [],
+      "smallButtons": [],
+      "screenshot": "night-final-delivery-inventory-375.png"
+    },
+    {
+      "kind": "delivery",
+      "name": "inventory",
+      "url": "#/pages/night/inventory",
+      "width": 390,
+      "bodyWidth": 390,
+      "overflow": [],
+      "smallButtons": [],
+      "screenshot": "night-final-delivery-inventory-390.png"
+    },
+    {
+      "kind": "delivery",
+      "name": "inventory",
+      "url": "#/pages/night/inventory",
+      "width": 430,
+      "bodyWidth": 430,
+      "overflow": [],
+      "smallButtons": [],
+      "screenshot": "night-final-delivery-inventory-430.png"
+    },
+    {
+      "kind": "delivery",
+      "name": "orders",
+      "url": "#/pages/night/orders-tab",
+      "width": 375,
+      "bodyWidth": 375,
+      "overflow": [],
+      "smallButtons": [],
+      "screenshot": "night-final-delivery-orders-375.png"
+    },
+    {
+      "kind": "delivery",
+      "name": "orders",
+      "url": "#/pages/night/orders-tab",
+      "width": 390,
+      "bodyWidth": 390,
+      "overflow": [],
+      "smallButtons": [],
+      "screenshot": "night-final-delivery-orders-390.png"
+    },
+    {
+      "kind": "delivery",
+      "name": "orders",
+      "url": "#/pages/night/orders-tab",
+      "width": 430,
+      "bodyWidth": 430,
+      "overflow": [],
+      "smallButtons": [],
+      "screenshot": "night-final-delivery-orders-430.png"
+    },
+    {
+      "kind": "delivery",
+      "name": "detail",
+      "url": "#/pages/night/order-detail?id=cmw58yokp0003zzb11jq6tpl4",
+      "width": 375,
+      "bodyWidth": 375,
+      "overflow": [],
+      "smallButtons": [],
+      "screenshot": "night-final-delivery-detail-375.png"
+    },
+    {
+      "kind": "delivery",
+      "name": "detail",
+      "url": "#/pages/night/order-detail?id=cmw58yokp0003zzb11jq6tpl4",
+      "width": 390,
+      "bodyWidth": 390,
+      "overflow": [],
+      "smallButtons": [],
+      "screenshot": "night-final-delivery-detail-390.png"
+    },
+    {
+      "kind": "delivery",
+      "name": "detail",
+      "url": "#/pages/night/order-detail?id=cmw58yokp0003zzb11jq6tpl4",
+      "width": 430,
+      "bodyWidth": 430,
+      "overflow": [],
+      "smallButtons": [],
+      "screenshot": "night-final-delivery-detail-430.png"
+    },
+    {
+      "kind": "delivery",
+      "name": "income",
+      "url": "#/pages/night/income-tab",
+      "width": 375,
+      "bodyWidth": 375,
+      "overflow": [],
+      "smallButtons": [],
+      "screenshot": "night-final-delivery-income-375.png"
+    },
+    {
+      "kind": "delivery",
+      "name": "income",
+      "url": "#/pages/night/income-tab",
+      "width": 390,
+      "bodyWidth": 390,
+      "overflow": [],
+      "smallButtons": [],
+      "screenshot": "night-final-delivery-income-390.png"
+    },
+    {
+      "kind": "delivery",
+      "name": "income",
+      "url": "#/pages/night/income-tab",
+      "width": 430,
+      "bodyWidth": 430,
+      "overflow": [],
+      "smallButtons": [],
+      "screenshot": "night-final-delivery-income-430.png"
+    },
+    {
+      "kind": "delivery",
+      "name": "deposit",
+      "url": "#/pages/night/deposit",
+      "width": 375,
+      "bodyWidth": 375,
+      "overflow": [],
+      "smallButtons": [],
+      "screenshot": "night-final-delivery-deposit-375.png"
+    },
+    {
+      "kind": "delivery",
+      "name": "deposit",
+      "url": "#/pages/night/deposit",
+      "width": 390,
+      "bodyWidth": 390,
+      "overflow": [],
+      "smallButtons": [],
+      "screenshot": "night-final-delivery-deposit-390.png"
+    },
+    {
+      "kind": "delivery",
+      "name": "deposit",
+      "url": "#/pages/night/deposit",
+      "width": 430,
+      "bodyWidth": 430,
+      "overflow": [],
+      "smallButtons": [],
+      "screenshot": "night-final-delivery-deposit-430.png"
+    },
+    {
+      "kind": "delivery",
+      "name": "profile",
+      "url": "#/pages/profile/index",
+      "width": 375,
+      "bodyWidth": 375,
+      "overflow": [],
+      "smallButtons": [],
+      "screenshot": "night-final-delivery-profile-375.png"
+    },
+    {
+      "kind": "delivery",
+      "name": "profile",
+      "url": "#/pages/profile/index",
+      "width": 390,
+      "bodyWidth": 390,
+      "overflow": [],
+      "smallButtons": [],
+      "screenshot": "night-final-delivery-profile-390.png"
+    },
+    {
+      "kind": "delivery",
+      "name": "profile",
+      "url": "#/pages/profile/index",
+      "width": 430,
+      "bodyWidth": 430,
+      "overflow": [],
+      "smallButtons": [],
+      "screenshot": "night-final-delivery-profile-430.png"
+    },
+    {
+      "kind": "admin",
+      "name": "夜宵店铺",
+      "url": "#/night-stores",
+      "width": 1440,
+      "bodyWidth": 1440,
+      "overflow": [],
+      "smallButtons": [
+        {
+          "text": "",
+          "cls": "icon-button",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "",
+          "cls": "notification",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "🔔",
+          "cls": "notification notify-bell",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "建店",
+          "cls": "el-button el-button--primary",
+          "w": 60,
+          "h": 32
+        },
+        {
+          "text": "夜宵店铺",
+          "cls": "el-button is-text active",
+          "w": 88,
+          "h": 40
+        },
+        {
+          "text": "夜宵商品库",
+          "cls": "el-button is-text",
+          "w": 102,
+          "h": 40
+        },
+        {
+          "text": "楼栋商品管理",
+          "cls": "el-button is-text",
+          "w": 116,
+          "h": 40
+        },
+        {
+          "text": "备货审核与出库",
+          "cls": "el-button is-text",
+          "w": 130,
+          "h": 40
+        },
+        {
+          "text": "盘点报损审核",
+          "cls": "el-button is-text",
+          "w": 116,
+          "h": 40
+        }
+      ],
+      "screenshot": "night-final-admin-stores-0-1440.png"
+    },
+    {
+      "kind": "admin",
+      "name": "夜宵店铺",
+      "url": "#/night-stores",
+      "width": 1024,
+      "bodyWidth": 1024,
+      "overflow": [],
+      "smallButtons": [
+        {
+          "text": "",
+          "cls": "icon-button",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "",
+          "cls": "notification",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "🔔",
+          "cls": "notification notify-bell",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "建店",
+          "cls": "el-button el-button--primary",
+          "w": 60,
+          "h": 32
+        },
+        {
+          "text": "夜宵店铺",
+          "cls": "el-button is-text active",
+          "w": 88,
+          "h": 40
+        },
+        {
+          "text": "夜宵商品库",
+          "cls": "el-button is-text",
+          "w": 102,
+          "h": 40
+        },
+        {
+          "text": "楼栋商品管理",
+          "cls": "el-button is-text",
+          "w": 116,
+          "h": 40
+        },
+        {
+          "text": "备货审核与出库",
+          "cls": "el-button is-text",
+          "w": 130,
+          "h": 40
+        },
+        {
+          "text": "盘点报损审核",
+          "cls": "el-button is-text",
+          "w": 116,
+          "h": 40
+        }
+      ],
+      "screenshot": "night-final-admin-stores-0-1024.png"
+    },
+    {
+      "kind": "admin",
+      "name": "夜宵商品库",
+      "url": "#/night-stores",
+      "width": 1440,
+      "bodyWidth": 1440,
+      "overflow": [],
+      "smallButtons": [
+        {
+          "text": "",
+          "cls": "icon-button",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "",
+          "cls": "notification",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "🔔",
+          "cls": "notification notify-bell",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "建店",
+          "cls": "el-button el-button--primary",
+          "w": 60,
+          "h": 32
+        },
+        {
+          "text": "夜宵店铺",
+          "cls": "el-button is-text",
+          "w": 88,
+          "h": 40
+        },
+        {
+          "text": "夜宵商品库",
+          "cls": "el-button is-text active",
+          "w": 102,
+          "h": 40
+        },
+        {
+          "text": "楼栋商品管理",
+          "cls": "el-button is-text",
+          "w": 116,
+          "h": 40
+        },
+        {
+          "text": "备货审核与出库",
+          "cls": "el-button is-text",
+          "w": 130,
+          "h": 40
+        },
+        {
+          "text": "盘点报损审核",
+          "cls": "el-button is-text",
+          "w": 116,
+          "h": 40
+        },
+        {
+          "text": "查询",
+          "cls": "el-button",
+          "w": 60,
+          "h": 32
+        },
+        {
+          "text": "重置筛选",
+          "cls": "el-button",
+          "w": 88,
+          "h": 32
+        },
+        {
+          "text": "从官方商品库导入",
+          "cls": "el-button el-button--primary",
+          "w": 144,
+          "h": 32
+        },
+        {
+          "text": "手动补充商品",
+          "cls": "el-button el-button--primary",
+          "w": 116,
+          "h": 32
+        }
+      ],
+      "screenshot": "night-final-admin-stores-1-1440.png"
+    },
+    {
+      "kind": "admin",
+      "name": "夜宵商品库",
+      "url": "#/night-stores",
+      "width": 1024,
+      "bodyWidth": 1024,
+      "overflow": [],
+      "smallButtons": [
+        {
+          "text": "",
+          "cls": "icon-button",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "",
+          "cls": "notification",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "🔔",
+          "cls": "notification notify-bell",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "建店",
+          "cls": "el-button el-button--primary",
+          "w": 60,
+          "h": 32
+        },
+        {
+          "text": "夜宵店铺",
+          "cls": "el-button is-text",
+          "w": 88,
+          "h": 40
+        },
+        {
+          "text": "夜宵商品库",
+          "cls": "el-button is-text active",
+          "w": 102,
+          "h": 40
+        },
+        {
+          "text": "楼栋商品管理",
+          "cls": "el-button is-text",
+          "w": 116,
+          "h": 40
+        },
+        {
+          "text": "备货审核与出库",
+          "cls": "el-button is-text",
+          "w": 130,
+          "h": 40
+        },
+        {
+          "text": "盘点报损审核",
+          "cls": "el-button is-text",
+          "w": 116,
+          "h": 40
+        },
+        {
+          "text": "查询",
+          "cls": "el-button",
+          "w": 60,
+          "h": 32
+        },
+        {
+          "text": "重置筛选",
+          "cls": "el-button",
+          "w": 88,
+          "h": 32
+        },
+        {
+          "text": "从官方商品库导入",
+          "cls": "el-button el-button--primary",
+          "w": 144,
+          "h": 32
+        },
+        {
+          "text": "手动补充商品",
+          "cls": "el-button el-button--primary",
+          "w": 116,
+          "h": 32
+        }
+      ],
+      "screenshot": "night-final-admin-stores-1-1024.png"
+    },
+    {
+      "kind": "admin",
+      "name": "楼栋商品管理",
+      "url": "#/night-stores",
+      "width": 1440,
+      "bodyWidth": 1440,
+      "overflow": [],
+      "smallButtons": [
+        {
+          "text": "",
+          "cls": "icon-button",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "",
+          "cls": "notification",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "🔔",
+          "cls": "notification notify-bell",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "建店",
+          "cls": "el-button el-button--primary",
+          "w": 60,
+          "h": 32
+        },
+        {
+          "text": "夜宵店铺",
+          "cls": "el-button is-text",
+          "w": 88,
+          "h": 40
+        },
+        {
+          "text": "夜宵商品库",
+          "cls": "el-button is-text",
+          "w": 102,
+          "h": 40
+        },
+        {
+          "text": "楼栋商品管理",
+          "cls": "el-button is-text active",
+          "w": 116,
+          "h": 40
+        },
+        {
+          "text": "备货审核与出库",
+          "cls": "el-button is-text",
+          "w": 130,
+          "h": 40
+        },
+        {
+          "text": "盘点报损审核",
+          "cls": "el-button is-text",
+          "w": 116,
+          "h": 40
+        },
+        {
+          "text": "查询",
+          "cls": "el-button el-button--primary",
+          "w": 60,
+          "h": 32
+        },
+        {
+          "text": "重置",
+          "cls": "el-button",
+          "w": 60,
+          "h": 32
+        },
+        {
+          "text": "配置楼栋商品",
+          "cls": "el-button el-button--primary",
+          "w": 116,
+          "h": 32
+        },
+        {
+          "text": "恢复许可",
+          "cls": "el-button el-button--success is-link",
+          "w": 62,
+          "h": 20
+        },
+        {
+          "text": "商品与库存",
+          "cls": "el-button el-button--primary is-link",
+          "w": 76,
+          "h": 20
+        },
+        {
+          "text": "校区停售",
+          "cls": "el-button el-button--danger is-link",
+          "w": 62,
+          "h": 20
+        },
+        {
+          "text": "商品与库存",
+          "cls": "el-button el-button--primary is-link",
+          "w": 76,
+          "h": 20
+        },
+        {
+          "text": "校区停售",
+          "cls": "el-button el-button--danger is-link",
+          "w": 62,
+          "h": 20
+        },
+        {
+          "text": "商品与库存",
+          "cls": "el-button el-button--primary is-link",
+          "w": 76,
+          "h": 20
+        },
+        {
+          "text": "校区停售",
+          "cls": "el-button el-button--danger is-link",
+          "w": 62,
+          "h": 20
+        },
+        {
+          "text": "商品与库存",
+          "cls": "el-button el-button--primary is-link",
+          "w": 76,
+          "h": 20
+        },
+        {
+          "text": "校区停售",
+          "cls": "el-button el-button--danger is-link",
+          "w": 62,
+          "h": 20
+        },
+        {
+          "text": "商品与库存",
+          "cls": "el-button el-button--primary is-link",
+          "w": 76,
+          "h": 20
+        },
+        {
+          "text": "校区停售",
+          "cls": "el-button el-button--danger is-link",
+          "w": 62,
+          "h": 20
+        },
+        {
+          "text": "商品与库存",
+          "cls": "el-button el-button--primary is-link",
+          "w": 76,
+          "h": 20
+        },
+        {
+          "text": "校区停售",
+          "cls": "el-button el-button--danger is-link",
+          "w": 62,
+          "h": 20
+        },
+        {
+          "text": "商品与库存",
+          "cls": "el-button el-button--primary is-link",
+          "w": 76,
+          "h": 20
+        },
+        {
+          "text": "校区停售",
+          "cls": "el-button el-button--danger is-link",
+          "w": 62,
+          "h": 20
+        },
+        {
+          "text": "商品与库存",
+          "cls": "el-button el-button--primary is-link",
+          "w": 76,
+          "h": 20
+        },
+        {
+          "text": "校区停售",
+          "cls": "el-button el-button--danger is-link",
+          "w": 62,
+          "h": 20
+        },
+        {
+          "text": "商品与库存",
+          "cls": "el-button el-button--primary is-link",
+          "w": 76,
+          "h": 20
+        },
+        {
+          "text": "校区停售",
+          "cls": "el-button el-button--danger is-link",
+          "w": 62,
+          "h": 20
+        },
+        {
+          "text": "商品与库存",
+          "cls": "el-button el-button--primary is-link",
+          "w": 76,
+          "h": 20
+        },
+        {
+          "text": "校区停售",
+          "cls": "el-button el-button--danger is-link",
+          "w": 62,
+          "h": 20
+        },
+        {
+          "text": "商品与库存",
+          "cls": "el-button el-button--primary is-link",
+          "w": 76,
+          "h": 20
+        },
+        {
+          "text": "校区停售",
+          "cls": "el-button el-button--danger is-link",
+          "w": 62,
+          "h": 20
+        },
+        {
+          "text": "商品与库存",
+          "cls": "el-button el-button--primary is-link",
+          "w": 76,
+          "h": 20
+        },
+        {
+          "text": "校区停售",
+          "cls": "el-button el-button--danger is-link",
+          "w": 62,
+          "h": 20
+        },
+        {
+          "text": "商品与库存",
+          "cls": "el-button el-button--primary is-link",
+          "w": 76,
+          "h": 20
+        },
+        {
+          "text": "校区停售",
+          "cls": "el-button el-button--danger is-link",
+          "w": 62,
+          "h": 20
+        },
+        {
+          "text": "商品与库存",
+          "cls": "el-button el-button--primary is-link",
+          "w": 76,
+          "h": 20
+        },
+        {
+          "text": "校区停售",
+          "cls": "el-button el-button--danger is-link",
+          "w": 62,
+          "h": 20
+        },
+        {
+          "text": "商品与库存",
+          "cls": "el-button el-button--primary is-link",
+          "w": 76,
+          "h": 20
+        },
+        {
+          "text": "校区停售",
+          "cls": "el-button el-button--danger is-link",
+          "w": 62,
+          "h": 20
+        },
+        {
+          "text": "商品与库存",
+          "cls": "el-button el-button--primary is-link",
+          "w": 76,
+          "h": 20
+        },
+        {
+          "text": "校区停售",
+          "cls": "el-button el-button--danger is-link",
+          "w": 62,
+          "h": 20
+        },
+        {
+          "text": "商品与库存",
+          "cls": "el-button el-button--primary is-link",
+          "w": 76,
+          "h": 20
+        },
+        {
+          "text": "校区停售",
+          "cls": "el-button el-button--danger is-link",
+          "w": 62,
+          "h": 20
+        },
+        {
+          "text": "商品与库存",
+          "cls": "el-button el-button--primary is-link",
+          "w": 76,
+          "h": 20
+        },
+        {
+          "text": "校区停售",
+          "cls": "el-button el-button--danger is-link",
+          "w": 62,
+          "h": 20
+        },
+        {
+          "text": "商品与库存",
+          "cls": "el-button el-button--primary is-link",
+          "w": 76,
+          "h": 20
+        },
+        {
+          "text": "校区停售",
+          "cls": "el-button el-button--danger is-link",
+          "w": 62,
+          "h": 20
+        },
+        {
+          "text": "商品与库存",
+          "cls": "el-button el-button--primary is-link",
+          "w": 76,
+          "h": 20
+        }
+      ],
+      "screenshot": "night-final-admin-stores-2-1440.png"
+    },
+    {
+      "kind": "admin",
+      "name": "楼栋商品管理",
+      "url": "#/night-stores",
+      "width": 1024,
+      "bodyWidth": 1024,
+      "overflow": [
+        {
+          "tag": "TABLE",
+          "cls": "",
+          "right": 1322
+        },
+        {
+          "tag": "THEAD",
+          "cls": "",
+          "right": 1322
+        },
+        {
+          "tag": "TR",
+          "cls": "",
+          "right": 1322
+        },
+        {
+          "tag": "TH",
+          "cls": "",
+          "right": 1056
+        },
+        {
+          "tag": "TH",
+          "cls": "",
+          "right": 1142
+        },
+        {
+          "tag": "TH",
+          "cls": "",
+          "right": 1322
+        },
+        {
+          "tag": "TBODY",
+          "cls": "",
+          "right": 1322
+        },
+        {
+          "tag": "TR",
+          "cls": "",
+          "right": 1322
+        }
+      ],
+      "smallButtons": [
+        {
+          "text": "",
+          "cls": "icon-button",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "",
+          "cls": "notification",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "🔔",
+          "cls": "notification notify-bell",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "建店",
+          "cls": "el-button el-button--primary",
+          "w": 60,
+          "h": 32
+        },
+        {
+          "text": "夜宵店铺",
+          "cls": "el-button is-text",
+          "w": 88,
+          "h": 40
+        },
+        {
+          "text": "夜宵商品库",
+          "cls": "el-button is-text",
+          "w": 102,
+          "h": 40
+        },
+        {
+          "text": "楼栋商品管理",
+          "cls": "el-button is-text active",
+          "w": 116,
+          "h": 40
+        },
+        {
+          "text": "备货审核与出库",
+          "cls": "el-button is-text",
+          "w": 130,
+          "h": 40
+        },
+        {
+          "text": "盘点报损审核",
+          "cls": "el-button is-text",
+          "w": 116,
+          "h": 40
+        },
+        {
+          "text": "查询",
+          "cls": "el-button el-button--primary",
+          "w": 60,
+          "h": 32
+        },
+        {
+          "text": "重置",
+          "cls": "el-button",
+          "w": 60,
+          "h": 32
+        },
+        {
+          "text": "配置楼栋商品",
+          "cls": "el-button el-button--primary",
+          "w": 116,
+          "h": 32
+        },
+        {
+          "text": "恢复许可",
+          "cls": "el-button el-button--success is-link",
+          "w": 62,
+          "h": 20
+        },
+        {
+          "text": "商品与库存",
+          "cls": "el-button el-button--primary is-link",
+          "w": 76,
+          "h": 20
+        },
+        {
+          "text": "校区停售",
+          "cls": "el-button el-button--danger is-link",
+          "w": 62,
+          "h": 20
+        },
+        {
+          "text": "商品与库存",
+          "cls": "el-button el-button--primary is-link",
+          "w": 76,
+          "h": 20
+        },
+        {
+          "text": "校区停售",
+          "cls": "el-button el-button--danger is-link",
+          "w": 62,
+          "h": 20
+        },
+        {
+          "text": "商品与库存",
+          "cls": "el-button el-button--primary is-link",
+          "w": 76,
+          "h": 20
+        },
+        {
+          "text": "校区停售",
+          "cls": "el-button el-button--danger is-link",
+          "w": 62,
+          "h": 20
+        },
+        {
+          "text": "商品与库存",
+          "cls": "el-button el-button--primary is-link",
+          "w": 76,
+          "h": 20
+        },
+        {
+          "text": "校区停售",
+          "cls": "el-button el-button--danger is-link",
+          "w": 62,
+          "h": 20
+        },
+        {
+          "text": "商品与库存",
+          "cls": "el-button el-button--primary is-link",
+          "w": 76,
+          "h": 20
+        },
+        {
+          "text": "校区停售",
+          "cls": "el-button el-button--danger is-link",
+          "w": 62,
+          "h": 20
+        },
+        {
+          "text": "商品与库存",
+          "cls": "el-button el-button--primary is-link",
+          "w": 76,
+          "h": 20
+        },
+        {
+          "text": "校区停售",
+          "cls": "el-button el-button--danger is-link",
+          "w": 62,
+          "h": 20
+        },
+        {
+          "text": "商品与库存",
+          "cls": "el-button el-button--primary is-link",
+          "w": 76,
+          "h": 20
+        },
+        {
+          "text": "校区停售",
+          "cls": "el-button el-button--danger is-link",
+          "w": 62,
+          "h": 20
+        },
+        {
+          "text": "商品与库存",
+          "cls": "el-button el-button--primary is-link",
+          "w": 76,
+          "h": 20
+        },
+        {
+          "text": "校区停售",
+          "cls": "el-button el-button--danger is-link",
+          "w": 62,
+          "h": 20
+        },
+        {
+          "text": "商品与库存",
+          "cls": "el-button el-button--primary is-link",
+          "w": 76,
+          "h": 20
+        },
+        {
+          "text": "校区停售",
+          "cls": "el-button el-button--danger is-link",
+          "w": 62,
+          "h": 20
+        },
+        {
+          "text": "商品与库存",
+          "cls": "el-button el-button--primary is-link",
+          "w": 76,
+          "h": 20
+        },
+        {
+          "text": "校区停售",
+          "cls": "el-button el-button--danger is-link",
+          "w": 62,
+          "h": 20
+        },
+        {
+          "text": "商品与库存",
+          "cls": "el-button el-button--primary is-link",
+          "w": 76,
+          "h": 20
+        },
+        {
+          "text": "校区停售",
+          "cls": "el-button el-button--danger is-link",
+          "w": 62,
+          "h": 20
+        },
+        {
+          "text": "商品与库存",
+          "cls": "el-button el-button--primary is-link",
+          "w": 76,
+          "h": 20
+        },
+        {
+          "text": "校区停售",
+          "cls": "el-button el-button--danger is-link",
+          "w": 62,
+          "h": 20
+        },
+        {
+          "text": "商品与库存",
+          "cls": "el-button el-button--primary is-link",
+          "w": 76,
+          "h": 20
+        },
+        {
+          "text": "校区停售",
+          "cls": "el-button el-button--danger is-link",
+          "w": 62,
+          "h": 20
+        },
+        {
+          "text": "商品与库存",
+          "cls": "el-button el-button--primary is-link",
+          "w": 76,
+          "h": 20
+        },
+        {
+          "text": "校区停售",
+          "cls": "el-button el-button--danger is-link",
+          "w": 62,
+          "h": 20
+        },
+        {
+          "text": "商品与库存",
+          "cls": "el-button el-button--primary is-link",
+          "w": 76,
+          "h": 20
+        },
+        {
+          "text": "校区停售",
+          "cls": "el-button el-button--danger is-link",
+          "w": 62,
+          "h": 20
+        },
+        {
+          "text": "商品与库存",
+          "cls": "el-button el-button--primary is-link",
+          "w": 76,
+          "h": 20
+        },
+        {
+          "text": "校区停售",
+          "cls": "el-button el-button--danger is-link",
+          "w": 62,
+          "h": 20
+        },
+        {
+          "text": "商品与库存",
+          "cls": "el-button el-button--primary is-link",
+          "w": 76,
+          "h": 20
+        },
+        {
+          "text": "校区停售",
+          "cls": "el-button el-button--danger is-link",
+          "w": 62,
+          "h": 20
+        },
+        {
+          "text": "商品与库存",
+          "cls": "el-button el-button--primary is-link",
+          "w": 76,
+          "h": 20
+        },
+        {
+          "text": "校区停售",
+          "cls": "el-button el-button--danger is-link",
+          "w": 62,
+          "h": 20
+        },
+        {
+          "text": "商品与库存",
+          "cls": "el-button el-button--primary is-link",
+          "w": 76,
+          "h": 20
+        },
+        {
+          "text": "校区停售",
+          "cls": "el-button el-button--danger is-link",
+          "w": 62,
+          "h": 20
+        },
+        {
+          "text": "商品与库存",
+          "cls": "el-button el-button--primary is-link",
+          "w": 76,
+          "h": 20
+        }
+      ],
+      "screenshot": "night-final-admin-stores-2-1024.png"
+    },
+    {
+      "kind": "admin",
+      "name": "备货审核与出库",
+      "url": "#/night-stores",
+      "width": 1440,
+      "bodyWidth": 1440,
+      "overflow": [],
+      "smallButtons": [
+        {
+          "text": "",
+          "cls": "icon-button",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "",
+          "cls": "notification",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "🔔",
+          "cls": "notification notify-bell",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "建店",
+          "cls": "el-button el-button--primary",
+          "w": 60,
+          "h": 32
+        },
+        {
+          "text": "夜宵店铺",
+          "cls": "el-button is-text",
+          "w": 88,
+          "h": 40
+        },
+        {
+          "text": "夜宵商品库",
+          "cls": "el-button is-text",
+          "w": 102,
+          "h": 40
+        },
+        {
+          "text": "楼栋商品管理",
+          "cls": "el-button is-text",
+          "w": 116,
+          "h": 40
+        },
+        {
+          "text": "备货审核与出库",
+          "cls": "el-button is-text active",
+          "w": 130,
+          "h": 40
+        },
+        {
+          "text": "盘点报损审核",
+          "cls": "el-button is-text",
+          "w": 116,
+          "h": 40
+        },
+        {
+          "text": "查询",
+          "cls": "el-button el-button--primary",
+          "w": 60,
+          "h": 32
+        },
+        {
+          "text": "重置",
+          "cls": "el-button",
+          "w": 60,
+          "h": 32
+        },
+        {
+          "text": "查看 / 处理",
+          "cls": "el-button el-button--primary is-link",
+          "w": 78,
+          "h": 20
+        },
+        {
+          "text": "查看 / 处理",
+          "cls": "el-button el-button--primary is-link",
+          "w": 78,
+          "h": 20
+        },
+        {
+          "text": "查看 / 处理",
+          "cls": "el-button el-button--primary is-link",
+          "w": 78,
+          "h": 20
+        },
+        {
+          "text": "查看 / 处理",
+          "cls": "el-button el-button--primary is-link",
+          "w": 78,
+          "h": 20
+        },
+        {
+          "text": "查看 / 处理",
+          "cls": "el-button el-button--primary is-link",
+          "w": 78,
+          "h": 20
+        },
+        {
+          "text": "查看 / 处理",
+          "cls": "el-button el-button--primary is-link",
+          "w": 78,
+          "h": 20
+        },
+        {
+          "text": "查看 / 处理",
+          "cls": "el-button el-button--primary is-link",
+          "w": 78,
+          "h": 20
+        },
+        {
+          "text": "查看 / 处理",
+          "cls": "el-button el-button--primary is-link",
+          "w": 78,
+          "h": 20
+        },
+        {
+          "text": "查看 / 处理",
+          "cls": "el-button el-button--primary is-link",
+          "w": 78,
+          "h": 20
+        },
+        {
+          "text": "查看 / 处理",
+          "cls": "el-button el-button--primary is-link",
+          "w": 78,
+          "h": 20
+        },
+        {
+          "text": "查看 / 处理",
+          "cls": "el-button el-button--primary is-link",
+          "w": 78,
+          "h": 20
+        },
+        {
+          "text": "查看 / 处理",
+          "cls": "el-button el-button--primary is-link",
+          "w": 78,
+          "h": 20
+        },
+        {
+          "text": "查看 / 处理",
+          "cls": "el-button el-button--primary is-link",
+          "w": 78,
+          "h": 20
+        },
+        {
+          "text": "查看 / 处理",
+          "cls": "el-button el-button--primary is-link",
+          "w": 78,
+          "h": 20
+        },
+        {
+          "text": "查看 / 处理",
+          "cls": "el-button el-button--primary is-link",
+          "w": 78,
+          "h": 20
+        },
+        {
+          "text": "查看 / 处理",
+          "cls": "el-button el-button--primary is-link",
+          "w": 78,
+          "h": 20
+        },
+        {
+          "text": "查看 / 处理",
+          "cls": "el-button el-button--primary is-link",
+          "w": 78,
+          "h": 20
+        },
+        {
+          "text": "查看 / 处理",
+          "cls": "el-button el-button--primary is-link",
+          "w": 78,
+          "h": 20
+        },
+        {
+          "text": "查看 / 处理",
+          "cls": "el-button el-button--primary is-link",
+          "w": 78,
+          "h": 20
+        }
+      ],
+      "screenshot": "night-final-admin-stores-3-1440.png"
+    },
+    {
+      "kind": "admin",
+      "name": "备货审核与出库",
+      "url": "#/night-stores",
+      "width": 1024,
+      "bodyWidth": 1024,
+      "overflow": [],
+      "smallButtons": [
+        {
+          "text": "",
+          "cls": "icon-button",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "",
+          "cls": "notification",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "🔔",
+          "cls": "notification notify-bell",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "建店",
+          "cls": "el-button el-button--primary",
+          "w": 60,
+          "h": 32
+        },
+        {
+          "text": "夜宵店铺",
+          "cls": "el-button is-text",
+          "w": 88,
+          "h": 40
+        },
+        {
+          "text": "夜宵商品库",
+          "cls": "el-button is-text",
+          "w": 102,
+          "h": 40
+        },
+        {
+          "text": "楼栋商品管理",
+          "cls": "el-button is-text",
+          "w": 116,
+          "h": 40
+        },
+        {
+          "text": "备货审核与出库",
+          "cls": "el-button is-text active",
+          "w": 130,
+          "h": 40
+        },
+        {
+          "text": "盘点报损审核",
+          "cls": "el-button is-text",
+          "w": 116,
+          "h": 40
+        },
+        {
+          "text": "查询",
+          "cls": "el-button el-button--primary",
+          "w": 60,
+          "h": 32
+        },
+        {
+          "text": "重置",
+          "cls": "el-button",
+          "w": 60,
+          "h": 32
+        },
+        {
+          "text": "查看 / 处理",
+          "cls": "el-button el-button--primary is-link",
+          "w": 78,
+          "h": 20
+        },
+        {
+          "text": "查看 / 处理",
+          "cls": "el-button el-button--primary is-link",
+          "w": 78,
+          "h": 20
+        },
+        {
+          "text": "查看 / 处理",
+          "cls": "el-button el-button--primary is-link",
+          "w": 78,
+          "h": 20
+        },
+        {
+          "text": "查看 / 处理",
+          "cls": "el-button el-button--primary is-link",
+          "w": 78,
+          "h": 20
+        },
+        {
+          "text": "查看 / 处理",
+          "cls": "el-button el-button--primary is-link",
+          "w": 78,
+          "h": 20
+        },
+        {
+          "text": "查看 / 处理",
+          "cls": "el-button el-button--primary is-link",
+          "w": 78,
+          "h": 20
+        },
+        {
+          "text": "查看 / 处理",
+          "cls": "el-button el-button--primary is-link",
+          "w": 78,
+          "h": 20
+        },
+        {
+          "text": "查看 / 处理",
+          "cls": "el-button el-button--primary is-link",
+          "w": 78,
+          "h": 20
+        },
+        {
+          "text": "查看 / 处理",
+          "cls": "el-button el-button--primary is-link",
+          "w": 78,
+          "h": 20
+        },
+        {
+          "text": "查看 / 处理",
+          "cls": "el-button el-button--primary is-link",
+          "w": 78,
+          "h": 20
+        },
+        {
+          "text": "查看 / 处理",
+          "cls": "el-button el-button--primary is-link",
+          "w": 78,
+          "h": 20
+        },
+        {
+          "text": "查看 / 处理",
+          "cls": "el-button el-button--primary is-link",
+          "w": 78,
+          "h": 20
+        },
+        {
+          "text": "查看 / 处理",
+          "cls": "el-button el-button--primary is-link",
+          "w": 78,
+          "h": 20
+        },
+        {
+          "text": "查看 / 处理",
+          "cls": "el-button el-button--primary is-link",
+          "w": 78,
+          "h": 20
+        },
+        {
+          "text": "查看 / 处理",
+          "cls": "el-button el-button--primary is-link",
+          "w": 78,
+          "h": 20
+        },
+        {
+          "text": "查看 / 处理",
+          "cls": "el-button el-button--primary is-link",
+          "w": 78,
+          "h": 20
+        },
+        {
+          "text": "查看 / 处理",
+          "cls": "el-button el-button--primary is-link",
+          "w": 78,
+          "h": 20
+        },
+        {
+          "text": "查看 / 处理",
+          "cls": "el-button el-button--primary is-link",
+          "w": 78,
+          "h": 20
+        },
+        {
+          "text": "查看 / 处理",
+          "cls": "el-button el-button--primary is-link",
+          "w": 78,
+          "h": 20
+        }
+      ],
+      "screenshot": "night-final-admin-stores-3-1024.png"
+    },
+    {
+      "kind": "admin",
+      "name": "盘点报损审核",
+      "url": "#/night-stores",
+      "width": 1440,
+      "bodyWidth": 1440,
+      "overflow": [],
+      "smallButtons": [
+        {
+          "text": "",
+          "cls": "icon-button",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "",
+          "cls": "notification",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "🔔",
+          "cls": "notification notify-bell",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "建店",
+          "cls": "el-button el-button--primary",
+          "w": 60,
+          "h": 32
+        },
+        {
+          "text": "夜宵店铺",
+          "cls": "el-button is-text",
+          "w": 88,
+          "h": 40
+        },
+        {
+          "text": "夜宵商品库",
+          "cls": "el-button is-text",
+          "w": 102,
+          "h": 40
+        },
+        {
+          "text": "楼栋商品管理",
+          "cls": "el-button is-text",
+          "w": 116,
+          "h": 40
+        },
+        {
+          "text": "备货审核与出库",
+          "cls": "el-button is-text",
+          "w": 130,
+          "h": 40
+        },
+        {
+          "text": "盘点报损审核",
+          "cls": "el-button is-text active",
+          "w": 116,
+          "h": 40
+        },
+        {
+          "text": "查询",
+          "cls": "el-button el-button--primary",
+          "w": 60,
+          "h": 32
+        },
+        {
+          "text": "重置",
+          "cls": "el-button",
+          "w": 60,
+          "h": 32
+        },
+        {
+          "text": "查看 / 审核",
+          "cls": "el-button el-button--primary is-link",
+          "w": 78,
+          "h": 20
+        },
+        {
+          "text": "查看 / 审核",
+          "cls": "el-button el-button--primary is-link",
+          "w": 78,
+          "h": 20
+        },
+        {
+          "text": "查看 / 审核",
+          "cls": "el-button el-button--primary is-link",
+          "w": 78,
+          "h": 20
+        },
+        {
+          "text": "查看 / 审核",
+          "cls": "el-button el-button--primary is-link",
+          "w": 78,
+          "h": 20
+        },
+        {
+          "text": "查看 / 审核",
+          "cls": "el-button el-button--primary is-link",
+          "w": 78,
+          "h": 20
+        },
+        {
+          "text": "查看 / 审核",
+          "cls": "el-button el-button--primary is-link",
+          "w": 78,
+          "h": 20
+        },
+        {
+          "text": "查看 / 审核",
+          "cls": "el-button el-button--primary is-link",
+          "w": 78,
+          "h": 20
+        },
+        {
+          "text": "查看 / 审核",
+          "cls": "el-button el-button--primary is-link",
+          "w": 78,
+          "h": 20
+        },
+        {
+          "text": "查看 / 审核",
+          "cls": "el-button el-button--primary is-link",
+          "w": 78,
+          "h": 20
+        },
+        {
+          "text": "查看 / 审核",
+          "cls": "el-button el-button--primary is-link",
+          "w": 78,
+          "h": 20
+        },
+        {
+          "text": "查看 / 审核",
+          "cls": "el-button el-button--primary is-link",
+          "w": 78,
+          "h": 20
+        },
+        {
+          "text": "查看 / 审核",
+          "cls": "el-button el-button--primary is-link",
+          "w": 78,
+          "h": 20
+        },
+        {
+          "text": "查看 / 审核",
+          "cls": "el-button el-button--primary is-link",
+          "w": 78,
+          "h": 20
+        }
+      ],
+      "screenshot": "night-final-admin-stores-4-1440.png"
+    },
+    {
+      "kind": "admin",
+      "name": "盘点报损审核",
+      "url": "#/night-stores",
+      "width": 1024,
+      "bodyWidth": 1024,
+      "overflow": [],
+      "smallButtons": [
+        {
+          "text": "",
+          "cls": "icon-button",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "",
+          "cls": "notification",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "🔔",
+          "cls": "notification notify-bell",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "建店",
+          "cls": "el-button el-button--primary",
+          "w": 60,
+          "h": 32
+        },
+        {
+          "text": "夜宵店铺",
+          "cls": "el-button is-text",
+          "w": 88,
+          "h": 40
+        },
+        {
+          "text": "夜宵商品库",
+          "cls": "el-button is-text",
+          "w": 102,
+          "h": 40
+        },
+        {
+          "text": "楼栋商品管理",
+          "cls": "el-button is-text",
+          "w": 116,
+          "h": 40
+        },
+        {
+          "text": "备货审核与出库",
+          "cls": "el-button is-text",
+          "w": 130,
+          "h": 40
+        },
+        {
+          "text": "盘点报损审核",
+          "cls": "el-button is-text active",
+          "w": 116,
+          "h": 40
+        },
+        {
+          "text": "查询",
+          "cls": "el-button el-button--primary",
+          "w": 60,
+          "h": 32
+        },
+        {
+          "text": "重置",
+          "cls": "el-button",
+          "w": 60,
+          "h": 32
+        },
+        {
+          "text": "查看 / 审核",
+          "cls": "el-button el-button--primary is-link",
+          "w": 78,
+          "h": 20
+        },
+        {
+          "text": "查看 / 审核",
+          "cls": "el-button el-button--primary is-link",
+          "w": 78,
+          "h": 20
+        },
+        {
+          "text": "查看 / 审核",
+          "cls": "el-button el-button--primary is-link",
+          "w": 78,
+          "h": 20
+        },
+        {
+          "text": "查看 / 审核",
+          "cls": "el-button el-button--primary is-link",
+          "w": 78,
+          "h": 20
+        },
+        {
+          "text": "查看 / 审核",
+          "cls": "el-button el-button--primary is-link",
+          "w": 78,
+          "h": 20
+        },
+        {
+          "text": "查看 / 审核",
+          "cls": "el-button el-button--primary is-link",
+          "w": 78,
+          "h": 20
+        },
+        {
+          "text": "查看 / 审核",
+          "cls": "el-button el-button--primary is-link",
+          "w": 78,
+          "h": 20
+        },
+        {
+          "text": "查看 / 审核",
+          "cls": "el-button el-button--primary is-link",
+          "w": 78,
+          "h": 20
+        },
+        {
+          "text": "查看 / 审核",
+          "cls": "el-button el-button--primary is-link",
+          "w": 78,
+          "h": 20
+        },
+        {
+          "text": "查看 / 审核",
+          "cls": "el-button el-button--primary is-link",
+          "w": 78,
+          "h": 20
+        },
+        {
+          "text": "查看 / 审核",
+          "cls": "el-button el-button--primary is-link",
+          "w": 78,
+          "h": 20
+        },
+        {
+          "text": "查看 / 审核",
+          "cls": "el-button el-button--primary is-link",
+          "w": 78,
+          "h": 20
+        },
+        {
+          "text": "查看 / 审核",
+          "cls": "el-button el-button--primary is-link",
+          "w": 78,
+          "h": 20
+        }
+      ],
+      "screenshot": "night-final-admin-stores-4-1024.png"
+    },
+    {
+      "kind": "admin",
+      "name": "基础信息",
+      "url": "#/night-stores/night-preview-store",
+      "width": 1440,
+      "bodyWidth": 1440,
+      "overflow": [],
+      "smallButtons": [
+        {
+          "text": "",
+          "cls": "icon-button",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "",
+          "cls": "notification",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "🔔",
+          "cls": "notification notify-bell",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "← 返回店铺列表",
+          "cls": "el-button is-text",
+          "w": 133,
+          "h": 32
+        },
+        {
+          "text": "基础信息",
+          "cls": "el-button is-text active",
+          "w": 88,
+          "h": 40
+        },
+        {
+          "text": "商品与库存",
+          "cls": "el-button is-text",
+          "w": 102,
+          "h": 40
+        },
+        {
+          "text": "押金",
+          "cls": "el-button is-text",
+          "w": 60,
+          "h": 40
+        },
+        {
+          "text": "佣金",
+          "cls": "el-button is-text",
+          "w": 60,
+          "h": 40
+        },
+        {
+          "text": "备货与流水",
+          "cls": "el-button is-text",
+          "w": 102,
+          "h": 40
+        },
+        {
+          "text": "退出清算",
+          "cls": "el-button is-text",
+          "w": 88,
+          "h": 40
+        },
+        {
+          "text": "",
+          "cls": "el-input-number__decrease",
+          "w": 42,
+          "h": 40
+        },
+        {
+          "text": "",
+          "cls": "el-input-number__increase",
+          "w": 42,
+          "h": 40
+        },
+        {
+          "text": "停业",
+          "cls": "el-button el-button--danger el-button--small is-plain",
+          "w": 48,
+          "h": 24
+        },
+        {
+          "text": "保存基础信息",
+          "cls": "el-button el-button--primary",
+          "w": 116,
+          "h": 32
+        }
+      ],
+      "screenshot": "night-final-admin-detail-0-1440.png"
+    },
+    {
+      "kind": "admin",
+      "name": "基础信息",
+      "url": "#/night-stores/night-preview-store",
+      "width": 1024,
+      "bodyWidth": 1024,
+      "overflow": [],
+      "smallButtons": [
+        {
+          "text": "",
+          "cls": "icon-button",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "",
+          "cls": "notification",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "🔔",
+          "cls": "notification notify-bell",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "← 返回店铺列表",
+          "cls": "el-button is-text",
+          "w": 133,
+          "h": 32
+        },
+        {
+          "text": "基础信息",
+          "cls": "el-button is-text active",
+          "w": 88,
+          "h": 40
+        },
+        {
+          "text": "商品与库存",
+          "cls": "el-button is-text",
+          "w": 102,
+          "h": 40
+        },
+        {
+          "text": "押金",
+          "cls": "el-button is-text",
+          "w": 60,
+          "h": 40
+        },
+        {
+          "text": "佣金",
+          "cls": "el-button is-text",
+          "w": 60,
+          "h": 40
+        },
+        {
+          "text": "备货与流水",
+          "cls": "el-button is-text",
+          "w": 102,
+          "h": 40
+        },
+        {
+          "text": "退出清算",
+          "cls": "el-button is-text",
+          "w": 88,
+          "h": 40
+        },
+        {
+          "text": "",
+          "cls": "el-input-number__decrease",
+          "w": 42,
+          "h": 40
+        },
+        {
+          "text": "",
+          "cls": "el-input-number__increase",
+          "w": 42,
+          "h": 40
+        },
+        {
+          "text": "停业",
+          "cls": "el-button el-button--danger el-button--small is-plain",
+          "w": 48,
+          "h": 24
+        },
+        {
+          "text": "保存基础信息",
+          "cls": "el-button el-button--primary",
+          "w": 116,
+          "h": 32
+        }
+      ],
+      "screenshot": "night-final-admin-detail-0-1024.png"
+    },
+    {
+      "kind": "admin",
+      "name": "商品与库存",
+      "url": "#/night-stores/night-preview-store",
+      "width": 1440,
+      "bodyWidth": 1440,
+      "overflow": [],
+      "smallButtons": [
+        {
+          "text": "",
+          "cls": "icon-button",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "",
+          "cls": "notification",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "🔔",
+          "cls": "notification notify-bell",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "← 返回店铺列表",
+          "cls": "el-button is-text",
+          "w": 133,
+          "h": 32
+        },
+        {
+          "text": "基础信息",
+          "cls": "el-button is-text",
+          "w": 88,
+          "h": 40
+        },
+        {
+          "text": "商品与库存",
+          "cls": "el-button is-text active",
+          "w": 102,
+          "h": 40
+        },
+        {
+          "text": "押金",
+          "cls": "el-button is-text",
+          "w": 60,
+          "h": 40
+        },
+        {
+          "text": "佣金",
+          "cls": "el-button is-text",
+          "w": 60,
+          "h": 40
+        },
+        {
+          "text": "备货与流水",
+          "cls": "el-button is-text",
+          "w": 102,
+          "h": 40
+        },
+        {
+          "text": "退出清算",
+          "cls": "el-button is-text",
+          "w": 88,
+          "h": 40
+        },
+        {
+          "text": "配商品（从夜主档勾选）",
+          "cls": "el-button el-button--primary",
+          "w": 186,
+          "h": 32
+        },
+        {
+          "text": "重置筛选",
+          "cls": "el-button",
+          "w": 88,
+          "h": 32
+        }
+      ],
+      "screenshot": "night-final-admin-detail-1-1440.png"
+    },
+    {
+      "kind": "admin",
+      "name": "商品与库存",
+      "url": "#/night-stores/night-preview-store",
+      "width": 1024,
+      "bodyWidth": 1024,
+      "overflow": [],
+      "smallButtons": [
+        {
+          "text": "",
+          "cls": "icon-button",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "",
+          "cls": "notification",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "🔔",
+          "cls": "notification notify-bell",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "← 返回店铺列表",
+          "cls": "el-button is-text",
+          "w": 133,
+          "h": 32
+        },
+        {
+          "text": "基础信息",
+          "cls": "el-button is-text",
+          "w": 88,
+          "h": 40
+        },
+        {
+          "text": "商品与库存",
+          "cls": "el-button is-text active",
+          "w": 102,
+          "h": 40
+        },
+        {
+          "text": "押金",
+          "cls": "el-button is-text",
+          "w": 60,
+          "h": 40
+        },
+        {
+          "text": "佣金",
+          "cls": "el-button is-text",
+          "w": 60,
+          "h": 40
+        },
+        {
+          "text": "备货与流水",
+          "cls": "el-button is-text",
+          "w": 102,
+          "h": 40
+        },
+        {
+          "text": "退出清算",
+          "cls": "el-button is-text",
+          "w": 88,
+          "h": 40
+        },
+        {
+          "text": "配商品（从夜主档勾选）",
+          "cls": "el-button el-button--primary",
+          "w": 186,
+          "h": 32
+        },
+        {
+          "text": "重置筛选",
+          "cls": "el-button",
+          "w": 88,
+          "h": 32
+        }
+      ],
+      "screenshot": "night-final-admin-detail-1-1024.png"
+    },
+    {
+      "kind": "admin",
+      "name": "押金",
+      "url": "#/night-stores/night-preview-store",
+      "width": 1440,
+      "bodyWidth": 1440,
+      "overflow": [],
+      "smallButtons": [
+        {
+          "text": "",
+          "cls": "icon-button",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "",
+          "cls": "notification",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "🔔",
+          "cls": "notification notify-bell",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "← 返回店铺列表",
+          "cls": "el-button is-text",
+          "w": 133,
+          "h": 32
+        },
+        {
+          "text": "基础信息",
+          "cls": "el-button is-text",
+          "w": 88,
+          "h": 40
+        },
+        {
+          "text": "商品与库存",
+          "cls": "el-button is-text",
+          "w": 102,
+          "h": 40
+        },
+        {
+          "text": "押金",
+          "cls": "el-button is-text active",
+          "w": 60,
+          "h": 40
+        },
+        {
+          "text": "佣金",
+          "cls": "el-button is-text",
+          "w": 60,
+          "h": 40
+        },
+        {
+          "text": "备货与流水",
+          "cls": "el-button is-text",
+          "w": 102,
+          "h": 40
+        },
+        {
+          "text": "退出清算",
+          "cls": "el-button is-text",
+          "w": 88,
+          "h": 40
+        },
+        {
+          "text": "刷新账务",
+          "cls": "el-button is-loading",
+          "w": 108,
+          "h": 32
+        },
+        {
+          "text": "判责扣除",
+          "cls": "el-button el-button--danger is-plain",
+          "w": 88,
+          "h": 32
+        },
+        {
+          "text": "押金退还",
+          "cls": "el-button el-button--warning is-plain",
+          "w": 88,
+          "h": 32
+        }
+      ],
+      "screenshot": "night-final-admin-detail-2-1440.png"
+    },
+    {
+      "kind": "admin",
+      "name": "押金",
+      "url": "#/night-stores/night-preview-store",
+      "width": 1024,
+      "bodyWidth": 1024,
+      "overflow": [],
+      "smallButtons": [
+        {
+          "text": "",
+          "cls": "icon-button",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "",
+          "cls": "notification",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "🔔",
+          "cls": "notification notify-bell",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "← 返回店铺列表",
+          "cls": "el-button is-text",
+          "w": 133,
+          "h": 32
+        },
+        {
+          "text": "基础信息",
+          "cls": "el-button is-text",
+          "w": 88,
+          "h": 40
+        },
+        {
+          "text": "商品与库存",
+          "cls": "el-button is-text",
+          "w": 102,
+          "h": 40
+        },
+        {
+          "text": "押金",
+          "cls": "el-button is-text active",
+          "w": 60,
+          "h": 40
+        },
+        {
+          "text": "佣金",
+          "cls": "el-button is-text",
+          "w": 60,
+          "h": 40
+        },
+        {
+          "text": "备货与流水",
+          "cls": "el-button is-text",
+          "w": 102,
+          "h": 40
+        },
+        {
+          "text": "退出清算",
+          "cls": "el-button is-text",
+          "w": 88,
+          "h": 40
+        },
+        {
+          "text": "刷新账务",
+          "cls": "el-button is-loading",
+          "w": 108,
+          "h": 32
+        },
+        {
+          "text": "判责扣除",
+          "cls": "el-button el-button--danger is-plain",
+          "w": 88,
+          "h": 32
+        },
+        {
+          "text": "押金退还",
+          "cls": "el-button el-button--warning is-plain",
+          "w": 88,
+          "h": 32
+        }
+      ],
+      "screenshot": "night-final-admin-detail-2-1024.png"
+    },
+    {
+      "kind": "admin",
+      "name": "佣金",
+      "url": "#/night-stores/night-preview-store",
+      "width": 1440,
+      "bodyWidth": 1440,
+      "overflow": [],
+      "smallButtons": [
+        {
+          "text": "",
+          "cls": "icon-button",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "",
+          "cls": "notification",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "🔔",
+          "cls": "notification notify-bell",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "← 返回店铺列表",
+          "cls": "el-button is-text",
+          "w": 133,
+          "h": 32
+        },
+        {
+          "text": "基础信息",
+          "cls": "el-button is-text",
+          "w": 88,
+          "h": 40
+        },
+        {
+          "text": "商品与库存",
+          "cls": "el-button is-text",
+          "w": 102,
+          "h": 40
+        },
+        {
+          "text": "押金",
+          "cls": "el-button is-text",
+          "w": 60,
+          "h": 40
+        },
+        {
+          "text": "佣金",
+          "cls": "el-button is-text active",
+          "w": 60,
+          "h": 40
+        },
+        {
+          "text": "备货与流水",
+          "cls": "el-button is-text",
+          "w": 102,
+          "h": 40
+        },
+        {
+          "text": "退出清算",
+          "cls": "el-button is-text",
+          "w": 88,
+          "h": 40
+        }
+      ],
+      "screenshot": "night-final-admin-detail-3-1440.png"
+    },
+    {
+      "kind": "admin",
+      "name": "佣金",
+      "url": "#/night-stores/night-preview-store",
+      "width": 1024,
+      "bodyWidth": 1024,
+      "overflow": [],
+      "smallButtons": [
+        {
+          "text": "",
+          "cls": "icon-button",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "",
+          "cls": "notification",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "🔔",
+          "cls": "notification notify-bell",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "← 返回店铺列表",
+          "cls": "el-button is-text",
+          "w": 133,
+          "h": 32
+        },
+        {
+          "text": "基础信息",
+          "cls": "el-button is-text",
+          "w": 88,
+          "h": 40
+        },
+        {
+          "text": "商品与库存",
+          "cls": "el-button is-text",
+          "w": 102,
+          "h": 40
+        },
+        {
+          "text": "押金",
+          "cls": "el-button is-text",
+          "w": 60,
+          "h": 40
+        },
+        {
+          "text": "佣金",
+          "cls": "el-button is-text active",
+          "w": 60,
+          "h": 40
+        },
+        {
+          "text": "备货与流水",
+          "cls": "el-button is-text",
+          "w": 102,
+          "h": 40
+        },
+        {
+          "text": "退出清算",
+          "cls": "el-button is-text",
+          "w": 88,
+          "h": 40
+        }
+      ],
+      "screenshot": "night-final-admin-detail-3-1024.png"
+    },
+    {
+      "kind": "admin",
+      "name": "备货与流水",
+      "url": "#/night-stores/night-preview-store",
+      "width": 1440,
+      "bodyWidth": 1440,
+      "overflow": [],
+      "smallButtons": [
+        {
+          "text": "",
+          "cls": "icon-button",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "",
+          "cls": "notification",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "🔔",
+          "cls": "notification notify-bell",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "← 返回店铺列表",
+          "cls": "el-button is-text",
+          "w": 133,
+          "h": 32
+        },
+        {
+          "text": "基础信息",
+          "cls": "el-button is-text",
+          "w": 88,
+          "h": 40
+        },
+        {
+          "text": "商品与库存",
+          "cls": "el-button is-text",
+          "w": 102,
+          "h": 40
+        },
+        {
+          "text": "押金",
+          "cls": "el-button is-text",
+          "w": 60,
+          "h": 40
+        },
+        {
+          "text": "佣金",
+          "cls": "el-button is-text",
+          "w": 60,
+          "h": 40
+        },
+        {
+          "text": "备货与流水",
+          "cls": "el-button is-text active",
+          "w": 102,
+          "h": 40
+        },
+        {
+          "text": "退出清算",
+          "cls": "el-button is-text",
+          "w": 88,
+          "h": 40
+        },
+        {
+          "text": "刷新流水",
+          "cls": "el-button",
+          "w": 88,
+          "h": 32
+        }
+      ],
+      "screenshot": "night-final-admin-detail-4-1440.png"
+    },
+    {
+      "kind": "admin",
+      "name": "备货与流水",
+      "url": "#/night-stores/night-preview-store",
+      "width": 1024,
+      "bodyWidth": 1024,
+      "overflow": [],
+      "smallButtons": [
+        {
+          "text": "",
+          "cls": "icon-button",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "",
+          "cls": "notification",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "🔔",
+          "cls": "notification notify-bell",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "← 返回店铺列表",
+          "cls": "el-button is-text",
+          "w": 133,
+          "h": 32
+        },
+        {
+          "text": "基础信息",
+          "cls": "el-button is-text",
+          "w": 88,
+          "h": 40
+        },
+        {
+          "text": "商品与库存",
+          "cls": "el-button is-text",
+          "w": 102,
+          "h": 40
+        },
+        {
+          "text": "押金",
+          "cls": "el-button is-text",
+          "w": 60,
+          "h": 40
+        },
+        {
+          "text": "佣金",
+          "cls": "el-button is-text",
+          "w": 60,
+          "h": 40
+        },
+        {
+          "text": "备货与流水",
+          "cls": "el-button is-text active",
+          "w": 102,
+          "h": 40
+        },
+        {
+          "text": "退出清算",
+          "cls": "el-button is-text",
+          "w": 88,
+          "h": 40
+        },
+        {
+          "text": "刷新流水",
+          "cls": "el-button",
+          "w": 88,
+          "h": 32
+        }
+      ],
+      "screenshot": "night-final-admin-detail-4-1024.png"
+    },
+    {
+      "kind": "admin",
+      "name": "退出清算",
+      "url": "#/night-stores/night-preview-store",
+      "width": 1440,
+      "bodyWidth": 1440,
+      "overflow": [],
+      "smallButtons": [
+        {
+          "text": "",
+          "cls": "icon-button",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "",
+          "cls": "notification",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "🔔",
+          "cls": "notification notify-bell",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "← 返回店铺列表",
+          "cls": "el-button is-text",
+          "w": 133,
+          "h": 32
+        },
+        {
+          "text": "基础信息",
+          "cls": "el-button is-text",
+          "w": 88,
+          "h": 40
+        },
+        {
+          "text": "商品与库存",
+          "cls": "el-button is-text",
+          "w": 102,
+          "h": 40
+        },
+        {
+          "text": "押金",
+          "cls": "el-button is-text",
+          "w": 60,
+          "h": 40
+        },
+        {
+          "text": "佣金",
+          "cls": "el-button is-text",
+          "w": 60,
+          "h": 40
+        },
+        {
+          "text": "备货与流水",
+          "cls": "el-button is-text",
+          "w": 102,
+          "h": 40
+        },
+        {
+          "text": "退出清算",
+          "cls": "el-button is-text active",
+          "w": 88,
+          "h": 40
+        },
+        {
+          "text": "刷新清单",
+          "cls": "el-button",
+          "w": 88,
+          "h": 32
+        },
+        {
+          "text": "押金退还（原路退）",
+          "cls": "el-button el-button--warning is-plain",
+          "w": 158,
+          "h": 32
+        },
+        {
+          "text": "解绑楼长",
+          "cls": "el-button el-button--danger is-plain",
+          "w": 88,
+          "h": 32
+        }
+      ],
+      "screenshot": "night-final-admin-detail-5-1440.png"
+    },
+    {
+      "kind": "admin",
+      "name": "退出清算",
+      "url": "#/night-stores/night-preview-store",
+      "width": 1024,
+      "bodyWidth": 1024,
+      "overflow": [],
+      "smallButtons": [
+        {
+          "text": "",
+          "cls": "icon-button",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "",
+          "cls": "notification",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "🔔",
+          "cls": "notification notify-bell",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "← 返回店铺列表",
+          "cls": "el-button is-text",
+          "w": 133,
+          "h": 32
+        },
+        {
+          "text": "基础信息",
+          "cls": "el-button is-text",
+          "w": 88,
+          "h": 40
+        },
+        {
+          "text": "商品与库存",
+          "cls": "el-button is-text",
+          "w": 102,
+          "h": 40
+        },
+        {
+          "text": "押金",
+          "cls": "el-button is-text",
+          "w": 60,
+          "h": 40
+        },
+        {
+          "text": "佣金",
+          "cls": "el-button is-text",
+          "w": 60,
+          "h": 40
+        },
+        {
+          "text": "备货与流水",
+          "cls": "el-button is-text",
+          "w": 102,
+          "h": 40
+        },
+        {
+          "text": "退出清算",
+          "cls": "el-button is-text active",
+          "w": 88,
+          "h": 40
+        },
+        {
+          "text": "刷新清单",
+          "cls": "el-button",
+          "w": 88,
+          "h": 32
+        },
+        {
+          "text": "押金退还（原路退）",
+          "cls": "el-button el-button--warning is-plain",
+          "w": 158,
+          "h": 32
+        },
+        {
+          "text": "解绑楼长",
+          "cls": "el-button el-button--danger is-plain",
+          "w": 88,
+          "h": 32
+        }
+      ],
+      "screenshot": "night-final-admin-detail-5-1024.png"
+    },
+    {
+      "kind": "admin",
+      "name": "night-orders",
+      "url": "#/night-orders",
+      "width": 1440,
+      "bodyWidth": 1440,
+      "overflow": [],
+      "smallButtons": [
+        {
+          "text": "",
+          "cls": "icon-button",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "",
+          "cls": "notification",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "🔔",
+          "cls": "notification notify-bell",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "搜索",
+          "cls": "el-button",
+          "w": 60,
+          "h": 32
+        }
+      ],
+      "screenshot": "night-final-admin-other-0-1440.png"
+    },
+    {
+      "kind": "admin",
+      "name": "night-orders",
+      "url": "#/night-orders",
+      "width": 1024,
+      "bodyWidth": 1024,
+      "overflow": [],
+      "smallButtons": [
+        {
+          "text": "",
+          "cls": "icon-button",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "",
+          "cls": "notification",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "🔔",
+          "cls": "notification notify-bell",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "搜索",
+          "cls": "el-button",
+          "w": 60,
+          "h": 32
+        }
+      ],
+      "screenshot": "night-final-admin-other-0-1024.png"
+    },
+    {
+      "kind": "admin",
+      "name": "night-settlements",
+      "url": "#/night-settlements",
+      "width": 1440,
+      "bodyWidth": 1440,
+      "overflow": [],
+      "smallButtons": [
+        {
+          "text": "",
+          "cls": "icon-button",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "",
+          "cls": "notification",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "🔔",
+          "cls": "notification notify-bell",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "周账单出账",
+          "cls": "el-button el-button--primary",
+          "w": 102,
+          "h": 32
+        },
+        {
+          "text": "刷新",
+          "cls": "el-button",
+          "w": 60,
+          "h": 32
+        }
+      ],
+      "screenshot": "night-final-admin-other-1-1440.png"
+    },
+    {
+      "kind": "admin",
+      "name": "night-settlements",
+      "url": "#/night-settlements",
+      "width": 1024,
+      "bodyWidth": 1024,
+      "overflow": [],
+      "smallButtons": [
+        {
+          "text": "",
+          "cls": "icon-button",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "",
+          "cls": "notification",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "🔔",
+          "cls": "notification notify-bell",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "周账单出账",
+          "cls": "el-button el-button--primary",
+          "w": 102,
+          "h": 32
+        },
+        {
+          "text": "刷新",
+          "cls": "el-button",
+          "w": 60,
+          "h": 32
+        }
+      ],
+      "screenshot": "night-final-admin-other-1-1024.png"
+    },
+    {
+      "kind": "admin",
+      "name": "coupons",
+      "url": "#/coupons",
+      "width": 1440,
+      "bodyWidth": 1440,
+      "overflow": [],
+      "smallButtons": [
+        {
+          "text": "",
+          "cls": "icon-button",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "",
+          "cls": "notification",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "🔔",
+          "cls": "notification notify-bell",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "领取记录",
+          "cls": "el-button",
+          "w": 88,
+          "h": 32
+        },
+        {
+          "text": "新建优惠券",
+          "cls": "el-button el-button--primary",
+          "w": 102,
+          "h": 32
+        },
+        {
+          "text": "查询",
+          "cls": "el-button",
+          "w": 60,
+          "h": 32
+        }
+      ],
+      "screenshot": "night-final-admin-other-2-1440.png"
+    },
+    {
+      "kind": "admin",
+      "name": "coupons",
+      "url": "#/coupons",
+      "width": 1024,
+      "bodyWidth": 1024,
+      "overflow": [],
+      "smallButtons": [
+        {
+          "text": "",
+          "cls": "icon-button",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "",
+          "cls": "notification",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "🔔",
+          "cls": "notification notify-bell",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "领取记录",
+          "cls": "el-button",
+          "w": 88,
+          "h": 32
+        },
+        {
+          "text": "新建优惠券",
+          "cls": "el-button el-button--primary",
+          "w": 102,
+          "h": 32
+        },
+        {
+          "text": "查询",
+          "cls": "el-button",
+          "w": 60,
+          "h": 32
+        }
+      ],
+      "screenshot": "night-final-admin-other-2-1024.png"
+    },
+    {
+      "kind": "admin",
+      "name": "campus-config",
+      "url": "#/campus-config",
+      "width": 1440,
+      "bodyWidth": 1440,
+      "overflow": [],
+      "smallButtons": [
+        {
+          "text": "",
+          "cls": "icon-button",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "",
+          "cls": "notification",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "🔔",
+          "cls": "notification notify-bell",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "基础档案",
+          "cls": "el-button is-text",
+          "w": 88,
+          "h": 40
+        },
+        {
+          "text": "配送与营业",
+          "cls": "el-button is-text",
+          "w": 102,
+          "h": 40
+        },
+        {
+          "text": "楼长结算",
+          "cls": "el-button is-text",
+          "w": 88,
+          "h": 40
+        },
+        {
+          "text": "夜宵店设置",
+          "cls": "el-button is-text active",
+          "w": 102,
+          "h": 40
+        },
+        {
+          "text": "送达时段",
+          "cls": "el-button is-text",
+          "w": 88,
+          "h": 40
+        },
+        {
+          "text": "公告",
+          "cls": "el-button is-text",
+          "w": 60,
+          "h": 40
+        },
+        {
+          "text": "打印机",
+          "cls": "el-button is-text",
+          "w": 74,
+          "h": 40
+        },
+        {
+          "text": "Banner",
+          "cls": "el-button is-text",
+          "w": 79,
+          "h": 40
+        },
+        {
+          "text": "支付广告位",
+          "cls": "el-button is-text",
+          "w": 102,
+          "h": 40
+        },
+        {
+          "text": "抽奖转盘",
+          "cls": "el-button is-text",
+          "w": 88,
+          "h": 40
+        },
+        {
+          "text": "",
+          "cls": "el-input-number__decrease",
+          "w": 42,
+          "h": 40
+        },
+        {
+          "text": "",
+          "cls": "el-input-number__increase",
+          "w": 42,
+          "h": 40
+        },
+        {
+          "text": "",
+          "cls": "el-input-number__decrease",
+          "w": 42,
+          "h": 40
+        },
+        {
+          "text": "",
+          "cls": "el-input-number__increase",
+          "w": 42,
+          "h": 40
+        },
+        {
+          "text": "",
+          "cls": "el-input-number__decrease",
+          "w": 42,
+          "h": 40
+        },
+        {
+          "text": "",
+          "cls": "el-input-number__increase",
+          "w": 42,
+          "h": 40
+        },
+        {
+          "text": "保存夜宵店设置",
+          "cls": "el-button el-button--primary",
+          "w": 130,
+          "h": 32
+        }
+      ],
+      "screenshot": "night-final-admin-other-3-1440.png"
+    },
+    {
+      "kind": "admin",
+      "name": "campus-config",
+      "url": "#/campus-config",
+      "width": 1024,
+      "bodyWidth": 1024,
+      "overflow": [
+        {
+          "tag": "BUTTON",
+          "cls": "el-button is-text",
+          "right": 1110
+        },
+        {
+          "tag": "SPAN",
+          "cls": "",
+          "right": 1094
+        },
+        {
+          "tag": "BUTTON",
+          "cls": "el-button is-text",
+          "right": 1232
+        },
+        {
+          "tag": "SPAN",
+          "cls": "",
+          "right": 1216
+        },
+        {
+          "tag": "BUTTON",
+          "cls": "el-button is-text",
+          "right": 1340
+        },
+        {
+          "tag": "SPAN",
+          "cls": "",
+          "right": 1324
+        }
+      ],
+      "smallButtons": [
+        {
+          "text": "",
+          "cls": "icon-button",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "",
+          "cls": "notification",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "🔔",
+          "cls": "notification notify-bell",
+          "w": 40,
+          "h": 40
+        },
+        {
+          "text": "基础档案",
+          "cls": "el-button is-text",
+          "w": 88,
+          "h": 40
+        },
+        {
+          "text": "配送与营业",
+          "cls": "el-button is-text",
+          "w": 102,
+          "h": 40
+        },
+        {
+          "text": "楼长结算",
+          "cls": "el-button is-text",
+          "w": 88,
+          "h": 40
+        },
+        {
+          "text": "夜宵店设置",
+          "cls": "el-button is-text active",
+          "w": 102,
+          "h": 40
+        },
+        {
+          "text": "送达时段",
+          "cls": "el-button is-text",
+          "w": 88,
+          "h": 40
+        },
+        {
+          "text": "公告",
+          "cls": "el-button is-text",
+          "w": 60,
+          "h": 40
+        },
+        {
+          "text": "打印机",
+          "cls": "el-button is-text",
+          "w": 74,
+          "h": 40
+        },
+        {
+          "text": "Banner",
+          "cls": "el-button is-text",
+          "w": 79,
+          "h": 40
+        },
+        {
+          "text": "支付广告位",
+          "cls": "el-button is-text",
+          "w": 102,
+          "h": 40
+        },
+        {
+          "text": "抽奖转盘",
+          "cls": "el-button is-text",
+          "w": 88,
+          "h": 40
+        },
+        {
+          "text": "",
+          "cls": "el-input-number__decrease",
+          "w": 42,
+          "h": 40
+        },
+        {
+          "text": "",
+          "cls": "el-input-number__increase",
+          "w": 42,
+          "h": 40
+        },
+        {
+          "text": "",
+          "cls": "el-input-number__decrease",
+          "w": 42,
+          "h": 40
+        },
+        {
+          "text": "",
+          "cls": "el-input-number__increase",
+          "w": 42,
+          "h": 40
+        },
+        {
+          "text": "",
+          "cls": "el-input-number__decrease",
+          "w": 42,
+          "h": 40
+        },
+        {
+          "text": "",
+          "cls": "el-input-number__increase",
+          "w": 42,
+          "h": 40
+        },
+        {
+          "text": "保存夜宵店设置",
+          "cls": "el-button el-button--primary",
+          "w": 130,
+          "h": 32
+        }
+      ],
+      "screenshot": "night-final-admin-other-3-1024.png"
+    }
+  ]
+}

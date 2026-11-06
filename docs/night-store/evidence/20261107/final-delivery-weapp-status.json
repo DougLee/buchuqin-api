@@ -1,0 +1,26 @@
+[
+  {
+    "kind": "delivery-weapp",
+    "check": "types",
+    "exitCode": 0,
+    "durationMs": 3877,
+    "log": "/tmp/night-goal-final-delivery-types.log",
+    "apiTarget": "https://admin-test.buchuqin.com/api/v1"
+  },
+  {
+    "kind": "delivery-weapp",
+    "check": "h5",
+    "exitCode": 0,
+    "durationMs": 7439,
+    "log": "/tmp/night-goal-final-delivery-h5.log",
+    "apiTarget": "https://admin-test.buchuqin.com/api/v1"
+  },
+  {
+    "kind": "delivery-weapp",
+    "check": "mp",
+    "exitCode": 0,
+    "durationMs": 5261,
+    "log": "/tmp/night-goal-final-delivery-mp.log",
+    "apiTarget": "https://admin-test.buchuqin.com/api/v1"
+  }
+]
