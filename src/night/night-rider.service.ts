@@ -204,10 +204,9 @@ export class NightRiderService {
   }
 
   /**
-   * 备货下单（免费；押金额度校验）：事务内校验
-   * Σ(现有库存 + 本次数量) × 夜宵售价 ≤ 押金余额，通过则
-   * NightStockOrder 落单 + NightProduct.stock 原子增加 + NightStockTxn(stockIn)。
-   * 超额 400 提示押金差额。线下取货（平台铺货交接），无支付环节。
+   * 免费备货申请：按历史货值及在途、冻结占用校验押金额度，只创建备货单
+   * 并预占额度。校区审核预留共享仓库存，整单出库后由楼长确认实收，
+   * 实收才增加楼长库存；少收差异转报损，审核通过后释放对应额度。
    */
   async createStockOrder(staffId: string, dto: NightStockOrderDto) {
     return this.inventory.createStockOrder(staffId, dto);

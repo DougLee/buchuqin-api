@@ -1,6 +1,7 @@
 {
   "date": "2026-11-07",
-  "purpose": "测试环境四端配套版本；API验收文档在该代码提交之后单独提交，部署同分支最新HEAD包含本文档",
+  "purpose": "测试环境四端配套版本；运行代码与后续验收文档提交分开记录，小程序仅本机H5和构建，未发布",
+  "testEnvironmentAcceptance": "TEST_ENV_E2E_20261107.md",
   "testApi": "https://admin-test.buchuqin.com/api/v1",
   "productionTested": false,
   "completionPercent": 98,
@@ -9,25 +10,29 @@
     {
       "repository": "buchuqin-api",
       "branch": "feature/night-store",
-      "codeCommit": "d7c78d8b2924745c5cf717b3892b2e1d15445efd",
+      "codeCommit": "e4efcd38973eccaef613be46e6d4fee4813d2b92",
+      "deployedToTest": true,
       "remote": "https://gitee.com/buchuqin-group/buchuqin-api.git"
     },
     {
       "repository": "buchuqin-admin",
       "branch": "feature/night-store",
-      "codeCommit": "75314b1e71a38fbcbf0c7407ebf2b1c5ee6a3c2c",
+      "codeCommit": "d68d5b535cc075f8069efed3c44d5b459941e10a",
+      "deployedToTest": true,
       "remote": "https://gitee.com/buchuqin-group/buchuqin-admin.git"
     },
     {
       "repository": "buchuqin-user-weapp",
       "branch": "feature/night-store",
-      "codeCommit": "bbbe73e4370a4afd464c347cc454a538e6a0ca73",
+      "codeCommit": "54851966f6d4c3dc2c44cc8d2797b789244d23c3",
+      "deployedToTest": false,
       "remote": "https://gitee.com/buchuqin-group/buchuqin-user-weapp.git"
     },
     {
       "repository": "buchuqin-delivery-weapp",
       "branch": "feature/night-store",
-      "codeCommit": "5f8febe40cda3e782aec8efad4bafa564d3e9cc4",
+      "codeCommit": "7fdcce126db5ffca193cbd4209e97b3cd8fbb9a6",
+      "deployedToTest": false,
       "remote": "https://gitee.com/buchuqin-group/buchuqin-delivery-weapp.git"
     }
   ]
