@@ -534,6 +534,13 @@ model Product {
    * nightCatalog=false 过滤；夜宵行默认挂「夜宵专供」隐藏分类双保险。
    */
   nightCatalog       Boolean               @default(false)
+  /// 夜宵渠道副本关联的校区实物 SKU；渠道行不另记仓库库存。
+  warehouseProductId String?
+  warehouseProduct   Product? @relation("NightWarehouse", fields: [warehouseProductId], references: [id])
+  nightVariants      Product[] @relation("NightWarehouse")
+  nightBarcode       String?
+  /// 已审核夜宵备货预留。stock 为可用量，实物在库还包含此列。
+  nightReservedStock Int @default(0)
   /**
    * 组织商品目录归属（IKKRMX / ADR-0001 决策 4）：非空=catalogScope='org' 的
    * 组织目录行归属该组织（复用校区模型不建新表——行物理上仍落 campus-official
@@ -1479,7 +1486,7 @@ model NightStore {
   managerStaff   Staff?   @relation(fields: [managerStaffId], references: [id])
   /// open 营业中 / paused 暂停 / closed 打烊 / suspended 停业
   status         String   @default("closed")
-  /// 押金余额（分）：库存×售价≤押金 的校验基准；变动写 NightDepositTxn
+  /// 押金余额（分）：库存历史货值、待配送/损耗及备货预占的额度基准；变动写 NightDepositTxn
   deposit        Int      @default(0)
   /// 佣金比例（万分比，2000=20%）；后台配置，楼长只读
   commissionRate Int      @default(0)
@@ -1494,6 +1501,7 @@ model NightStore {
   depositOrders NightDepositOrder[]
   stockOrders   NightStockOrder[]
   stockTxns     NightStockTxn[]
+  inventoryReports NightInventoryReport[]
   commissionTxns NightCommissionTxn[]
 }
 
@@ -1505,8 +1513,12 @@ model NightProduct {
   /// 主档（Product 夜宵行，catalogScope 含夜宵标识）
   catalogProductId String
   catalogProduct   Product  @relation(fields: [catalogProductId], references: [id])
-  /// 本楼库存（备货下单入账/销售扣减/退款回库/盘点调整，全走流水）
+  /// 本楼可售库存（实收才入账；下单预占、报损冻结、审核盘盈等全走流水）
   stock            Int      @default(0)
+  /// 可售数量对应的历史入库货值（分），不随售价重估。
+  inventoryValue   Int      @default(0)
+  inventoryVersion Int      @default(0)
+  frozenStock      Int      @default(0)
   /// 楼长上架选择（备货入库默认上架；后台停售不覆盖此选择）
   onShelf          Boolean  @default(true)
   /// 后台售卖许可（false=强制下架，优先于楼长选择）
@@ -1566,6 +1578,9 @@ model NightOrder {
   couponSnapshot Json?
   /// 下单时店铺佣金比例快照（万分比）
   commissionRate Int
+  /// 已锁定但仍在楼长手中的商品历史货值；送达释放。
+  quotaHeld      Int @default(0)
+  inventoryRestocked Boolean @default(false)
   /// 本楼地址快照 {buildingName, room, contactName, phone}
   address        Json
   remark         String   @default("")
@@ -1614,7 +1629,7 @@ model NightCommissionTxn {
   @@index([settleBatch])
 }
 
-/// 楼长备货订单（下单即库存入账一步制；押金额度校验凭证）
+/// 楼长备货申请：申请占额度、校区审核预留、出库后一次确认实收。
 model NightStockOrder {
   id             String     @id @default(cuid())
   storeId        String
@@ -1625,11 +1640,49 @@ model NightStockOrder {
   items          Json
   /// 货值合计（分，校验通过瞬间计算值留痕）
   totalValue     Int
-  status         String     @default("completed")
+  /// 未收货预占。少收部分转入收货损耗报告，待审核才释放。
+  heldValue      Int @default(0)
+  /// requested / approved / shipped / received / rejected / cancelled；completed 为历史一步制单。
+  status         String     @default("requested")
+  reason         String @default("")
+  reviewedBy     String?
+  reviewedAt     DateTime?
+  shippedBy      String?
+  shippedAt      DateTime?
+  receivedAt     DateTime?
   createdAt      DateTime   @default(now())
+  updatedAt      DateTime @updatedAt
+  inventoryReports NightInventoryReport[]
 
   @@index([storeId, createdAt])
   @@unique([storeId, requestId])
+}
+
+/// 楼长盘点、店内损耗及收货少货共用审核单，数量/货值快照不得随调价改写。
+model NightInventoryReport {
+  id String @id @default(cuid())
+  storeId String
+  store NightStore @relation(fields: [storeId], references: [id])
+  managerStaffId String
+  /// loss / stocktake / receipt-shortage
+  kind String
+  status String @default("pending")
+  requestId String
+  stockOrderId String?
+  stockOrder NightStockOrder? @relation(fields: [stockOrderId], references: [id])
+  items Json
+  reason String
+  photos Json?
+  heldValue Int @default(0)
+  reviewReason String @default("")
+  reviewedBy String?
+  reviewedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([storeId, requestId])
+  @@index([storeId, status])
+  @@index([stockOrderId])
 }
 
 /// 夜宵库存流水（NightProduct.stock 的全量变动账本；

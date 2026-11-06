@@ -14,6 +14,8 @@ import {
   nightBusinessDate,
 } from './night.helpers';
 import { NightStockOrderDto, NightDeliverDto } from './night.dto';
+import { NightInventoryService } from './night-inventory.service';
+import { parsePagination } from '../common/pagination';
 
 const json = (value: unknown) =>
   JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
@@ -28,6 +30,9 @@ export class NightRiderService {
   constructor(
     private readonly db: PrismaService,
     private readonly orders: NightOrderService,
+    private readonly inventory: NightInventoryService = new NightInventoryService(
+      db,
+    ),
   ) {}
 
   /** 所有履约员工均可查询；时间和资格由服务端裁决。 */
@@ -190,42 +195,7 @@ export class NightRiderService {
    * （当前库存/上架状态）。楼栋行未配置的显示为「未配置」。
    */
   async stockPool(staffId: string) {
-    const store = await this.myStore(staffId);
-    const [catalog, mine] = await Promise.all([
-      this.db.product.findMany({
-        where: {
-          campusId: store.campusId,
-          nightCatalog: true,
-          status: 'on-sale',
-        },
-        select: {
-          id: true,
-          name: true,
-          image: true,
-          price: true,
-          status: true,
-        },
-        orderBy: { updatedAt: 'desc' },
-      }),
-      this.db.nightProduct.findMany({ where: { storeId: store.id } }),
-    ]);
-    const mineMap = new Map(mine.map((m) => [m.catalogProductId, m]));
-    return catalog.map((c) => {
-      const row = mineMap.get(c.id);
-      return {
-        catalogProductId: c.id,
-        name: c.name,
-        image: c.image,
-        price: c.price, // 夜宵统一售价（主档）
-        status: c.status,
-        attached: Boolean(row),
-        nightProductId: row?.id ?? null,
-        stock: row?.stock ?? 0,
-        onShelf: row?.onShelf ?? false,
-        saleAllowed: row?.saleAllowed ?? true,
-        stockValue: (row?.stock ?? 0) * c.price,
-      };
-    });
+    return this.inventory.stockPool(staffId);
   }
 
   /**
@@ -235,158 +205,13 @@ export class NightRiderService {
    * 超额 400 提示押金差额。线下取货（平台铺货交接），无支付环节。
    */
   async createStockOrder(staffId: string, dto: NightStockOrderDto) {
-    const store = await this.myStore(staffId);
-    // 同商品多行合并数量
-    const merged = new Map<string, number>();
-    for (const item of dto.items)
-      merged.set(
-        item.catalogProductId,
-        (merged.get(item.catalogProductId) ?? 0) + item.quantity,
-      );
-    const result = await this.db.$transaction(async (tx) => {
-      // 串行化同店备货，防止两个请求同时通过押金额度检查。
-      await tx.$queryRaw`SELECT id FROM "NightStore" WHERE id = ${store.id} FOR UPDATE`;
-      if (dto.requestId) {
-        const previous = await tx.nightStockOrder.findUnique({
-          where: {
-            storeId_requestId: { storeId: store.id, requestId: dto.requestId },
-          },
-        });
-        if (previous) {
-          if (previous.managerStaffId !== staffId)
-            throw new BadRequestException('该备货单不属于当前经营者');
-          return { stockOrder: previous, totalValue: previous.totalValue };
-        }
-      }
-      const fresh = await tx.nightStore.findUnique({ where: { id: store.id } });
-      if (!fresh) throw new NotFoundException('夜宵店不存在');
-      if (fresh.managerStaffId !== staffId)
-        throw new BadRequestException('经营资格已变更，请刷新');
-      if (fresh.status === 'suspended')
-        throw new BadRequestException('店铺已停业，暂不能进货');
-      const catalog = await tx.product.findMany({
-        where: {
-          id: { in: [...merged.keys()] },
-          campusId: store.campusId,
-          nightCatalog: true,
-          status: 'on-sale',
-        },
-        select: { id: true },
-      });
-      if (catalog.length !== merged.size)
-        throw new BadRequestException('存在不可进货或不属于本校区的商品');
-      for (const item of catalog)
-        await tx.nightProduct.upsert({
-          where: {
-            storeId_catalogProductId: {
-              storeId: store.id,
-              catalogProductId: item.id,
-            },
-          },
-          create: {
-            storeId: store.id,
-            catalogProductId: item.id,
-            stock: 0,
-            onShelf: true,
-          },
-          update: {},
-        });
-      const rows = await tx.nightProduct.findMany({
-        where: {
-          storeId: store.id,
-        },
-        include: {
-          catalogProduct: {
-            select: { id: true, name: true, price: true, status: true },
-          },
-        },
-      });
-      const selected = rows.filter((r) => merged.has(r.catalogProductId));
-      if (selected.length !== merged.size)
-        throw new BadRequestException(
-          '存在未配置商品，请联系后台先给本店配置商品',
-        );
-      // 押金额度校验（现有库存×售价 + 本次×售价 ≤ 押金）
-      const currentValue = rows.reduce(
-        (sum, row) => sum + row.stock * row.catalogProduct.price,
-        0,
-      );
-      let orderValue = 0;
-      for (const row of selected) {
-        const qty = merged.get(row.catalogProductId)!;
-        if (row.catalogProduct.status !== 'on-sale')
-          throw new BadRequestException(
-            `${row.catalogProduct.name}夜主档已停售`,
-          );
-        if (qty <= 0) throw new BadRequestException('备货数量不合法');
-        orderValue += qty * row.catalogProduct.price;
-      }
-      const gap = currentValue + orderValue - fresh.deposit;
-      if (gap > 0)
-        throw new BadRequestException(
-          `押金额度不足：库存货值 + 本次备货货值超出押金 ${(gap / 100).toFixed(2)} 元，请先补缴押金（500 元档递增）`,
-        );
-      const items = selected.map((row) => ({
-        nightProductId: row.id,
-        catalogProductId: row.catalogProductId,
-        name: row.catalogProduct.name,
-        price: row.catalogProduct.price,
-        quantity: merged.get(row.catalogProductId)!,
-      }));
-      const totalValue = items.reduce((s, i) => s + i.price * i.quantity, 0);
-      const stockOrder = await tx.nightStockOrder.create({
-        data: {
-          storeId: store.id,
-          managerStaffId: staffId,
-          requestId: dto.requestId,
-          items: json(items),
-          totalValue,
-        },
-      });
-      // 库存入账（一步制）：NightProduct.stock 增加 + stockIn 流水
-      for (const item of items) {
-        const updated = await tx.nightProduct.update({
-          where: { id: item.nightProductId },
-          data: { stock: { increment: item.quantity } },
-        });
-        await tx.nightStockTxn.create({
-          data: {
-            storeId: store.id,
-            nightProductId: item.nightProductId,
-            type: 'stockIn',
-            delta: item.quantity,
-            afterStock: updated.stock,
-            refType: 'night-stock-order',
-            refId: stockOrder.id,
-            operatorId: staffId,
-            remark: '备货入库（押金额度校验通过）',
-          },
-        });
-      }
-      return { stockOrder, totalValue };
-    });
-    return {
-      id: result.stockOrder.id,
-      totalValue: result.totalValue,
-      createdAt: result.stockOrder.createdAt.toISOString(),
-    };
+    return this.inventory.createStockOrder(staffId, dto);
   }
 
   /** 备货记录列表。 */
   async stockOrders(staffId: string) {
-    const store = await this.myStore(staffId);
-    const rows = await this.db.nightStockOrder.findMany({
-      where: { storeId: store.id, managerStaffId: staffId },
-      orderBy: { createdAt: 'desc' },
-      take: 100,
-    });
-    return rows.map((r) => ({
-      id: r.id,
-      items: r.items,
-      totalValue: r.totalValue,
-      status: r.status,
-      createdAt: r.createdAt.toISOString(),
-    }));
+    const store = await this.inventory.myStore(staffId);
+    return this.inventory.stockOrders(store.id, staffId);
   }
 
   /* ==================== 营业管理 ==================== */
@@ -464,34 +289,26 @@ export class NightRiderService {
   async dashboard(staffId: string) {
     const store = await this.myStore(staffId);
     const today = nightBusinessDate();
-    const [pendingOrders, todayAgg, products, commissionAgg] =
-      await Promise.all([
-        this.db.nightOrder.count({
-          where: { storeId: store.id, status: 'pending-accept' },
-        }),
-        this.db.nightOrder.aggregate({
-          where: {
-            storeId: store.id,
-            businessDate: today,
-            status: { notIn: ['cancelled', 'pending-payment', 'exception'] },
-          },
-          _count: true,
-          _sum: { payableAmount: true },
-        }),
-        this.db.nightProduct.findMany({
-          where: { storeId: store.id },
-          include: { catalogProduct: { select: { price: true } } },
-        }),
-        this.db.nightCommissionTxn.groupBy({
-          by: ['type', 'status'],
-          where: { managerStaffId: staffId },
-          _sum: { amount: true },
-        }),
-      ]);
-    const stockValue = products.reduce(
-      (s, p) => s + p.stock * p.catalogProduct.price,
-      0,
-    );
+    const [pendingOrders, todayAgg, quota, commissionAgg] = await Promise.all([
+      this.db.nightOrder.count({
+        where: { storeId: store.id, status: 'pending-accept' },
+      }),
+      this.db.nightOrder.aggregate({
+        where: {
+          storeId: store.id,
+          businessDate: today,
+          status: { notIn: ['cancelled', 'pending-payment', 'exception'] },
+        },
+        _count: true,
+        _sum: { payableAmount: true },
+      }),
+      this.inventory.summary(store.id),
+      this.db.nightCommissionTxn.groupBy({
+        by: ['type', 'status'],
+        where: { managerStaffId: staffId },
+        _sum: { amount: true },
+      }),
+    ]);
     const commission = { estimated: 0, pending: 0, settled: 0 };
     const deliveryFee = { estimated: 0, pending: 0, settled: 0 };
     for (const row of commissionAgg) {
@@ -514,12 +331,11 @@ export class NightRiderService {
         nightEndAt: c.nightEndAt,
       },
       inWindow: inNightWindow(c.nightStartAt, c.nightEndAt),
-      deposit: store.deposit,
       gapToNextTier: nextDepositTier(store.deposit) - store.deposit,
       pendingOrders,
       todayOrders: todayAgg._count,
       todaySales: todayAgg._sum.payableAmount ?? 0,
-      stockValue,
+      ...quota,
       // 楼长侧透明化（V1.5 修订项 2）：佣金/配送费两列分账
       commission,
       deliveryFee,
@@ -530,38 +346,7 @@ export class NightRiderService {
 
   /** 本店商品列表（含库存/上下架/停售状态）。 */
   async myProducts(staffId: string) {
-    const store = await this.myStore(staffId);
-    const rows = await this.db.nightProduct.findMany({
-      where: { storeId: store.id },
-      include: {
-        catalogProduct: {
-          select: {
-            id: true,
-            name: true,
-            image: true,
-            price: true,
-            status: true,
-          },
-        },
-      },
-      orderBy: { createdAt: 'asc' },
-    });
-    return rows.map((r) => ({
-      id: r.id,
-      catalogProductId: r.catalogProductId,
-      name: r.catalogProduct.name,
-      image: r.catalogProduct.image,
-      price: r.catalogProduct.price,
-      catalogStatus: r.catalogProduct.status,
-      stock: r.stock,
-      onShelf: r.onShelf,
-      saleAllowed: r.saleAllowed,
-      purchasable:
-        r.onShelf &&
-        r.saleAllowed &&
-        r.stock > 0 &&
-        r.catalogProduct.status === 'on-sale',
-    }));
+    return this.inventory.products(staffId);
   }
 
   /**
@@ -596,21 +381,40 @@ export class NightRiderService {
 
   /** 本店订单列表（按状态筛选）。 */
   async storeOrders(staffId: string, status?: string) {
+    return (await this.storeOrdersPage(staffId, status, '1', '100')).items;
+  }
+
+  async storeOrdersPage(
+    staffId: string,
+    status?: string,
+    page?: string,
+    pageSize?: string,
+  ) {
     const store = await this.myStore(staffId);
-    const rows = await this.db.nightOrder.findMany({
-      where: {
-        storeId: store.id,
-        managerStaffId: staffId,
-        ...(status && status !== 'all'
-          ? status === 'todo'
-            ? { status: { in: ['pending-accept', 'delivering'] } }
-            : { status }
-          : {}),
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 100,
-    });
-    return rows.map((o) => this.orders.orderView(o));
+    const paging = parsePagination(page, pageSize);
+    const where: Prisma.NightOrderWhereInput = {
+      storeId: store.id,
+      managerStaffId: staffId,
+      ...(status && status !== 'all'
+        ? status === 'todo'
+          ? { status: { in: ['pending-accept', 'delivering'] } }
+          : { status }
+        : {}),
+    };
+    const [rows, total] = await Promise.all([
+      this.db.nightOrder.findMany({
+        where,
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        skip: (paging.page - 1) * paging.pageSize,
+        take: paging.pageSize,
+      }),
+      this.db.nightOrder.count({ where }),
+    ]);
+    return {
+      items: rows.map((o) => this.orders.orderView(o)),
+      total,
+      ...paging,
+    };
   }
 
   /** 接单（校验本人店铺；pending-accept → delivering）。 */

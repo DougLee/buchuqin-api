@@ -55,16 +55,41 @@ describe('配送端夜宵经营边界（内存测试，不连接数据库）', (
     const db = {
       nightStore: { findUnique: jest.fn().mockResolvedValue(store) },
       nightDepositOrder: {
-        findFirst: jest.fn().mockResolvedValue(null), updateMany: jest.fn(),
-        create: jest.fn().mockImplementation(({ data }) => ({ ...data, id: 'intent' })),
+        findFirst: jest.fn().mockResolvedValue(null),
+        updateMany: jest.fn(),
+        create: jest
+          .fn()
+          .mockImplementation(({ data }) => ({ ...data, id: 'intent' })),
       },
     };
-    const payments = { registerNightPaymentHandler: jest.fn(), nightPrepay: jest.fn().mockResolvedValue({}) };
-    const service = new NightOrderService(db as unknown as PrismaService, payments as unknown as PaymentsService);
-    const result = await service.initiateDepositPay('store', 'campus', 'openid', 'delivery-app', 150000);
+    const payments = {
+      registerNightPaymentHandler: jest.fn(),
+      nightPrepay: jest.fn().mockResolvedValue({}),
+    };
+    const service = new NightOrderService(
+      db as unknown as PrismaService,
+      payments as unknown as PaymentsService,
+    );
+    const result = await service.initiateDepositPay(
+      'store',
+      'campus',
+      'openid',
+      'delivery-app',
+      150000,
+    );
     expect(result.amount).toBe(100000);
-    expect(payments.nightPrepay.mock.calls[0][0].payerAppId).toBe('delivery-app');
-    await expect(service.initiateDepositPay('store', 'campus', 'openid', 'delivery-app', 70000)).rejects.toThrow('500 元押金档位');
+    expect(payments.nightPrepay.mock.calls[0][0].payerAppId).toBe(
+      'delivery-app',
+    );
+    await expect(
+      service.initiateDepositPay(
+        'store',
+        'campus',
+        'openid',
+        'delivery-app',
+        70000,
+      ),
+    ).rejects.toThrow('500 元押金档位');
     expect(payments.nightPrepay).toHaveBeenCalledTimes(1);
   });
 
@@ -99,71 +124,21 @@ describe('配送端夜宵经营边界（内存测试，不连接数据库）', (
     expect((await service.businessContext('staff')).mode).toBe('rest');
   });
 
-  it('进货额度包括未选中商品的库存，防止拆单绕过押金额度', async () => {
-    const db = mocked();
-    db.nightProduct.findMany.mockResolvedValue([
-      {
-        id: 'p1',
-        catalogProductId: 'a',
-        stock: 0,
-        catalogProduct: { price: 1000, name: 'A', status: 'on-sale' },
-      },
-      {
-        id: 'p2',
-        catalogProductId: 'b',
-        stock: 49,
-        catalogProduct: { price: 1000, name: 'B', status: 'on-sale' },
-      },
-    ]);
-    const service = new NightRiderService(
-      db as unknown as PrismaService,
-      {} as NightOrderService,
-    );
-    await expect(
-      service.createStockOrder('staff', {
-        items: [{ catalogProductId: 'a', quantity: 2 }],
-      }),
-    ).rejects.toThrow('押金额度不足');
-    expect(db.nightProduct.update).not.toHaveBeenCalled();
-    expect(db.$queryRaw).toHaveBeenCalled();
-  });
-
-  it('同一请求重试直接返回原备货单，不重复入库', async () => {
-    const db = mocked();
-    db.nightStockOrder.findUnique.mockResolvedValue({
-      id: 'existing',
-      managerStaffId: 'staff',
-      totalValue: 1000,
-      createdAt: new Date(),
-    });
-    const service = new NightRiderService(
-      db as unknown as PrismaService,
-      {} as NightOrderService,
-    );
-    const result = await service.createStockOrder('staff', {
-      requestId: 'request-1',
-      items: [{ catalogProductId: 'a', quantity: 1 }],
-    });
-    expect(result.id).toBe('existing');
-    expect(db.nightStockOrder.create).not.toHaveBeenCalled();
-    expect(db.nightProduct.update).not.toHaveBeenCalled();
-  });
-
   it('送达原子完成并保存照片；售后进行中不提前解冻佣金', async () => {
     const db = {
+      $queryRaw: jest.fn(),
+      nightStore: { findUnique: jest.fn().mockResolvedValue(store) },
       nightOrder: {
-        findUnique: jest
-          .fn()
-          .mockResolvedValue({
-            id: 'order',
-            storeId: 'store',
-            managerStaffId: 'staff',
-            status: 'delivering',
-            timeline: [],
-            userId: 'user',
-            orderNo: 'YX1',
-            afterSaleStatus: 'requested',
-          }),
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'order',
+          storeId: 'store',
+          managerStaffId: 'staff',
+          status: 'delivering',
+          timeline: [],
+          userId: 'user',
+          orderNo: 'YX1',
+          afterSaleStatus: 'requested',
+        }),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
       nightCommissionTxn: { updateMany: jest.fn() },
@@ -189,6 +164,6 @@ describe('配送端夜宵经营边界（内存测试，不连接数据库）', (
       service.deliverOrder('other', 'store', 'order', {
         images: ['https://example.com/proof.jpg'],
       }),
-    ).rejects.toThrow('非本人经营订单');
+    ).rejects.toThrow('经营资格已变化');
   });
 });

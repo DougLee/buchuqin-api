@@ -19,6 +19,7 @@ import { RbacService, type RbacContext } from '../admin/rbac/rbac.service';
 import { ok } from '../common/api-response';
 import { paginate } from '../common/pagination';
 import { NightAdminService } from './night-admin.service';
+import { NightInventoryService } from './night-inventory.service';
 import {
   NightCatalogCreateDto,
   NightCatalogUpdateDto,
@@ -32,6 +33,9 @@ import {
   NightStoreCreateDto,
   NightStoreProductAttachDto,
   NightStoreUpdateDto,
+  NightCatalogImportDto,
+  NightReviewDto,
+  NightReasonDto,
 } from './night.dto';
 
 /**
@@ -48,6 +52,7 @@ export class NightAdminController {
   constructor(
     private readonly service: NightAdminService,
     private readonly rbac: RbacService,
+    private readonly inventory: NightInventoryService,
   ) {}
 
   /** 本请求 RBAC 上下文（守卫已装载） */
@@ -169,7 +174,7 @@ export class NightAdminController {
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
   ) {
-    const rows = await this.service.catalogProducts(
+    const rows = await this.inventory.catalog(
       await this.campusScope(req, campus),
       keyword,
     );
@@ -177,6 +182,126 @@ export class NightAdminController {
   }
 
   /* ---------- 楼栋商品 ---------- */
+
+  @Get('catalog/candidates')
+  async catalogCandidates(
+    @Req() req: AuthRequest,
+    @Query('keyword') keyword?: string,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+  ) {
+    await this.campusScope(req);
+    return ok(
+      paginate(await this.inventory.catalogCandidates(keyword), page, pageSize),
+    );
+  }
+
+  @Post('catalog/import')
+  async importCatalog(
+    @Req() req: AuthRequest,
+    @Body() body: NightCatalogImportDto,
+  ) {
+    const campusId = await this.campusScope(req, body.campusId);
+    return ok(
+      await this.inventory.importCatalog(
+        req.user.id,
+        campusId,
+        body.productIds,
+      ),
+    );
+  }
+
+  @Get('stock-orders')
+  async stockOrders(
+    @Req() req: AuthRequest,
+    @Query('status') status?: string,
+    @Query('storeId') storeId?: string,
+  ) {
+    if (storeId) await this.guardStoreCampus(req, storeId);
+    return ok(
+      await this.inventory.campusStockOrders(
+        await this.campusScope(req),
+        status,
+        storeId,
+      ),
+    );
+  }
+
+  private async guardStockOrder(req: AuthRequest, id: string) {
+    await this.guardStoreCampus(req, await this.inventory.stockOrderStore(id));
+  }
+
+  @Post('stock-orders/:id/review')
+  async reviewStockOrder(
+    @Req() req: AuthRequest,
+    @Param('id') id: string,
+    @Body() body: NightReviewDto,
+  ) {
+    await this.guardStockOrder(req, id);
+    return ok(
+      await this.inventory.reviewStockOrder(
+        req.user.id,
+        id,
+        body.approved,
+        body.reason,
+      ),
+    );
+  }
+
+  @Post('stock-orders/:id/ship')
+  async shipStockOrder(@Req() req: AuthRequest, @Param('id') id: string) {
+    await this.guardStockOrder(req, id);
+    return ok(await this.inventory.shipStockOrder(req.user.id, id));
+  }
+
+  @Post('stock-orders/:id/cancel')
+  async cancelStockOrder(
+    @Req() req: AuthRequest,
+    @Param('id') id: string,
+    @Body() body: NightReasonDto,
+  ) {
+    await this.guardStockOrder(req, id);
+    return ok(
+      await this.inventory.cancelStockOrder(
+        id,
+        { operatorId: req.user.id },
+        body.reason,
+      ),
+    );
+  }
+
+  @Get('inventory-reports')
+  async inventoryReports(
+    @Req() req: AuthRequest,
+    @Query('status') status?: string,
+    @Query('storeId') storeId?: string,
+  ) {
+    if (storeId) await this.guardStoreCampus(req, storeId);
+    return ok(
+      await this.inventory.campusReports(
+        await this.campusScope(req),
+        status,
+        storeId,
+      ),
+    );
+  }
+
+  @Post('inventory-reports/:id/review')
+  async reviewInventoryReport(
+    @Req() req: AuthRequest,
+    @Param('id') id: string,
+    @Body() body: NightReviewDto,
+  ) {
+    await this.guardStoreCampus(req, await this.inventory.reportStore(id));
+    return ok(
+      await this.inventory.reviewReport(
+        req.user.id,
+        id,
+        body.approved,
+        body.reason,
+      ),
+    );
+  }
 
   @Post('stores/:id/products')
   @ApiOperation({ summary: '给店铺配商品（夜主档勾选生成楼栋行）' })

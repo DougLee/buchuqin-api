@@ -124,6 +124,7 @@ export class NightStockOrderDto {
   @IsOptional() @IsString() @MinLength(8) @MaxLength(100) requestId?: string;
   @IsArray()
   @ArrayMinSize(1)
+  @ArrayMaxSize(100)
   @ValidateNested({ each: true })
   @Type(() => NightStockItemDto)
   items!: NightStockItemDto[];
@@ -131,7 +132,56 @@ export class NightStockOrderDto {
 
 export class NightStockItemDto {
   @IsString() catalogProductId!: string;
-  @IsInt() @Min(1) quantity!: number;
+  @IsInt() @Min(1) @Max(9999) quantity!: number;
+}
+
+export class NightCatalogImportDto {
+  @IsOptional() @IsString() campusId?: string;
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(100)
+  @IsString({ each: true })
+  productIds!: string[];
+}
+export class NightReviewDto {
+  @IsBoolean() approved!: boolean;
+  @IsString() @MaxLength(500) reason!: string;
+}
+export class NightReasonDto {
+  @IsString() @MinLength(1) @MaxLength(500) reason!: string;
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(9)
+  @IsString({ each: true })
+  photos?: string[];
+}
+export class NightReceiveItemDto {
+  @IsString() catalogProductId!: string;
+  @IsInt() @Min(0) @Max(9999) quantity!: number;
+}
+export class NightReceiveDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(100)
+  @ValidateNested({ each: true })
+  @Type(() => NightReceiveItemDto)
+  items!: NightReceiveItemDto[];
+}
+export class NightReportItemDto {
+  @IsString() nightProductId!: string;
+  /** loss 为报损件数，stocktake 为盘点可售实数（不含冻结/待配送）。 */
+  @IsInt() @Min(0) @Max(99999) quantity!: number;
+  @IsInt() @Min(0) inventoryVersion!: number;
+}
+export class NightReportDto extends NightReasonDto {
+  @IsString() @MinLength(8) @MaxLength(100) requestId!: string;
+  @IsIn(['loss', 'stocktake']) kind!: 'loss' | 'stocktake';
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(100)
+  @ValidateNested({ each: true })
+  @Type(() => NightReportItemDto)
+  items!: NightReportItemDto[];
 }
 
 export class NightShelfDto {

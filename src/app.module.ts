@@ -41,6 +41,7 @@ import { NightOrderService } from './night/night-order.service';
 import { NightRiderService } from './night/night-rider.service';
 import { NightUserService } from './night/night-user.service';
 import { NightTimeoutService } from './night/night-timeout.service';
+import { NightInventoryService } from './night/night-inventory.service';
 
 // 部署模式下由 API 容器托管管理后台静态站（ADMIN_DIST_DIR 指向挂载目录）；
 // 本地开发不设置该变量，行为不变
@@ -113,6 +114,7 @@ const adminDistDir = process.env.ADMIN_DIST_DIR ?? '';
     NightRiderService,
     NightUserService,
     NightTimeoutService,
+    NightInventoryService,
     JwtAuthGuard,
     UserRoleGuard,
     // RBAC V1：权限登记同步 + 有效权限服务 + 后台鉴权守卫

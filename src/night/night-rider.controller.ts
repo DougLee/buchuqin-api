@@ -16,11 +16,15 @@ import type { AuthRequest } from '../auth/jwt-auth.guard';
 import { ok, type ApiResponse } from '../common/api-response';
 import { paginate } from '../common/pagination';
 import { NightRiderService } from './night-rider.service';
+import { NightInventoryService } from './night-inventory.service';
 import {
   NightShelfDto,
   NightStockOrderDto,
   NightDeliverDto,
   NightDepositPayDto,
+  NightReceiveDto,
+  NightReasonDto,
+  NightReportDto,
 } from './night.dto';
 
 /**
@@ -33,7 +37,10 @@ import {
 @UseGuards(JwtAuthGuard)
 @Controller('night-rider')
 export class NightRiderController {
-  constructor(private readonly service: NightRiderService) {}
+  constructor(
+    private readonly service: NightRiderService,
+    private readonly inventory: NightInventoryService,
+  ) {}
 
   private auth(req: AuthRequest): string {
     if (
@@ -83,11 +90,11 @@ export class NightRiderController {
   }
 
   @Post('night/stock/orders')
-  @ApiOperation({ summary: '备货下单（免费；押金额度校验，下单即库存入账）' })
+  @ApiOperation({ summary: '提交备货申请，预占额度，待校区审核出库' })
   async createStockOrder(@Req() r: AuthRequest, @Body() d: NightStockOrderDto) {
     return ok(
       await this.service.createStockOrder(this.auth(r), d),
-      '备货成功，请线下取货',
+      '申请已提交，等待校区审核',
     );
   }
 
@@ -104,6 +111,76 @@ export class NightRiderController {
   }
 
   /* ---------- 工作台与营业管理 ---------- */
+
+  @Post('night/stock/orders/:id/cancel')
+  async cancelStock(
+    @Req() r: AuthRequest,
+    @Param('id') id: string,
+    @Body() body: NightReasonDto,
+  ) {
+    return ok(
+      await this.inventory.cancelStockOrder(
+        id,
+        { staffId: this.auth(r) },
+        body.reason,
+      ),
+    );
+  }
+
+  @Post('night/stock/orders/:id/receive')
+  async receiveStock(
+    @Req() r: AuthRequest,
+    @Param('id') id: string,
+    @Body() body: NightReceiveDto,
+  ) {
+    return ok(
+      await this.inventory.receiveStockOrder(this.auth(r), id, body.items),
+      '实收库存已入账',
+    );
+  }
+
+  @Get('night/inventory/reports')
+  async inventoryReports(@Req() r: AuthRequest) {
+    const staffId = this.auth(r),
+      store = await this.inventory.myStore(staffId);
+    return ok(await this.inventory.reports(store.id, staffId));
+  }
+
+  @Post('night/inventory/reports')
+  async submitInventoryReport(
+    @Req() r: AuthRequest,
+    @Body() body: NightReportDto,
+  ) {
+    return ok(
+      await this.inventory.createReport(this.auth(r), body),
+      '已提交校区审核',
+    );
+  }
+
+  @Post('night/inventory/reports/:id/resubmit')
+  async resubmitInventoryReport(
+    @Req() r: AuthRequest,
+    @Param('id') id: string,
+    @Body() body: NightReasonDto,
+  ) {
+    return ok(
+      await this.inventory.resubmitShortage(
+        this.auth(r),
+        id,
+        body.reason,
+        body.photos,
+      ),
+    );
+  }
+
+  @Get('night/inventory/txns')
+  async inventoryTransactions(
+    @Req() r: AuthRequest,
+    @Query('productId') productId?: string,
+  ) {
+    const store = await this.inventory.myStore(this.auth(r));
+    return ok(await this.inventory.transactions(store.id, productId));
+  }
 
   @Get('night/dashboard')
   @ApiOperation({ summary: '夜宵工作台（场次/押金/待接单/销售额/佣金两列）' })
@@ -169,11 +246,7 @@ export class NightRiderController {
     @Query('pageSize') pageSize?: string,
   ) {
     return ok(
-      paginate(
-        await this.service.storeOrders(this.auth(r), status),
-        page,
-        pageSize,
-      ),
+      await this.service.storeOrdersPage(this.auth(r), status, page, pageSize),
     );
   }
 

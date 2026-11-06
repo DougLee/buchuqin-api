@@ -23,6 +23,10 @@ import {
   nightOrderNo,
 } from './night.helpers';
 import { NightOrderCreateDto, NightRefundDto } from './night.dto';
+import {
+  allocateInventoryValue,
+  NightInventoryService,
+} from './night-inventory.service';
 
 /** JSON → 时间线（json() 自写自读，形状恒定；round-trip 避开 any 断言规则）。 */
 const asTimeline = (v: unknown): NightTimelineStep[] =>
@@ -36,6 +40,7 @@ export interface NightOrderLine {
   image: string;
   price: number; // 夜宵售价（分）
   quantity: number;
+  inventoryValue?: number;
 }
 
 /** 夜宵订单时间线节点（轻量自持，不复用白天 12 态）。 */
@@ -80,6 +85,9 @@ export class NightOrderService implements NightPaymentHandler {
     private readonly payments: PaymentsService,
     // 渠道推送：可选注入（单测直接 new 时不传，跳过推送）
     @Optional() private readonly push?: NotificationsService,
+    private readonly inventory: NightInventoryService = new NightInventoryService(
+      db,
+    ),
   ) {
     // 注册微信回调分发（YX/ND 前缀）；setter 注入避免模块循环依赖
     this.payments.registerNightPaymentHandler(this);
@@ -236,6 +244,12 @@ export class NightOrderService implements NightPaymentHandler {
     const payableAmount = productAmount - effectiveDiscount + deliveryFee;
 
     const order = await this.db.$transaction(async (tx) => {
+      const freshStore = await this.inventory.lockStore(tx, store.id);
+      if (
+        freshStore.status !== 'open' ||
+        freshStore.managerStaffId !== store.managerStaffId
+      )
+        throw new BadRequestException('店铺经营状态已变化，请刷新');
       if (userCoupon) {
         // 下单锁定优惠券：claimed/released -> locked（与白天同构，防并发双占）
         const locked = await tx.userCoupon.updateMany({
@@ -256,9 +270,27 @@ export class NightOrderService implements NightPaymentHandler {
         afterStock: number;
       }> = [];
       for (const line of lines) {
+        const current = await tx.nightProduct.findUniqueOrThrow({
+          where: { id: line.nightProductId },
+          include: { catalogProduct: true },
+        });
+        if (
+          !current.onShelf ||
+          !current.saleAllowed ||
+          current.catalogProduct.status !== 'on-sale' ||
+          current.catalogProduct.price !== line.price
+        )
+          throw new BadRequestException('商品状态或价格已变化，请刷新');
+        line.inventoryValue = allocateInventoryValue(
+          current.inventoryValue,
+          current.stock,
+          line.quantity,
+        );
         const updated = (await tx.$queryRaw`
-          UPDATE "NightProduct" SET stock = stock - ${line.quantity}
+          UPDATE "NightProduct" SET stock = stock - ${line.quantity}, "inventoryValue" = "inventoryValue" - ${line.inventoryValue}, "inventoryVersion" = "inventoryVersion" + 1
           WHERE id = ${line.nightProductId} AND stock >= ${line.quantity}
+          AND "onShelf" = true AND "saleAllowed" = true
+          AND "catalogProductId" IN (SELECT id FROM "Product" WHERE status = 'on-sale' AND price = ${line.price})
           RETURNING stock`) as Array<{ stock: number }>;
         if (!updated.length)
           throw new BadRequestException(`${line.name}库存不足`);
@@ -279,6 +311,10 @@ export class NightOrderService implements NightPaymentHandler {
           status: 'pending-payment',
           statusText: STATUS_TEXT['pending-payment'],
           items: json(lines),
+          quotaHeld: lines.reduce(
+            (sum, line) => sum + (line.inventoryValue ?? 0),
+            0,
+          ),
           productAmount,
           couponDiscount: effectiveDiscount,
           deliveryFee,
@@ -414,6 +450,7 @@ export class NightOrderService implements NightPaymentHandler {
       throw new BadRequestException('楼长已接单，请联系客服处理售后');
     // 已支付未接单：状态流转 + 资源释放在一个事务里（退款在事务外尝试）
     await this.db.$transaction(async (tx) => {
+      await this.inventory.lockStore(tx, order.storeId);
       const won = await tx.nightOrder.updateMany({
         where: { id, status: 'pending-accept' },
         data: {
@@ -464,6 +501,7 @@ export class NightOrderService implements NightPaymentHandler {
         status: 'completed',
         statusText: STATUS_TEXT.completed,
         completedAt: new Date(),
+        quotaHeld: 0,
         timeline: json([
           ...asTimeline(order.timeline),
           { key: 'completed', title: '已完成', time: new Date().toISOString() },
@@ -559,6 +597,7 @@ export class NightOrderService implements NightPaymentHandler {
     )
       throw new BadRequestException('请上传有效的送达照片');
     await this.db.$transaction(async (tx) => {
+      await this.inventory.lockStore(tx, storeId, staffId);
       const order = await tx.nightOrder.findUnique({ where: { id } });
       if (!order) throw new NotFoundException('订单不存在');
       if (order.storeId !== storeId) throw new ForbiddenException('非本店订单');
@@ -573,6 +612,7 @@ export class NightOrderService implements NightPaymentHandler {
           status: 'completed',
           statusText: STATUS_TEXT.completed,
           completedAt: new Date(),
+          quotaHeld: 0,
           timeline: json([
             ...asTimeline(order.timeline),
             {
@@ -899,6 +939,30 @@ export class NightOrderService implements NightPaymentHandler {
       );
 
     await this.db.$transaction(async (tx) => {
+      const inventory = this.inventory;
+      await inventory.lockStore(tx, order.storeId);
+      const freshOrder = await tx.nightOrder.findUniqueOrThrow({
+        where: { id: order.id },
+      });
+      if (asTimeline(freshOrder.timeline).some((step) => step.key === 'refund'))
+        throw new BadRequestException('该订单已发生退款');
+      const shouldRestock =
+        body.restock !== false && productRefund === productPaid;
+      if (
+        shouldRestock &&
+        !freshOrder.inventoryRestocked &&
+        freshOrder.quotaHeld === 0
+      ) {
+        const returnValue = (order.items as unknown as NightOrderLine[]).reduce(
+          (sum, line) =>
+            sum + (line.inventoryValue ?? line.price * line.quantity),
+          0,
+        );
+        if (
+          returnValue > (await inventory.summary(order.storeId, tx)).usableQuota
+        )
+          throw new BadRequestException('退货入库超出押金额度，请先补缴押金');
+      }
       const won = await tx.nightOrder.updateMany({
         where: { id: order.id, status: order.status },
         data: {
@@ -922,33 +986,39 @@ export class NightOrderService implements NightPaymentHandler {
       });
       if (!won.count) throw new BadRequestException('订单状态已变化');
       // 商品退款回库（整单场景）：refundBack 流水 + 库存回补
-      if (body.restock !== false && productRefund === productPaid) {
-        const lines = order.items as unknown as NightOrderLine[];
-        for (const line of lines) {
-          const updated = await tx.nightProduct.updateMany({
-            where: { id: line.nightProductId },
-            data: { stock: { increment: line.quantity } },
-          });
-          if (updated.count) {
-            const fresh = await tx.nightProduct.findUniqueOrThrow({
-              where: { id: line.nightProductId },
-              select: { stock: true },
-            });
-            await tx.nightStockTxn.create({
-              data: {
-                storeId: order.storeId,
-                nightProductId: line.nightProductId,
-                type: 'refundBack',
-                delta: line.quantity,
-                afterStock: fresh.stock,
-                refType: 'night-order',
-                refId: order.id,
-                operatorId,
-                remark: '订单退款回库',
-              },
-            });
-          }
-        }
+      if (shouldRestock) {
+        await this.releaseOrderResources(tx, order);
+      } else if (fullRefund && freshOrder.quotaHeld > 0) {
+        if (!order.managerStaffId)
+          throw new BadRequestException('订单缺少经营者，请先核对历史订单');
+        const items = (order.items as unknown as NightOrderLine[]).map(
+          (line) => ({
+            nightProductId: line.nightProductId,
+            name: line.name,
+            quantity: line.quantity,
+            delta: 0,
+            value: line.inventoryValue ?? line.price * line.quantity,
+            unitValue:
+              (line.inventoryValue ?? line.price * line.quantity) /
+              line.quantity,
+            bookQuantity: line.quantity,
+          }),
+        );
+        await tx.nightInventoryReport.create({
+          data: {
+            storeId: order.storeId,
+            managerStaffId: order.managerStaffId,
+            kind: 'order-loss',
+            requestId: `refund-${order.id}`,
+            items: json(items),
+            heldValue: freshOrder.quotaHeld,
+            reason: `订单退款未回库：${body.reason}`,
+          },
+        });
+        await tx.nightOrder.update({
+          where: { id: order.id },
+          data: { quotaHeld: 0 },
+        });
       }
       // 佣金联动：商品退款重算 adjust；配送费退款 clawback
       await this.adjustCommissionOnRefund(tx, order, productRefund, feeRefund);
@@ -1084,7 +1154,12 @@ export class NightOrderService implements NightPaymentHandler {
 
   /** 待支付超时关单：释放券 + 回补库存（条件更新与支付/取消互斥）。 */
   async closePendingPayment(orderId: string, reason: string) {
+    const target = await this.db.nightOrder.findUnique({
+      where: { id: orderId },
+    });
+    if (!target) return;
     await this.db.$transaction(async (tx) => {
+      await this.inventory.lockStore(tx, target.storeId);
       const order = await tx.nightOrder.findUnique({ where: { id: orderId } });
       if (!order || order.status !== 'pending-payment') return;
       const closed = await tx.nightOrder.updateMany({
@@ -1121,10 +1196,21 @@ export class NightOrderService implements NightPaymentHandler {
       });
     }
     const lines = order.items as unknown as NightOrderLine[];
+    const restored = await tx.nightOrder.updateMany({
+      where: { id: order.id, inventoryRestocked: false },
+      data: { inventoryRestocked: true, quotaHeld: 0 },
+    });
+    if (!restored.count) return;
     for (const line of lines) {
       const updated = await tx.nightProduct.updateMany({
         where: { id: line.nightProductId },
-        data: { stock: { increment: line.quantity } },
+        data: {
+          stock: { increment: line.quantity },
+          inventoryValue: {
+            increment: line.inventoryValue ?? line.price * line.quantity,
+          },
+          inventoryVersion: { increment: 1 },
+        },
       });
       if (updated.count) {
         const fresh = await tx.nightProduct.findUniqueOrThrow({

@@ -5,9 +5,14 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { createHash } from 'node:crypto';
 import { PrismaService } from '../database/prisma.service';
 import { PaymentsService } from '../payments/payments.service';
 import { NightOrderService } from './night-order.service';
+import {
+  allocateInventoryValue,
+  NightInventoryService,
+} from './night-inventory.service';
 import { hhmmToMinutes, nextDepositTier } from './night.helpers';
 import {
   NightCatalogCreateDto,
@@ -38,6 +43,9 @@ export class NightAdminService {
     private readonly db: PrismaService,
     private readonly payments: PaymentsService,
     private readonly orders: NightOrderService,
+    private readonly inventory: NightInventoryService = new NightInventoryService(
+      db,
+    ),
   ) {}
 
   private async audit(
@@ -156,7 +164,54 @@ export class NightAdminService {
     }
     if (body.commissionRate !== undefined)
       data.commissionRate = body.commissionRate;
-    const after = await this.db.nightStore.update({ where: { id }, data });
+    const after = await this.db.$transaction(
+      async (tx) => {
+        const inventory = this.inventory;
+        const fresh = await inventory.lockStore(tx, id);
+        if (
+          body.managerStaffId !== undefined &&
+          (body.managerStaffId || null) !== fresh.managerStaffId
+        ) {
+          const [quota, stock, requests, reports, orders] = await Promise.all([
+            inventory.summary(id, tx),
+            tx.nightProduct.count({
+              where: {
+                storeId: id,
+                OR: [{ stock: { gt: 0 } }, { frozenStock: { gt: 0 } }],
+              },
+            }),
+            tx.nightStockOrder.count({
+              where: {
+                storeId: id,
+                status: { in: ['requested', 'approved', 'shipped'] },
+              },
+            }),
+            tx.nightInventoryReport.count({
+              where: { storeId: id, status: 'pending' },
+            }),
+            tx.nightOrder.count({
+              where: {
+                storeId: id,
+                status: {
+                  in: [
+                    'pending-payment',
+                    'pending-accept',
+                    'delivering',
+                    'delivered',
+                  ],
+                },
+              },
+            }),
+          ]);
+          if (quota.usedQuota || stock || requests || reports || orders)
+            throw new BadRequestException(
+              '请先清点库存、处理未完备货/订单和盘点报损，再交接楼长',
+            );
+        }
+        return tx.nightStore.update({ where: { id }, data });
+      },
+      { timeout: 20000 },
+    );
     await this.audit(
       operator,
       'night.store.update',
@@ -285,29 +340,61 @@ export class NightAdminService {
       });
       categoryId = category.id;
     }
-    if (body.barcode) {
-      const dup = await this.db.product.findUnique({
-        where: { campusId_barcode: { campusId, barcode: body.barcode } },
+    const product = await this.db.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`night-catalog-${campusId}`}))::text`;
+      let warehouse = body.barcode
+        ? await tx.product.findFirst({
+            where: { campusId, barcode: body.barcode, nightCatalog: false },
+          })
+        : null;
+      if (
+        warehouse &&
+        (await tx.product.count({
+          where: {
+            campusId,
+            nightCatalog: true,
+            warehouseProductId: warehouse.id,
+          },
+        }))
+      )
+        throw new BadRequestException('该实物商品已存在夜宵经营资料');
+      if (!warehouse)
+        warehouse = await tx.product.create({
+          data: {
+            campusId,
+            categoryId,
+            name: body.name,
+            subtitle: body.subtitle ?? '',
+            price: body.price,
+            originalPrice: body.originalPrice ?? body.price,
+            image: body.image ?? '',
+            barcode: body.barcode ?? null,
+            stock: 0,
+            status: 'off-sale',
+            tag: '',
+            weight: 0,
+          },
+        });
+      return tx.product.create({
+        data: {
+          campusId,
+          catalogScope: 'campus',
+          nightCatalog: true,
+          categoryId,
+          name: body.name,
+          subtitle: body.subtitle ?? '',
+          price: body.price,
+          originalPrice: body.originalPrice ?? body.price,
+          image: body.image ?? '',
+          barcode: null,
+          nightBarcode: body.barcode ?? null,
+          warehouseProductId: warehouse.id,
+          stock: 0,
+          status: 'on-sale',
+          tag: '',
+          weight: 0,
+        },
       });
-      if (dup) throw new BadRequestException('同校区已存在该条码商品');
-    }
-    const product = await this.db.product.create({
-      data: {
-        campusId,
-        catalogScope: 'campus',
-        nightCatalog: true,
-        categoryId,
-        name: body.name,
-        subtitle: body.subtitle ?? '',
-        price: body.price,
-        originalPrice: body.originalPrice ?? body.price,
-        image: body.image ?? '',
-        barcode: body.barcode ?? null,
-        stock: 0,
-        status: 'on-sale',
-        tag: '',
-        weight: 0,
-      },
     });
     await this.audit(
       operator,
@@ -467,15 +554,43 @@ export class NightAdminService {
       where: { id: storeId },
     });
     const txn = await this.db.$transaction(async (tx) => {
+      const inventory = this.inventory;
+      await inventory.lockStore(tx, storeId);
       const current = await tx.nightProduct.findUniqueOrThrow({
         where: { id: productId },
-        select: { stock: true },
+        include: { catalogProduct: true },
       });
       if (current.stock + body.delta < 0)
         throw new BadRequestException('调整后库存不能为负数');
+      const pendingReports = await tx.nightInventoryReport.count({
+        where: { storeId, status: 'pending' },
+      });
+      if (pendingReports)
+        throw new BadRequestException(
+          '请先处理待审核盘点/报损，再进行人工调整',
+        );
+      const valueDelta =
+        body.delta < 0
+          ? -allocateInventoryValue(
+              current.inventoryValue,
+              current.stock,
+              -body.delta,
+            )
+          : Math.round(
+              body.delta *
+                (current.stock
+                  ? current.inventoryValue / current.stock
+                  : current.catalogProduct.price),
+            );
+      if (valueDelta > (await inventory.summary(storeId, tx)).usableQuota)
+        throw new BadRequestException('调整入库超出押金额度');
       const updated = await tx.nightProduct.update({
         where: { id: productId },
-        data: { stock: { increment: body.delta } },
+        data: {
+          stock: { increment: body.delta },
+          inventoryValue: { increment: valueDelta },
+          inventoryVersion: { increment: 1 },
+        },
       });
       const record = await tx.nightStockTxn.create({
         data: {
@@ -690,12 +805,9 @@ export class NightAdminService {
           name: p.catalogProduct.name,
           stock: p.stock,
           price: p.catalogProduct.price,
-          value: p.stock * p.catalogProduct.price,
+          value: p.inventoryValue,
         })),
-        totalValue: products.reduce(
-          (s, p) => s + p.stock * p.catalogProduct.price,
-          0,
-        ),
+        totalValue: products.reduce((s, p) => s + p.inventoryValue, 0),
       },
       openOrders: orderCounts.map((o) => ({
         status: o.status,
@@ -728,6 +840,11 @@ export class NightAdminService {
     });
     if (!store) throw new NotFoundException('夜宵店不存在');
     const amount = Math.min(body.amount ?? store.deposit, store.deposit);
+    const quota = await this.inventory.summary(storeId);
+    if (quota.usedQuota > 0)
+      throw new BadRequestException(
+        '尚有库存、在途备货或待审核损耗占用，请先完成清算',
+      );
     if (amount <= 0) throw new BadRequestException('无可退押金余额');
     const depositTxns = await this.db.nightDepositTxn.findMany({
       where: { storeId, type: 'deposit' },
@@ -780,38 +897,52 @@ export class NightAdminService {
       status: string;
     }> = [];
     for (const alloc of allocations) {
-      const refundNo = `NDR${Date.now()}${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
-      const wx = await this.payments.applyWechatRefund(
-        alloc.payOrderNo,
-        alloc.txnTotal,
-        alloc.amount,
-        refundNo,
-        body.reason ? body.reason.slice(0, 80) : '夜宵店退出清算押金退还',
-        store.campusId,
+      const refundNo = `NDR${createHash('sha256').update(`${storeId}:${alloc.payOrderNo}:${alloc.refunded}:${alloc.amount}`).digest('hex').slice(0, 28)}`;
+      // 固定清算资格直至退款落账；备货、收货、盘盈等操作共用此店锁。
+      const wx = await this.db.$transaction(
+        async (tx) => {
+          const inventory = this.inventory;
+          const fresh = await inventory.lockStore(tx, storeId);
+          if ((await inventory.summary(storeId, tx)).usedQuota > 0)
+            throw new BadRequestException(
+              '仍有库存、备货或报损占用，请先完成清算',
+            );
+          if (fresh.deposit < alloc.amount)
+            throw new BadRequestException('押金余额不足于本次退款落账，已中止');
+          const prior = await tx.nightDepositTxn.aggregate({
+            where: { storeId, type: 'refund', payOrderNo: alloc.payOrderNo },
+            _sum: { amount: true },
+          });
+          if ((prior._sum.amount ?? 0) !== alloc.refunded)
+            throw new BadRequestException(
+              '该笔押金退款进度已变化，请刷新后重试',
+            );
+          const result = await this.payments.applyWechatRefund(
+            alloc.payOrderNo,
+            alloc.txnTotal,
+            alloc.amount,
+            refundNo,
+            body.reason ? body.reason.slice(0, 80) : '夜宵店退出清算押金退还',
+            store.campusId,
+          );
+          await tx.nightStore.update({
+            where: { id: storeId },
+            data: { deposit: { decrement: alloc.amount } },
+          });
+          await tx.nightDepositTxn.create({
+            data: {
+              storeId,
+              type: 'refund',
+              amount: alloc.amount,
+              payOrderNo: alloc.payOrderNo,
+              operatorId: operator,
+              remark: `退出清算退还 ${refundNo}（wx ${result.refundId} ${result.status}）`,
+            },
+          });
+          return result;
+        },
+        { timeout: 60000, maxWait: 10000 },
       );
-      // 逐笔原子落账：refund 流水 + 余额扣减
-      await this.db.$transaction(async (tx) => {
-        const fresh = await tx.nightStore.findUniqueOrThrow({
-          where: { id: storeId },
-          select: { deposit: true },
-        });
-        if (fresh.deposit < alloc.amount)
-          throw new BadRequestException('押金余额不足于本次退款落账，已中止');
-        await tx.nightStore.update({
-          where: { id: storeId },
-          data: { deposit: { decrement: alloc.amount } },
-        });
-        await tx.nightDepositTxn.create({
-          data: {
-            storeId,
-            type: 'refund',
-            amount: alloc.amount,
-            payOrderNo: alloc.payOrderNo,
-            operatorId: operator,
-            remark: `退出清算退还 ${refundNo}（wx ${wx.refundId} ${wx.status}）`,
-          },
-        });
-      });
       results.push({
         payOrderNo: alloc.payOrderNo,
         amount: alloc.amount,

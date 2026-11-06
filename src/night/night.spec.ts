@@ -3,6 +3,7 @@ import { BusinessService } from '../business/business.service';
 import { PaymentsService } from '../payments/payments.service';
 import { NightOrderService } from './night-order.service';
 import { NightRiderService } from './night-rider.service';
+import { NightInventoryService } from './night-inventory.service';
 import { inNightWindow } from './night.helpers';
 import type { Campus } from '@prisma/client';
 
@@ -125,10 +126,25 @@ describe('Night store PostgreSQL integration (IKSW1F)', () => {
       update: {},
       create: { campusId: campus.id, name: '夜宵专供', hidden: true },
     });
+    const warehouse = await db.product.create({
+      data: {
+        campusId: campus.id,
+        categoryId: category.id,
+        name: '夜宵可乐实物',
+        subtitle: '',
+        price: 1000,
+        originalPrice: 1000,
+        image: '',
+        tag: '',
+        stock: 100,
+        weight: 0,
+      },
+    });
     const catalog = await db.product.create({
       data: {
         campusId: campus.id,
         nightCatalog: true,
+        warehouseProductId: warehouse.id,
         categoryId: category.id,
         name: '夜宵可乐',
         subtitle: '',
@@ -199,7 +215,10 @@ describe('Night store PostgreSQL integration (IKSW1F)', () => {
     });
     await db.nightProduct.deleteMany({ where: { storeId } });
     await db.nightStore.delete({ where: { id: storeId } });
-    await db.product.deleteMany({ where: { id: catalogProductId } });
+    await db.inventoryTxn.deleteMany({
+      where: { product: { campusId: campus.id } },
+    });
+    await db.product.deleteMany({ where: { campusId: campus.id } });
     await db.address.deleteMany({ where: { id: addressId } });
     await db.staff.deleteMany({ where: { id: staffId } });
     await db.building.deleteMany({ where: { id: buildingId } });
@@ -210,11 +229,24 @@ describe('Night store PostgreSQL integration (IKSW1F)', () => {
 
   /* ---------- 场景 2：备货额度校验 ---------- */
 
-  it('备货下单：额度内成功，库存入账 + stockIn 流水；店休也可备货', async () => {
+  it('备货申请、校区审核出库、确认实收后才入库；店休也可备货', async () => {
     const r = await rider.createStockOrder(staffId, {
       items: [{ catalogProductId, quantity: 2 }],
     });
     expect(r.totalValue).toBe(2000); // 2 × 1000
+    expect(
+      (
+        await db.nightProduct.findUniqueOrThrow({
+          where: { id: nightProductId },
+        })
+      ).stock,
+    ).toBe(0);
+    const inventory = new NightInventoryService(db);
+    await inventory.reviewStockOrder('test-admin', r.id, true, '同意');
+    await inventory.shipStockOrder('test-admin', r.id);
+    await inventory.receiveStockOrder(staffId, r.id, [
+      { catalogProductId, quantity: 2 },
+    ]);
     const np = await db.nightProduct.findUniqueOrThrow({
       where: { id: nightProductId },
     });
@@ -385,8 +417,9 @@ describe('Night store PostgreSQL integration (IKSW1F)', () => {
     const todo = await rider.storeOrders(staffId, 'pending-accept');
     const orderId = todo[0].id;
     await rider.accept(staffId, orderId);
-    await rider.deliver(staffId, orderId);
-    await orders.confirmOrder(userId, orderId);
+    await rider.deliver(staffId, orderId, {
+      images: ['https://example.com/proof.jpg'],
+    });
     const txns = await db.nightCommissionTxn.findMany({
       where: { orderId },
     });

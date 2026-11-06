@@ -997,6 +997,7 @@ export class AdminService {
           await this.db.product.findMany({
             where: {
               campusId: excludeImportedBy,
+              nightCatalog: false,
               sourceProductId: { not: null },
             },
             select: { sourceProductId: true },
@@ -1057,7 +1058,8 @@ export class AdminService {
       weight: this.num(x.weight),
       skuNo: `SKU-${x.id.toUpperCase()}`,
       // 官方库不记库存（IKAJSM）：库存归校区，不参与售罄映射
-      actualStock: x.stock + x.lockedStock,
+      actualStock: x.stock + x.lockedStock + x.nightReservedStock,
+      nightReservedStock: x.nightReservedStock,
       availableStock: x.stock,
       status: isOfficial || x.stock ? x.status : 'sold-out',
       upstreamChanged: !!(
@@ -1161,7 +1163,8 @@ export class AdminService {
       wholesalePrice: this.num(x.wholesalePrice),
       weight: this.num(x.weight),
       skuNo: `SKU-${x.id.toUpperCase()}`,
-      actualStock: x.stock + x.lockedStock,
+      actualStock: x.stock + x.lockedStock + x.nightReservedStock,
+      nightReservedStock: x.nightReservedStock,
       availableStock: x.stock,
     }));
     // IKKRMY：组织目录行无 cost.read 账号剔除成本字段（supplyMode 一并隐藏）
@@ -2335,7 +2338,7 @@ export class AdminService {
     });
     const officialById = new Map(officials.map((o) => [o.id, o]));
     const existing = await this.db.product.findMany({
-      where: { campusId },
+      where: { campusId, nightCatalog: false },
       select: { sourceProductId: true, barcode: true },
     });
     const importedSources = new Set(
@@ -3751,6 +3754,7 @@ export class AdminService {
       where: {
         campusId: HQ_CAMPUS_ID,
         sourceProductId: { in: lines.map((l) => l.item.productId) },
+        nightCatalog: false,
       },
       select: { id: true, sourceProductId: true, name: true },
     });
@@ -3952,6 +3956,7 @@ export class AdminService {
       where: {
         campusId: HQ_CAMPUS_ID,
         sourceProductId: { in: order.items.map((i) => i.productId) },
+        nightCatalog: false,
       },
       select: { id: true, sourceProductId: true, name: true, stock: true },
     });
@@ -4101,6 +4106,7 @@ export class AdminService {
       where: {
         campusId: order.campusId,
         sourceProductId: { in: order.items.map((i) => i.productId) },
+        nightCatalog: false,
       },
       select: { id: true, sourceProductId: true, procurementMode: true },
     });

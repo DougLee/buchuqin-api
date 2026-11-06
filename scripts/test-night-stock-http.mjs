@@ -1,0 +1,51 @@
+import fs from 'node:fs';
+import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
+import { createRequire } from 'node:module';
+const require = createRequire(import.meta.url);
+const { PrismaClient } = require('@prisma/client');
+const { hash } = require('bcryptjs');
+const credentials = JSON.parse(fs.readFileSync('/tmp/night-stock-preview.json', 'utf8'));
+const line = fs.readFileSync('.env', 'utf8').split(/\r?\n/).find(x => x.startsWith('DATABASE_URL='));
+const url = new URL(line?.slice(13).replace(/^['"]|['"]$/g, '') || '');
+if (!url.pathname.endsWith('_spec')) throw new Error('HTTP验收只允许 _spec 数据库');
+url.searchParams.set('schema', 'night_stock_preview_20261106');
+process.env.DATABASE_URL = url.toString();
+const db = new PrismaClient();
+async function request(route, token, data, expected = 200) {
+  const r = await fetch(`http://localhost:3150/api/v1${route}`, { method: data === undefined ? 'GET' : 'POST', headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), 'Content-Type': 'application/json' }, ...(data === undefined ? {} : { body: JSON.stringify(data) }) });
+  const result = await r.json();
+  assert.equal(r.status, expected, `${route}: ${r.status} ${result.message || ''}`);
+  return result.data;
+}
+try {
+  const campus = await db.campus.create({ data: { name: 'HTTP越权验收校区', shortName: '越权验收', warehouseName: '验收仓' } });
+  const password = randomUUID();
+  const admin = await db.adminAccount.create({ data: { username: `night-http-${randomUUID()}`, passwordHash: await hash(password, 10), role: 'operations', campusId: campus.id, orgLevel: 'campus', rbacMigrated: true } });
+  const role = await db.adminRole.create({ data: { code: `night-http-${randomUUID()}`, name: '库存验收校区运营', seeded: true, menusMigrated: true } });
+  const menus = await db.adminMenu.findMany({ where: { code: { in: ['night-stores', 'night-stores.write'] } } });
+  assert.equal(menus.length, 2, '请先初始化本地预览权限');
+  await db.adminRoleMenu.createMany({ data: menus.map(menu => ({ roleId: role.id, menuId: menu.id })) });
+  await db.adminAccountRole.create({ data: { accountId: admin.id, roleId: role.id, scope: 'campus', campusId: campus.id } });
+  const login = await request('/auth/admin-login', '', { username: admin.username, password }, 200);
+  const foreignToken = login.token;
+  const staff = credentials.staffToken, root = credentials.adminToken;
+  const pool = await request('/night-rider/night/stock/pool', staff);
+  await request('/night-rider/night/stock/orders', '', { items: [] }, 401);
+  await request('/night-rider/night/stock/orders', staff, { requestId: randomUUID(), items: [{ catalogProductId: pool[0].catalogProductId, quantity: -1 }] }, 400);
+  const order = await request('/night-rider/night/stock/orders', staff, { requestId: randomUUID(), items: [{ catalogProductId: pool[0].catalogProductId, quantity: 1 }] }, 201);
+  const p = (await request('/night-rider/night/products', staff))[0];
+  const report = await request('/night-rider/night/inventory/reports', staff, { requestId: randomUUID(), kind: 'loss', reason: 'HTTP权限验收，后续驳回恢复', photos: [], items: [{ nightProductId: p.id, quantity: 1, inventoryVersion: p.inventoryVersion }] }, 201);
+  await request('/admin/night/stock-orders', staff, undefined, 403);
+  await request(`/admin/night/stock-orders?storeId=${credentials.storeId}`, foreignToken, undefined, 403);
+  await request(`/admin/night/inventory-reports?storeId=${credentials.storeId}`, foreignToken, undefined, 403);
+  await request(`/admin/night/catalog/import`, foreignToken, { campusId: credentials.campusId, productIds: ['night-preview-official-0'] }, 403);
+  await request(`/admin/night/stock-orders/${order.id}/review`, foreignToken, { approved: true, reason: '越权' }, 403);
+  await request(`/admin/night/stock-orders/${order.id}/ship`, foreignToken, {}, 403);
+  await request(`/admin/night/stock-orders/${order.id}/cancel`, foreignToken, { reason: '越权' }, 403);
+  await request(`/admin/night/inventory-reports/${report.id}/review`, foreignToken, { approved: true, reason: '越权' }, 403);
+  await request(`/admin/night/stock-orders?campus=${credentials.campusId}`, foreignToken, undefined, 403);
+  await request(`/admin/night/stock-orders/${order.id}/review`, root, { approved: false, reason: 'HTTP验收清理' }, 201);
+  await request(`/admin/night/inventory-reports/${report.id}/review`, root, { approved: false, reason: 'HTTP验收完成，恢复冻结数量' }, 201);
+  console.log('HTTP验收通过：JWT登录、DTO数量校验、员工/后台隔离、跨校区查看/导入/审核/出库/取消/报损审核均已验证');
+} finally { await db.$disconnect(); }
