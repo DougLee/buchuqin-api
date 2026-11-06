@@ -365,6 +365,7 @@ describe('Night store PostgreSQL integration (IKSW1F)', () => {
     const view = await orders.myOrder(userId, mine[0].id);
     expect(view.status).toBe('pending-accept');
     expect(view.paidAt).toBeTruthy();
+    expect(new Date(view.timeoutAt!).getTime() - new Date(view.paidAt!).getTime()).toBe(30 * 60_000);
     // 券 locked → used
     const uc = await db.userCoupon.findUniqueOrThrow({
       where: { id: nightUserCouponId },

@@ -821,12 +821,21 @@ export class NightOrderService implements NightPaymentHandler {
         }
         return;
       }
+      const store = await tx.nightStore.findUnique({
+        where: { id: order.storeId },
+        include: {
+          building: { select: { name: true } },
+          campus: { select: { nightAcceptTimeout: true } },
+        },
+      });
+      const paidAt = new Date();
       const won = await tx.nightOrder.updateMany({
         where: { id: order.id, status: 'pending-payment' },
         data: {
           status: 'pending-accept',
           statusText: STATUS_TEXT['pending-accept'],
-          paidAt: new Date(),
+          paidAt,
+          timeoutAt: new Date(paidAt.getTime() + (store?.campus.nightAcceptTimeout ?? 30) * 60_000),
           wxTransactionId: transactionId,
           timeline: json([
             ...asTimeline(order.timeline),
@@ -889,10 +898,6 @@ export class NightOrderService implements NightPaymentHandler {
         },
       });
       // 楼长新单推送：fire-and-forget（复用履约端订阅消息链），不进事务
-      const store = await tx.nightStore.findUnique({
-        where: { id: order.storeId },
-        include: { building: { select: { name: true } } },
-      });
       if (store?.managerStaffId && this.push) {
         void this.push.notifyNightManagerNewOrder({
           staffId: store.managerStaffId,
