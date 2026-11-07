@@ -369,6 +369,26 @@ integration('已确认的夜宵备货库存流程（独立 PostgreSQL schema）'
     expect((await service.summary(f.store.id)).usedQuota).toBe(1500);
   });
 
+  it('额度不足的同备货申请补缴后可重试，预付取消不增押金且重复到账只释放一次新额度', async () => {
+    const f = await fixture(500);
+    const requestId = randomUUID();
+    await expect(f.request(2, requestId)).rejects.toThrow('押金额度不足');
+    const payments = { registerNightPaymentHandler() {}, nightPrepay: jest.fn(async () => ({ appId: 'isolated-test-app', merchantId: 'isolated-test-merchant' })) } as unknown as PaymentsService;
+    const orders = new NightOrderService(db, payments, undefined, service);
+    const intent = await orders.initiateDepositPay(f.store.id, f.campus.id, 'isolated-openid', 'isolated-test-app', 50000);
+    expect(intent.amount).toBe(49500);
+    expect((await service.summary(f.store.id)).deposit).toBe(500);
+    await expect(f.request(2, requestId)).rejects.toThrow('押金额度不足');
+    const retry = await orders.initiateDepositPay(f.store.id, f.campus.id, 'isolated-openid', 'isolated-test-app', 50000);
+    expect(retry.outTradeNo).toBe(intent.outTradeNo);
+    await orders.applyNightDepositPaid(intent.outTradeNo, 'isolated-paid');
+    await orders.applyNightDepositPaid(intent.outTradeNo, 'isolated-paid');
+    const stock = await f.request(2, requestId);
+    expect((await f.request(2, requestId)).id).toBe(stock.id);
+    expect(await service.summary(f.store.id)).toMatchObject({ deposit: 50000, reservedValue: 1000, stockValue: 0, usableQuota: 49000 });
+    expect(await db.nightDepositTxn.count({ where: { storeId: f.store.id, payOrderNo: intent.outTradeNo } })).toBe(1);
+  });
+
   it('仓库不足整单回滚；两个店并发审核不能重复预留同一库存', async () => {
     const f = await fixture(50000, 10);
     const building = await db.building.create({
@@ -1247,6 +1267,7 @@ integration('已确认的夜宵备货库存流程（独立 PostgreSQL schema）'
     const order = await business.createOrder(user.id, f.campus.id, { addressId: address.id, deliveryMode: 'instant' });
     const beforePayment = await business.updateCart(user.id, { items: [{ productId: f.warehouse.id, quantity: 2 }, { productId: laterProduct.id, quantity: 1 }] });
     await business.pay(user.id, order.id);
+    expect(await db.notification.findFirst({ where: { userId: user.id, orderId: order.id, businessType: 'day' } })).toMatchObject({ content: '订单已进入校园仓，仓储人员即将开始拣货。' });
     const afterPayment = await business.cart(user.id);
     expect(afterPayment.totalQuantity).toBe(2);
     expect(afterPayment.items.find(line => line.product.id === f.warehouse.id)?.quantity).toBe(1);

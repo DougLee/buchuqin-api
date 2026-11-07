@@ -1767,7 +1767,7 @@ export class BusinessService {
           orderId: updated.id,
           businessType: 'day',
           title: '支付成功',
-          content: '订单已进入湖工大校园仓，仓储人员即将开始拣货。',
+          content: '订单已进入校园仓，仓储人员即将开始拣货。',
         },
       });
       // 渠道推送（IK8W5M）：支付成功订阅消息。fire-and-forget，不进事务、不阻断。
