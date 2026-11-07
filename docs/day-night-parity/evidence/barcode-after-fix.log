@@ -1,0 +1,9 @@
+仅测试库：night_parity_spec / night_stock_parity_full4_20261108；HTTP 出站隔离已启用
+夜宵预览HTTP出站白名单已启用；生产API、微信网关及外部存储均不可连接。
+[Nest] 39236  - 11/08/2026, 1:17:58 AM    WARN [BusinessService] signup coupon grant skipped: no active signup coupon for campus=campus-hbut userId=cmw6o2osc000azz9woqmzoyhx
+[Nest] 39236  - 11/08/2026, 1:17:58 AM    WARN [BusinessService] signup coupon grant skipped: no active signup coupon for campus=campus-test-b userId=cmw6o2osc000azz9woqmzoyhx
+Test Suites: 1 passed, 1 total
+Tests:       6 passed, 6 total
+Snapshots:   0 total
+Time:        0.822 s, estimated 1 s
+Ran all test suites matching src/business/campus-isolation.spec.ts.

@@ -1,0 +1,12 @@
+{
+  "date": "2026-11-08",
+  "branch": "feature/night-store",
+  "apiRuntimeSource": "d2bb7f8",
+  "apiRuntimeImage": "buchuqin-api:parity-20261108-r4",
+  "adminRuntimeSource": "980d8ba",
+  "adminCurrentSource": "de3d357",
+  "adminRuntimeImage": "buchuqin-admin:parity-20261108",
+  "userSource": "f1fba9c",
+  "deliverySource": "626f4cb",
+  "productionTouched": false
+}

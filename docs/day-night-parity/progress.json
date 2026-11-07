@@ -2,280 +2,493 @@
   "rows": [
     {
       "id": "P01",
-      "status": "in-progress",
-      "evidence": [],
-      "notes": []
+      "status": "passed",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/user-node-tests-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl"
+      ],
+      "notes": [
+        "按用户、校区、楼栋及渠道分桶；旧JWT/旧响应/旧队列不能写入新上下文。公开scope/cart/session测试与HTTP旧JWT拒绝通过。"
+      ]
     },
     {
       "id": "P02",
-      "status": "in-progress",
-      "evidence": [],
-      "notes": []
+      "status": "passed",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/user-node-tests-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl"
+      ],
+      "notes": [
+        "夜宵首页有同等商品、推荐、营销、券与失败重试；H5实际切换白天商品6元/夜宵8元，身份浮层离开即失效。"
+      ]
     },
     {
       "id": "P03",
-      "status": "in-progress",
-      "evidence": [],
-      "notes": []
+      "status": "passed",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/user-node-tests-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl"
+      ],
+      "notes": [
+        "日夜均支持分类、关键词、条码；H5分别输入条码只出现对应商品。白天OR搜索已补跨校区/夜主档排除集成。"
+      ]
     },
     {
       "id": "P04",
-      "status": "in-progress",
-      "evidence": [],
-      "notes": []
+      "status": "passed",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/user-node-tests-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl"
+      ],
+      "notes": [
+        "后台正常编辑介绍、详情图、划线价后，H5实际展示并加载图片；支持单位、可购数、详情加购。"
+      ]
     },
     {
       "id": "P05",
-      "status": "in-progress",
-      "evidence": [],
-      "notes": []
+      "status": "passed",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/user-node-tests-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl"
+      ],
+      "notes": [
+        "缺货、售罄、停售、限购、周期及并发待付占额在数据库集成覆盖；客户端失效行提示/移除不偷改数量。"
+      ]
     },
     {
       "id": "P06",
-      "status": "in-progress",
-      "evidence": [],
-      "notes": []
+      "status": "passed",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/user-node-tests-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl"
+      ],
+      "notes": [
+        "夜宵推荐独立配置；实际点击精选推荐只出现1款。保存白天推荐不清夜宵推荐的数据库集成通过。"
+      ]
     },
     {
       "id": "P07",
-      "status": "in-progress",
-      "evidence": [],
-      "notes": []
+      "status": "passed",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/user-node-tests-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl"
+      ],
+      "notes": [
+        "夜宵清仓和秒杀服务端重算，秒杀独立原价渠道、每单1件；H5普通8元/秒杀5元、结算券不可叠加，过期ID不迁移。"
+      ]
     },
     {
       "id": "P08",
       "status": "pending",
       "evidence": [],
-      "notes": []
+      "notes": [
+        "夜宵抽奖未开放，白天抽奖保留。夜场隐藏入口并关闭遗留白天抽奖浮层；不计通过。"
+      ]
     },
     {
       "id": "P09",
-      "status": "in-progress",
-      "evidence": [],
-      "notes": []
+      "status": "passed",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/user-node-tests-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl"
+      ],
+      "notes": [
+        "Banner/公告默认旧数据day，新配置按业务类型隔离；TEST正常管理API投放后H5出现夜宵公告/Banner。"
+      ]
     },
     {
       "id": "P10",
-      "status": "in-progress",
-      "evidence": [],
-      "notes": []
+      "status": "passed",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/user-node-tests-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl"
+      ],
+      "notes": [
+        "日夜购物车隔离、用户校区楼栋分桶持久化，返回原owner恢复自己的行。H5日车2件不进入夜车。"
+      ]
     },
     {
       "id": "P11",
-      "status": "in-progress",
-      "evidence": [],
-      "notes": []
+      "status": "passed",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/user-node-tests-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl"
+      ],
+      "notes": [
+        "白天版本与串行队列防覆盖；实付只消费本订单数量。H5待付后再加2件、重付后仍剩2件，重复支付不再清。"
+      ]
     },
     {
       "id": "P12",
-      "status": "in-progress",
-      "evidence": [],
-      "notes": []
+      "status": "passed",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/user-node-tests-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl"
+      ],
+      "notes": [
+        "当前价格重验，停售/库存/活动ID失效明确提示，可移除；共享校验器用于车与结算，可见页时钟推进到期提示。"
+      ]
     },
     {
       "id": "P13",
-      "status": "in-progress",
-      "evidence": [],
-      "notes": []
+      "status": "passed",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/user-node-tests-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl"
+      ],
+      "notes": [
+        "地址管理复用，本楼夜宵结算只显示实际本楼地址；跨楼地址下单拒绝集成与历史TEST HTTP通过。"
+      ]
     },
     {
       "id": "P14",
-      "status": "in-progress",
-      "evidence": [],
-      "notes": []
+      "status": "passed",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/user-node-tests-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl"
+      ],
+      "notes": [
+        "分享先确认楼栋；实际三态楼栋列表、指定商品深链及朋友圈等价query均走确认。服务端仍校验所在校区/本楼。"
+      ]
     },
     {
       "id": "P15",
-      "status": "in-progress",
-      "evidence": [],
-      "notes": []
+      "status": "passed",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/user-node-tests-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl"
+      ],
+      "notes": [
+        "券列表/领取/使用说明按day/night切换；H5夜宵券和白天券不混入，注册券幂等发放及scoped礼包角标通过。"
+      ]
     },
     {
       "id": "P16",
-      "status": "in-progress",
-      "evidence": [],
-      "notes": []
+      "status": "passed",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/user-node-tests-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl"
+      ],
+      "notes": [
+        "范围、门槛、时效、总量、每人限领、并发锁定和不叠促销有数据库断言；真实H5结算展示不可叠原因。"
+      ]
     },
     {
       "id": "P17",
-      "status": "in-progress",
-      "evidence": [],
-      "notes": []
+      "status": "passed",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/user-node-tests-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl"
+      ],
+      "notes": [
+        "日夜结算均有地址、配送、商品、券、备注和账单；夜宵保留本楼即送限制。实际H5交易/秒杀结算通过。"
+      ]
     },
     {
       "id": "P18",
-      "status": "in-progress",
+      "status": "passed",
       "evidence": [
-        "docs/day-night-parity/evidence/api-full-local-round3.log"
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/user-node-tests-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl"
       ],
       "notes": [
-        "完整API回归已过；本轮四端浏览器组合验收未收口，因此尚不计为整项验收通过。"
+        "幂等请求哈希、重复支付、零元、资源原子性和原单号支付验证通过；H5测试组织模拟渠道完成真实业务落账。"
       ]
     },
     {
       "id": "P19",
-      "status": "in-progress",
-      "evidence": [],
-      "notes": []
+      "status": "passed",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/user-node-tests-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl"
+      ],
+      "notes": [
+        "待付订单保留可继续支付；取消/重试H5实测。订阅API缺失或同步抛错不阻断支付，两条先红后绿公开测试。"
+      ]
     },
     {
       "id": "P20",
-      "status": "in-progress",
-      "evidence": [],
-      "notes": []
+      "status": "passed",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/user-node-tests-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl"
+      ],
+      "notes": [
+        "共享支付成功页按日夜取真实订单/实付/地址，支付未完不伪成功；夜宵实付10元后查看真实订单通过。"
+      ]
     },
     {
       "id": "P21",
-      "status": "in-progress",
-      "evidence": [],
-      "notes": []
+      "status": "passed",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/user-node-tests-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl"
+      ],
+      "notes": [
+        "历史列表可切渠道、状态、分页及继续支付；用户/后台100条以上数据库分页集成与现有TEST订单样本通过。"
+      ]
     },
     {
       "id": "P22",
-      "status": "in-progress",
-      "evidence": [],
-      "notes": []
+      "status": "passed",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/user-node-tests-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl"
+      ],
+      "notes": [
+        "日夜订单快照/时间线/送达图片/原校区客服；H5实际凭证可见，已退款终态不再显示待配送步骤，日期统一中国时间。"
+      ]
     },
     {
       "id": "P23",
-      "status": "in-progress",
+      "status": "passed",
       "evidence": [
-        "docs/day-night-parity/evidence/api-full-local-round3.log"
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/user-node-tests-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl"
       ],
       "notes": [
-        "完整API回归已过；本轮四端浏览器组合验收未收口，因此尚不计为整项验收通过。"
+        "待付取消、已付未接单原路取消与接单竞态在集成/历史TEST HTTP通过；支付先到返回实际状态，不提前释放资源。"
       ]
     },
     {
       "id": "P24",
-      "status": "in-progress",
+      "status": "passed",
       "evidence": [
-        "docs/day-night-parity/evidence/api-full-local-round3.log"
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/user-node-tests-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl"
       ],
       "notes": [
-        "完整API回归已过；本轮四端浏览器组合验收未收口，因此尚不计为整项验收通过。"
+        "共享售后支持整单/选商品、说明、凭证、金额上限/24h；H5上传图并申请商品退款8元，后台能核对。"
       ]
     },
     {
       "id": "P25",
-      "status": "in-progress",
+      "status": "passed",
       "evidence": [
-        "docs/day-night-parity/evidence/api-full-local-round3.log"
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/user-node-tests-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl"
       ],
       "notes": [
-        "完整API回归已过；本轮四端浏览器组合验收未收口，因此尚不计为整项验收通过。"
+        "售后列表渠道分页/累计金额独立，requested撤销与审核CAS；H5申请后列为待处理，退款后累计40元和8元记录正确。"
       ]
     },
     {
       "id": "P26",
-      "status": "in-progress",
+      "status": "passed",
       "evidence": [
-        "docs/day-night-parity/evidence/api-full-local-round3.log"
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/user-node-tests-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl"
       ],
       "notes": [
-        "完整API回归已过；本轮四端浏览器组合验收未收口，因此尚不计为整项验收通过。"
+        "PROCESSING/未知/404保留资源，原单号查单及恢复、幂等冲佣金回库/退券集成通过；H5后台退款8元不回库实测。"
       ]
     },
     {
       "id": "P27",
-      "status": "in-progress",
-      "evidence": [],
-      "notes": []
+      "status": "passed",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/user-node-tests-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl"
+      ],
+      "notes": [
+        "订单支持信息固定原订单校区，用户换校区后不回落当前校区；日夜历史订单客服/福利群数据库集成通过。"
+      ]
     },
     {
       "id": "P28",
-      "status": "in-progress",
-      "evidence": [],
-      "notes": []
+      "status": "passed",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/user-node-tests-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl"
+      ],
+      "notes": [
+        "通知businessType+orderId迁移，列表/已读/未读/跳单按渠道；H5夜宵4类业务通知与白天支付消息分开，HTTP拒他人/非法渠道。"
+      ]
     },
     {
       "id": "P29",
-      "status": "in-progress",
-      "evidence": [],
-      "notes": []
+      "status": "passed",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/user-node-tests-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl"
+      ],
+      "notes": [
+        "个人中心记录可切日夜，地址与基本资料共享；昵称不使用跨账号全局缓存，统计失败显示重试，H5已验证。"
+      ]
     },
     {
       "id": "P30",
-      "status": "in-progress",
-      "evidence": [],
-      "notes": []
+      "status": "passed",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/user-node-tests-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl"
+      ],
+      "notes": [
+        "朋友与朋友圈生成同一校区/楼栋/商品目标，H5实际深链先确认再弹指定详情，重载不反复打开；原生分享归P40。"
+      ]
     },
     {
       "id": "P31",
-      "status": "in-progress",
-      "evidence": [],
-      "notes": []
+      "status": "passed",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/user-node-tests-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl"
+      ],
+      "notes": [
+        "正式微信登录结果同步身份/车owner，校区确认已落同token不误拒；公开登录测试、profile scoped测试、HTTP角色/旧JWT通过。"
+      ]
     },
     {
       "id": "P32",
-      "status": "in-progress",
-      "evidence": [],
-      "notes": []
+      "status": "passed",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/user-node-tests-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl"
+      ],
+      "notes": [
+        "后台商品配置→用户购买→配送接单/文件上传完成→用户售后→后台退款真实TEST闭环，四端状态/库存/佣金核对一致。"
+      ]
     },
     {
       "id": "P33",
-      "status": "in-progress",
+      "status": "passed",
       "evidence": [
-        "docs/day-night-parity/evidence/api-full-local-round3.log"
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/user-node-tests-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/day-night-parity/evidence/test-ledger-final.json"
       ],
       "notes": [
-        "完整API回归已过；本轮四端浏览器组合验收未收口，因此尚不计为整项验收通过。"
+        "多阶段备货实际走申请2/审核预留2/出库2/实收1/差异报审释放1；补缴后同申请重试及重复到账集成通过。"
       ]
     },
     {
       "id": "P34",
-      "status": "in-progress",
+      "status": "passed",
       "evidence": [
-        "docs/day-night-parity/evidence/api-full-local-round3.log"
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/user-node-tests-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/day-night-parity/evidence/test-ledger-final.json"
       ],
       "notes": [
-        "完整API回归已过；本轮四端浏览器组合验收未收口，因此尚不计为整项验收通过。"
+        "押金恒等式、历史货值、库存冻结、部分退款冲回和跨期结算并发均覆盖；最终TEST账本无开放订单/待审单/未知退款。"
       ]
     },
     {
       "id": "P35",
-      "status": "in-progress",
+      "status": "passed",
       "evidence": [
-        "docs/day-night-parity/evidence/api-full-local-round3.log"
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/user-node-tests-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl"
       ],
       "notes": [
-        "完整API回归已过；本轮四端浏览器组合验收未收口，因此尚不计为整项验收通过。"
+        "DB canonical角色、单角色写/旧混合授权只读、组织/校区/店铺/用户/渠道隔离；正式楼长双向切换H5通过，其他3类角色无入口。"
       ]
     },
     {
       "id": "P36",
-      "status": "in-progress",
-      "evidence": [],
-      "notes": []
+      "status": "passed",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/user-node-tests-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/day-night-parity/evidence/night-home-390.png",
+        "docs/day-night-parity/evidence/night-checkout-375.png",
+        "docs/day-night-parity/evidence/delivery-night-430.png",
+        "docs/day-night-parity/evidence/day-cart-390.png"
+      ],
+      "notes": [
+        "沿用森林绿暖金与日间奶油底；用户首页/券/结算/白天车、配送日夜头部实际375/390/430无横向溢出，图片证据归档。"
+      ]
     },
     {
       "id": "P37",
-      "status": "in-progress",
-      "evidence": [],
-      "notes": []
+      "status": "passed",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/user-node-tests-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl"
+      ],
+      "notes": [
+        "离线profile不显示未确认业务菜单，恢复重试成功；部分请求失败保留有效选择/购物车；旧响应/过期token loader/缓存浮层竞态已修复。"
+      ]
     },
     {
       "id": "P38",
-      "status": "in-progress",
+      "status": "passed",
       "evidence": [
-        "docs/day-night-parity/evidence/api-full-local-round3.log",
-        "docs/day-night-parity/evidence/http-e2e-remote.log"
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/user-node-tests-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/day-night-parity/evidence/api-http-e2e-final.log",
+        "docs/day-night-parity/evidence/admin-node-tests-final.log",
+        "docs/day-night-parity/evidence/delivery-node-tests-final.log",
+        "docs/day-night-parity/evidence/network-isolation-final.log",
+        "docs/day-night-parity/TEST_REPORT.md"
       ],
       "notes": [
-        "API658/658及远端HTTP5/5通过；三前端现有Node脚本也已执行，需补保存最终日志、迁移及状态化HTTP驱动审计。"
+        "所有适用自动化测试入口执行；历史固定3150预览脚本由当前HTTP/数据库集成替代，原因与映射见TEST_REPORT。没有删除用例或降断言过绿。"
       ]
     },
     {
       "id": "P39",
-      "status": "in-progress",
-      "evidence": [],
-      "notes": []
+      "status": "passed",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/user-node-tests-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/test-checklist.md",
+        "docs/day-night-parity/checklist-results.json",
+        "docs/day-night-parity/TEST_REPORT.md",
+        "docs/day-night-parity/DEPLOYMENT.md",
+        "docs/day-night-parity/RELEASE_VERSIONS.json",
+        "docs/day-night-parity/evidence/deployment-final.log",
+        "docs/day-night-parity/evidence/release-artifact-audit.json"
+      ],
+      "notes": [
+        "冻结矩阵、118清单、测试/部署/决定/审查与版本记录完整；四端类型构建、测试证据及提交收口。"
+      ]
     },
     {
       "id": "P40",
       "status": "pending",
       "evidence": [],
-      "notes": []
+      "notes": [
+        "真实微信身份手机号、微信支付退款、推送、相机/设备、电话与原生分享未完成实测；H5/外部模拟不能代替，不计通过。"
+      ]
     }
   ]
 }

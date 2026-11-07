@@ -1,0 +1,9 @@
+{
+  "date": "2026-11-08",
+  "userCommit": "f1fba9c",
+  "h5AndMp": true,
+  "filesScanned": 154,
+  "previewMarkers": [],
+  "testApi": "https://admin-test.buchuqin.com/api/v1",
+  "productionDeployed": false
+}

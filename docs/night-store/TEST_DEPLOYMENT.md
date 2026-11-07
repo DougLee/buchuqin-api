@@ -1,3 +1,5 @@
+> 历史阶段记录（2026-11-07夜宵基础功能目标）。当前日夜对齐目标、测试与部署版本见 [最新交付报告](../day-night-parity/FINAL_REPORT.md) 和 [当前TEST部署](../day-night-parity/DEPLOYMENT.md)，不能沿用本文旧版本号执行升级。
+
 # 夜宵四端测试环境启动与发布
 
 API、管理后台、用户小程序、配送小程序均使用 `feature/night-store`，本轮四端都有代码变更，必须配套发布。版本见 [RELEASE_VERSIONS.json](RELEASE_VERSIONS.json)，结论见 [ACCEPTANCE_REPORT.md](ACCEPTANCE_REPORT.md)。本任务没有发布生产。

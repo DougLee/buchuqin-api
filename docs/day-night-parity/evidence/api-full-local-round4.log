@@ -1,0 +1,70 @@
+仅测试库：night_parity_spec / night_stock_parity_full4_20261108；HTTP 出站隔离已启用
+夜宵预览HTTP出站白名单已启用；生产API、微信网关及外部存储均不可连接。
+[Nest] 35420  - 11/08/2026, 12:53:16 AM     LOG [AuthController] 用户端登录诊断（IKI3ZP 排查）：appid=wx-gate-a-gatemw6n6x47 unionid=未返回
+[Nest] 35420  - 11/08/2026, 12:53:16 AM    WARN [BusinessService] signup coupon grant skipped: no active signup coupon for campus=campus-hbut userId=cmw6n6x9x04orzzbw2iiy0x9l
+[Nest] 35420  - 11/08/2026, 12:53:16 AM     LOG [AuthController] 用户端登录诊断（IKI3ZP 排查）：appid=wx-gate-a-gatemw6n6x47 unionid=未返回
+[Nest] 35420  - 11/08/2026, 12:53:16 AM    WARN [BusinessService] signup coupon grant skipped: no active signup coupon for campus=campus-hbut userId=cmw6n6xa404otzzbwvpweyuo4
+[Nest] 35420  - 11/08/2026, 12:53:16 AM     LOG [AuthController] 用户端登录诊断（IKI3ZP 排查）：appid=wx-gate-b-user-gatemw6n6x47 unionid=未返回
+[Nest] 35420  - 11/08/2026, 12:53:16 AM    WARN [BusinessService] signup coupon grant skipped: no active signup coupon for campus=campus-gate-b1-gatemw6n6x47 userId=cmw6n6xcj04p6zzbw953ttlvc
+[Nest] 35420  - 11/08/2026, 12:53:16 AM     LOG [AuthController] 用户端登录诊断（IKI3ZP 排查）：appid=wx-gate-b-user-gatemw6n6x47 unionid=未返回
+[Nest] 35420  - 11/08/2026, 12:53:22 AM    WARN [BusinessService] signup coupon grant skipped: no active signup coupon for campus=campus-hbut userId=cmw6n71vz054pzzbwqrcumu8d
+[Nest] 35420  - 11/08/2026, 12:53:22 AM    WARN [BusinessService] signup coupon grant skipped: no active signup coupon for campus=campus-test-b userId=cmw6n71vz054pzzbwqrcumu8d
+[Nest] 35420  - 11/08/2026, 12:53:25 AM     LOG [AuthController] 用户端登录诊断（IKI3ZP 排查）：appid=wx-specb-user-ikkrmo-1794070405069 unionid=未返回
+[Nest] 35420  - 11/08/2026, 12:53:25 AM    WARN [BusinessService] signup coupon grant skipped: no active signup coupon for campus=campus-specb1-ikkrmo-1794070405069 userId=cmw6n746g05b4zzbwcppkt0hi
+[Nest] 35420  - 11/08/2026, 12:53:25 AM     LOG [AuthController] 用户端登录诊断（IKI3ZP 排查）：appid=wx-specb-user-ikkrmo-1794070405069 unionid=未返回
+[Nest] 35420  - 11/08/2026, 12:53:25 AM    WARN [BusinessService] signup coupon grant skipped: no active signup coupon for campus=campus-specb1-ikkrmo-1794070405069 userId=cmw6n746o05b6zzbwrj4ydw8w
+[Nest] 35420  - 11/08/2026, 12:53:25 AM     LOG [AuthController] 用户端登录诊断（IKI3ZP 排查）：appid=wx-empty-user-ikkrmo-1794070405069 unionid=未返回
+[Nest] 35420  - 11/08/2026, 12:53:25 AM     LOG [AuthController] 用户端登录诊断（IKI3ZP 排查）：appid=wx-specb-user-ikkrmo-1794070405069 unionid=未返回
+[Nest] 35420  - 11/08/2026, 12:53:25 AM    WARN [BusinessService] signup coupon grant skipped: no active signup coupon for campus=campus-specb2-ikkrmo-1794070405069 userId=cmw6n747a05b8zzbwta5p5wbn
+[Nest] 35420  - 11/08/2026, 12:53:25 AM     LOG [AuthController] 用户端登录诊断（IKI3ZP 排查）：appid=wx-specb-user-ikkrmo-1794070405069 unionid=未返回
+[Nest] 35420  - 11/08/2026, 12:53:25 AM     LOG [AuthController] 用户端登录诊断（IKI3ZP 排查）：appid=wx-specb-user-ikkrmo-1794070405069 unionid=未返回
+[Nest] 35420  - 11/08/2026, 12:53:25 AM    WARN [BusinessService] signup coupon grant skipped: no active signup coupon for campus=campus-specb1-ikkrmo-1794070405069 userId=cmw6n747i05bazzbwmp70dojq
+[Nest] 35420  - 11/08/2026, 12:53:25 AM     LOG [AuthController] 用户端登录诊断（IKI3ZP 排查）：appid=wx-specb-user-ikkrmo-1794070405069 unionid=未返回
+[Nest] 35420  - 11/08/2026, 12:53:25 AM     LOG [AuthController] 用户端登录诊断（IKI3ZP 排查）：appid=wx-specb-compat-ikkrmo-1794070405069 unionid=未返回
+[Nest] 35420  - 11/08/2026, 12:53:25 AM    WARN [BusinessService] signup coupon grant skipped: no active signup coupon for campus=campus-hbut userId=cmw6n747o05bczzbwujdold4u
+[Nest] 35420  - 11/08/2026, 12:53:25 AM    WARN [BusinessService] signup coupon grant skipped: no active signup coupon for campus=campus-specb2-ikkrmo-1794070405069 userId=cmw6n747y05bezzbwcy7x7f22
+[Nest] 35420  - 11/08/2026, 12:53:25 AM    WARN [BusinessService] signup coupon grant skipped: no active signup coupon for campus=campus-specb2-ikkrmo-1794070405069 userId=cmw6n748p05bkzzbw3p463t6g
+[Nest] 35420  - 11/08/2026, 12:53:25 AM     LOG [AuthController] 骑手静默登录诊断：staff=staff-specb2-ikkrmo-1794070405069 code2session unionid=未返回（用户未关注同平台服务号或绑定不一致）
+[Nest] 35420  - 11/08/2026, 12:53:27 AM     LOG [PaymentsService] 回调解密命中组织密钥 org:org-wxspec-b(微信路由测试组织B)
+[Nest] 35420  - 11/08/2026, 12:53:27 AM   ERROR [PaymentsService] 回调解密失败：env 与全部组织 APIv3 密钥均未命中
+[Nest] 35420  - 11/08/2026, 12:53:30 AM   DEBUG [PaymentsService] 回调验签头 serial=PUB_KEY_ID_LOCAL
+[Nest] 35420  - 11/08/2026, 12:53:30 AM   DEBUG [PaymentsService] 回调验签头 serial=PUB_KEY_ID_LOCAL
+[Nest] 35420  - 11/08/2026, 12:53:30 AM   ERROR [PaymentsService] 夜宵支付落账失败：outTradeNo=YX_LOCAL_1 wxTradeId=WX_LOCAL_TX reason=夜宵支付金额、币种或商户信息不匹配，已阻止落账
+[Nest] 35420  - 11/08/2026, 12:53:30 AM   DEBUG [PaymentsService] 回调验签头 serial=PUB_KEY_ID_LOCAL
+[Nest] 35420  - 11/08/2026, 12:53:30 AM   ERROR [PaymentsService] 夜宵支付落账失败：outTradeNo=YX_LOCAL_1 wxTradeId=WX_LOCAL_TX reason=夜宵支付金额、币种或商户信息不匹配，已阻止落账
+[Nest] 35420  - 11/08/2026, 12:53:30 AM   DEBUG [PaymentsService] 回调验签头 serial=PUB_KEY_ID_LOCAL
+[Nest] 35420  - 11/08/2026, 12:53:30 AM   ERROR [PaymentsService] 夜宵支付落账失败：outTradeNo=YX_LOCAL_1 wxTradeId=WX_LOCAL_TX reason=夜宵支付金额、币种或商户信息不匹配，已阻止落账
+[Nest] 35420  - 11/08/2026, 12:53:30 AM   DEBUG [PaymentsService] 回调验签头 serial=PUB_KEY_ID_LOCAL
+[Nest] 35420  - 11/08/2026, 12:53:30 AM   ERROR [PaymentsService] 夜宵支付落账失败：outTradeNo=YX_LOCAL_1 wxTradeId=WX_LOCAL_TX reason=夜宵支付金额、币种或商户信息不匹配，已阻止落账
+[Nest] 35420  - 11/08/2026, 12:53:30 AM   DEBUG [PaymentsService] 回调验签头 serial=PUB_KEY_ID_LOCAL
+[Nest] 35420  - 11/08/2026, 12:53:30 AM   ERROR [PaymentsService] 夜宵支付落账失败：outTradeNo=YX_LOCAL_1 wxTradeId=WX_LOCAL_TX reason=夜宵支付金额、币种或商户信息不匹配，已阻止落账
+[Nest] 35420  - 11/08/2026, 12:53:30 AM   DEBUG [PaymentsService] 回调验签头 serial=PUB_KEY_ID_LOCAL
+[Nest] 35420  - 11/08/2026, 12:53:30 AM   ERROR [PaymentsService] 回调验签失败 serial=PUB_KEY_ID_LOCAL
+[Nest] 35420  - 11/08/2026, 12:53:30 AM   DEBUG [PaymentsService] 回调验签头 serial=PUB_KEY_ID_LOCAL
+[Nest] 35420  - 11/08/2026, 12:53:30 AM   DEBUG [PaymentsService] 回调验签头 serial=s
+[Nest] 35420  - 11/08/2026, 12:53:30 AM   DEBUG [PaymentsService] 回调验签头 serial=PUB_KEY_ID_actual_from_wechat
+[Nest] 35420  - 11/08/2026, 12:53:30 AM   ERROR [PaymentsService] 回调验签失败 serial=PUB_KEY_ID_actual_from_wechat
+[Nest] 35420  - 11/08/2026, 12:53:30 AM   ERROR [PaymentsService] 支付落账失败转异常单：order=cmw6n786s05kmzzbwwgf9qkn0 orderNo=BCQG11794070410291HVCP wxTradeId=wx-tid-g1 reason=幽灵商品库存不足
+[Nest] 35420  - 11/08/2026, 12:53:30 AM     LOG [NotificationsService] 发货信息上报成功 → BCQSHIP179407041035689L6 logistics_type=2
+[Nest] 35420  - 11/08/2026, 12:53:30 AM     LOG [NotificationsService] 发货信息上报成功 → BCQSHIP1794070410361QXS3 logistics_type=4
+[Nest] 35420  - 11/08/2026, 12:53:30 AM     LOG [NotificationsService] 发货信息上报成功 → BCQSHIP1794070410366L8SL logistics_type=2
+[Nest] 35420  - 11/08/2026, 12:53:30 AM    WARN [NotificationsService] 发货信息重复上报，微信幂等拒绝（已忽略，勿重试）→ BCQSHIP1794070410369QYUM: 10060002 idempotent-reject
+[Nest] 35420  - 11/08/2026, 12:53:30 AM    WARN [NotificationsService] 发货信息重复上报，微信幂等拒绝（已忽略，勿重试）→ BCQSHIP179407041037398H8: 10060003 idempotent-reject
+[Nest] 35420  - 11/08/2026, 12:53:30 AM    WARN [NotificationsService] 发货信息重复上报，微信幂等拒绝（已忽略，勿重试）→ BCQSHIP1794070410376ECNI: 10060023 idempotent-reject
+[Nest] 35420  - 11/08/2026, 12:53:30 AM    WARN [NotificationsService] 发货信息上报失败（已忽略，不阻断出库）: order=BCQSHIP1794070410380MPHA 10060001 order not exist
+[Nest] 35420  - 11/08/2026, 12:53:30 AM    WARN [NotificationsService] 发货信息上报跳过（组织凭证/商户号未配置）→ BCQSHIP1794070410383EG15
+[Nest] 35420  - 11/08/2026, 12:53:30 AM     LOG [NotificationsService] 发货信息上报成功 → BCQSHIP17940704103867SFW logistics_type=2
+[Nest] 35420  - 11/08/2026, 12:53:30 AM   DEBUG [PrinterService] 芯烨云凭证未配置（XPYUN_USER/USERKEY/PRINTER_SN），跳过打印
+[Nest] 35420  - 11/08/2026, 12:53:30 AM   DEBUG [PrinterService] 配送小程序凭证未配置（组织与 env 均无），小票二维码回落订单号文本
+[Nest] 35420  - 11/08/2026, 12:53:30 AM   DEBUG [PrinterService] 配送小程序凭证未配置（组织与 env 均无），小票二维码回落订单号文本
+[Nest] 35420  - 11/08/2026, 12:53:30 AM   DEBUG [PrinterService] 配送小程序凭证未配置（组织与 env 均无），小票二维码回落订单号文本
+[Nest] 35420  - 11/08/2026, 12:53:30 AM   DEBUG [PrinterService] 配送小程序凭证未配置（组织与 env 均无），小票二维码回落订单号文本
+[Nest] 35420  - 11/08/2026, 12:53:30 AM   DEBUG [PrinterService] 配送小程序凭证未配置（组织与 env 均无），小票二维码回落订单号文本
+[Nest] 35420  - 11/08/2026, 12:53:30 AM   DEBUG [PrinterService] 配送小程序凭证未配置（组织与 env 均无），小票二维码回落订单号文本
+[Nest] 35420  - 11/08/2026, 12:53:30 AM   DEBUG [PrinterService] 配送小程序凭证未配置（组织与 env 均无），小票二维码回落订单号文本
+
+Test Suites: 77 passed, 77 total
+Tests:       659 passed, 659 total
+Snapshots:   0 total
+Time:        26.764 s
+Ran all test suites.

@@ -1,3 +1,5 @@
+> 历史阶段记录（2026-11-07夜宵基础功能目标）。当前日夜对齐目标、测试与部署版本见 [最新交付报告](../day-night-parity/FINAL_REPORT.md) 和 [当前TEST部署](../day-night-parity/DEPLOYMENT.md)，不能沿用本文旧版本号执行升级。
+
 # 夜宵四端Goal最终状态
 
 2026-11-07：原43项冻结验收，42项通过，**98%**；全部核心项通过。唯一剩余X05真实微信/真机外部能力2%明确未验收。完整结论以 [ACCEPTANCE_REPORT.md](ACCEPTANCE_REPORT.md) 和自动计算的 [acceptance-progress.json](acceptance-progress.json) 为准，旧阶段记录不代表最终状态。

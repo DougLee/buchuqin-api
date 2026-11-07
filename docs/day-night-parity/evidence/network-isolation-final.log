@@ -1,0 +1,40 @@
+TAP version 13
+# Subtest: 隔离预加载拒绝非test进程、业务数据库名和public schema，尚未进行数据库或网络连接
+ok 1 - 隔离预加载拒绝非test进程、业务数据库名和public schema，尚未进行数据库或网络连接
+  ---
+  duration_ms: 131.00475
+  type: 'test'
+  ...
+# Subtest: HTTP与fetch离线桩确认拒绝外部主机和URL参数覆盖；没有发送任何真实请求
+ok 2 - HTTP与fetch离线桩确认拒绝外部主机和URL参数覆盖；没有发送任何真实请求
+  ---
+  duration_ms: 41.453584
+  type: 'test'
+  ...
+# Subtest: 集成测试入口拒绝业务库名与非独立schema，不启动Prisma或Jest
+ok 3 - 集成测试入口拒绝业务库名与非独立schema，不启动Prisma或Jest
+  ---
+  duration_ms: 96.213917
+  type: 'test'
+  ...
+# Subtest: 验收适配必须有显式标记、固定测试宿主信息和固定测试数据库目标，不连接网络
+ok 4 - 验收适配必须有显式标记、固定测试宿主信息和固定测试数据库目标，不连接网络
+  ---
+  duration_ms: 2.347709
+  type: 'test'
+  ...
+# Subtest: 只有明确命名且无真实支付凭证的验收组织可使用模拟通道，其他组织拒绝
+ok 5 - 只有明确命名且无真实支付凭证的验收组织可使用模拟通道，其他组织拒绝
+  ---
+  duration_ms: 0.159959
+  type: 'test'
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 314.603291
