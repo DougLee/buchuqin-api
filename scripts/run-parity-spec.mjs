@@ -1,0 +1,18 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { spawnSync } from 'node:child_process';
+const schema = process.env.PARITY_SCHEMA || 'night_stock_parity_20261107';
+if (!/^night_stock_parity_[a-z0-9_]+$/.test(schema)) throw Error('仅允许本轮独立测试 schema');
+const line = fs.readFileSync('.env', 'utf8').split(/\r?\n/).find(row => row.startsWith('DATABASE_URL='));
+const url = new URL(process.env.DATABASE_URL || line?.slice(13).replace(/^['"]|['"]$/g, '') || '');
+const localDebug = process.env.PARITY_LOCAL_DEBUG === '1' && url.hostname === '127.0.0.1' && url.port === '15449' && url.pathname === '/night_parity_spec';
+if (!localDebug && (url.hostname !== '139.199.3.190' || !url.pathname.endsWith('_spec'))) throw Error('必须指定授权专用测试库');
+if (!localDebug) { url.hostname = '127.0.0.1'; url.port = '15439'; } url.searchParams.set('schema', schema);
+const [command, ...args] = process.argv.slice(2);
+if (!['jest', 'prisma', 'ts-node', 'node'].includes(command)) throw Error('不支持的测试程序');
+const env = { ...process.env, NODE_ENV: 'test', DATABASE_URL: url.toString(), JWT_SECRET: 'night-parity-isolated-test-only-secret', NIGHT_STOCK_INTEGRATION: '1', NODE_OPTIONS: `--import ${path.resolve('scripts/night-preview-network-guard.mjs')}` };
+console.log(`仅测试库：${url.pathname.slice(1)} / ${schema}；HTTP 出站隔离已启用`);
+const executable = command === 'node' ? process.execPath : path.resolve('node_modules/.bin', command);
+const result = spawnSync(executable, args, { env, stdio: 'inherit' });
+if (result.error) console.error(result.error.name);
+process.exitCode = result.status ?? 1;

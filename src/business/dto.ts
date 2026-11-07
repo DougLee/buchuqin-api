@@ -21,6 +21,7 @@ export class CartItemDto {
   @IsOptional() @IsBoolean() asSeckill?: boolean;
 }
 export class UpdateCartDto {
+  @IsOptional() @IsString() @MaxLength(64) expectedVersion?: string;
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => CartItemDto)

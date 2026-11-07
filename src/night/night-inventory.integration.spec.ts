@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
 import { NightInventoryService } from './night-inventory.service';
 import { NightOrderService } from './night-order.service';
@@ -866,7 +867,7 @@ integration('已确认的夜宵备货库存流程（独立 PostgreSQL schema）'
     const original = await db.nightOrder.findUniqueOrThrow({ where: { id: f.order.id } });
     await db.campus.update({ where: { id: f.campus.id }, data: { servicePhone: '4000000001', showDeliveryContacts: false } });
     // 列表容量夹具：已关闭且已释放资源，不产生库存或资金流水。
-    await db.nightOrder.createMany({ data: Array.from({ length: 120 }, (_, index) => ({ ...original, id: randomUUID(), orderNo: `PAGE-${randomUUID()}`, requestId: null, requestHash: null, couponId: null, status: 'cancelled', statusText: '已取消', paidAt: null, quotaHeld: 0, inventoryRestocked: true, createdAt: new Date(Date.now() - index * 1000) })) });
+    await db.nightOrder.createMany({ data: Array.from({ length: 120 }, (_, index) => ({ ...original, couponSnapshot: Prisma.DbNull, items: original.items as Prisma.InputJsonValue, address: original.address as Prisma.InputJsonValue, timeline: original.timeline as Prisma.InputJsonValue, id: randomUUID(), orderNo: `PAGE-${randomUUID()}`, requestId: null, requestHash: null, couponId: null, status: 'cancelled', statusText: '已取消', paidAt: null, quotaHeld: 0, inventoryRestocked: true, createdAt: new Date(Date.now() - index * 1000) })) });
     const a = await f.orders.myOrdersPage(f.user.id, 'all', '1', '20');
     const b = await f.orders.myOrdersPage(f.user.id, 'all', '6', '20');
     const c = await f.orders.myOrdersPage(f.user.id, 'all', '7', '20');
@@ -1088,11 +1089,180 @@ integration('已确认的夜宵备货库存流程（独立 PostgreSQL schema）'
     await f.orders.deliverOrder(f.staff.id, f.store.id, f.order.id, { images: ['http://localhost:3150/api/v1/uploads/local-proof.jpg'] });
     const body = { type: 'missing', description: '用户反馈少了一件，请核查送达照片和完整商品数量。', images: ['http://localhost:3150/api/v1/uploads/after-sale.jpg'] };
     await f.orders.applyAfterSale(f.user.id, f.order.id, body);
-    expect((await f.orders.myOrder(f.user.id, f.order.id)).timeline.find(t => t.key === 'after-sale')).toMatchObject({ description: 'missing：' + body.description, images: body.images });
+    const timeline = (await f.orders.myOrder(f.user.id, f.order.id)).timeline;
+    expect(Array.isArray(timeline)).toBe(true);
+    expect((Array.isArray(timeline) ? timeline : []).find(t => typeof t === 'object' && t !== null && !Array.isArray(t) && t.key === 'after-sale')).toMatchObject({ description: 'missing：' + body.description, images: body.images });
     expect((await f.orders.settleBatch(f.campus.id)).txnCount).toBe(0);
     await f.orders.rejectAfterSale('isolated-admin', f.order.id, '已核对照片和数量，确认全部送达');
     expect((await f.orders.settleBatch(f.campus.id)).txnCount).toBe(2);
     await expect(f.orders.rejectAfterSale('isolated-admin', f.order.id, '重复审核')).rejects.toThrow('状态已变化');
+  });
+
+  it('后台夜宵商品详情和推荐设置传到用户端，保存白天推荐不会清除夜宵推荐', async () => {
+    const f = await refundFixture();
+    const admin = new NightAdminService(db, {} as PaymentsService, f.orders);
+    await admin.updateCatalogProduct('isolated-admin', f.catalog.id, {
+      images: ['http://localhost:3150/api/v1/uploads/front.jpg', 'http://localhost:3150/api/v1/uploads/back.jpg'],
+      description: '独立夜宵介绍\n保留多行内容', featured: true, featuredSort: 3,
+    });
+    const customer = new NightUserService(db, f.orders);
+    expect((await customer.storeProducts(f.campus.id, f.store.id))[0]).toMatchObject({ description: '独立夜宵介绍\n保留多行内容', images: expect.arrayContaining(['http://localhost:3150/api/v1/uploads/back.jpg']), featured: true });
+    await new AdminService(db, new BusinessService(db)).saveFeatured([], f.campus.id);
+    expect((await customer.storeProducts(f.campus.id, f.store.id))[0].featured).toBe(true);
+    expect((await db.product.findUniqueOrThrow({ where: { id: f.warehouse.id } })).description).not.toBe('独立夜宵介绍\n保留多行内容');
+  });
+
+  it('夜宵限时特惠按服务端活动价展示和锁单，不能叠券，过期恢复原价并拒绝旧金额', async () => {
+    const f = await refundFixture();
+    const promotion = await db.promotion.create({ data: { productId: f.catalog.id, type: 'clearance', price: 300, startsAt: new Date(Date.now() - 60000), endsAt: new Date(Date.now() + 60000) } });
+    const admin = new AdminService(db, new BusinessService(db));
+    expect(await admin.promotions(f.campus.id, undefined, undefined, 'day')).toEqual([]);
+    expect(await admin.promotions(f.campus.id, undefined, undefined, 'night')).toHaveLength(1);
+    const customer = new NightUserService(db, f.orders);
+    expect((await customer.storeProducts(f.campus.id, f.store.id))[0]).toMatchObject({ price: 300, originalPrice: 500 });
+    await expect(f.orders.submitOrder(f.user.id, { storeId: f.store.id, addressId: f.address.id, couponId: f.held.id, items: [{ productId: f.product.id, quantity: 1 }] })).rejects.toThrow('不可叠加');
+    const order = await f.orders.submitOrder(f.user.id, { storeId: f.store.id, addressId: f.address.id, expectedProductAmount: 300, items: [{ productId: f.product.id, quantity: 1 }] });
+    expect(order).toMatchObject({ productAmount: 300, payableAmount: 500, items: [expect.objectContaining({ price: 300, promotionId: promotion.id })] });
+    await f.orders.applyNightOrderPaid(order.orderNo);
+    expect((await new NightReportingService(db).income(f.staff.id, { nightStartAt: '00:00', nightEndAt: '23:59' })).summary).toMatchObject({ commission: { estimated: 140 }, deliveryFee: { estimated: 400 } });
+    await db.promotion.update({ where: { id: promotion.id }, data: { endsAt: new Date(Date.now() - 1) } });
+    expect((await customer.storeProducts(f.campus.id, f.store.id))[0].price).toBe(500);
+    await expect(f.orders.submitOrder(f.user.id, { storeId: f.store.id, addressId: f.address.id, expectedProductAmount: 300, items: [{ productId: f.product.id, quantity: 1 }] })).rejects.toThrow('价格或配送费已变化');
+  });
+
+  it('夜宵秒杀独立于原价渠道，每单1件，过期不能伪装成原价继续结算', async () => {
+    const f = await refundFixture();
+    const promotion = await db.promotion.create({ data: { productId: f.catalog.id, type: 'seckill', price: 200, startsAt: new Date(Date.now() - 60000), endsAt: new Date(Date.now() + 60000) } });
+    const product = (await new NightUserService(db, f.orders).storeProducts(f.campus.id, f.store.id))[0];
+    expect(product).toMatchObject({ price: 500, seckill: { id: promotion.id, price: 200 } });
+    await expect(f.orders.submitOrder(f.user.id, { storeId: f.store.id, addressId: f.address.id, items: [{ productId: f.product.id, quantity: 2, asSeckill: true, promotionId: promotion.id }] })).rejects.toThrow('每单限购1件');
+    const requestId = randomUUID();
+    const order = await f.orders.submitOrder(f.user.id, { requestId, storeId: f.store.id, addressId: f.address.id, expectedProductAmount: 200, items: [{ productId: f.product.id, quantity: 1, asSeckill: true, promotionId: promotion.id }] });
+    expect(order).toMatchObject({ productAmount: 200, items: [expect.objectContaining({ asSeckill: true, promotionId: promotion.id })] });
+    await f.orders.applyNightOrderPaid(order.orderNo);
+    expect(await f.orders.cancelByUser(f.user.id, order.id)).toMatchObject({ refund: { status: 'succeeded', amount: 400 } });
+    expect((await f.resources()).product).toMatchObject({ stock: 2, inventoryValue: 1000 });
+    const normal = await f.orders.submitOrder(f.user.id, { storeId: f.store.id, addressId: f.address.id, expectedProductAmount: 1000, items: [{ productId: f.product.id, quantity: 2, asSeckill: false }] });
+    expect(normal.productAmount).toBe(1000);
+    await f.orders.cancelByUser(f.user.id, normal.id);
+    await db.promotion.update({ where: { id: promotion.id }, data: { endsAt: new Date(Date.now() - 1) } });
+    await expect(f.orders.submitOrder(f.user.id, { storeId: f.store.id, addressId: f.address.id, items: [{ productId: f.product.id, quantity: 1, asSeckill: true, promotionId: promotion.id }] })).rejects.toThrow('秒杀活动未开始或已结束');
+    const next = await db.promotion.create({ data: { productId: f.catalog.id, type: 'seckill', price: 200, startsAt: new Date(Date.now() - 1000), endsAt: new Date(Date.now() + 60000) } });
+    await expect(f.orders.submitOrder(f.user.id, { requestId, storeId: f.store.id, addressId: f.address.id, expectedProductAmount: 200, items: [{ productId: f.product.id, quantity: 1, asSeckill: true, promotionId: next.id }] })).rejects.toThrow('已用于其他内容');
+    await expect(f.orders.submitOrder(f.user.id, { storeId: f.store.id, addressId: f.address.id, items: [{ productId: f.product.id, quantity: 1, asSeckill: true, promotionId: promotion.id }] })).rejects.toThrow('秒杀活动已变化');
+  });
+
+  it('白天购物车的单品与整袋入口拒绝其他校区和夜宵主档，旧脏行不会出现在当前车里', async () => {
+    const f = await fixture(), foreign = await fixture();
+    await db.campus.updateMany({ where: { id: { in: [f.campus.id, foreign.campus.id] } }, data: { manualClosed: false, closeStart: '00:00', closeEnd: '00:00' } });
+    const user = await db.user.create({ data: { campusId: f.campus.id, nickname: '购物车渠道边界验收', phone: randomUUID() } });
+    const business = new BusinessService(db);
+    await business.setCartItem(user.id, f.warehouse.id, 1);
+    await expect(business.updateCart(user.id, { items: [{ productId: foreign.warehouse.id, quantity: 1 }] })).rejects.toThrow('当前校区');
+    await expect(business.setCartItem(user.id, foreign.warehouse.id, 1)).rejects.toThrow('当前校区');
+    await db.product.update({ where: { id: f.catalog.id }, data: { stock: 100 } });
+    await expect(business.updateCart(user.id, { items: [{ productId: f.catalog.id, quantity: 1 }] })).rejects.toThrow('渠道');
+    await db.cartItem.create({ data: { userId: user.id, productId: foreign.warehouse.id, quantity: 1 } });
+    expect((await business.cart(user.id)).items.map(line => line.product.id)).toEqual([f.warehouse.id]);
+  });
+
+  it('用户切换校区后，日夜历史订单客服与福利群仍取原订单校区', async () => {
+    const f = await refundFixture(), other = await fixture();
+    await db.campus.update({ where: { id: f.campus.id }, data: { servicePhone: '13800009910', serviceQrcode: '/original-support.png', afterSalesGroupQrcode: '/original-group.png', groupQrcodeTip: '原校区福利群' } });
+    await db.campus.update({ where: { id: other.campus.id }, data: { servicePhone: '13800009911', afterSalesGroupQrcode: '/wrong-group.png' } });
+    // Historical read fixture: this test checks ownership/context, not payment settlement.
+    const day = await db.order.create({ data: { campusId: f.campus.id, userId: f.user.id, orderNo: `SUPPORT-${randomUUID()}`, status: 'paid', statusText: '待接单', items: [], address: {}, deliveryMode: 'instant', productAmount: 500, totalQuantity: 1, deliveryThreshold: 0, deliveryFee: 0, discount: 0, payableAmount: 500, estimatedArrival: '', timeline: [] } });
+    await db.user.update({ where: { id: f.user.id }, data: { campusId: other.campus.id } });
+    const business = new BusinessService(db);
+    const dayView = await business.order(f.user.id, day.id);
+    const nightView = await f.orders.myOrder(f.user.id, f.order.id);
+    for (const view of [dayView, nightView]) expect(view.support).toMatchObject({ phone: '13800009910', qrcode: '/original-support.png', groupQrcode: '/original-group.png', groupTip: '原校区福利群' });
+    await expect(business.order('foreign-user', day.id)).rejects.toThrow();
+    await expect(f.orders.myOrder('foreign-user', f.order.id)).rejects.toThrow();
+  });
+
+  it('夜宵周期限购按商品主档跨价格身份计件，并发待付占额、取消释放且不串白天订单', async () => {
+    const f = await refundFixture();
+    await db.product.update({ where: { id: f.catalog.id }, data: { purchaseLimit: 'weekly', purchaseLimitQty: 2 } });
+    const submit = () => f.orders.submitOrder(f.user.id, { storeId: f.store.id, addressId: f.address.id, items: [{ productId: f.product.id, quantity: 1 }] });
+    const results = await Promise.allSettled([submit(), submit()]);
+    expect(results.filter(result => result.status === 'fulfilled')).toHaveLength(1);
+    const winner = results.find(result => result.status === 'fulfilled');
+    if (!winner || winner.status !== 'fulfilled') throw new Error('缺少成功订单');
+    await f.orders.cancelByUser(f.user.id, winner.value.id);
+    const retried = await submit();
+    expect(retried.status).toBe('pending-payment');
+    // Deadline alone is not release: the closing transaction must first restore resources.
+    await db.nightOrder.update({ where: { id: retried.id }, data: { timeoutAt: new Date(Date.now() - 1000), createdAt: new Date('2020-01-01T00:00:00Z') } });
+    await expect(submit()).rejects.toThrow('限购数量');
+    await f.orders.applyNightOrderPaid(retried.orderNo);
+    await expect(submit()).rejects.toThrow('限购数量');
+    expect((await db.nightProduct.findUniqueOrThrow({ where: { id: f.product.id } })).stock).toBe(1);
+  });
+
+  it('日夜运营内容在后台创建后按渠道展示，旧内容默认白天且拒绝非法渠道', async () => {
+    const f = await fixture();
+    const admin = new AdminService(db, new BusinessService(db));
+    const business = new BusinessService(db);
+    const dayBanner = await admin.createBanner({ title: '白天公告图', color: 'green' }, f.staff.id, f.campus.id);
+    const nightBanner = await admin.createBanner({ title: '夜宵公告图', color: 'dark', businessType: 'night' }, f.staff.id, f.campus.id);
+    const window = { campusId: f.campus.id, startsAt: new Date(Date.now() - 60_000).toISOString(), endsAt: new Date(Date.now() + 60_000).toISOString() };
+    await admin.createNotice({ ...window, content: '白天店公告' }, f.staff.id, f.campus.id);
+    await admin.createNotice({ ...window, businessType: 'night', content: '夜宵店公告' }, f.staff.id, f.campus.id);
+    const [day, night] = await Promise.all([business.home(f.campus.id), business.home(f.campus.id, 'night')]);
+    expect(day.notice).toBe('白天店公告'); expect(night.notice).toBe('夜宵店公告');
+    expect(night.hotProducts).toEqual([]); expect(night.promotions).toEqual([]);
+    expect(day.banners.map(row => row.id)).toEqual([dayBanner.id]);
+    expect(night.banners.map(row => row.id)).toEqual([nightBanner.id]);
+    expect((await admin.banners(f.campus.id, undefined, undefined, 'night')).map(row => row.id)).toEqual([nightBanner.id]);
+    await expect(business.home(f.campus.id, 'invalid')).rejects.toThrow('业务类型不正确');
+    await expect(admin.updateBanner(nightBanner.id, { title: '越校区' }, f.staff.id, 'foreign-campus')).rejects.toThrow('Banner 不存在');
+  });
+
+  it('白天支付只消费本订单商品数量，保留后加商品，旧购物车写入不能复活已购数量', async () => {
+    const f = await fixture();
+    await db.campus.update({ where: { id: f.campus.id }, data: { manualClosed: false, closeStart: '00:00', closeEnd: '00:00', deliveryThreshold: 0, deliveryFeeInstant: 0 } });
+    const user = await db.user.create({ data: { campusId: f.campus.id, nickname: '支付清车边界验收', phone: '13800009901' } });
+    const address = await db.address.create({ data: { userId: user.id, campusId: f.campus.id, campusName: f.campus.name, buildingId: f.building.id, buildingName: f.building.name, floor: 1, room: '101', contactName: '测试', phone: user.phone } });
+    const laterProduct = await db.product.create({ data: { campusId: f.campus.id, categoryId: f.catalog.categoryId, name: '后加商品', subtitle: '', price: 700, originalPrice: 700, stock: 20, tag: '', image: '', weight: 0 } });
+    const business = new BusinessService(db);
+    await db.product.update({ where: { id: f.warehouse.id }, data: { purchaseLimit: 'once', purchaseLimitQty: 2 } });
+    await expect(business.setCartItem(user.id, f.warehouse.id, 3)).rejects.toThrow('限购');
+    await business.setCartItem(user.id, f.warehouse.id, 1);
+    const order = await business.createOrder(user.id, f.campus.id, { addressId: address.id, deliveryMode: 'instant' });
+    const beforePayment = await business.updateCart(user.id, { items: [{ productId: f.warehouse.id, quantity: 2 }, { productId: laterProduct.id, quantity: 1 }] });
+    await business.pay(user.id, order.id);
+    const afterPayment = await business.cart(user.id);
+    expect(afterPayment.totalQuantity).toBe(2);
+    expect(afterPayment.items.find(line => line.product.id === f.warehouse.id)?.quantity).toBe(1);
+    expect(afterPayment.items.find(line => line.product.id === laterProduct.id)?.quantity).toBe(1);
+    await expect(business.updateCart(user.id, { expectedVersion: beforePayment.version, items: [{ productId: f.warehouse.id, quantity: 2 }, { productId: laterProduct.id, quantity: 1 }] })).rejects.toThrow('购物车已变化');
+    await business.pay(user.id, order.id);
+    expect((await business.cart(user.id)).totalQuantity).toBe(2);
+    expect((await db.product.findUniqueOrThrow({ where: { id: f.warehouse.id } })).stock).toBe(99);
+  });
+
+  it('售后列表按用户隔离、全额申请排除券和配送费，撤销与审核只有一方成功', async () => {
+    const f = await refundFixture();
+    await f.orders.acceptOrder(f.staff.id, f.store.id, f.order.id);
+    await f.orders.deliverOrder(f.staff.id, f.store.id, f.order.id, { images: ['http://localhost:3150/api/v1/uploads/proof.jpg'] });
+    const request = { type: 'missing', description: '收货时发现商品缺失，请核查处理。', images: ['http://localhost:3150/api/v1/uploads/after-sale.jpg'] };
+    await expect(f.orders.applyAfterSale(f.user.id, f.order.id, { ...request, productIds: ['foreign-product'] })).rejects.toThrow('不属于本订单');
+    await f.orders.applyAfterSale(f.user.id, f.order.id, request);
+    const records = await f.orders.myAfterSales(f.user.id, '1', '20');
+    expect(records.total).toBe(1);
+    expect(records.refundedAmount).toBe(0);
+    expect(records.items[0].timeline).toEqual(expect.arrayContaining([expect.objectContaining({ requestedAmount: 400 })]));
+    expect((await f.orders.myAfterSales('foreign-user')).total).toBe(0);
+    const outcomes = await Promise.allSettled([
+      f.orders.withdrawAfterSale(f.user.id, f.order.id),
+      f.orders.rejectAfterSale('isolated-admin', f.order.id, '审核已核对'),
+    ]);
+    expect(outcomes.filter(result => result.status === 'fulfilled')).toHaveLength(1);
+    const final = await f.orders.myOrder(f.user.id, f.order.id);
+    expect(['withdrawn', 'rejected']).toContain(final.afterSaleStatus);
+    expect(final.refund).toBeNull();
+    expect(f.apply).not.toHaveBeenCalled();
   });
 
   it('明确拒绝退款保留原订单和资源，同一退款号重试成功', async () => {

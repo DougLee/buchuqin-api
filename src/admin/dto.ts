@@ -226,6 +226,7 @@ export class ImportOrgProductDto {
 }
 /** 首页 Banner（IK9RX2）：后台可管；color 为预置主题键（green/orange/dark）或自定义 hex。 */
 export class CreateBannerDto {
+  @IsOptional() @IsIn(['day', 'night']) businessType?: 'day' | 'night';
   @IsString() @MinLength(1) @MaxLength(30) title!: string;
   @IsOptional() @IsString() @MaxLength(50) subtitle?: string;
   @IsOptional() @IsString() @MaxLength(20) badge?: string;
@@ -1147,6 +1148,7 @@ export class UpdateSlotDto {
 }
 /** 小程序公告（IKHM1P）：校区多条 + 生效窗 + 启停。 */
 export class CreateNoticeDto {
+  @IsOptional() @IsIn(['day', 'night']) businessType?: 'day' | 'night';
   @IsString() campusId!: string;
   @IsString() @MinLength(2) @MaxLength(200) content!: string;
   @IsString() startsAt!: string;

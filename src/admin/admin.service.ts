@@ -1459,7 +1459,7 @@ export class AdminService {
   /** 首页推荐位（IKH0EK）：本校区已选推荐商品，featuredSort 升序 */
   async featured(campusId: string) {
     return this.db.product.findMany({
-      where: { campusId, featured: true },
+      where: { campusId, featured: true, nightCatalog: false },
       orderBy: { featuredSort: 'asc' },
       select: {
         id: true,
@@ -1476,14 +1476,14 @@ export class AdminService {
   /** 推荐位保存（IKH0EK）：全量有序提交，事务清位重设；越界/跨校区 id 静默剔除 */
   async saveFeatured(ids: string[], campusId: string) {
     const own = await this.db.product.findMany({
-      where: { id: { in: ids }, campusId },
+      where: { id: { in: ids }, campusId, nightCatalog: false },
       select: { id: true },
     });
     const ownIds = new Set(own.map((r) => r.id));
     const valid = ids.filter((id) => ownIds.has(id));
     await this.db.$transaction([
       this.db.product.updateMany({
-        where: { campusId, featured: true },
+        where: { campusId, featured: true, nightCatalog: false },
         data: { featured: false, featuredSort: 0 },
       }),
       // 逐行写序（数组序=展示序，1 起）
@@ -1636,10 +1636,12 @@ export class AdminService {
   /** 首页 Banner 管理（IK9RX2）：校园维度，sort 升序；删除为物理删。 */
   /** Banner 列表（IKAJSL）：campusId 空 = 总部视角查全部并附 campusName。
    *  IKB5PB：placement 可选过滤（支付广告位独立菜单只看 pay-success）。 */
-  async banners(campusId: string, placement?: string, status?: string) {
+  async banners(campusId: string, placement?: string, status?: string, businessType = 'day') {
+    if (!['day', 'night'].includes(businessType)) throw new BadRequestException('业务类型不正确');
     const xs = await this.db.banner.findMany({
       where: {
         ...(campusId ? { campusId } : {}),
+        businessType,
         ...(placement ? { placement } : {}),
         ...(status ? { status } : {}),
       },
@@ -1676,6 +1678,7 @@ export class AdminService {
     const banner = await this.db.banner.create({
       data: {
         campusId,
+        businessType: body.businessType ?? 'day',
         title: body.title,
         subtitle: body.subtitle ?? '',
         badge: body.badge ?? '',
@@ -1771,9 +1774,10 @@ export class AdminService {
    *  无删除（留审计），已结束不可改。 */
   /** IKB5PA：state 过滤（live/upcoming/ended/disabled，按时间窗读时判定），
    *  不传 = 全部。口径与前台 promoState 一致。 */
-  async promotions(campusId: string, state?: string, categoryId?: string) {
+  async promotions(campusId: string, state?: string, categoryId?: string, businessType = 'day') {
+    if (!['day', 'night'].includes(businessType)) throw new BadRequestException('业务类型不正确');
     const xs = await this.db.promotion.findMany({
-      where: { product: { campusId } },
+      where: { product: { campusId, nightCatalog: businessType === 'night' } },
       orderBy: { createdAt: 'desc' },
       include: {
         product: {
@@ -6450,8 +6454,8 @@ export class AdminService {
       if (!['pending', 'failed'].includes(refund.status))
         throw new BadRequestException('当前状态不可拒绝');
       const record = await this.db.$transaction(async (tx) => {
-        const after = await tx.refund.update({
-          where: { id },
+        const changed = await tx.refund.updateMany({
+          where: { id, status: refund.status },
           data: {
             status: 'rejected',
             auditBy: operator,
@@ -6460,6 +6464,8 @@ export class AdminService {
             rejectCount: { increment: 1 },
           },
         });
+        if (!changed.count) throw new BadRequestException('申请状态已变化，请刷新');
+        const after = await tx.refund.findUniqueOrThrow({ where: { id } });
         await this.restoreOrderFromRefund(
           tx,
           refund.orderId,
@@ -9865,9 +9871,10 @@ export class AdminService {
 
   /* ---------- 公告（IKHM1P）：校区多条 + 生效窗 + 启停 ---------- */
 
-  async notices(campusId: string) {
+  async notices(campusId: string, businessType = 'day') {
+    if (!['day', 'night'].includes(businessType)) throw new BadRequestException('业务类型不正确');
     return this.db.notice.findMany({
-      where: { campusId },
+      where: { campusId, businessType },
       orderBy: { createdAt: 'asc' },
     });
   }
@@ -9880,7 +9887,7 @@ export class AdminService {
     if (endsAt <= startsAt)
       throw new BadRequestException('结束时间必须晚于开始时间');
     const notice = await this.db.notice.create({
-      data: { campusId, content: body.content, startsAt, endsAt },
+      data: { campusId, businessType: body.businessType ?? 'day', content: body.content, startsAt, endsAt },
     });
     await this.audit(
       operator,

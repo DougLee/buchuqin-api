@@ -35,12 +35,18 @@ export class NightStoreUpdateDto {
 }
 
 export class NightCatalogCreateDto {
+  @IsOptional() @IsIn(['none', 'once', 'weekly', 'monthly']) purchaseLimit?: string;
+  @IsOptional() @IsInt() @Min(1) @Max(9999) purchaseLimitQty?: number;
   @IsOptional() @IsString() campusId?: string;
   @IsString() @MinLength(1) @MaxLength(60) name!: string;
   /** 夜宵统一售价（分）：同一校区同 SKU 统一执行（PRD B06） */
   @IsInt() @Min(1) price!: number;
   @IsOptional() @IsInt() @Min(0) originalPrice?: number;
   @IsOptional() @IsString() image?: string;
+  @IsOptional() @IsArray() @ArrayMaxSize(10) @IsString({ each: true }) @MaxLength(2048, { each: true }) images?: string[];
+  @IsOptional() @IsString() @MaxLength(2000) description?: string;
+  @IsOptional() @IsBoolean() featured?: boolean;
+  @IsOptional() @IsInt() @Min(0) @Max(9999) featuredSort?: number;
   @IsOptional() @IsString() subtitle?: string;
   /** 缺省自动挂本校区「夜宵专供」隐藏分类 */
   @IsOptional() @IsString() categoryId?: string;
@@ -49,12 +55,18 @@ export class NightCatalogCreateDto {
 }
 
 export class NightCatalogUpdateDto {
+  @IsOptional() @IsIn(['none', 'once', 'weekly', 'monthly']) purchaseLimit?: string;
+  @IsOptional() @IsInt() @Min(1) @Max(9999) purchaseLimitQty?: number;
   @IsOptional() @IsString() @MinLength(1) categoryId?: string;
   @IsOptional() @IsString() @MinLength(1) @MaxLength(20) retailUnit?: string;
   @IsOptional() @IsString() @MinLength(1) @MaxLength(60) name?: string;
   @IsOptional() @IsInt() @Min(1) price?: number;
   @IsOptional() @IsInt() @Min(0) originalPrice?: number;
   @IsOptional() @IsString() image?: string;
+  @IsOptional() @IsArray() @ArrayMaxSize(10) @IsString({ each: true }) @MaxLength(2048, { each: true }) images?: string[];
+  @IsOptional() @IsString() @MaxLength(2000) description?: string;
+  @IsOptional() @IsBoolean() featured?: boolean;
+  @IsOptional() @IsInt() @Min(0) @Max(9999) featuredSort?: number;
   @IsOptional() @IsString() subtitle?: string;
   /** on-sale / off-sale（下架后楼栋行不可再备货） */
   @IsOptional() @IsIn(['on-sale', 'off-sale']) status?: string;
@@ -208,6 +220,8 @@ export class NightDepositPayDto {
 /* ==================== 用户端 /night/* ==================== */
 
 export class NightOrderItemDto {
+  @IsOptional() @IsString() @MaxLength(100) promotionId?: string;
+  @IsOptional() @IsBoolean() asSeckill?: boolean;
   /** NightProduct 楼栋行 id */
   @IsString() productId!: string;
   @IsInt() @Min(1) @Max(999) quantity!: number;
@@ -238,4 +252,5 @@ export class NightAfterSaleDto {
     'quality' | 'missing' | 'damaged' | 'wrong' | 'other';
   @IsString() @MinLength(5) @MaxLength(300) description!: string;
   @IsOptional() @IsArray() @ArrayMaxSize(6) @IsString({ each: true }) @MaxLength(2048, { each: true }) images?: string[];
+  @IsOptional() @IsArray() @ArrayMaxSize(100) @IsString({ each: true }) productIds?: string[];
 }

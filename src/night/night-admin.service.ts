@@ -375,6 +375,12 @@ export class NightAdminService {
           price: body.price,
           originalPrice: body.originalPrice ?? body.price,
           image: body.image ?? '',
+          images: body.images ?? [],
+          description: body.description ?? '',
+          featured: body.featured ?? false,
+          featuredSort: body.featuredSort ?? 0,
+          purchaseLimit: body.purchaseLimit ?? 'none',
+          purchaseLimitQty: body.purchaseLimitQty ?? 1,
           barcode: null,
           nightBarcode: body.barcode ?? null,
           warehouseProductId: warehouse.id,
@@ -421,6 +427,12 @@ export class NightAdminService {
     if (body.originalPrice !== undefined)
       data.originalPrice = body.originalPrice;
     if (body.image !== undefined) data.image = body.image;
+    if (body.images !== undefined) data.images = body.images;
+    if (body.description !== undefined) data.description = body.description;
+    if (body.featured !== undefined) data.featured = body.featured;
+    if (body.featuredSort !== undefined) data.featuredSort = body.featuredSort;
+    if (body.purchaseLimit !== undefined) data.purchaseLimit = body.purchaseLimit;
+    if (body.purchaseLimitQty !== undefined) data.purchaseLimitQty = body.purchaseLimitQty;
     if (body.subtitle !== undefined) data.subtitle = body.subtitle;
     if (body.status !== undefined) data.status = body.status;
     const after = await this.db.product.update({ where: { id }, data });

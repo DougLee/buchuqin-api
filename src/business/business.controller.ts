@@ -38,20 +38,22 @@ import {
 @Controller()
 export class BusinessController {
   constructor(private readonly service: BusinessService) {}
-  @Get('home') async home(@Req() req: AuthRequest) {
-    return ok(await this.service.home(req.user.campusId));
+  @Get('home') async home(@Req() req: AuthRequest, @Query('businessType') businessType?: string) {
+    return ok(await this.service.home(req.user.campusId, businessType));
   }
   /** 支付成功页广告位（IKA57F→IKB87P）：?placement=pay-success，
    *  返回数组（sort 升序最多 2 条）；未配置返回 []。 */
   @Get('banners/current')
   async bannerByPlacement(
     @Req() req: AuthRequest,
+    @Query('businessType') businessType?: string,
     @Query('placement') placement?: string,
   ) {
     return ok(
       await this.service.bannerByPlacement(
         req.user.campusId,
         placement === 'pay-success' ? 'pay-success' : 'home',
+        businessType,
       ),
     );
   }
@@ -361,9 +363,10 @@ export class BusinessController {
     @Req() req: AuthRequest,
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
+    @Query('businessType') businessType?: string,
   ) {
     return ok(
-      paginate(await this.service.notifications(req.user.id), page, pageSize),
+      paginate(await this.service.notifications(req.user.id, businessType), page, pageSize),
     );
   }
   @Post('notifications/:id/read') async readNotification(
@@ -374,12 +377,12 @@ export class BusinessController {
   }
   @Post('notifications/read-all') async readAll(
     @Req() req: AuthRequest,
-    @Body() body: { type?: string } = {},
+    @Body() body: { type?: string; businessType?: string } = {},
   ) {
-    return ok(await this.service.readAllNotifications(req.user.id, body.type));
+    return ok(await this.service.readAllNotifications(req.user.id, body.type, body.businessType));
   }
-  @Get('notifications/unread-count') async unread(@Req() req: AuthRequest) {
-    return ok(await this.service.unreadNotificationCount(req.user.id));
+  @Get('notifications/unread-count') async unread(@Req() req: AuthRequest, @Query('businessType') businessType?: string) {
+    return ok(await this.service.unreadNotificationCount(req.user.id, businessType));
   }
   /** 进群二维码（IKAJSZ）：当前地址楼栋群（?buildingId= 覆盖，缺省默认地址）
    *  → 校级大群 → null（前端隐藏入口）。 */

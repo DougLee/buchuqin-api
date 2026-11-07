@@ -1,0 +1,2 @@
+ALTER TABLE "Banner" ADD COLUMN "businessType" TEXT NOT NULL DEFAULT 'day';
+ALTER TABLE "Notice" ADD COLUMN "businessType" TEXT NOT NULL DEFAULT 'day';

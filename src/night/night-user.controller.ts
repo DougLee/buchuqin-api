@@ -119,6 +119,18 @@ export class NightUserController {
 
   /* ---------- 支付 ---------- */
 
+  @Get('after-sales')
+  @ApiOperation({ summary: '我的夜宵售后和退款记录（分页）' })
+  async afterSales(@Req() req: AuthRequest, @Query('page') page?: string, @Query('pageSize') pageSize?: string) {
+    return ok(await this.service.afterSales(req.user.id, page, pageSize));
+  }
+
+  @Post('orders/:id/after-sale/withdraw')
+  @ApiOperation({ summary: '撤销尚未审核的本人夜宵售后' })
+  async withdrawAfterSale(@Req() req: AuthRequest, @Param('id') id: string) {
+    return ok(await this.service.withdrawAfterSale(req.user.id, id), '售后申请已撤销');
+  }
+
   @Post('orders/:id/pay')
   @ApiOperation({ summary: '夜宵订单微信支付下单（YX 业务标记）' })
   async prepay(@Req() req: AuthRequest, @Param('id') id: string) {

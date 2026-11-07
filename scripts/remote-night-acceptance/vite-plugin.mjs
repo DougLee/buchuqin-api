@@ -33,7 +33,7 @@ export function nightRemoteAcceptancePlugin({ apiTarget, kind }) {
             if (!session?.token || ![state.campusId, state.foreignCampusId].includes(session.user.campusId)) throw Error('scope');
             const nonce = randomBytes(18).toString('base64url');
             const code = kind === 'user'
-              ? `localStorage.setItem('token',${JSON.stringify(session.token)});localStorage.setItem('selectedCampusId',${JSON.stringify(session.user.campusId)});localStorage.setItem('nightBuildingId',${JSON.stringify(session.user.campusId === state.campusId ? state.buildingId : state.foreignBuildingId)});location.replace('/h5/user/m/#/pages/index/index');`
+              ? `localStorage.setItem('token',${JSON.stringify(session.token)});localStorage.setItem('selectedCampusId',${JSON.stringify(session.user.campusId)});localStorage.setItem(${JSON.stringify('nightBuilding:' + session.user.id + ':' + session.user.campusId)},${JSON.stringify(session.user.campusId === state.campusId ? state.buildingId : state.foreignBuildingId)});location.replace('/h5/user/m/#/pages/index/index');`
               : `localStorage.setItem('staffToken',${JSON.stringify(session.token)});localStorage.setItem('staffTokenRole',${JSON.stringify(session.user.role)});localStorage.setItem('staffRole',${JSON.stringify(session.user.role)});localStorage.removeItem('staffGuestMode');location.replace('/h5/delivery/m/#/pages/index/index');`;
             res.setHeader('Content-Type', 'text/html; charset=utf-8');
             res.setHeader('Content-Security-Policy', `default-src 'none'; script-src 'nonce-${nonce}'; frame-ancestors 'none'`);

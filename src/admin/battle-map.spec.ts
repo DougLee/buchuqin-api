@@ -200,7 +200,7 @@ describe('battle map (IKFOQ3)', () => {
     expect(cross.building.id).toBe(B2);
   });
 
-  it('寝室详情：用户统计+高频标签（近 30 天 ≥3）+手机号脱敏', async () => {
+  it('寝室详情：用户统计+高频标签（近30天≥3）+后台联系电话', async () => {
     const r = await admin.battleMapRoom(CAMPUS_1, ROOM_201);
     expect(r.orderCount).toBe(4);
     expect(r.users.length).toBe(1);
@@ -210,7 +210,7 @@ describe('battle map (IKFOQ3)', () => {
     expect(u3.totalAmount).toBe(2700);
     expect(u3.recentCount).toBe(3);
     expect(u3.highFrequency).toBe(true);
-    expect(u3.phone).toBe('138****0003');
+    expect(u3.phone).toBe('13811110003'); // 11/01后台手机号明文契约
 
     const fresh = await admin.battleMapRoom(CAMPUS_1, ROOM_202);
     expect(fresh.users).toEqual([]);

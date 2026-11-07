@@ -1,0 +1,281 @@
+{
+  "rows": [
+    {
+      "id": "P01",
+      "status": "in-progress",
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "P02",
+      "status": "in-progress",
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "P03",
+      "status": "in-progress",
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "P04",
+      "status": "in-progress",
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "P05",
+      "status": "in-progress",
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "P06",
+      "status": "in-progress",
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "P07",
+      "status": "in-progress",
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "P08",
+      "status": "pending",
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "P09",
+      "status": "in-progress",
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "P10",
+      "status": "in-progress",
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "P11",
+      "status": "in-progress",
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "P12",
+      "status": "in-progress",
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "P13",
+      "status": "in-progress",
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "P14",
+      "status": "in-progress",
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "P15",
+      "status": "in-progress",
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "P16",
+      "status": "in-progress",
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "P17",
+      "status": "in-progress",
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "P18",
+      "status": "in-progress",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-round3.log"
+      ],
+      "notes": [
+        "完整API回归已过；本轮四端浏览器组合验收未收口，因此尚不计为整项验收通过。"
+      ]
+    },
+    {
+      "id": "P19",
+      "status": "in-progress",
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "P20",
+      "status": "in-progress",
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "P21",
+      "status": "in-progress",
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "P22",
+      "status": "in-progress",
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "P23",
+      "status": "in-progress",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-round3.log"
+      ],
+      "notes": [
+        "完整API回归已过；本轮四端浏览器组合验收未收口，因此尚不计为整项验收通过。"
+      ]
+    },
+    {
+      "id": "P24",
+      "status": "in-progress",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-round3.log"
+      ],
+      "notes": [
+        "完整API回归已过；本轮四端浏览器组合验收未收口，因此尚不计为整项验收通过。"
+      ]
+    },
+    {
+      "id": "P25",
+      "status": "in-progress",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-round3.log"
+      ],
+      "notes": [
+        "完整API回归已过；本轮四端浏览器组合验收未收口，因此尚不计为整项验收通过。"
+      ]
+    },
+    {
+      "id": "P26",
+      "status": "in-progress",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-round3.log"
+      ],
+      "notes": [
+        "完整API回归已过；本轮四端浏览器组合验收未收口，因此尚不计为整项验收通过。"
+      ]
+    },
+    {
+      "id": "P27",
+      "status": "in-progress",
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "P28",
+      "status": "in-progress",
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "P29",
+      "status": "in-progress",
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "P30",
+      "status": "in-progress",
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "P31",
+      "status": "in-progress",
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "P32",
+      "status": "in-progress",
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "P33",
+      "status": "in-progress",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-round3.log"
+      ],
+      "notes": [
+        "完整API回归已过；本轮四端浏览器组合验收未收口，因此尚不计为整项验收通过。"
+      ]
+    },
+    {
+      "id": "P34",
+      "status": "in-progress",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-round3.log"
+      ],
+      "notes": [
+        "完整API回归已过；本轮四端浏览器组合验收未收口，因此尚不计为整项验收通过。"
+      ]
+    },
+    {
+      "id": "P35",
+      "status": "in-progress",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-round3.log"
+      ],
+      "notes": [
+        "完整API回归已过；本轮四端浏览器组合验收未收口，因此尚不计为整项验收通过。"
+      ]
+    },
+    {
+      "id": "P36",
+      "status": "in-progress",
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "P37",
+      "status": "in-progress",
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "P38",
+      "status": "in-progress",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-round3.log",
+        "docs/day-night-parity/evidence/http-e2e-remote.log"
+      ],
+      "notes": [
+        "API658/658及远端HTTP5/5通过；三前端现有Node脚本也已执行，需补保存最终日志、迁移及状态化HTTP驱动审计。"
+      ]
+    },
+    {
+      "id": "P39",
+      "status": "in-progress",
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "P40",
+      "status": "pending",
+      "evidence": [],
+      "notes": []
+    }
+  ]
+}

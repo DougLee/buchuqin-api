@@ -729,6 +729,8 @@ export class PaymentsService {
           data: {
             userId: order.userId,
             type: 'order',
+            orderId: order.id,
+            businessType: 'day',
             title: '订单异常提醒',
             content: `订单 ${order.orderNo} 的支付已收到，但处理出现异常，客服会尽快联系你处理，请勿重复支付。`,
           },

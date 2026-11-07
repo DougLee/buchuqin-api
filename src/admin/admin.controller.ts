@@ -526,6 +526,7 @@ export class AdminController {
   })
   async banners(
     @Req() req: AuthRequest,
+    @Query('businessType') businessType?: string,
     @Query('placement') placement?: string,
     @Query('status') status?: string,
     @Query('page') page?: string,
@@ -540,6 +541,7 @@ export class AdminController {
           await this.bannerScope(req),
           placement,
           status,
+          businessType,
         ),
         page,
         pageSize,
@@ -594,6 +596,7 @@ export class AdminController {
     // paginate，秒杀页搜索为死控件（其余列表端点均有）
     @Query('keyword') keyword?: string,
     @Query('categoryId') categoryId?: string,
+    @Query('businessType') businessType?: string,
   ) {
     return ok(
       paginate(
@@ -601,6 +604,7 @@ export class AdminController {
           await this.scopedCampus(req),
           state,
           categoryId,
+          businessType,
         ),
         page,
         pageSize,

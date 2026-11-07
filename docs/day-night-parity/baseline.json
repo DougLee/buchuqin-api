@@ -1,0 +1,289 @@
+{
+  "version": 1,
+  "date": "2026-11-07",
+  "scope": "用户日夜功能对齐与四端全面验证",
+  "productionAllowed": false,
+  "totalWeight": 100,
+  "rows": [
+    {
+      "id": "P01",
+      "name": "业务上下文",
+      "criterion": "日夜模式、账号、校区、店铺上下文明确，模式变化与过期请求不串数据",
+      "weight": 2.5,
+      "core": true
+    },
+    {
+      "id": "P02",
+      "name": "首页",
+      "criterion": "日夜同等首页内容、入口、加载/空/失败状态及运营展示能力",
+      "weight": 2.5,
+      "core": true
+    },
+    {
+      "id": "P03",
+      "name": "分类搜索",
+      "criterion": "分类、关键词、条码搜索、筛选反馈在日夜均可用",
+      "weight": 2.5,
+      "core": true
+    },
+    {
+      "id": "P04",
+      "name": "商品详情",
+      "criterion": "日夜商品详情均支持图集、说明、单位、价格及数量加购",
+      "weight": 2.5,
+      "core": true
+    },
+    {
+      "id": "P05",
+      "name": "库存边界",
+      "criterion": "售罄、禁售、限量、刷新与并发库存边界一致",
+      "weight": 2.5,
+      "core": true
+    },
+    {
+      "id": "P06",
+      "name": "推荐专区",
+      "criterion": "日夜推荐商品与排序可配置且数据隔离",
+      "weight": 2.5,
+      "core": true
+    },
+    {
+      "id": "P07",
+      "name": "限时活动",
+      "criterion": "日夜具备限时商品活动能力，价格由服务端计算且遵守不叠加规则",
+      "weight": 2.5,
+      "core": true
+    },
+    {
+      "id": "P08",
+      "name": "福利抽奖",
+      "criterion": "日夜福利抽奖入口与奖励归属正确，不能将白天券误用夜宵",
+      "weight": 2.5,
+      "core": false
+    },
+    {
+      "id": "P09",
+      "name": "活动内容",
+      "criterion": "运营内容详情、活动入口及不可用处理一致",
+      "weight": 2.5,
+      "core": true
+    },
+    {
+      "id": "P10",
+      "name": "购物车隔离",
+      "criterion": "账号/校区/渠道/店铺隔离，退出重登和跨日保留正确",
+      "weight": 2.5,
+      "core": true
+    },
+    {
+      "id": "P11",
+      "name": "购物车操作",
+      "criterion": "增减删除、数量边界、支付后消费与后加商品保留一致",
+      "weight": 2.5,
+      "core": true
+    },
+    {
+      "id": "P12",
+      "name": "购物车刷新",
+      "criterion": "当前价格/库存/状态刷新，不使用过期金额提交",
+      "weight": 2.5,
+      "core": true
+    },
+    {
+      "id": "P13",
+      "name": "地址管理",
+      "criterion": "新增编辑删除默认地址、完整分页和返回选中一致",
+      "weight": 2.5,
+      "core": true
+    },
+    {
+      "id": "P14",
+      "name": "配送范围",
+      "criterion": "夜宵本楼限制双重校验；白天既有配送范围保留",
+      "weight": 2.5,
+      "core": true
+    },
+    {
+      "id": "P15",
+      "name": "优惠券中心",
+      "criterion": "我的与可领、领取、过期锁定使用状态按渠道正确展示",
+      "weight": 2.5,
+      "core": true
+    },
+    {
+      "id": "P16",
+      "name": "券适用计算",
+      "criterion": "门槛/范围/限领/总量/优惠计算与失败原因正确",
+      "weight": 2.5,
+      "core": true
+    },
+    {
+      "id": "P17",
+      "name": "结算",
+      "criterion": "商品、地址、备注、券及费用核对一致，配送选项按实际业务可用",
+      "weight": 2.5,
+      "core": true
+    },
+    {
+      "id": "P18",
+      "name": "提交支付",
+      "criterion": "服务端重算、请求幂等、重复点击、支付签名金额商户校验正确",
+      "weight": 2.5,
+      "core": true
+    },
+    {
+      "id": "P19",
+      "name": "支付恢复",
+      "criterion": "取消/失败/未知/超时及返回后原单恢复正确",
+      "weight": 2.5,
+      "core": true
+    },
+    {
+      "id": "P20",
+      "name": "支付结果页",
+      "criterion": "日夜成功结果、订单跳转、库存和购物车刷新一致",
+      "weight": 2.5,
+      "core": true
+    },
+    {
+      "id": "P21",
+      "name": "订单列表",
+      "criterion": "按渠道筛选、分页、状态、倒计时和继续支付完整",
+      "weight": 2.5,
+      "core": true
+    },
+    {
+      "id": "P22",
+      "name": "订单详情",
+      "criterion": "快照、时间线、金额、凭证、支持及状态动作完整",
+      "weight": 2.5,
+      "core": true
+    },
+    {
+      "id": "P23",
+      "name": "取消订单",
+      "criterion": "合法状态允许，支付取消竞态、库存券佣金补偿一致",
+      "weight": 2.5,
+      "core": true
+    },
+    {
+      "id": "P24",
+      "name": "售后申请",
+      "criterion": "图文、原因、商品选择、可退金额与重复提交校验完整",
+      "weight": 2.5,
+      "core": true
+    },
+    {
+      "id": "P25",
+      "name": "售后管理",
+      "criterion": "日夜售后列表详情、审核反馈、允许阶段撤销均有闭环",
+      "weight": 2.5,
+      "core": true
+    },
+    {
+      "id": "P26",
+      "name": "退款记录",
+      "criterion": "商品/配送费退款、处理中/失败/重试/完成结果可见且账实一致",
+      "weight": 2.5,
+      "core": true
+    },
+    {
+      "id": "P27",
+      "name": "客服",
+      "criterion": "电话在线客服与福利群使用业务所属校区，失败有明确反馈",
+      "weight": 2.5,
+      "core": true
+    },
+    {
+      "id": "P28",
+      "name": "消息",
+      "criterion": "日夜订单消息正确归属、已读/未读/详情跳转和完整分页",
+      "weight": 2.5,
+      "core": true
+    },
+    {
+      "id": "P29",
+      "name": "个人中心",
+      "criterion": "订单券售后等入口和统计按当前渠道，个人基础信息共享",
+      "weight": 2.5,
+      "core": true
+    },
+    {
+      "id": "P30",
+      "name": "分享",
+      "criterion": "日夜分享落点与店铺/商品参数正确，不能绕过校区楼栋校验",
+      "weight": 2.5,
+      "core": true
+    },
+    {
+      "id": "P31",
+      "name": "登录与资格",
+      "criterion": "登录/手机号/昵称/头像/校区切换等共有能力一致且缓存隔离",
+      "weight": 2.5,
+      "core": true
+    },
+    {
+      "id": "P32",
+      "name": "配套履约后台",
+      "criterion": "新增用户能力有API、后台配置、配送动作的实际闭环",
+      "weight": 2.5,
+      "core": true
+    },
+    {
+      "id": "P33",
+      "name": "库存押金规则",
+      "criterion": "保留多阶段实收、历史货值、盘点审核、共仓和资格规则并验证",
+      "weight": 2.5,
+      "core": true
+    },
+    {
+      "id": "P34",
+      "name": "并发财务",
+      "criterion": "订单/券/库存/额度并发及退款未知与幂等、账本恒等式通过",
+      "weight": 2.5,
+      "core": true
+    },
+    {
+      "id": "P35",
+      "name": "权限隔离",
+      "criterion": "跨账号/店铺/楼栋/校区/组织/渠道拒绝且无敏感数据泄漏",
+      "weight": 2.5,
+      "core": true
+    },
+    {
+      "id": "P36",
+      "name": "视觉交互",
+      "criterion": "沿用认可风格，日夜组件一致，375/390/430响应、触控和遮挡验证",
+      "weight": 2.5,
+      "core": true
+    },
+    {
+      "id": "P37",
+      "name": "异常可恢复",
+      "criterion": "断网/服务错误/部分失败/过期响应有持久反馈，恢复保留有效操作",
+      "weight": 2.5,
+      "core": true
+    },
+    {
+      "id": "P38",
+      "name": "全仓测试",
+      "criterion": "四仓所有适用现有测试执行、失败修复回归、跳过逐项说明",
+      "weight": 2.5,
+      "core": true
+    },
+    {
+      "id": "P39",
+      "name": "交付文档",
+      "criterion": "类型构建、H5与后台证据、更新118项清单、版本/决定/部署说明及代码提交完整",
+      "weight": 2.5,
+      "core": true
+    },
+    {
+      "id": "P40",
+      "name": "原生外部能力",
+      "criterion": "真实微信身份手机号、支付退款、推送、相机及设备适配实际验收，模拟不计通过",
+      "weight": 2.5,
+      "core": false
+    }
+  ]
+}

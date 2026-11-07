@@ -102,7 +102,7 @@ describe('coupon records (IKRSIX #99/#184)', () => {
     await db.$disconnect();
   });
 
-  it('join 用户脱敏/券名/核销订单，按领取时间倒序', async () => {
+  it('join 后台用户联系电话/券名/核销订单，按领取时间倒序', async () => {
     const { items, total } = paginateLike(
       await service.couponRecords(CAMPUS, {}),
     );
@@ -111,8 +111,8 @@ describe('coupon records (IKRSIX #99/#184)', () => {
     expect(usedRow.couponId).toBe(couponA);
     expect(usedRow.couponName).toBe('满10减2');
     expect(usedRow.userNickname).toBe('券明细用户');
-    // 手机号脱敏：保留前 3 后 4（orders 列表同口径 maskPhone）
-    expect(usedRow.userPhone).toBe('139****1111');
+    // 11/01后台联系电话明文契约
+    expect(usedRow.userPhone).toBe('13900001111');
     // 核销单号回查 + usedAt=核销订单 paidAt（ISO）
     expect(usedRow.orderNo).toBe(`CRC${seed}`);
     expect(usedRow.usedAt).toBe(

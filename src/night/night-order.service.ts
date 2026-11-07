@@ -1,3 +1,4 @@
+import { purchaseWindowStart } from '../common/purchase-window';
 import {
   BadRequestException,
   ForbiddenException,
@@ -8,6 +9,7 @@ import {
 } from '@nestjs/common';
 import { NightRefund, Prisma } from '@prisma/client';
 import { createHash } from 'node:crypto';
+import { nightPromotions } from './night-pricing';
 import { NightRefundService } from './night-refund.service';
 import { NightDepositRefundService } from './night-deposit-refund.service';
 import { PrismaService } from '../database/prisma.service';
@@ -39,7 +41,7 @@ const USER_ORDER_INCLUDE = {
   refund: true,
   store: { include: {
     building: { select: { name: true } },
-    campus: { select: { servicePhone: true, serviceQrcode: true, serviceKfUrl: true, serviceKfCorpId: true, showDeliveryContacts: true } },
+    campus: { select: { servicePhone: true, serviceQrcode: true, serviceKfUrl: true, serviceKfCorpId: true, showDeliveryContacts: true, afterSalesGroupQrcode: true, groupQrcodeTip: true } },
     managerStaff: { select: { id: true, name: true, phone: true } },
   } },
 } satisfies Prisma.NightOrderInclude;
@@ -53,6 +55,9 @@ export interface NightOrderLine {
   price: number; // 夜宵售价（分）
   quantity: number;
   inventoryValue?: number;
+  basePrice?: number;
+  promotionId?: string;
+  asSeckill?: boolean;
 }
 
 /** 夜宵订单时间线节点（轻量自持，不复用白天 12 态）。 */
@@ -140,7 +145,7 @@ export class NightOrderService implements NightPaymentHandler {
     store?: {
       id: string;
       building: { name: string };
-      campus?: { servicePhone: string; serviceQrcode: string; serviceKfUrl: string; serviceKfCorpId: string; showDeliveryContacts: boolean };
+      campus?: { servicePhone: string; serviceQrcode: string; serviceKfUrl: string; serviceKfCorpId: string; showDeliveryContacts: boolean; afterSalesGroupQrcode?: string; groupQrcodeTip?: string };
       managerStaff?: { id: string; name: string; phone?: string } | null;
     } | null;
   }) {
@@ -166,7 +171,7 @@ export class NightOrderService implements NightPaymentHandler {
       completedAt: order.completedAt?.toISOString() ?? null,
       cancelReason: order.cancelReason,
       afterSaleStatus: order.afterSaleStatus,
-      support: order.store?.campus ? { phone: order.store.campus.servicePhone, qrcode: order.store.campus.serviceQrcode, kfUrl: order.store.campus.serviceKfUrl, corpId: order.store.campus.serviceKfCorpId } : null,
+      support: order.store?.campus ? { phone: order.store.campus.servicePhone, qrcode: order.store.campus.serviceQrcode, kfUrl: order.store.campus.serviceKfUrl, corpId: order.store.campus.serviceKfCorpId, groupQrcode: order.store.campus.afterSalesGroupQrcode || '', groupTip: order.store.campus.groupQrcodeTip || '' } : null,
       deliveryContact: order.paidAt && ['pending-accept', 'delivering', 'delivered'].includes(order.status) && order.store?.campus?.showDeliveryContacts && order.store.managerStaff?.id === order.managerStaffId && order.store.managerStaff?.phone ? { name: order.store.managerStaff.name, phone: order.store.managerStaff.phone } : null,
       refund: order.refund ? { id: order.refund.id, kind: order.refund.kind, fullProductRefund: order.refund.fullProductRefund, restock: order.refund.restock, reason: order.refund.reason, status: order.refund.status, amount: order.refund.totalAmount, productAmount: order.refund.productAmount, deliveryFeeAmount: order.refund.deliveryFeeAmount, message: order.refund.errorMessage, createdAt: order.refund.createdAt.toISOString(), completedAt: order.refund.completedAt?.toISOString() ?? null } : null,
       store: order.store
@@ -188,7 +193,15 @@ export class NightOrderService implements NightPaymentHandler {
     const quantities = new Map<string, number>();
     for (const line of dto.items) quantities.set(line.productId, (quantities.get(line.productId) ?? 0) + line.quantity);
     if ([...quantities.values()].some(qty => qty > 999)) throw new BadRequestException('单品数量最多999件');
-    const requestHash = createHash('sha256').update(JSON.stringify({ storeId: dto.storeId, addressId: dto.addressId, couponId: dto.couponId ?? null, remark: dto.remark?.trim() ?? '', expectedProductAmount: dto.expectedProductAmount ?? null, expectedDeliveryFee: dto.expectedDeliveryFee ?? null, items: [...quantities].sort(([a], [b]) => a.localeCompare(b)) })).digest('hex');
+    const seckillIds = [...new Set(dto.items.filter(line => line.asSeckill === true).map(line => line.productId))].sort();
+    if (dto.items.some(line => line.asSeckill !== undefined && typeof line.asSeckill !== 'boolean')) throw new BadRequestException('商品购买渠道不正确');
+    if (dto.items.some(line => line.asSeckill && (!line.promotionId || typeof line.promotionId !== 'string'))) throw new BadRequestException('请选择有效的秒杀活动');
+    if (seckillIds.length > 1) throw new BadRequestException('一个订单限一个秒杀商品');
+    for (const id of seckillIds) {
+      if (dto.items.some(line => line.productId === id && !line.asSeckill)) throw new BadRequestException('同一商品不可混用秒杀和原价渠道');
+      if (quantities.get(id)! > 1) throw new BadRequestException('秒杀商品每单限购1件');
+    }
+    const requestHash = createHash('sha256').update(JSON.stringify({ storeId: dto.storeId, addressId: dto.addressId, couponId: dto.couponId ?? null, remark: dto.remark?.trim() ?? '', expectedProductAmount: dto.expectedProductAmount ?? null, expectedDeliveryFee: dto.expectedDeliveryFee ?? null, items: [...quantities].sort(([a], [b]) => a.localeCompare(b)), ...(seckillIds.length ? { seckillIds: seckillIds.map(id => [id, dto.items.find(line => line.productId === id)!.promotionId || null]) } : {}) })).digest('hex');
     const priorOrder = async () => {
       if (!dto.requestId) return null;
       const old = await this.db.nightOrder.findUnique({ where: { userId_requestId: { userId, requestId: dto.requestId } } });
@@ -262,12 +275,23 @@ export class NightOrderService implements NightPaymentHandler {
     });
     if (productRows.length !== merged.size)
       throw new BadRequestException('存在无效商品，请重新选购');
+    const [normalPromotions, seckillPromotions] = await Promise.all([nightPromotions(this.db, productRows.map(row => row.catalogProductId)), nightPromotions(this.db, productRows.map(row => row.catalogProductId), 'seckill')]);
+    const seckillProducts = new Set(dto.items.filter(line => line.asSeckill).map(line => line.productId));
+    const promotions = new Map(productRows.map(row => {
+      const promotion = (seckillProducts.has(row.id) ? seckillPromotions : normalPromotions).get(row.catalogProductId);
+      if (seckillProducts.has(row.id) && !promotion) throw new BadRequestException('秒杀活动未开始或已结束，请重新选购');
+      if (seckillProducts.has(row.id) && promotion!.id !== dto.items.find(line => line.productId === row.id)!.promotionId) throw new BadRequestException('秒杀活动已变化，请移除后重新选购');
+      return [row.catalogProductId, promotion];
+    }));
     const lines: NightOrderLine[] = productRows.map((p) => ({
       nightProductId: p.id,
       catalogProductId: p.catalogProductId,
       name: p.catalogProduct.name,
       image: p.catalogProduct.image,
-      price: p.catalogProduct.price,
+      price: promotions.get(p.catalogProductId)?.price ?? p.catalogProduct.price,
+      basePrice: p.catalogProduct.price,
+      ...(seckillProducts.has(p.id) ? { asSeckill: true } : {}),
+      ...(promotions.get(p.catalogProductId) ? { promotionId: promotions.get(p.catalogProductId)!.id } : {}),
       quantity: merged.get(p.id)!,
     }));
     for (const p of productRows) {
@@ -283,6 +307,7 @@ export class NightOrderService implements NightPaymentHandler {
       store.campus.nightDeliveryFee ?? store.campus.deliveryFeeInstant;
     if ((dto.expectedProductAmount !== undefined && dto.expectedProductAmount !== productAmount) || (dto.expectedDeliveryFee !== undefined && dto.expectedDeliveryFee !== deliveryFee)) throw new BadRequestException('商品价格或配送费已变化，请刷新后确认金额');
 
+    if (dto.couponId && lines.some(line => line.promotionId)) throw new BadRequestException('活动价与优惠券不可叠加，请重新选择');
     // 夜宵券校验（businessType=night 强隔离：白天券在夜宵结算不可用）
     const userCoupon = dto.couponId
       ? await this.validateNightCoupon(userId, dto.couponId, store.campusId)
@@ -298,6 +323,9 @@ export class NightOrderService implements NightPaymentHandler {
 
     const order = await this.db.$transaction(async (tx) => {
       const freshStore = await this.inventory.lockStore(tx, store.id);
+      // User row serializes quota checks even when the same buyer orders in different stores.
+      await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${userId} FOR UPDATE`;
+
       if (dto.requestId) {
         const old = await tx.nightOrder.findUnique({ where: { userId_requestId: { userId, requestId: dto.requestId } } });
         if (old) {
@@ -328,22 +356,42 @@ export class NightOrderService implements NightPaymentHandler {
         if (!locked.count)
           throw new BadRequestException('优惠券不可用或已被锁定');
       }
+      const limited = await tx.product.findMany({ where: { id: { in: lines.map(line => line.catalogProductId) }, purchaseLimit: { not: 'none' } } });
+      if (limited.length) {
+        const now = new Date();
+        const prior = await tx.nightOrder.findMany({ where: { userId, OR: [
+          { paidAt: { not: null }, status: { notIn: ['cancelled', 'refunded'] } },
+          { status: 'pending-payment' },
+        ] }, select: { items: true, paidAt: true, createdAt: true } });
+        for (const product of limited) {
+          const start = purchaseWindowStart(product.purchaseLimit, now);
+          let quantity = lines.filter(line => line.catalogProductId === product.id).reduce((sum, line) => sum + line.quantity, 0);
+          for (const old of prior) {
+            if ((old.paidAt && old.paidAt < start) || !Array.isArray(old.items)) continue;
+            for (const line of old.items as unknown as NightOrderLine[]) if (line.catalogProductId === product.id) quantity += line.quantity;
+          }
+          if (quantity > product.purchaseLimitQty) throw new BadRequestException(`「${product.name}」已超出本周期限购数量，请调整购物车或先关闭待支付订单`);
+        }
+      }
       // 条件扣库存：影响行数=0 即超卖竞争失败，整个事务回滚（券锁定一并回滚）
       const stockTxnLines: Array<{
         nightProductId: string;
         delta: number;
         afterStock: number;
       }> = [];
+      const [freshNormalPromotions, freshSeckillPromotions] = await Promise.all([nightPromotions(tx, lines.map(line => line.catalogProductId)), nightPromotions(tx, lines.map(line => line.catalogProductId), 'seckill')]);
       for (const line of lines) {
         const current = await tx.nightProduct.findUniqueOrThrow({
           where: { id: line.nightProductId },
           include: { catalogProduct: true },
         });
+        const currentPromotion = (line.asSeckill ? freshSeckillPromotions : freshNormalPromotions).get(current.catalogProductId);
+        if ((currentPromotion?.id || null) !== (line.promotionId || null) || (currentPromotion?.price ?? current.catalogProduct.price) !== line.price) throw new BadRequestException('商品活动或价格已变化，请刷新');
         if (
           !current.onShelf ||
           !current.saleAllowed ||
           current.catalogProduct.status !== 'on-sale' ||
-          current.catalogProduct.price !== line.price
+          current.catalogProduct.price !== (line.basePrice ?? line.price)
         )
           throw new BadRequestException('商品状态或价格已变化，请刷新');
         line.inventoryValue = allocateInventoryValue(
@@ -355,7 +403,7 @@ export class NightOrderService implements NightPaymentHandler {
           UPDATE "NightProduct" SET stock = stock - ${line.quantity}, "inventoryValue" = "inventoryValue" - ${line.inventoryValue}, "inventoryVersion" = "inventoryVersion" + 1
           WHERE id = ${line.nightProductId} AND stock >= ${line.quantity}
           AND "onShelf" = true AND "saleAllowed" = true
-          AND "catalogProductId" IN (SELECT id FROM "Product" WHERE status = 'on-sale' AND price = ${line.price})
+          AND "catalogProductId" IN (SELECT id FROM "Product" WHERE status = 'on-sale' AND price = ${line.basePrice ?? line.price})
           RETURNING stock`) as Array<{ stock: number }>;
         if (!updated.length)
           throw new BadRequestException(`${line.name}库存不足`);
@@ -571,6 +619,7 @@ export class NightOrderService implements NightPaymentHandler {
       type: string;
       description: string;
       images?: string[];
+      productIds?: string[];
     },
   ) {
     if (body.description.trim().length < 5 || body.description.length > 300 || (body.images?.length ?? 0) > 6 || body.images?.some(url => !/^https?:\/\//.test(url))) throw new BadRequestException('请填写5至300字售后说明，并上传最多6张有效图片');
@@ -578,6 +627,18 @@ export class NightOrderService implements NightPaymentHandler {
     if (!order) throw new NotFoundException('订单不存在');
     if (!['delivered', 'completed'].includes(order.status))
       throw new BadRequestException('当前状态不可申请售后');
+    const deliveredAt = order.completedAt || [...asTimeline(order.timeline)].reverse().find(step => step.key === 'completed' || step.key === 'delivered')?.time || order.paidAt;
+    if (!deliveredAt || Date.now() - new Date(deliveredAt).getTime() > 24 * 60 * 60 * 1000) throw new BadRequestException('已超过送达后24小时售后期限');
+    const selected = body.productIds ?? [];
+    if (new Set(selected).size !== selected.length) throw new BadRequestException('退款商品不可重复');
+    const lines = order.items as unknown as NightOrderLine[];
+    const selectedLines = selected.map(productId => {
+      const line = lines.find(item => item.nightProductId === productId);
+      if (!line) throw new BadRequestException('退款商品不属于本订单');
+      return line;
+    });
+    const requestedAmount = selectedLines.length ? selectedLines.reduce((amount, line) => amount + line.price * line.quantity, 0) : order.payableAmount - order.deliveryFee;
+    if (requestedAmount < 0 || requestedAmount > order.payableAmount - order.deliveryFee) throw new BadRequestException('退款金额超过实付商品金额');
     const updated = await this.db.nightOrder.updateMany({
       where: { id, status: order.status, afterSaleStatus: null },
       data: {
@@ -589,6 +650,9 @@ export class NightOrderService implements NightPaymentHandler {
             title: '用户申请售后',
             description: `${body.type}：${body.description.trim()}`,
             images: body.images ?? [],
+            productIds: selected,
+            requestedAmount,
+            requestedItems: selectedLines.map(line => ({ productId: line.nightProductId, name: line.name, quantity: line.quantity })),
             time: new Date().toISOString(),
           },
         ]),
@@ -597,6 +661,34 @@ export class NightOrderService implements NightPaymentHandler {
     if (!updated.count)
       throw new BadRequestException('售后申请已存在，请等待处理');
     return { id, afterSaleStatus: 'requested' };
+  }
+
+  async myAfterSales(userId: string, page?: string, pageSize?: string) {
+    const paging = parsePagination(page, pageSize);
+    const where: Prisma.NightOrderWhereInput = { userId, OR: [{ afterSaleStatus: { not: null } }, { refund: { isNot: null } }] };
+    const [rows, total, refunded] = await Promise.all([
+      this.db.nightOrder.findMany({ where, include: USER_ORDER_INCLUDE, orderBy: { createdAt: 'desc' }, skip: (paging.page - 1) * paging.pageSize, take: paging.pageSize }),
+      this.db.nightOrder.count({ where }),
+      this.db.nightRefund.aggregate({ where: { order: { userId }, status: 'succeeded' }, _sum: { totalAmount: true } }),
+    ]);
+    return { items: rows.map(order => this.orderView(order)), total, refundedAmount: refunded._sum.totalAmount || 0, ...paging };
+  }
+
+  async withdrawAfterSale(userId: string, id: string) {
+    const raw = await this.db.nightOrder.findFirst({ where: { id, userId } });
+    if (!raw) throw new NotFoundException('订单不存在');
+    return this.db.$transaction(async tx => {
+      await this.inventory.lockStore(tx, raw.storeId);
+      const order = await tx.nightOrder.findUniqueOrThrow({ where: { id } });
+      if (order.afterSaleStatus !== 'requested') throw new BadRequestException('当前售后状态不可撤销');
+      const result = await tx.nightOrder.updateMany({ where: { id, userId, afterSaleStatus: 'requested' }, data: {
+        afterSaleStatus: 'withdrawn',
+        timeline: json([...asTimeline(order.timeline), { key: 'after-sale-withdrawn', title: '用户撤销售后申请', time: new Date().toISOString() }]),
+      } });
+      if (!result.count) throw new BadRequestException('售后状态已变化，请刷新');
+      if (order.status === 'completed') await tx.nightCommissionTxn.updateMany({ where: { orderId: id, status: 'estimated' }, data: { status: 'pending' } });
+      return { id, afterSaleStatus: 'withdrawn' };
+    });
   }
 
   async rejectAfterSale(operatorId: string, id: string, reason: string) {
@@ -609,7 +701,7 @@ export class NightOrderService implements NightPaymentHandler {
       await tx.nightOrder.update({ where: { id }, data: { afterSaleStatus: 'rejected', timeline: json([...asTimeline(order.timeline), { key: 'after-sale-review', title: '售后审核未通过', description: reason.trim(), time: new Date().toISOString() }]) } });
       if (order.status === 'completed') await tx.nightCommissionTxn.updateMany({ where: { orderId: id, status: 'estimated' }, data: { status: 'pending' } });
       await tx.auditLog.create({ data: { campusId: store.campusId, operator: operatorId, action: 'night.after-sale.reject', entityType: 'night-order', entityId: id, after: { reason } } });
-      await tx.notification.create({ data: { userId: order.userId, type: 'order', title: '夜宵售后审核结果', content: reason.trim() } });
+      await tx.notification.create({ data: { userId: order.userId, businessType: 'night', orderId: order.id, type: 'order', title: '夜宵售后审核结果', content: reason.trim() } });
     });
     return this.adminOrderDetail(id);
   }
@@ -642,7 +734,7 @@ export class NightOrderService implements NightPaymentHandler {
     if (!won.count) throw new BadRequestException('订单状态已变化');
     await this.db.notification.create({
       data: {
-        userId: order.userId,
+        userId: order.userId, businessType: 'night', orderId: order.id,
         type: 'order',
         title: '夜宵订单已接单',
         content: `订单 ${order.orderNo} 楼长已接单，正在为你配送。`,
@@ -700,7 +792,7 @@ export class NightOrderService implements NightPaymentHandler {
         });
       await tx.notification.create({
         data: {
-          userId: order.userId,
+          userId: order.userId, businessType: 'night', orderId: order.id,
           type: 'delivery',
           title: '夜宵订单已送达',
           content: `订单 ${order.orderNo} 已送达并完成，可在订单详情查看。`,
@@ -812,7 +904,7 @@ export class NightOrderService implements NightPaymentHandler {
           if (frozen.count)
             await tx.notification.create({
               data: {
-                userId: order.userId,
+                userId: order.userId, businessType: 'night', orderId: order.id,
                 type: 'order',
                 title: '夜宵订单异常提醒',
                 content: `订单 ${order.orderNo} 支付已收到但订单已超时关闭，客服会尽快处理退款，请勿重复支付。`,
@@ -891,7 +983,7 @@ export class NightOrderService implements NightPaymentHandler {
       });
       await tx.notification.create({
         data: {
-          userId: order.userId,
+          userId: order.userId, businessType: 'night', orderId: order.id,
           type: 'order',
           title: '夜宵订单支付成功',
           content: `订单 ${order.orderNo} 支付成功，楼长即将接单配送。`,
@@ -1001,7 +1093,7 @@ export class NightOrderService implements NightPaymentHandler {
     if (productsReturned && order.couponId) await tx.userCoupon.updateMany({ where: { id: order.couponId, status: 'used' }, data: { status: 'released' } });
     // 商品全退但保留配送费时，保留部分应进入待结算，不遗留在预计收入中。
     if (request.kind !== 'cancel' && productsReturned) await tx.nightCommissionTxn.updateMany({ where: { orderId: order.id, status: 'estimated' }, data: { status: 'pending' } });
-    await tx.notification.create({ data: { userId: order.userId, type: 'refund', title: request.kind === 'cancel' ? '夜宵订单已取消并退款' : '夜宵退款已完成', content: '订单 ' + order.orderNo + ' 已退款 ¥' + (request.totalAmount / 100).toFixed(2) + '。' } });
+    await tx.notification.create({ data: { userId: order.userId, businessType: 'night', orderId: order.id, type: 'refund', title: request.kind === 'cancel' ? '夜宵订单已取消并退款' : '夜宵退款已完成', content: '订单 ' + order.orderNo + ' 已退款 ¥' + (request.totalAmount / 100).toFixed(2) + '。' } });
   }
 
   /** 佣金退款联动（PRD 6.6/T19/T20）：重算 adjust + 配送费 clawback。 */
@@ -1238,7 +1330,7 @@ export class NightOrderService implements NightPaymentHandler {
   async adminOrdersPage(campusId: string, filters: { storeId?: string; status?: string; date?: string; keyword?: string; afterSaleStatus?: string }, page?: string, pageSize?: string) {
     if (filters.status && !Object.keys(STATUS_TEXT).includes(filters.status)) throw new BadRequestException('订单状态无效');
     if (filters.date && !/^\\d{4}-\\d{2}-\\d{2}$/.test(filters.date)) throw new BadRequestException('营业日格式无效');
-    if (filters.afterSaleStatus && !['requested', 'refund-processing', 'resolved', 'rejected'].includes(filters.afterSaleStatus)) throw new BadRequestException('售后状态无效');
+    if (filters.afterSaleStatus && !['requested', 'refund-processing', 'resolved', 'rejected', 'withdrawn'].includes(filters.afterSaleStatus)) throw new BadRequestException('售后状态无效');
     const keyword = filters.keyword?.trim().slice(0, 80);
     const where: Prisma.NightOrderWhereInput = {
       store: { ...(campusId ? { campusId } : {}) },
@@ -1551,6 +1643,7 @@ export class NightOrderService implements NightPaymentHandler {
             )
             .map((c) => ({
               id: c.id,
+              featuredAfterPay: c.featuredAfterPay,
               name: c.name,
               amount: c.amount,
               threshold: c.threshold,

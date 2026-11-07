@@ -103,11 +103,11 @@ describe('campus context (IKJA7Y)', () => {
     expect(await controller['assertCampusAllowed'](campusReq())).toBe('campus-a');
   });
 
-  it('bannerScope/productCampus 校区级授权集内可切', () => {
-    expect(controller['bannerScope'](campusReq({ campus: 'campus-b' }))).toBe(
+  it('bannerScope/productCampus 校区级授权集内可切', async () => {
+    expect(await controller['bannerScope'](campusReq({ campus: 'campus-b' }))).toBe(
       'campus-b',
     );
-    expect(controller['bannerScope'](campusReq({ campus: 'campus-hq' }))).toBe(
+    expect(await controller['bannerScope'](campusReq({ campus: 'campus-hq' }))).toBe(
       'campus-a',
     );
     expect(

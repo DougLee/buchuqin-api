@@ -7,8 +7,9 @@ import {
   Optional,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { purchaseWindowStart } from '../common/purchase-window';
 import type { Banner, Order, Product } from '@prisma/client';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { PrismaService } from '../database/prisma.service';
 import { perRetailUnitCostFen } from '../common/product-units';
 import { campusOrganizationId } from '../common/organization';
@@ -101,6 +102,7 @@ const COST_SNAPSHOT_KEYS = [
 export interface OrderLine {
   product: ProductSnapshot;
   quantity: number;
+  asSeckill?: boolean;
 }
 export interface TimelineStep {
   key: string;
@@ -148,19 +150,7 @@ export class BusinessService {
 
   /** 周期窗口起点：once=epoch（终身）、weekly=本周一、monthly=本月 1 号（中国习惯）。 */
   private static limitWindowStart(kind: string, now = new Date()): Date {
-    if (kind === 'once') return new Date(0);
-    const d = new Date(now);
-    d.setHours(0, 0, 0, 0);
-    if (kind === 'weekly') {
-      // JS getDay: 0=周日 → 周一起算回退 (day+6)%7 天
-      d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
-      return d;
-    }
-    if (kind === 'monthly') {
-      d.setDate(1);
-      return d;
-    }
-    return new Date(0);
+    return purchaseWindowStart(kind, now);
   }
 
   /**
@@ -207,7 +197,7 @@ export class BusinessService {
   }
 
   /** 限购违规商品名列表（加购/结算共用）：bought ≥ qty 即达限。 */
-  private async assertPurchaseLimit(userId: string, productIds: string[]) {
+  private async assertPurchaseLimit(userId: string, productIds: string[], quantities?: Map<string, number>) {
     const rows = await this.db.product.findMany({
       where: { id: { in: productIds }, purchaseLimit: { not: 'none' } },
       select: {
@@ -225,9 +215,9 @@ export class BusinessService {
       monthly: '每月限购一次，本月已购',
     };
     for (const r of rows)
-      if ((bought.get(r.id) ?? 0) >= (r.purchaseLimitQty || 1))
+      if ((bought.get(r.id) ?? 0) + (quantities?.get(r.id) ?? 1) > (r.purchaseLimitQty || 1))
         throw new BadRequestException(
-          `「${r.name}」${label[r.purchaseLimit] ?? '已达限购'}`,
+          `「${r.name}」${label[r.purchaseLimit] ?? '已达限购'}，周期内限购 ${r.purchaseLimitQty || 1} 件`,
         );
   }
 
@@ -370,9 +360,9 @@ export class BusinessService {
   private async orderDetail(order: Order) {
     const campus = await this.db.campus.findUnique({
       where: { id: order.campusId },
-      select: { showDeliveryContacts: true },
+      select: { showDeliveryContacts: true, servicePhone: true, serviceQrcode: true, serviceKfUrl: true, serviceKfCorpId: true, afterSalesGroupQrcode: true, groupQrcodeTip: true },
     });
-    const view = this.orderView(order);
+    const view = { ...this.orderView(order), support: { phone: campus?.servicePhone || '', qrcode: campus?.serviceQrcode || '', kfUrl: campus?.serviceKfUrl || '', corpId: campus?.serviceKfCorpId || '', groupQrcode: campus?.afterSalesGroupQrcode || '', groupTip: campus?.groupQrcodeTip || '' } };
     if (!campus?.showDeliveryContacts) return view;
     return {
       ...view,
@@ -432,9 +422,10 @@ export class BusinessService {
     type: string,
     title: string,
     content: string,
+    orderId?: string,
   ) {
     return this.db.notification.create({
-      data: { userId, type, title, content },
+      data: { userId, type, title, content, orderId, businessType: 'day' },
     });
   }
   /** 北京时间当前时刻 → 当日分钟数（IKGI1C：判定一律用服务端上海时区，
@@ -725,16 +716,13 @@ export class BusinessService {
     const fromOrgId = await campusOrganizationId(this.db, user.campusId);
     if (fromOrgId && campus.organizationId !== fromOrgId)
       throw new BadRequestException('该校区不属于当前小程序所在组织');
-    const [updated] = await this.db.$transaction([
-      this.db.user.update({ where: { id: userId }, data: { campusId } }),
-      this.db.cartItem.deleteMany({
-        where: { userId, product: { campusId: { not: campusId } } },
-      }),
-      this.db.address.updateMany({
-        where: { userId, campusId: { not: campusId }, isDefault: true },
-        data: { isDefault: false },
-      }),
-    ]);
+    const updated = await this.db.$transaction(async tx => {
+      await this.lockCart(tx, userId);
+      const updated = await tx.user.update({ where: { id: userId }, data: { campusId } });
+      await tx.cartItem.deleteMany({ where: { userId, product: { campusId: { not: campusId } } } });
+      await tx.address.updateMany({ where: { userId, campusId: { not: campusId }, isDefault: true }, data: { isDefault: false } });
+      return updated;
+    });
     // IKSN19（道哥 2026-11-03 定稿）：切换校区补发目标校区 signup 新人券——
     // 覆盖「确认页选错注册后马上纠正」的新用户（手里的旧校区券跨校区不可用）。
     // 「每校区终身一次」由 grantCouponInner 幂等保证（含 used 历史持有），
@@ -825,7 +813,8 @@ export class BusinessService {
     const d = new Date(now.getTime() + 8 * 3600_000 + 24 * 3600_000);
     return `明天 (${d.toISOString().slice(5, 10).replace('-', '.')}) `;
   }
-  async home(campusId: string) {
+  async home(campusId: string, businessType = 'day') {
+    if (!['day', 'night'].includes(businessType)) throw new BadRequestException('业务类型不正确');
     // IKKRMU 营销能力开关：组织/校区关闭营销 → 首页 Banner 与推荐位下发空
     // （读侧静默降级，不报错；分类/公告/促销模块非营销切片，不受控）。
     const marketing = await marketingEnabled(this.db, campusId);
@@ -850,6 +839,7 @@ export class BusinessService {
               campusId: { in: [campusId, ''] },
               status: 'active',
               placement: 'home',
+              businessType,
             },
             orderBy: { sort: 'asc' },
           })
@@ -899,6 +889,7 @@ export class BusinessService {
     const noticeRows = await this.db.notice.findMany({
       where: {
         campusId,
+        businessType,
         status: 'active',
         startsAt: { lte: now },
         endsAt: { gt: now },
@@ -909,12 +900,12 @@ export class BusinessService {
     return {
       campus,
       banners,
-      categories,
+      categories: businessType === 'night' ? [] : categories,
       notice: noticeRows.map((x) => x.content).join('｜'),
-      hotProducts: products.map((p) =>
+      hotProducts: (businessType === 'night' ? [] : products).map((p) =>
         this.productView(p, false, promoMap.get(p.id)),
       ),
-      promotions: promoRows.map((x) => ({
+      promotions: (businessType === 'night' ? [] : promoRows).map((x) => ({
         id: x.id,
         type: x.type,
         price: number(x.price),
@@ -928,11 +919,12 @@ export class BusinessService {
    * 未配置返回 null（用户端该区域不渲染、不占位）。
    * IKKRMU：营销关闭 → 空数组（支付后推荐不下发，静默降级）。
    */
-  async bannerByPlacement(campusId: string, placement: string) {
+  async bannerByPlacement(campusId: string, placement: string, businessType = 'day') {
+    if (!['day', 'night'].includes(businessType)) throw new BadRequestException('业务类型不正确');
     if (!(await marketingEnabled(this.db, campusId))) return [];
     return this.db.banner.findMany({
       // IKAJSL：campusId 空串 = 总部全校区投放
-      where: { campusId: { in: [campusId, ''] }, status: 'active', placement },
+      where: { campusId: { in: [campusId, ''] }, status: 'active', placement, businessType },
       orderBy: [{ sort: 'asc' }, { id: 'asc' }],
       // IKB87P：支付成功页广告大卡最多 2 条（sort 升序取前 2）
       take: 2,
@@ -1068,6 +1060,12 @@ export class BusinessService {
     const product = this.productView(local, true, promo);
     return { product, sourceName: src.name, sourceCampusName };
   }
+  private cartVersion(userId: string, campusId: string | undefined, rows: Array<{ id: string; productId: string; quantity: number; asSeckill: boolean }>) {
+    return createHash('sha256').update(JSON.stringify([userId, campusId, rows.map(row => [row.id, row.productId, row.quantity, row.asSeckill]).sort((a, b) => String(a[0]).localeCompare(String(b[0])))])).digest('hex');
+  }
+  private async lockCart(tx: Prisma.TransactionClient, userId: string) {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`day-cart:${userId}`}, 0))`;
+  }
   async cart(userId: string) {
     const [rows, user] = await Promise.all([
       this.db.cartItem.findMany({
@@ -1079,6 +1077,7 @@ export class BusinessService {
         select: { campusId: true },
       }),
     ]);
+    const scopedRows = rows.filter(row => user && row.product.campusId === user.campusId && !row.product.nightCatalog);
     // IK9SO6：起送门槛读校园配置（后台可改），缺省回退常量
     const campus = user
       ? await this.db.campus.findUnique({
@@ -1090,15 +1089,15 @@ export class BusinessService {
     // 窗外/原价行走正常渠道价（clearance 生效、秒杀忽略）。productAmount/
     // 券门槛/下单快照全部随 cart 单一来源走，下游零特判。
     const seckillMap = await this.activeSeckillMap(
-      rows.map((r) => r.productId),
+      scopedRows.map((r) => r.productId),
     );
     const normalPromoMap = await this.promotionMap(
-      rows.map((r) => r.productId),
+      scopedRows.map((r) => r.productId),
       new Date(),
       true,
     );
     // IKQZOB：人均限购已拆——不再查已购集合
-    const items = rows.map((row) => {
+    const items = scopedRows.map((row) => {
       // 秒杀行跟活动窗走：窗内秒杀价，窗外自动回落正常渠道价
       const seckill = row.asSeckill ? seckillMap.get(row.productId) : undefined;
       const promo = seckill ?? normalPromoMap.get(row.productId);
@@ -1112,10 +1111,11 @@ export class BusinessService {
     );
     // IKGNMV：购物车里已有的秒杀身份行（≤1，由加购拦截保证）——weapp 端
     // 其他秒杀品加购钮置灰用；无秒杀行为 undefined
-    const seckillIdInCart = rows.find(
+    const seckillIdInCart = scopedRows.find(
       (r) => r.asSeckill && seckillMap.has(r.productId),
     )?.productId;
     return {
+      version: this.cartVersion(userId, user?.campusId, rows),
       items,
       productAmount,
       totalQuantity: items.reduce((sum, i) => sum + i.quantity, 0),
@@ -1131,8 +1131,14 @@ export class BusinessService {
       where: { id: userId },
       select: { campusId: true },
     });
-    if (cartOwner?.campusId) await this.throwIfCampusClosed(cartOwner.campusId);
+    if (!cartOwner) throw new NotFoundException("用户不存在");
+    await this.throwIfCampusClosed(cartOwner.campusId);
     await this.db.$transaction(async (tx) => {
+      await this.lockCart(tx, userId);
+      const currentOwner = await tx.user.findUnique({ where: { id: userId }, select: { campusId: true } });
+      if (currentOwner?.campusId !== cartOwner.campusId) throw new BadRequestException('校区已变化，请刷新购物车');
+      const versionRows = await tx.cartItem.findMany({ where: { userId } });
+      if (dto.expectedVersion && dto.expectedVersion !== this.cartVersion(userId, currentOwner.campusId, versionRows)) throw new BadRequestException('购物车已变化，请刷新后重试');
       // IKDFZK：下架/不存在行直接剔除（全量替换语义下 = 自动移出购物车），
       // 不再整批抛错——旧行为会把售罄/下架商品变成"钉子户"（删不掉且
       // 连累其他商品保存失败）；在售行仅当数量上升时校验库存（同 setCartItem
@@ -1155,6 +1161,7 @@ export class BusinessService {
       await this.assertPurchaseLimit(
         userId,
         dto.items.filter((l) => l.quantity > 0).map((l) => l.productId),
+        new Map(dto.items.map(line => [line.productId, line.quantity])),
       );
       // IKQZOB：人均限购已拆——品种守卫照旧
       // IKGNMV（一单一秒杀）：全量替换语义下，保存后的秒杀身份行品种
@@ -1180,6 +1187,8 @@ export class BusinessService {
           where: { id: line.productId },
         });
         if (!p || p.status !== 'on-sale') continue;
+        if (p.nightCatalog) throw new BadRequestException('商品不属于白天店渠道');
+        if (p.campusId !== cartOwner.campusId) throw new BadRequestException('商品不属于当前校区');
         // 秒杀身份行必须窗内有活动（防伪造）；窗外回落原价行不再拦
         if (line.asSeckill && !seckillIds.has(line.productId))
           throw new BadRequestException(`「${p.name}」秒杀活动未开始或已结束`);
@@ -1213,22 +1222,27 @@ export class BusinessService {
     // 缺省 false（原价行）。原价行不限购、无秒杀校验
     asSeckill = false,
   ) {
-    const p = await this.db.product.findFirst({
+    await this.db.$transaction(async (tx) => {
+      await this.lockCart(tx, userId);
+    const p = await tx.product.findFirst({
       // IKSW1F 夜宵隔离：夜主档行不可进白天购物车
       where: { id: productId, nightCatalog: false },
     });
     if (!p) throw new NotFoundException('商品不存在');
+    const owner = await tx.user.findUnique({ where: { id: userId }, select: { campusId: true } });
+    if (!owner) throw new NotFoundException('用户不存在');
+    if (quantity > 0 && p.campusId !== owner.campusId) throw new BadRequestException('商品不属于当前校区');
     // IKG1C（IKGI1C 打烊停单）：加购方向硬拦，判定在秒杀等校验之前；
     // 减少/清零方向放行（同 IKDFZK 口径，别把购物车存量行变成删不掉的钉子户）
     if (quantity > 0) await this.throwIfCampusClosed(p.campusId);
-    const existing = await this.db.cartItem.findUnique({
+    const existing = await tx.cartItem.findUnique({
       where: { userId_productId: { userId, productId } },
       select: { quantity: true, asSeckill: true },
     });
     // IKHL6Y：同一商品购物车单一身份——跨身份再加拒绝（先移除已有行再换入口）
     // IKQZY7 周期限购：达限商品拒加购（不分价格身份/不限秒杀行——挂在
     // 主体，任何加购都判；负数（移出购物车）不拦）
-    if (quantity > 0) await this.assertPurchaseLimit(userId, [productId]);
+    if (quantity > 0) await this.assertPurchaseLimit(userId, [productId], new Map([[productId, quantity]]));
     if (quantity > 0 && existing && Boolean(existing.asSeckill) !== asSeckill)
       throw new BadRequestException(
         asSeckill
@@ -1244,7 +1258,7 @@ export class BusinessService {
       if (quantity > 1) throw new BadRequestException('秒杀商品每单限购 1 件');
       // IKGNMV（一单一秒杀）：已有**其他**秒杀身份行时拒加（品种 ≤1/单）；
       // 原价行不受此限
-      const others = await this.db.cartItem.findMany({
+      const others = await tx.cartItem.findMany({
         where: {
           userId,
           quantity: { gt: 0 },
@@ -1264,19 +1278,24 @@ export class BusinessService {
     )
       throw new BadRequestException(`${p.name}库存不足`);
     if (quantity === 0)
-      await this.db.cartItem.deleteMany({ where: { userId, productId } });
+      await tx.cartItem.deleteMany({ where: { userId, productId } });
     else
-      await this.db.cartItem.upsert({
+      await tx.cartItem.upsert({
         where: { userId_productId: { userId, productId } },
         create: { userId, productId, quantity, asSeckill },
         update: { quantity, asSeckill },
       });
+    });
     return this.cart(userId);
   }
   async clearCart(userId: string) {
-    await this.db.cartItem.deleteMany({ where: { userId } });
+    await this.db.$transaction(async tx => {
+      await this.lockCart(tx, userId);
+      await tx.cartItem.deleteMany({ where: { userId } });
+    });
     return this.cart(userId);
   }
+
   private async validateQuote(
     userId: string,
     campusId: string,
@@ -1304,6 +1323,7 @@ export class BusinessService {
         where: { id: line.product.id },
       });
       // IKSW1F 夜宵隔离兜底：夜主档行混入购物车（直调绕过加购拦截）一律拒
+      if (p && p.campusId !== campusId) throw new BadRequestException('商品不属于当前校区');
       if (!p || p.nightCatalog || line.quantity > p.stock - p.lockedStock)
         throw new BadRequestException(`${line.product.name}库存不足`);
     }
@@ -1311,6 +1331,7 @@ export class BusinessService {
     await this.assertPurchaseLimit(
       userId,
       cart.items.filter((i) => i.quantity > 0).map((i) => i.product.id),
+      new Map(cart.items.map(line => [line.product.id, line.quantity])),
     );
     // IKQZOB：人均限购结算兜底已拆（跨订单可重复购买）
     const seckillRows = cart.items.filter((i) => i.asSeckill);
@@ -1553,6 +1574,7 @@ export class BusinessService {
   }
   async pay(userId: string, id: string) {
     return this.db.$transaction(async (tx) => {
+      await this.lockCart(tx, userId);
       const raw = await tx.order.findFirst({ where: { id, userId } });
       if (!raw) throw new NotFoundException('订单不存在');
       // 顺序重复点击：已支付直接幂等返回。
@@ -1631,7 +1653,7 @@ export class BusinessService {
       });
       if (hasLimited) {
         await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${userId} FOR UPDATE`;
-        await this.assertPurchaseLimit(userId, limitProducts);
+        await this.assertPurchaseLimit(userId, limitProducts, new Map(items.map(line => [line.product.id, line.quantity])));
       }
       // 条件更新抢占支付权：并发的第二笔支付 count=0 直接失败，
       // 库存扣减与后续副作用都移到抢占成功之后，防止双扣。
@@ -1684,7 +1706,13 @@ export class BusinessService {
           });
         }
       }
-      await tx.cartItem.deleteMany({ where: { userId } });
+      // Only consume the purchased channel and quantity. Later additions survive payment.
+      for (const line of items) {
+        const current = await tx.cartItem.findUnique({ where: { userId_productId: { userId, productId: line.product.id } } });
+        if (!current || current.asSeckill !== Boolean(line.asSeckill)) continue;
+        if (current.quantity <= line.quantity) await tx.cartItem.delete({ where: { id: current.id } });
+        else await tx.cartItem.update({ where: { id: current.id }, data: { quantity: { decrement: line.quantity } } });
+      }
       // IKA0BI：2 小时送达赠券（结算页对用户的承诺）——预约单支付成功随
       // 事务发放。券模板由运营在后台创建后切 status=paused（隐藏于公开
       // 可领列表，领取接口也拒非 active），再配 SCHEDULED_BONUS_COUPON_ID
@@ -1734,6 +1762,8 @@ export class BusinessService {
         data: {
           userId,
           type: 'order',
+          orderId: updated.id,
+          businessType: 'day',
           title: '支付成功',
           content: '订单已进入湖工大校园仓，仓储人员即将开始拣货。',
         },
@@ -1786,6 +1816,7 @@ export class BusinessService {
       'delivery',
       updated.statusText,
       `${updated.orderNo} 的履约状态已更新。`,
+      updated.id,
     );
     // 渠道推送（IK8W5M）：出库/一级配送中/即将到楼/已送达 订阅消息（已送达带短信兜底）。
     void this.push?.orderStatusPush({
@@ -1897,6 +1928,7 @@ export class BusinessService {
       'delivery',
       updated.statusText,
       `${updated.orderNo} 已从仓库发出，等待配送员接单。`,
+      updated.id,
     );
     void this.push?.orderStatusPush({
       id: updated.id,
@@ -2466,10 +2498,12 @@ export class BusinessService {
       if (refund.status !== 'pending')
         throw new BadRequestException('当前退款申请状态不可撤销');
       return this.db.$transaction(async (tx) => {
-        const record = await tx.refund.update({
-          where: { id },
+        const changed = await tx.refund.updateMany({
+          where: { id, userId, status: 'pending' },
           data: { status: 'cancelled' },
         });
+        if (!changed.count) throw new BadRequestException('退款状态已变化，请刷新');
+        const record = await tx.refund.findUniqueOrThrow({ where: { id } });
         await this.restoreOrderFromRefund(
           tx,
           record.orderId,
@@ -2520,9 +2554,14 @@ export class BusinessService {
     if (!item) throw new NotFoundException('退款记录不存在');
     return this.refundView(item);
   }
-  async notifications(userId: string) {
+  private notificationChannel(value?: string): 'day' | 'night' {
+    if (value === undefined || value === '') return 'day';
+    if (value !== 'day' && value !== 'night') throw new BadRequestException('业务类型不正确');
+    return value;
+  }
+  async notifications(userId: string, businessType?: string) {
     const items = await this.db.notification.findMany({
-      where: { userId },
+      where: { userId, businessType: this.notificationChannel(businessType) },
       orderBy: { createdAt: 'desc' },
     });
     return items.map((i) => ({ ...i, createdAt: i.createdAt.toISOString() }));
@@ -2534,17 +2573,17 @@ export class BusinessService {
     if (!item) throw new NotFoundException('消息不存在');
     return this.db.notification.update({ where: { id }, data: { read: true } });
   }
-  async readAllNotifications(userId: string, type?: string) {
+  async readAllNotifications(userId: string, type?: string, businessType?: string) {
     await this.db.notification.updateMany({
-      where: { userId, ...(type ? { type } : {}) },
+      where: { userId, businessType: this.notificationChannel(businessType), ...(type ? { type } : {}) },
       data: { read: true },
     });
-    return this.unreadNotificationCount(userId);
+    return this.unreadNotificationCount(userId, businessType);
   }
-  async unreadNotificationCount(userId: string) {
+  async unreadNotificationCount(userId: string, businessType?: string) {
     const rows = await this.db.notification.groupBy({
       by: ['type'],
-      where: { userId, read: false },
+      where: { userId, businessType: this.notificationChannel(businessType), read: false },
       _count: { _all: true },
     });
     return {

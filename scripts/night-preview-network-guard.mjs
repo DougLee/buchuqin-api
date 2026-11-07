@@ -2,7 +2,7 @@ import http from 'node:http';
 import https from 'node:https';
 
 const database = new URL(process.env.DATABASE_URL || '');
-if (process.env.NODE_ENV !== 'test' || !database.pathname.endsWith('_spec') || database.searchParams.get('schema') !== 'night_stock_preview_20261106') throw new Error('网络隔离只允许独立夜宵测试进程');
+if (process.env.NODE_ENV !== 'test' || !database.pathname.endsWith('_spec') || !/^night_stock_[a-z0-9_]+$/.test(database.searchParams.get('schema') || '')) throw new Error('网络隔离只允许独立夜宵测试进程');
 const allowed = new Set(['localhost', '127.0.0.1', '::1', '[::1]', 'admin-test.buchuqin.com']);
 function check(input) {
   const host = typeof input === 'string' || input instanceof URL ? new URL(input).hostname : input?.hostname || input?.host?.split(':')[0] || 'localhost';
@@ -25,4 +25,4 @@ for (const module of [http, https]) {
     };
   }
 }
-console.log('夜宵预览HTTP出站白名单已启用；生产API、微信网关及外部存储均不可连接。');
+console.error('夜宵预览HTTP出站白名单已启用；生产API、微信网关及外部存储均不可连接。');

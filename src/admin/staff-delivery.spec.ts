@@ -94,6 +94,7 @@ describe('staff delivery mode (IKKRMV)', () => {
         id: ORG_RIDER,
         name: `骑手配送测试组织${ts}`,
         shortName: '骑手配',
+        deliveryWxAppId: 'wx-spec-rider', deliveryWxSecret: 'spec-only-secret', deliveryNotifyTemplateId: 'spec-only-template',
       },
     });
     for (const [id, orgId, name] of [

@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
+import { nightPromotions } from './night-pricing';
 import { NightOrderService } from './night-order.service';
 import { beijingMinutes, inNightWindow } from './night.helpers';
 import { NightAfterSaleDto, NightOrderCreateDto } from './night.dto';
@@ -138,7 +139,7 @@ export class NightUserService {
   }
 
   /**
-   * 本店可购商品：上架 + 后台售卖许可 + 主档在售 + 库存>0。
+   * 本店可购商品：上架 + 后台售卖许可 + 主档在售（零库存保留售罄展示）。
    * 图/名/价引夜主档 Product（夜宵统一售价）。
    */
   async storeProducts(campusId: string, storeId: string) {
@@ -159,6 +160,13 @@ export class NightUserService {
             id: true,
             name: true,
             image: true,
+            images: true,
+            description: true,
+            originalPrice: true,
+            featured: true,
+            featuredSort: true,
+            purchaseLimit: true,
+            purchaseLimitQty: true,
             subtitle: true,
             price: true,
             categoryId: true,
@@ -170,13 +178,22 @@ export class NightUserService {
       },
       orderBy: { createdAt: 'asc' },
     });
-    return rows.map((r) => ({
+    const [promotions, seckill] = await Promise.all([nightPromotions(this.db, rows.map(row => row.catalogProductId)), nightPromotions(this.db, rows.map(row => row.catalogProductId), 'seckill')]);
+    return rows.sort((a, b) => Number(b.catalogProduct.featured) - Number(a.catalogProduct.featured) || a.catalogProduct.featuredSort - b.catalogProduct.featuredSort).map((r) => ({
         id: r.id,
         catalogProductId: r.catalogProductId,
+        purchaseLimitMeta: r.catalogProduct.purchaseLimit && r.catalogProduct.purchaseLimit !== 'none' ? { kind: r.catalogProduct.purchaseLimit, qty: r.catalogProduct.purchaseLimitQty } : undefined,
         name: r.catalogProduct.name,
         image: r.catalogProduct.image,
+        images: r.catalogProduct.images,
+        description: r.catalogProduct.description,
+        originalPrice: promotions.has(r.catalogProductId) ? r.catalogProduct.price : r.catalogProduct.originalPrice,
+        featured: r.catalogProduct.featured,
+        featuredSort: r.catalogProduct.featuredSort,
         subtitle: r.catalogProduct.subtitle,
-        price: r.catalogProduct.price,
+        price: promotions.get(r.catalogProductId)?.price ?? r.catalogProduct.price,
+        seckill: seckill.has(r.catalogProductId) ? { id: seckill.get(r.catalogProductId)!.id, price: seckill.get(r.catalogProductId)!.price, endsAt: seckill.get(r.catalogProductId)!.endsAt.toISOString() } : null,
+        promotion: promotions.has(r.catalogProductId) ? { id: promotions.get(r.catalogProductId)!.id, type: promotions.get(r.catalogProductId)!.type, endsAt: promotions.get(r.catalogProductId)!.endsAt.toISOString() } : null,
         categoryId: r.catalogProduct.categoryId,
         categoryName: r.catalogProduct.category.name,
         retailUnit: r.catalogProduct.retailUnit,
@@ -210,6 +227,14 @@ export class NightUserService {
 
   applyAfterSale(userId: string, id: string, dto: NightAfterSaleDto) {
     return this.orderSvc.applyAfterSale(userId, id, dto);
+  }
+
+  afterSales(userId: string, page?: string, pageSize?: string) {
+    return this.orderSvc.myAfterSales(userId, page, pageSize);
+  }
+
+  withdrawAfterSale(userId: string, id: string) {
+    return this.orderSvc.withdrawAfterSale(userId, id);
   }
 
   prepayOrder(userId: string, orderId: string) {

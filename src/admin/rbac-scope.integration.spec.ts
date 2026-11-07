@@ -41,7 +41,8 @@ describe('RBAC valid A/B target isolation (HTTP + PostgreSQL)', () => {
       const user = await db.user.create({ data: { campusId, nickname: campusId, phone: campusId === campusA ? '13900000001' : '13900000002', role: 'user' } });
       const building = await db.building.create({ data: { campusId, name: campusId } });
       const room = await db.room.create({ data: { buildingId: building.id, floor: 1, roomNo: '101', qrToken: campusId } });
-      const product = await db.product.create({ data: { campusId, categoryId, name: campusId, barcode: campusId,
+      const localCategory = await db.category.create({ data: { campusId, name: prefix } });
+      const product = await db.product.create({ data: { campusId, categoryId: localCategory.id, name: campusId, barcode: campusId,
         subtitle: '', price: 500, originalPrice: 600, stock: 10, status: 'on-sale', sales: 0, tag: '', image: '', weight: 0.5 } });
       const order = await db.order.create({ data: { campusId, userId: user.id, orderNo: campusId, status: 'paid', statusText: '待接单',
         address: { buildingName: building.name, room: '101' }, deliveryMode: 'instant', items: [], productAmount: 500,
@@ -71,12 +72,16 @@ describe('RBAC valid A/B target isolation (HTTP + PostgreSQL)', () => {
     roleId = role.id;
     const account = await rbac.createAccount(actor, { username: prefix, password: 'scope-pass-123', grants: [
       { roleCode: role.code, scope: 'campus', campusId: campusA },
-      { roleCode: 'campus-finance', scope: 'campus', campusId: campusB },
     ] });
     accountId = account.id;
     await db.adminAccount.update({ where: { id: account.id }, data: { campusId: campusA } });
     const current = await db.adminAccount.findUniqueOrThrow({ where: { id: account.id } });
     auth = `Bearer ${app.get(JwtService).sign({ id: account.id, campusId: campusA, role: 'rbac', sv: current.sessionVersion })}`;
+  });
+
+  it('未授权B校区请求参数明确拒绝，不能用A的功能权限越权', async () => {
+    await call('get', `orders?campus=${campusB}`).expect(403);
+    await call('post', `inventory/adjust?campus=${campusB}`, { productId: fixture[campusB].product.id, delta: 1, reason: '越权拒绝' }).expect(403);
   });
 
   it('serializes operation-scoped platform grants as an array for browser sessions', async () => {
@@ -113,7 +118,7 @@ describe('RBAC valid A/B target isolation (HTTP + PostgreSQL)', () => {
         await db.adminRole.deleteMany({ where: { id: roleId } });
         await db.auditLog.deleteMany({ where: { OR: [{ campusId: { in: campuses } }, { operator: prefix }] } });
         await db.campus.deleteMany({ where: { id: { in: campuses } } });
-        await db.category.deleteMany({ where: { id: categoryId } });
+        await db.category.deleteMany({ where: { OR: [{ id: categoryId }, { campusId: { in: campuses } }] } });
       }
     } finally { await app?.close(); }
   });
@@ -125,31 +130,31 @@ describe('RBAC valid A/B target isolation (HTTP + PostgreSQL)', () => {
       ['locations', a.location.id, b.location.id], ['commission-rules', a.rule.id, b.rule.id],
       ['printers', a.device.id, b.device.id], ['promotions', a.promotion.id, b.promotion.id],
     ]) {
-      const res = await call('get', `${path}?campus=${campusB}&campusId=${campusB}`).expect(200);
+      const res = await call('get', `${path}?campus=${campusA}&campusId=${campusB}`).expect(200);
       const serialized = JSON.stringify(res.body.data);
       expect(serialized).toContain(ownId); expect(serialized).not.toContain(foreignId);
     }
-    const after = await call('get', `after-sales?campus=${campusB}`).expect(200);
+    const after = await call('get', `after-sales?campus=${campusA}`).expect(200);
     expect(JSON.stringify(after.body.data)).toContain(a.order.id);
     expect(JSON.stringify(after.body.data)).not.toContain(b.order.id);
-    const txns = await call('get', `inventory/txns?campus=${campusB}`).expect(200);
+    const txns = await call('get', `inventory/txns?campus=${campusA}`).expect(200);
     expect(JSON.stringify(txns.body.data)).toContain(a.product.id);
     expect(JSON.stringify(txns.body.data)).not.toContain(b.product.id);
-    const watch = await call('get', `orders/new-order-watch?campus=${campusB}`).expect(200);
+    const watch = await call('get', `orders/new-order-watch?campus=${campusA}`).expect(200);
     expect(watch.body.data).toMatchObject({ todayPaid: 1, latest: { id: a.order.id } });
   });
 
   it('delivery configuration and building mutations remain in A despite body/query campus overrides', async () => {
     const b = fixture[campusB];
     const originalB = await db.campus.findUniqueOrThrow({ where: { id: campusB } });
-    await call('patch', `delivery-config?campus=${campusB}`, { campusId: campusB,
+    await call('patch', `delivery-config?campus=${campusA}`, { campusId: campusB,
       deliveryFeeInstant: 321, deliveryFeeScheduled: 123, deliveryThreshold: 999 }).expect(200);
-    const config = await call('get', `delivery-config?campus=${campusB}`).expect(200);
+    const config = await call('get', `delivery-config?campus=${campusA}`).expect(200);
     expect(config.body.data.deliveryFeeInstant).toBe(321);
     expect((await db.campus.findUniqueOrThrow({ where: { id: campusB } })).deliveryFeeInstant).toBe(originalB.deliveryFeeInstant);
     await call('patch', `buildings/${b.building.id}`, { name: 'foreign' }).expect(404);
     await call('delete', `buildings/${b.building.id}`).expect(404);
-    const created = await call('post', `buildings?campus=${campusB}`, { campusId: campusB,
+    const created = await call('post', `buildings?campus=${campusA}`, { campusId: campusB,
       name: 'scope owned', floors: 2, hasElevator: false, gender: 'mixed' }).expect(201);
     expect(created.body.data.campusId).toBe(campusA);
     expect((await db.building.findUniqueOrThrow({ where: { id: b.building.id } })).name).toBe(campusB);
@@ -165,8 +170,8 @@ describe('RBAC valid A/B target isolation (HTTP + PostgreSQL)', () => {
     expect(await db.lotteryWheel.findUnique({ where: { campusId: campusA } })).toBeNull();
     const valid = [...prizes];
     valid[0] = { type: 'coupon', label: 'own', weight: 1, couponId: a.coupon.id } as any;
-    await call('put', `wheel?campus=${campusB}`, { campusId: campusB, active: true, prizes: valid }).expect(200);
-    const result = await call('get', `wheel?campus=${campusB}`).expect(200);
+    await call('put', `wheel?campus=${campusA}`, { campusId: campusB, active: true, prizes: valid }).expect(200);
+    const result = await call('get', `wheel?campus=${campusA}`).expect(200);
     expect(result.body.data.prizes[0].couponId).toBe(a.coupon.id);
     expect((await db.lotteryWheel.findUniqueOrThrow({ where: { campusId: campusB } })).active).toBe(false);
   });
@@ -175,23 +180,23 @@ describe('RBAC valid A/B target isolation (HTTP + PostgreSQL)', () => {
     const a = fixture[campusA], b = fixture[campusB];
     for (const campusId of campuses) await db.auditLog.create({ data: {
       operator: prefix, action: 'scope.probe', entityType: 'probe', entityId: campusId, campusId } });
-    const audit = await call('get', `audit-logs?campus=${campusB}`).expect(200);
+    const audit = await call('get', `audit-logs?campus=${campusA}`).expect(200);
     expect(JSON.stringify(audit.body.data)).toContain(campusA);
     expect(JSON.stringify(audit.body.data)).not.toContain(campusB);
     expect(audit.body.data.items.every((row: { action: string }) => !row.action.startsWith('rbac.'))).toBe(true);
-    const counts = await call('get', `products/status-counts?campus=${campusB}&view=official`).expect(200);
+    const counts = await call('get', `products/status-counts?campus=${campusA}&view=official`).expect(200);
     expect(counts.body.data).toEqual({ 'on-sale': 1 });
-    const recruitCounts = await call('get', `recruit-applications/status-counts?campus=${campusB}`).expect(200);
+    const recruitCounts = await call('get', `recruit-applications/status-counts?campus=${campusA}`).expect(200);
     expect(recruitCounts.body.data).toEqual({ pending: 1 });
     await call('post', `recruit-applications/${b.recruit.id}/transition`).expect(404);
     await call('post', `recruit-applications/${a.recruit.id}/transition`).expect(201);
     expect((await db.recruitingApplication.findUniqueOrThrow({ where: { id: b.recruit.id } })).status).toBe('pending');
-    const coupon = await call('post', `coupons?campus=${campusB}`, { name: 'scope owned', amount: 100,
+    const coupon = await call('post', `coupons?campus=${campusA}`, { name: 'scope owned', amount: 100,
       threshold: 100, campusId: campusB }).expect(201);
     expect(coupon.body.data.campusId).toBe(campusA);
-    const location = await call('post', `locations?campus=${campusB}`, { name: 'scope owned', campusId: campusB }).expect(201);
+    const location = await call('post', `locations?campus=${campusA}`, { name: 'scope owned', campusId: campusB }).expect(201);
     expect(location.body.data.campusId).toBe(campusA);
-    const bound = await call('post', `printers?campus=${campusB}`, { name: 'scope own', sn: prefix, campusId: campusB }).expect(201);
+    const bound = await call('post', `printers?campus=${campusA}`, { name: 'scope own', sn: prefix, campusId: campusB }).expect(201);
     expect(bound.body.data.campusId).toBe(campusA);
     expect((await db.printer.findUniqueOrThrow({ where: { id: b.device.id } })).sn).toBe(campusB);
   });
@@ -201,7 +206,7 @@ describe('RBAC valid A/B target isolation (HTTP + PostgreSQL)', () => {
     const bNotice = await db.notice.create({ data: { campusId: campusB, content: 'B private notice',
       startsAt: new Date(), endsAt: new Date(Date.now() + 86400000) } });
     try {
-      const read = await call('get', `campus-config?campus=${campusB}`).expect(200);
+      const read = await call('get', `campus-config?campus=${campusA}`).expect(200);
       expect(read.body.data.campus.id).toBe(campusA);
       expect(JSON.stringify(read.body.data)).not.toContain(bNotice.content);
       const created = await call('post', 'delivery-slots', { campusId: campusB, label: 'A window', capacity: 12 }).expect(201);
@@ -250,7 +255,7 @@ describe('RBAC valid A/B target isolation (HTTP + PostgreSQL)', () => {
     const a = fixture[campusA], b = fixture[campusB];
     await call('patch', `products/${b.product.id}`, { subtitle: 'foreign' }).expect(404);
     await call('post', 'inventory/stocktake', { productId: b.product.id, countedQty: 99 }).expect(404);
-    await call('post', `inventory/adjust?campus=${campusB}`, { productId: b.product.id, delta: 2, reason: 'scope' }).expect(404);
+    await call('post', `inventory/adjust?campus=${campusA}`, { productId: b.product.id, delta: 2, reason: 'scope' }).expect(404);
     const batch = await call('post', 'products/batch-status', { ids: [a.product.id, b.product.id], status: 'off-sale' }).expect(201);
     expect(batch.body.data.count).toBe(1);
     await call('put', 'featured', { productIds: [a.product.id, b.product.id] }).expect(200);
@@ -327,9 +332,9 @@ describe('RBAC valid A/B target isolation (HTTP + PostgreSQL)', () => {
     await call('get', `buildings/${a.building.id}/rooms/template`).expect(200);
   });
 
-  it('shared category names remain global but product counts stay in the current campus', async () => {
+  it('分类按校区隔离，同名分类只统计本校区商品', async () => {
     const response = await call('get', 'categories').expect(200);
-    expect(response.body.data.find((c: { id: string }) => c.id === categoryId).productCount).toBe(1);
+    expect(response.body.data.find((c: { id: string }) => c.id === fixture[campusA].product.categoryId).productCount).toBe(1);
   });
 
   it('restock details/receipt reject foreign records and batch aggregates do not leak global purchasing', async () => {
@@ -349,7 +354,7 @@ describe('RBAC valid A/B target isolation (HTTP + PostgreSQL)', () => {
             items: { create: { productId: official.id, cases: 1, unitsPerCase: 2, costPerCase: 246, wholesalePerCase: 1000 } } } } } }));
       }
       const [a, b] = orders;
-      const detail = await call('get', `restock/batches/${batch.id}?campus=${campusB}`).expect(200);
+      const detail = await call('get', `restock/batches/${batch.id}?campus=${campusA}`).expect(200);
       expect(detail.body.data.orders.map((o: { id: string }) => o.id)).toEqual([a.id]);
       expect(detail.body.data).not.toHaveProperty('purchaseReceivedTotal');
       expect(detail.body.data).not.toHaveProperty('grossEstimate');
@@ -359,7 +364,7 @@ describe('RBAC valid A/B target isolation (HTTP + PostgreSQL)', () => {
       await call('get', `restock/orders/${a.id}/shipment`).expect(200);
       await call('get', `restock/orders/${b.id}`).expect(403);
       await call('get', `restock/orders/${b.id}/shipment`).expect(403);
-      await call('post', `restock/orders/${b.id}/receipt?campus=${campusB}`, { campusId: campusB }).expect(403);
+      await call('post', `restock/orders/${b.id}/receipt?campus=${campusA}`, { campusId: campusB }).expect(403);
       await call('post', `restock/orders/${b.id}/audit`, { action: 'confirm' }).expect(403);
       await call('post', `restock/orders/${b.id}/ship`, {}).expect(403);
       await call('get', `purchase/orders/${po.id}`).expect(403);
@@ -416,6 +421,9 @@ describe('RBAC valid A/B target isolation (HTTP + PostgreSQL)', () => {
   it('new campus stays outside explicit A/B grants; an explicit platform grant includes it without reassigning', async () => {
     // Warm the platform target-campus catalogue before insertion to catch stale membership caches.
     await rbac.knownCampusIds();
+    await rbac.setAccountRoles(actor, accountId, [campusA, campusB].map(campusId => ({ roleCode: prefix, scope: 'campus' as const, campusId })));
+    const refreshed = await db.adminAccount.findUniqueOrThrow({ where: { id: accountId } });
+    auth = `Bearer ${app.get(JwtService).sign({ id: accountId, campusId: campusA, role: 'rbac', sv: refreshed.sessionVersion })}`;
     const campusC = `${prefix}-c`;
     await db.campus.create({ data: { id: campusC, name: campusC, shortName: campusC, warehouseName: campusC } });
     campuses.push(campusC);
