@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import { assertAcceptanceEnvironment, runtimeRequire, createScope } from './guard.mjs';
 const marker = assertAcceptanceEnvironment();
 const { PrismaClient } = runtimeRequire('@prisma/client');
@@ -16,6 +17,14 @@ try {
     assert.equal(order.payMerchantId, 'REMOTE_ACCEPTANCE_ONLY');
     assert.ok(['pending-payment', 'pending-accept'].includes(order.status));
     await orders.applyNightOrderPaid(order.orderNo, 'REMOTE_ACCEPTANCE_ONLY');
+  } else if (kind === 'day') {
+    const order = await db.order.findUniqueOrThrow({ where: { id }, include: { user: true } });
+    assert.equal(order.userId, ownerId); assert.ok(await scoped(order.campusId));
+    const intent = JSON.parse(fs.readFileSync('/tmp/night-acceptance-day-intents/' + id + '.json', 'utf8'));
+    assert.equal(intent.userId, ownerId); assert.equal(intent.orderNo, order.orderNo); assert.equal(intent.amount, order.payableAmount); assert.equal(intent.openid, order.user.openid);
+    assert.ok(Date.now() - intent.createdAt < 15 * 60_000); assert.ok(['pending-payment', 'paid'].includes(order.status));
+    const { BusinessService } = runtimeRequire('./dist/src/business/business.service.js');
+    await new BusinessService(db).pay(ownerId, id);
   } else if (kind === 'deposit') {
     const intent = await db.nightDepositOrder.findUniqueOrThrow({ where: { id }, include: { store: true } });
     assert.equal(intent.store.managerStaffId, ownerId); assert.ok(await scoped(intent.store.campusId));

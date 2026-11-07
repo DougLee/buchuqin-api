@@ -1661,6 +1661,7 @@ export class NightOrderService implements NightPaymentHandler {
         claimedAt: x.claimedAt.toISOString(),
         coupon: {
           id: x.coupon.id,
+          trigger: x.coupon.trigger,
           name: x.coupon.name,
           amount: x.coupon.amount,
           threshold: x.coupon.threshold,

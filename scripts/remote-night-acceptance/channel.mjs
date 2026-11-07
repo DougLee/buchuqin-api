@@ -53,7 +53,7 @@ const { PaymentsService } = runtimeRequire('./dist/src/payments/payments.service
 const wrap = (method, campusAt, mock) => {
   const original = PaymentsService.prototype[method];
   PaymentsService.prototype[method] = async function(...args) {
-    if (await scoped(campusAt(args))) return mock(...args);
+    if (await scoped(await campusAt(args))) return mock(...args);
     return original.apply(this, args);
   };
 };
@@ -63,8 +63,28 @@ wrap('nightPrepay', args => args[0]?.campusId, input => {
   return { appId: 'LOCAL_PREVIEW_ONLY', merchantId: 'REMOTE_ACCEPTANCE_ONLY', timeStamp: String(Math.floor(Date.now() / 1000)), nonceStr: 'REMOTE_ACCEPTANCE_ONLY', package: 'prepay_id=REMOTE_ACCEPTANCE_ONLY', signType: 'RSA', paySign: 'REMOTE_ACCEPTANCE_ONLY' };
 });
 wrap('nightTradeState', args => args[1], () => ({ tradeState: 'NOTPAY' }));
-wrap('applyWechatRefund', args => args[5], (_no, _total, _amount, refundNo) => ({ status: 'SUCCESS', refundId: 'REMOTE_TEST_' + refundNo }));
-wrap('queryWechatRefund', args => args[1], refundNo => ({ status: 'SUCCESS', refundId: 'REMOTE_TEST_' + refundNo }));
+const dayCampus = async orderNo => (await db.order.findUnique({ where: { orderNo }, select: { campusId: true } }))?.campusId;
+wrap('applyWechatRefund', async args => args[5] || await dayCampus(args[0]), (_no, _total, _amount, refundNo) => ({ status: 'SUCCESS', refundId: 'REMOTE_TEST_' + refundNo }));
+wrap('queryWechatRefund', async args => args[1] || (await db.refund.findUnique({ where: { id: args[0] }, select: { order: { select: { campusId: true } } } }))?.order.campusId, refundNo => ({ status: 'SUCCESS', refundId: 'REMOTE_TEST_' + refundNo }));
+
+// Day prepay keeps its real owner/status/openid/amount validation; only credentials and JSAPI transport are simulated.
+wrap('campusCreds', args => args[0], async campusId => ({
+  appId: 'LOCAL_PREVIEW_ONLY', mchId: 'REMOTE_ACCEPTANCE_ONLY', privateKey: 'REMOTE_ACCEPTANCE_ONLY_NO_KEY',
+  apiV3Key: 'REMOTE_ACCEPTANCE_ONLY_NO_KEY', serialNo: 'REMOTE_ACCEPTANCE_ONLY', notifyUrl: marker.origin + '/api/v1/payments/wechat/notify',
+  organizationId: (await db.campus.findUniqueOrThrow({ where: { id: campusId }, select: { organizationId: true } })).organizationId,
+}));
+const originalJsapiPrepay = PaymentsService.prototype.jsapiPrepay;
+PaymentsService.prototype.jsapiPrepay = async function(creds, input) {
+  if (creds.mchId !== 'REMOTE_ACCEPTANCE_ONLY' || creds.privateKey !== 'REMOTE_ACCEPTANCE_ONLY_NO_KEY') return originalJsapiPrepay.call(this, creds, input);
+  const order = await db.order.findUniqueOrThrow({ where: { orderNo: input.outTradeNo } });
+  assert.ok(await scoped(order.campusId)); assert.match(input.openid, /^qa20261107_/);
+  assert.equal(input.amount, order.payableAmount); assert.ok(Number.isSafeInteger(input.amount) && input.amount > 0);
+  const folder = '/tmp/night-acceptance-day-intents'; await fs.mkdir(folder, { recursive: true, mode: 0o700 });
+  assert.match(order.id, /^[a-zA-Z0-9_-]{1,100}$/);
+  await fs.writeFile(path.join(folder, order.id + '.json'), JSON.stringify({ orderNo: order.orderNo, userId: order.userId, amount: input.amount, openid: input.openid, createdAt: Date.now() }), { mode: 0o600 });
+  return { appId: 'LOCAL_PREVIEW_ONLY', timeStamp: String(Math.floor(Date.now() / 1000)), nonceStr: 'REMOTE_ACCEPTANCE_ONLY', package: 'prepay_id=REMOTE_ACCEPTANCE_ONLY', signType: 'RSA', paySign: 'REMOTE_ACCEPTANCE_ONLY' };
+};
+wrap('queryWechatTrade', args => dayCampus(args[0]), () => ({ trade_state: 'NOTPAY' }));
 
 // Preserve the real upload route, authentication, RBAC, file limits and compression.
 // Only the external object-storage boundary changes for this acceptance tenant.

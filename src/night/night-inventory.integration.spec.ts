@@ -1166,6 +1166,21 @@ integration('已确认的夜宵备货库存流程（独立 PostgreSQL schema）'
     expect((await business.cart(user.id)).items.map(line => line.product.id)).toEqual([f.warehouse.id]);
   });
 
+  it('日夜注册券由同一幂等发券内核发放，礼包列表仅展示本渠道且保留触发类型', async () => {
+    const f = await fixture();
+    const user = await db.user.create({ data: { campusId: f.campus.id, nickname: '新人礼包渠道验收', phone: '13800009912' } });
+    const coupons = [];
+    for (const businessType of ['day', 'night']) coupons.push(await db.coupon.create({ data: { campusId: f.campus.id, businessType, name: `${businessType}新人券`, amount: 100, threshold: 0, trigger: 'signup', status: 'active', total: 10 } }));
+    const business = new BusinessService(db);
+    expect((await business.grantSignupCoupons(user.id, f.campus.id)).granted).toBe(2);
+    expect((await business.grantSignupCoupons(user.id, f.campus.id)).granted).toBe(0);
+    const day = await business.coupons(user.id, f.campus.id);
+    const night = await new NightOrderService(db, { registerNightPaymentHandler() {} } as unknown as PaymentsService).nightCoupons(user.id, f.campus.id);
+    expect(day.mine.map(row => row.couponId)).toEqual([coupons[0].id]);
+    expect(night.mine.map(row => row.couponId)).toEqual([coupons[1].id]);
+    expect(night.mine[0].coupon.trigger).toBe('signup');
+  });
+
   it('用户切换校区后，日夜历史订单客服与福利群仍取原订单校区', async () => {
     const f = await refundFixture(), other = await fixture();
     await db.campus.update({ where: { id: f.campus.id }, data: { servicePhone: '13800009910', serviceQrcode: '/original-support.png', afterSalesGroupQrcode: '/original-group.png', groupQrcodeTip: '原校区福利群' } });

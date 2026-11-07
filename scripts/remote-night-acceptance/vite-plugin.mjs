@@ -42,7 +42,8 @@ export function nightRemoteAcceptancePlugin({ apiTarget, kind }) {
           return;
         }
         const deposit = route.pathname === '/__night-preview/deposit-pay';
-        if (!(deposit && kind === 'delivery') && !(route.pathname === '/__night-preview/pay' && kind === 'user')) { res.statusCode = 404; res.end(); return; }
+        const day = route.pathname === '/__night-preview/day-pay';
+        if (!(deposit && kind === 'delivery') && !(['/__night-preview/pay', '/__night-preview/day-pay'].includes(route.pathname) && kind === 'user')) { res.statusCode = 404; res.end(); return; }
         if (req.method !== 'POST' || !req.headers['content-type']?.includes('application/json')) { res.statusCode = 405; res.end(); return; }
         let body = '';
         req.on('data', chunk => { body += chunk; if (body.length > 2048) req.destroy(); });
@@ -51,7 +52,7 @@ export function nightRemoteAcceptancePlugin({ apiTarget, kind }) {
             const state = read(), id = JSON.parse(body)[deposit ? 'depositOrderId' : 'orderId'];
             const owner = deposit ? state.mainStaffId : state.users.buyer.user.id;
             if (!/^[a-zA-Z0-9_-]{1,100}$/.test(id || '') || !/^[a-zA-Z0-9_-]{1,100}$/.test(owner || '')) throw Error('id');
-            execFile('ssh', ['-o', 'BatchMode=yes', '139.199.3.190-buchuqin-test', 'docker', 'exec', '-w', '/app', 'buchuqin-api', 'node', '/acceptance/confirm.mjs', deposit ? 'deposit' : 'user', id, owner], { timeout: 25000 }, error => {
+            execFile('ssh', ['-o', 'BatchMode=yes', '139.199.3.190-buchuqin-test', 'docker', 'exec', '-w', '/app', 'buchuqin-api', 'node', '/acceptance/confirm.mjs', deposit ? 'deposit' : day ? 'day' : 'user', id, owner], { timeout: 25000 }, error => {
               res.setHeader('Content-Type', 'application/json'); res.statusCode = error ? 400 : 200;
               res.end(JSON.stringify(error ? { message: '测试组织模拟确认失败，请核对单据归属与状态' } : { externalSimulation: true, confirmed: true }));
             });
