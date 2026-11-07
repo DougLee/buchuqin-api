@@ -1,0 +1,8 @@
+仅测试库：night_parity_spec / night_stock_parity_20261107；HTTP 出站隔离已启用
+夜宵预览HTTP出站白名单已启用；生产API、微信网关及外部存储均不可连接。
+
+Test Suites: 6 passed, 6 total
+Tests:       60 passed, 60 total
+Snapshots:   0 total
+Time:        6.365 s
+Ran all test suites within paths "src/night/night-inventory.integration.spec.ts", "src/night/night-user.behavior.spec.ts", "src/night/night-after-sale.behavior.spec.ts", "src/business/business.notifications.spec.ts", "src/business/business.refund-withdraw.spec.ts", "src/admin/refund-rejection-race.spec.ts".

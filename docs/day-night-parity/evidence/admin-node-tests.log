@@ -1,0 +1,161 @@
+TAP version 13
+# Subtest: pageWindow keeps short pagination complete
+ok 1 - pageWindow keeps short pagination complete
+  ---
+  duration_ms: 0.701792
+  type: 'test'
+  ...
+# Subtest: pageWindow keeps current page visible in a long sequence
+ok 2 - pageWindow keeps current page visible in a long sequence
+  ---
+  duration_ms: 0.116708
+  type: 'test'
+  ...
+# Subtest: clampPage rejects invalid input and constrains valid pages
+ok 3 - clampPage rejects invalid input and constrains valid pages
+  ---
+  duration_ms: 0.082625
+  type: 'test'
+  ...
+# Subtest: buildPickingLines sorts located products naturally and keeps source identity
+ok 4 - buildPickingLines sorts located products naturally and keeps source identity
+  ---
+  duration_ms: 7.437875
+  type: 'test'
+  ...
+# Subtest: useAsyncCollection ignores an older response after scope changes
+ok 5 - useAsyncCollection ignores an older response after scope changes
+  ---
+  duration_ms: 0.539917
+  type: 'test'
+  ...
+# Subtest: session response ordering
+    # Subtest: effective campus uses account campus for single-campus accounts and header selection for multi-campus accounts
+    ok 1 - effective campus uses account campus for single-campus accounts and header selection for multi-campus accounts
+      ---
+      duration_ms: 0.875834
+      type: 'test'
+      ...
+    # Subtest: JSON: old 401 cannot log out new account
+    ok 2 - JSON: old 401 cannot log out new account
+      ---
+      duration_ms: 12.745667
+      type: 'test'
+      ...
+    # Subtest: upload: old 401 cannot log out new account
+    ok 3 - upload: old 401 cannot log out new account
+      ---
+      duration_ms: 1.153
+      type: 'test'
+      ...
+    # Subtest: import: old 401 cannot log out new account
+    ok 4 - import: old 401 cannot log out new account
+      ---
+      duration_ms: 1.12475
+      type: 'test'
+      ...
+    # Subtest: download: old 401 cannot log out new account
+    ok 5 - download: old 401 cannot log out new account
+      ---
+      duration_ms: 0.905166
+      type: 'test'
+      ...
+    # Subtest: old successful data cannot enter new campus even with identical token
+    ok 6 - old successful data cannot enter new campus even with identical token
+      ---
+      duration_ms: 0.613833
+      type: 'test'
+      ...
+    # Subtest: body decoding also checks session after await
+    ok 7 - body decoding also checks session after await
+      ---
+      duration_ms: 0.63675
+      type: 'test'
+      ...
+    # Subtest: current 401 clears the session
+    ok 8 - current 401 clears the session
+      ---
+      duration_ms: 0.599542
+      type: 'test'
+      ...
+    # Subtest: logout invalidates pending login
+    ok 9 - logout invalidates pending login
+      ---
+      duration_ms: 0.507333
+      type: 'test'
+      ...
+    # Subtest: latest login attempt wins even if earlier response arrives first
+    ok 10 - latest login attempt wins even if earlier response arrives first
+      ---
+      duration_ms: 0.492875
+      type: 'test'
+      ...
+    # Subtest: late campus switch cannot overwrite newly logged-in account
+    ok 11 - late campus switch cannot overwrite newly logged-in account
+      ---
+      duration_ms: 0.51775
+      type: 'test'
+      ...
+    # Subtest: older permission refresh cannot restore permissions after newer revoke
+    ok 12 - older permission refresh cannot restore permissions after newer revoke
+      ---
+      duration_ms: 0.958458
+      type: 'test'
+      ...
+    # Subtest: transient permission refresh failure preserves last known good routes
+    ok 13 - transient permission refresh failure preserves last known good routes
+      ---
+      duration_ms: 0.687417
+      type: 'test'
+      ...
+    # Subtest: explicit permission denial still fails closed
+    ok 14 - explicit permission denial still fails closed
+      ---
+      duration_ms: 0.393916
+      type: 'test'
+      ...
+    # Subtest: dashboard summary ignores the header campus while drill-down stays explicit
+    ok 15 - dashboard summary ignores the header campus while drill-down stays explicit
+      ---
+      duration_ms: 0.553541
+      type: 'test'
+      ...
+    # Subtest: permission refresh cannot restore authorization after logout
+    ok 16 - permission refresh cannot restore authorization after logout
+      ---
+      duration_ms: 0.378583
+      type: 'test'
+      ...
+    # Subtest: internal links follow moved authorized menus and ignore display-only ancestors
+    ok 17 - internal links follow moved authorized menus and ignore display-only ancestors
+      ---
+      duration_ms: 0.11425
+      type: 'test'
+      ...
+    # Subtest: platform permission is operation-specific and scope-only changes clear cached pages
+    ok 18 - platform permission is operation-specific and scope-only changes clear cached pages
+      ---
+      duration_ms: 0.21
+      type: 'test'
+      ...
+    # Subtest: permission method and segment matching stays narrow
+    ok 19 - permission method and segment matching stays narrow
+      ---
+      duration_ms: 0.081625
+      type: 'test'
+      ...
+    1..19
+ok 6 - session response ordering
+  ---
+  duration_ms: 25.423375
+  type: 'test'
+  ...
+1..6
+# tests 25
+# suites 0
+# pass 25
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 224.236917

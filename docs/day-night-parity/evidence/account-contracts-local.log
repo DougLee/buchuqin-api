@@ -1,0 +1,8 @@
+仅测试库：night_parity_spec / night_stock_parity_full2_20261107；HTTP 出站隔离已启用
+夜宵预览HTTP出站白名单已启用；生产API、微信网关及外部存储均不可连接。
+
+Test Suites: 3 passed, 3 total
+Tests:       19 passed, 19 total
+Snapshots:   0 total
+Time:        3.137 s
+Ran all test suites within paths "src/admin/accounts.spec.ts", "src/admin/admin-campus-access.spec.ts", "src/admin/hq-multicampus.spec.ts".
