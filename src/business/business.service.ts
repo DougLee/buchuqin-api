@@ -936,6 +936,7 @@ export class BusinessService {
     keyword?: string,
     userId?: string,
   ) {
+    const search = keyword?.trim();
     const products = await this.db.product.findMany({
       where: {
         campusId,
@@ -947,9 +948,10 @@ export class BusinessService {
         // IKSW1F 夜宵隔离：夜主档行（隐藏分类）不进白天目录/搜索
         nightCatalog: false,
         ...(categoryId && categoryId !== 'all' ? { categoryId } : {}),
-        ...(keyword
-          ? { name: { contains: keyword, mode: 'insensitive' } }
-          : {}),
+        ...(search ? { OR: [
+          { name: { contains: search, mode: 'insensitive' as const } },
+          { barcode: { contains: search, mode: 'insensitive' as const } },
+        ] } : {}),
       },
       orderBy: { sales: 'desc' },
     });
