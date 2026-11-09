@@ -293,12 +293,38 @@ export class NightInventoryService {
     }));
   }
 
-  async catalogCandidates(keyword?: string) {
+  /**
+   * 夜宵导入候选=官方库全部可售行（IKTVVJ）：不按 catalogScope 过滤——
+   * 该字段是 IKKRMW 后加的过渡标记（默认 'campus'），历史官方商品全是默认值，
+   * 硬编码 'platform' 会把官方库主体挡在夜宵导入之外；白天 official-library
+   * 同口径缺省不过滤。补 organizationId: null 排除组织目录行（IKKRMX，
+   * 组织行也落 campus-official 伪校区）；campusId 非空时排除本校区夜主档
+   * 已导入的官方商品（对齐白天导入弹窗 2026-09-09 去重口径；空集必须跳过
+   * notIn——Prisma notIn: [] 会排除全部行）。
+   */
+  async catalogCandidates(keyword?: string, campusId?: string) {
+    const importedSourceIds = campusId
+      ? (
+          await this.db.product.findMany({
+            where: {
+              campusId,
+              nightCatalog: true,
+              sourceProductId: { not: null },
+            },
+            select: { sourceProductId: true },
+          })
+        )
+          .map((x) => x.sourceProductId)
+          .filter((id): id is string => !!id)
+      : [];
     return this.db.product.findMany({
       where: {
         campusId: OFFICIAL_CAMPUS_ID,
-        catalogScope: 'platform',
         status: 'on-sale',
+        organizationId: null,
+        ...(importedSourceIds.length
+          ? { id: { notIn: importedSourceIds } }
+          : {}),
         ...(keyword
           ? {
               OR: [
@@ -343,7 +369,8 @@ export class NightInventoryService {
           where: {
             id: { in: ids },
             campusId: OFFICIAL_CAMPUS_ID,
-            catalogScope: 'platform',
+            // IKTVVJ：不按 catalogScope 过滤（同 catalogCandidates 口径）——
+            // 历史官方行是默认值 'campus'，否则导入候选可见但导入被拒
             status: 'on-sale',
           },
           include: { category: true },

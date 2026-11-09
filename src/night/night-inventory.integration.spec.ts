@@ -1653,4 +1653,66 @@ integration('已确认的夜宵备货库存流程（独立 PostgreSQL schema）'
         ?.availableStock,
     ).toBe(49);
   });
+
+  it('夜宵导入候选覆盖历史官方行，排除组织行与已导入（IKTVVJ）', async () => {
+    const officialCampus = await db.campus.upsert({
+      where: { id: 'campus-official' },
+      update: {},
+      create: {
+        id: 'campus-official',
+        name: '官方库',
+        shortName: '官方',
+        warehouseName: '资料库',
+        status: 'official',
+      },
+    });
+    const category = await db.category.create({
+      data: { campusId: officialCampus.id, name: `官方候选-${Date.now()}` },
+    });
+    const base = {
+      campusId: officialCampus.id,
+      categoryId: category.id,
+      subtitle: '',
+      price: 300,
+      originalPrice: 500,
+      stock: 0,
+      tag: '',
+      image: '',
+      weight: 0,
+    };
+    // 历史行：catalogScope 缺省（IKKRMW 字段落地前的存量口径=默认 'campus'）
+    const legacy = await db.product.create({
+      data: {
+        ...base,
+        name: `历史候选饼干-${Date.now()}`,
+        barcode: `LG-${Date.now()}`,
+      },
+    });
+    // 组织目录行：落同一伪校区，候选必须排除
+    await db.product.create({
+      data: {
+        ...base,
+        catalogScope: 'org',
+        organizationId: 'org-candidate-check',
+        name: `组织行-${Date.now()}`,
+        barcode: `ORG-${Date.now()}`,
+      },
+    });
+    const listed = await service.catalogCandidates();
+    expect(listed.map((p) => p.name)).toContain(legacy.name);
+    expect(listed.some((p) => p.name.startsWith('组织行-'))).toBe(false);
+    // 已导入排除：本校区导入后候选不再出现；不带校区上下文仍可见
+    const store = await db.nightStore.findUniqueOrThrow({
+      where: { id: storeId },
+    });
+    await service.importCatalog('test-admin', store.campusId, [legacy.id]);
+    expect(
+      (await service.catalogCandidates(undefined, store.campusId)).map(
+        (p) => p.id,
+      ),
+    ).not.toContain(legacy.id);
+    expect(
+      (await service.catalogCandidates()).map((p) => p.id),
+    ).toContain(legacy.id);
+  });
 });
