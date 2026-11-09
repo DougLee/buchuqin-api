@@ -179,7 +179,14 @@ export class NightUserService {
       orderBy: { createdAt: 'asc' },
     });
     const [promotions, seckill] = await Promise.all([nightPromotions(this.db, rows.map(row => row.catalogProductId)), nightPromotions(this.db, rows.map(row => row.catalogProductId), 'seckill')]);
-    return rows.sort((a, b) => Number(b.catalogProduct.featured) - Number(a.catalogProduct.featured) || a.catalogProduct.featuredSort - b.catalogProduct.featuredSort).map((r) => ({
+    return rows.sort((a, b) =>
+      // IKTU033：楼长推荐（楼栋行）优先——本店首页/货架排序自管；主档运营
+      // 推荐位（admin 设的 catalogProduct.featured）作次级兜底，再按创建序
+      Number(b.featured) - Number(a.featured) ||
+      a.featuredSort - b.featuredSort ||
+      Number(b.catalogProduct.featured) - Number(a.catalogProduct.featured) ||
+      a.catalogProduct.featuredSort - b.catalogProduct.featuredSort,
+    ).map((r) => ({
         id: r.id,
         catalogProductId: r.catalogProductId,
         purchaseLimitMeta: r.catalogProduct.purchaseLimit && r.catalogProduct.purchaseLimit !== 'none' ? { kind: r.catalogProduct.purchaseLimit, qty: r.catalogProduct.purchaseLimitQty } : undefined,
@@ -188,8 +195,9 @@ export class NightUserService {
         images: r.catalogProduct.images,
         description: r.catalogProduct.description,
         originalPrice: promotions.has(r.catalogProductId) ? r.catalogProduct.price : r.catalogProduct.originalPrice,
-        featured: r.catalogProduct.featured,
-        featuredSort: r.catalogProduct.featuredSort,
+        // IKTU033：featured 语义=楼长推荐（楼栋行级）；货架「精选推荐」chip 由它驱动
+        featured: r.featured,
+        featuredSort: r.featuredSort,
         subtitle: r.catalogProduct.subtitle,
         price: promotions.get(r.catalogProductId)?.price ?? r.catalogProduct.price,
         seckill: seckill.has(r.catalogProductId) ? { id: seckill.get(r.catalogProductId)!.id, price: seckill.get(r.catalogProductId)!.price, endsAt: seckill.get(r.catalogProductId)!.endsAt.toISOString() } : null,

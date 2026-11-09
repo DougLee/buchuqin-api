@@ -84,6 +84,13 @@ export class NightProductUpdateDto {
   @IsOptional() @IsBoolean() saleAllowed?: boolean;
 }
 
+/** IKTU033 楼长推荐：楼栋行级 featured（本店首页/货架排序自管） */
+export class NightProductFeaturedDto {
+  @IsBoolean() featured!: boolean;
+  /** 推荐位顺序（小值在前）；取消推荐时忽略 */
+  @IsOptional() @IsInt() @Min(0) @Max(9999) featuredSort?: number;
+}
+
 export class NightStockAdjustDto {
   @IsInt() delta!: number;
   @IsIn(['adjust', 'returnOut', 'loss', 'stocktake']) type!:

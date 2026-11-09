@@ -18,6 +18,7 @@ import { NightRiderService } from './night-rider.service';
 import { NightInventoryService } from './night-inventory.service';
 import {
   NightShelfDto,
+  NightProductFeaturedDto,
   NightStockOrderDto,
   NightDeliverDto,
   NightDepositPayDto,
@@ -233,6 +234,27 @@ export class NightRiderController {
   ) {
     return ok(
       await this.service.toggleShelf(this.auth(r), id, d.onShelf),
+      '已更新',
+    );
+  }
+
+  @Patch('night/products/:id/featured')
+  @ApiOperation({
+    summary:
+      '楼长推荐设置（IKTU033：楼栋行级 featured，本店首页/货架排序自管）',
+  })
+  async setFeatured(
+    @Req() r: AuthRequest,
+    @Param('id') id: string,
+    @Body() d: NightProductFeaturedDto,
+  ) {
+    return ok(
+      await this.service.setProductFeatured(
+        this.auth(r),
+        id,
+        d.featured,
+        d.featuredSort,
+      ),
       '已更新',
     );
   }

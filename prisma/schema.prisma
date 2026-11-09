@@ -1531,6 +1531,11 @@ model NightProduct {
   onShelf          Boolean  @default(true)
   /// 后台售卖许可（false=强制下架，优先于楼长选择）
   saleAllowed      Boolean  @default(true)
+  /// IKTU033 楼长推荐（楼栋行级，道哥 2026-11-09）：本店首页/货架排序自管，
+  /// featured 优先展示（featuredSort 小值在前），与主档运营推荐位（admin 设
+  /// 的 catalogProduct.featured）两级并存——楼栋行优先
+  featured         Boolean  @default(false)
+  featuredSort     Int      @default(0)
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 

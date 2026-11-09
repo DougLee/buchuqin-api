@@ -1244,11 +1244,22 @@ integration('已确认的夜宵备货库存流程（独立 PostgreSQL schema）'
     const window = { campusId: f.campus.id, startsAt: new Date(Date.now() - 60_000).toISOString(), endsAt: new Date(Date.now() + 60_000).toISOString() };
     await admin.createNotice({ ...window, content: '白天店公告' }, f.staff.id, f.campus.id);
     await admin.createNotice({ ...window, businessType: 'night', content: '夜宵店公告' }, f.staff.id, f.campus.id);
+    const nightCategory = await db.category.create({ data: { campusId: f.campus.id, name: `夜首页分类-${Date.now()}` } });
+    // IKTZ7J 道哥 2026-11-09：首页日夜同构——夜渠道返回真实推荐（夜主档），
+    // 日夜互不混入（替代旧「夜渠道恒空」断言）
+    const nightMaster = await db.product.create({ data: { campusId: f.campus.id, categoryId: nightCategory.id, name: '夜主档推荐验收', subtitle: '', price: 800, originalPrice: 800, stock: 9, tag: '', image: '', weight: 0, nightCatalog: true } });
+    const dayProduct = await db.product.create({ data: { campusId: f.campus.id, categoryId: f.catalog.categoryId, name: '白天首页商品验收', subtitle: '', price: 700, originalPrice: 700, stock: 20, tag: '', image: '', weight: 0 } });
     const [day, night] = await Promise.all([business.home(f.campus.id), business.home(f.campus.id, 'night')]);
     expect(day.notice).toBe('白天店公告'); expect(night.notice).toBe('夜宵店公告');
-    expect(night.hotProducts).toEqual([]); expect(night.promotions).toEqual([]);
+    expect(night.hotProducts.map(row => row.id)).toContain(nightMaster.id);
+    expect(night.hotProducts.map(row => row.id)).not.toContain(dayProduct.id);
+    expect(day.hotProducts.map(row => row.id)).toContain(dayProduct.id);
+    expect(day.hotProducts.map(row => row.id)).not.toContain(nightMaster.id);
     expect(day.banners.map(row => row.id)).toEqual([dayBanner.id]);
     expect(night.banners.map(row => row.id)).toEqual([nightBanner.id]);
+    // IKTZ7J：夜渠道未配 banner 时回落白天 banner（视觉与白天一致）
+    await db.banner.update({ where: { id: nightBanner.id }, data: { status: 'inactive' } });
+    expect((await business.home(f.campus.id, 'night')).banners.map(row => row.id)).toEqual([dayBanner.id]);
     expect((await admin.banners(f.campus.id, undefined, undefined, 'night')).map(row => row.id)).toEqual([nightBanner.id]);
     await expect(business.home(f.campus.id, 'invalid')).rejects.toThrow('业务类型不正确');
     await expect(admin.updateBanner(nightBanner.id, { title: '越校区' }, f.staff.id, 'foreign-campus')).rejects.toThrow('Banner 不存在');
@@ -1705,6 +1716,19 @@ integration('已确认的夜宵备货库存流程（独立 PostgreSQL schema）'
     expect(listed.find((p) => p.id === legacy.id)?.category?.name).toBe(
       category.name,
     );
+    // IKTWMM 道哥 2026-11-09：候选行带售价；无 cost.read 剔除成本字段
+    expect(
+      listed.find((p) => p.id === legacy.id)?.price,
+    ).toBe(300);
+    const stripped = await service.catalogCandidates(
+      undefined,
+      undefined,
+      undefined,
+      false,
+    );
+    expect(stripped.find((p) => p.id === legacy.id)?.price).toBe(300);
+    const strippedRow = stripped.find((p) => p.id === legacy.id);
+    expect(strippedRow && 'wholesalePrice' in strippedRow).toBe(false);
     const otherCategory = await db.category.create({
       data: { campusId: officialCampus.id, name: `官方候选乙-${Date.now()}` },
     });
@@ -1739,5 +1763,59 @@ integration('已确认的夜宵备货库存流程（独立 PostgreSQL schema）'
     expect(
       (await service.catalogCandidates()).map((p) => p.id),
     ).toContain(legacy.id);
+  });
+
+  it('楼长推荐排序（IKTU033）：楼栋行 featured 优先于主档运营推荐位', async () => {
+    const store = await db.nightStore.findUniqueOrThrow({
+      where: { id: storeId },
+    });
+    const cat = await db.category.findFirstOrThrow({
+      where: { campusId: store.campusId },
+    });
+    const mk = (name: string) =>
+      db.product.create({
+        data: {
+          campusId: store.campusId,
+          categoryId: cat.id,
+          name,
+          subtitle: '',
+          price: 500,
+          originalPrice: 500,
+          stock: 0,
+          nightCatalog: true,
+          tag: '',
+          image: '',
+          weight: 0,
+        },
+      });
+    const mA = await mk('排序商品甲-主档推荐');
+    const mB = await mk('排序商品乙-楼长推荐');
+    const rowA = await db.nightProduct.create({
+      data: { storeId, catalogProductId: mA.id, onShelf: true },
+    });
+    const rowB = await db.nightProduct.create({
+      data: { storeId, catalogProductId: mB.id, onShelf: true },
+    });
+    // 主档运营推荐位给甲；楼长只推荐乙 → 乙排前（楼栋行优先于主档位）
+    await db.product.update({
+      where: { id: mA.id },
+      data: { featured: true, featuredSort: 1 },
+    });
+    const rider = new NightRiderService(db, {} as NightOrderService);
+    await rider.setProductFeatured(staffId, rowB.id, true, 1);
+    const users = new NightUserService(db, {} as NightOrderService);
+    const rows = await users.storeProducts(store.campusId, storeId);
+    expect(rows.map((r) => r.id).indexOf(rowB.id)).toBeLessThan(
+      rows.map((r) => r.id).indexOf(rowA.id),
+    );
+    expect(
+      rows.find((r) => r.id === rowB.id),
+    ).toMatchObject({ featured: true, featuredSort: 1 });
+    // 取消推荐 → 回落主档位之后
+    await rider.setProductFeatured(staffId, rowB.id, false);
+    const rowsAfter = await users.storeProducts(store.campusId, storeId);
+    expect(rowsAfter.map((r) => r.id).indexOf(rowA.id)).toBeLessThan(
+      rowsAfter.map((r) => r.id).indexOf(rowB.id),
+    );
   });
 });

@@ -306,6 +306,7 @@ export class NightInventoryService {
     keyword?: string,
     campusId?: string,
     categoryId?: string,
+    costRead = true,
   ) {
     const importedSourceIds = campusId
       ? (
@@ -321,7 +322,7 @@ export class NightInventoryService {
           .map((x) => x.sourceProductId)
           .filter((id): id is string => !!id)
       : [];
-    return this.db.product.findMany({
+    const rows = await this.db.product.findMany({
       where: {
         campusId: OFFICIAL_CAMPUS_ID,
         status: 'on-sale',
@@ -347,6 +348,12 @@ export class NightInventoryService {
         name: true,
         image: true,
         barcode: true,
+        // IKTWMM 道哥 2026-11-09：候选行显售价+成本价（成本口径同选择器
+        // showCost：自采=localPurchasePrice 回落批发价，集采=wholesalePrice）
+        price: true,
+        procurementMode: true,
+        localPurchasePrice: true,
+        wholesalePrice: true,
         originalPrice: true,
         retailUnit: true,
         unitsPerCase: true,
@@ -355,6 +362,17 @@ export class NightInventoryService {
       },
       orderBy: { name: 'asc' },
     });
+    if (!costRead)
+      // IKKRMY 同口径：无 cost.read 剔除成本字段（批发价/自采价/采购来源）
+      return rows.map(
+        ({
+          procurementMode: _pm,
+          localPurchasePrice: _lp,
+          wholesalePrice: _wp,
+          ...rest
+        }) => rest,
+      );
+    return rows;
   }
 
   async importCatalog(
@@ -668,6 +686,9 @@ export class NightInventoryService {
       retailUnit: p.catalogProduct.retailUnit,
       stock: p.stock,
       frozenStock: p.frozenStock,
+      // IKTU033：楼长推荐（楼栋行级）——楼长端商品管理展示/设置
+      featured: p.featured,
+      featuredSort: p.featuredSort,
       inventoryValue: p.inventoryValue,
       inventoryVersion: p.inventoryVersion,
       pendingQuantity: pending.get(p.id) ?? 0,

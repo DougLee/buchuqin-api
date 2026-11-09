@@ -238,7 +238,13 @@ export class NightAdminController {
     const campusId = await this.campusScope(req, campus);
     return ok(
       paginate(
-        await this.inventory.catalogCandidates(keyword, campusId, categoryId),
+        // IKKRMY：无 cost.read 候选行剔除成本字段（售价+成本价展示口径）
+        await this.inventory.catalogCandidates(
+          keyword,
+          campusId,
+          categoryId,
+          this.rbac.allowCapability(this.ctx(req), 'cost.read'),
+        ),
         page,
         pageSize,
       ),

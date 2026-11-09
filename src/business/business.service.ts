@@ -815,19 +815,22 @@ export class BusinessService {
   }
   async home(campusId: string, businessType = 'day') {
     if (!['day', 'night'].includes(businessType)) throw new BadRequestException('业务类型不正确');
+    // IKTZ7J 道哥 2026-11-09：首页日夜同构——夜渠道返回真实推荐/促销
+    // （此前夜渠道在出口掏空为 []，C 端夜场首页只能走简化组件）。
+    const isNight = businessType === 'night';
     // IKKRMU 营销能力开关：组织/校区关闭营销 → 首页 Banner 与推荐位下发空
     // （读侧静默降级，不报错；分类/公告/促销模块非营销切片，不受控）。
     const marketing = await marketingEnabled(this.db, campusId);
     // IKH0EK 推荐位（2026-09-19 道哥定版）：运营勾选的 featured 商品按
     // featuredSort 优先展示，剩余位置按销量补满 18（去重）；未配置即纯销量。
-    // IKQYMF：售罄隐藏（stock>0 并入 C 端口径）
+    // IKQYMF：售罄隐藏（stock>0 并入 C 端口径）。
+    // IKSW1F 夜宵隔离：白天首页只见日商品、夜首页只见夜主档行（各看各的）。
     const onSale = {
       campusId,
       status: 'on-sale',
       stock: { gt: 0 },
       category: { hidden: false },
-      // IKSW1F 夜宵隔离：夜主档行不进白天首页（销量位/推荐位）
-      nightCatalog: false,
+      nightCatalog: isNight,
     };
     const [campus, banners, categories, featured, rest] = await Promise.all([
       this.campus(campusId),
@@ -854,11 +857,29 @@ export class BusinessService {
       marketing
         ? this.db.product.findMany({
             where: onSale,
-            orderBy: { sales: 'desc' },
+            // IKTZ7J：夜主档销量恒为 0（夜订单不计白天销量），sales 排序退化为
+            // 不稳定序——夜渠道补满段改按 id（cuid 近似创建序）稳定输出
+            //（featured 已单独前置）
+            orderBy: isNight ? [{ id: 'asc' }] : [{ sales: 'desc' }],
             take: 36,
           })
         : Promise.resolve([] as Product[]),
     ]);
+    // IKTZ7J 道哥 2026-11-09：夜渠道未配首页 banner 时回落白天 banner
+    //（首页视觉与白天一致；运营配置夜 banner 即整组覆盖，不做混合拼接）
+    if (isNight && marketing && !banners.length) {
+      banners.push(
+        ...(await this.db.banner.findMany({
+          where: {
+            campusId: { in: [campusId, ''] },
+            status: 'active',
+            placement: 'home',
+            businessType: 'day',
+          },
+          orderBy: { sort: 'asc' },
+        })),
+      );
+    }
     const seen = new Set(featured.map((p) => p.id));
     const products = [
       ...featured,
@@ -871,7 +892,7 @@ export class BusinessService {
         status: 'active',
         startsAt: { lte: now },
         endsAt: { gt: now },
-        product: { campusId, status: 'on-sale', stock: { gt: 0 }, nightCatalog: false },
+        product: { campusId, status: 'on-sale', stock: { gt: 0 }, nightCatalog: isNight },
       },
       orderBy: { endsAt: 'asc' },
       take: 20,
@@ -900,12 +921,13 @@ export class BusinessService {
     return {
       campus,
       banners,
-      categories: businessType === 'night' ? [] : categories,
+      // 首页分类横滑条已下线（IKDBFT），categories 字段仅留存兼容，夜渠道恒空
+      categories: isNight ? [] : categories,
       notice: noticeRows.map((x) => x.content).join('｜'),
-      hotProducts: (businessType === 'night' ? [] : products).map((p) =>
+      hotProducts: products.map((p) =>
         this.productView(p, false, promoMap.get(p.id)),
       ),
-      promotions: (businessType === 'night' ? [] : promoRows).map((x) => ({
+      promotions: promoRows.map((x) => ({
         id: x.id,
         type: x.type,
         price: number(x.price),

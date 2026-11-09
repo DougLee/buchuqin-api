@@ -336,6 +336,33 @@ export class NightRiderService {
     return { id: product.id, onShelf };
   }
 
+  /**
+   * 楼长推荐（IKTU033 道哥 2026-11-09）：楼栋行级 featured——本店首页/货架
+   * 排序自管（featured 优先、featuredSort 小值在前），与主档运营推荐位
+   * （admin 设的 catalogProduct.featured）两级并存、楼栋行优先。
+   * 不触碰主档资料/价格（PRD B4.4 边界不变）。
+   */
+  async setProductFeatured(
+    staffId: string,
+    nightProductId: string,
+    featured: boolean,
+    featuredSort?: number,
+  ) {
+    const store = await this.myStore(staffId);
+    const product = await this.db.nightProduct.findFirst({
+      where: { id: nightProductId, storeId: store.id },
+    });
+    if (!product) throw new NotFoundException('商品不存在');
+    await this.db.nightProduct.update({
+      where: { id: product.id },
+      data: {
+        featured,
+        featuredSort: featured ? (featuredSort ?? 0) : 0,
+      },
+    });
+    return { id: product.id, featured, featuredSort: featured ? (featuredSort ?? 0) : 0 };
+  }
+
   /* ==================== 订单 ==================== */
 
   /** 本店订单列表（按状态筛选）。 */
