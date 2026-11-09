@@ -302,7 +302,11 @@ export class NightInventoryService {
    * 已导入的官方商品（对齐白天导入弹窗 2026-09-09 去重口径；空集必须跳过
    * notIn——Prisma notIn: [] 会排除全部行）。
    */
-  async catalogCandidates(keyword?: string, campusId?: string) {
+  async catalogCandidates(
+    keyword?: string,
+    campusId?: string,
+    categoryId?: string,
+  ) {
     const importedSourceIds = campusId
       ? (
           await this.db.product.findMany({
@@ -322,6 +326,8 @@ export class NightInventoryService {
         campusId: OFFICIAL_CAMPUS_ID,
         status: 'on-sale',
         organizationId: null,
+        // IKTWMM：类别真实过滤（选择器类别下拉的服务端口径，非前端裁剪）
+        ...(categoryId ? { categoryId } : {}),
         ...(importedSourceIds.length
           ? { id: { notIn: importedSourceIds } }
           : {}),
@@ -344,6 +350,8 @@ export class NightInventoryService {
         originalPrice: true,
         retailUnit: true,
         unitsPerCase: true,
+        // IKTWMM：带类别名供选择器聚合类别下拉（组件 items 自带 category 即聚合）
+        category: { select: { name: true } },
       },
       orderBy: { name: 'asc' },
     });

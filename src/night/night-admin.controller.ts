@@ -225,11 +225,12 @@ export class NightAdminController {
   @Get('catalog/candidates')
   @ApiOperation({
     summary:
-      '夜宵导入候选（IKTVVJ：官方库全部可售行，含历史行；排除组织行与本校区夜主档已导入）',
+      '夜宵导入候选（IKTVVJ：官方库全部可售行，含历史行；排除组织行与本校区夜主档已导入；IKTWMM 补 categoryId 过滤）',
   })
   async catalogCandidates(
     @Req() req: AuthRequest,
     @Query('keyword') keyword?: string,
+    @Query('categoryId') categoryId?: string,
     @Query('campus') campus?: string,
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
@@ -237,7 +238,7 @@ export class NightAdminController {
     const campusId = await this.campusScope(req, campus);
     return ok(
       paginate(
-        await this.inventory.catalogCandidates(keyword, campusId),
+        await this.inventory.catalogCandidates(keyword, campusId, categoryId),
         page,
         pageSize,
       ),

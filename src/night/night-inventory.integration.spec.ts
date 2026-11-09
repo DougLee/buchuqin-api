@@ -1701,6 +1701,31 @@ integration('已确认的夜宵备货库存流程（独立 PostgreSQL schema）'
     const listed = await service.catalogCandidates();
     expect(listed.map((p) => p.name)).toContain(legacy.name);
     expect(listed.some((p) => p.name.startsWith('组织行-'))).toBe(false);
+    // IKTWMM：类别服务端真实过滤 + 行带类别名（选择器聚合下拉数据源）
+    expect(listed.find((p) => p.id === legacy.id)?.category?.name).toBe(
+      category.name,
+    );
+    const otherCategory = await db.category.create({
+      data: { campusId: officialCampus.id, name: `官方候选乙-${Date.now()}` },
+    });
+    const other = await db.product.create({
+      data: {
+        ...base,
+        categoryId: otherCategory.id,
+        name: `历史候选汽水-${Date.now()}`,
+        barcode: `LG2-${Date.now()}`,
+      },
+    });
+    expect(
+      (await service.catalogCandidates(undefined, undefined, category.id)).map(
+        (p) => p.id,
+      ),
+    ).toContain(legacy.id);
+    expect(
+      (
+        await service.catalogCandidates(undefined, undefined, category.id)
+      ).map((p) => p.id),
+    ).not.toContain(other.id);
     // 已导入排除：本校区导入后候选不再出现；不带校区上下文仍可见
     const store = await db.nightStore.findUniqueOrThrow({
       where: { id: storeId },
