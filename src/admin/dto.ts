@@ -1171,6 +1171,9 @@ export class RefundAuditDto {
   @ValidateNested({ each: true })
   @Type(() => RefundAuditAmountDto)
   amounts?: RefundAuditAmountDto[];
+  /** IKUISI：整单退款（无商品行）的核定金额（分）——存量锁超额死锁单
+   * （券后锁定商品额 > 实付上限）在审核处下调救活，上限内可改 */
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) totalAmount?: number;
 }
 
 /** 客服按商品发起部分退款（IKHZKA v2）：勾选商品行，金额可核定（分）。 */
@@ -1190,4 +1193,8 @@ export class AdminCreateRefundDto {
   @Type(() => RefundItemAmountDto)
   amounts?: RefundItemAmountDto[];
   @IsOptional() @IsString() @MaxLength(200) remark?: string;
+  /** IKUISI：整单退款金额（分）——弹窗填写的金额此前被静默丢弃（后端锁
+   * 定商品额未扣券，券后单必超实付上限死锁）；现在显式上送并按状态口径
+   * 上限校验，缺省=券后商品净实收（实付−配送费，任何审核口径都安全） */
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) amount?: number;
 }

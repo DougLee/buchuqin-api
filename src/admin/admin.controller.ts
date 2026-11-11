@@ -2257,6 +2257,8 @@ export class AdminController {
         body.amounts?.map((a) => ({ itemId: a.itemId, amount: a.amount })),
         // IKRSIY #110/#91：审核弹窗「退配送费」开关透传（未传=按规则默认）
         body.refundDeliveryFee,
+        // IKUISI：整单退款核定金额透传（无行死锁单下调救活）
+        body.totalAmount,
       ),
       body.action === 'approve' ? '已批准并发起退款' : '已拒绝该申请',
     );
@@ -2278,6 +2280,8 @@ export class AdminController {
             amount: a.amount,
           })),
           remark: body.remark,
+          // IKUISI：整单退款金额透传（弹窗填写值；此前未送达分支被静默丢弃）
+          amount: body.amount,
         },
         req.user.id,
         await this.campusScope(req),

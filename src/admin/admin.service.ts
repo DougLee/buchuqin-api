@@ -92,6 +92,7 @@ import {
   PRE_DELIVERY_REFUNDABLE_STATUSES,
   refundCeiling,
   refundRestoreTarget,
+  unshippedRefundAmount,
 } from './refund-amount';
 
 /* ==================== 成本 capability 输出裁剪（IKKRMY，2026-10-10） ====================
@@ -6409,6 +6410,9 @@ export class AdminService {
     amounts?: Array<{ itemId: string; amount: number }>,
     /** IKRSIY #110/#91：审核弹窗「退配送费」开关；未传=按到店分界/校区开关取默认 */
     refundDeliveryFee?: boolean,
+    /** IKUISI：整单退款（无商品行）的核定金额（分）——存量锁超额死锁单
+     * （券后锁定商品额 > 实付上限）在审核处下调救活；上限内可改 */
+    totalAmount?: number,
   ) {
     const refund = await this.db.refund.findUnique({
       where: { id },
@@ -6545,11 +6549,11 @@ export class AdminService {
       const finalItems = await tx.refundItem.findMany({
         where: { refundId: id },
       });
-      const finalAmount = approvedRefundAmount(
-        refund.source,
-        refund.amount,
-        finalItems,
-      );
+      // IKUISI：整单退款（无行）支持核定金额——存量券后锁超额死锁单
+      //（锁定商品额 > 实付上限）在此下调救活；有行退款不受影响
+      const finalAmount = !finalItems.length
+        ? Math.round(totalAmount ?? refund.amount)
+        : approvedRefundAmount(refund.source, refund.amount, finalItems);
       const refundedBefore = await tx.refund.aggregate({
         where: {
           orderId: refund.orderId,
@@ -6991,8 +6995,8 @@ export class AdminService {
    * 库存不自动回补（货已出库，追回走人工盘点）。
    */
   private async createUnshippedFullRefund(
-    order: { id: string; userId: string; campusId: string; status: string; statusText: string; productAmount: number; payableAmount: number },
-    input: { productIds?: string[]; amounts?: Array<{ productId: string; amount: number }>; remark?: string },
+    order: { id: string; userId: string; campusId: string; status: string; statusText: string; productAmount: number; payableAmount: number; deliveryFee: number },
+    input: { productIds?: string[]; amounts?: Array<{ productId: string; amount: number }>; remark?: string; amount?: number },
     operator: string,
   ) {
     if (!input.remark?.trim())
@@ -7006,9 +7010,21 @@ export class AdminService {
     });
     if (going)
       throw new BadRequestException('该订单已有进行中的退款申请');
-    const amount = Math.round(Number(order.productAmount));
+    // IKUISI：锁定金额=弹窗显式值（按状态口径上限校验）或缺省「券后商品
+    // 净实收」（实付−配送费）。此前写死 productAmount（未扣券）——券后单
+    // 锁定额必超批准上限 refundCeiling（实付口径），结构性死锁无法批准。
+    const { amount, ceiling } = unshippedRefundAmount(
+      Number(order.payableAmount),
+      Number(order.deliveryFee),
+      input.amount,
+      orderArrived(order.status),
+    );
     if (amount < 1)
-      throw new BadRequestException('商品金额异常，无法发起整单退款');
+      throw new BadRequestException('退款金额必须至少为 0.01 元');
+    if (amount > ceiling)
+      throw new BadRequestException(
+        `超出可退上限：本单最多可退 ¥${(ceiling / 100).toFixed(2)}`,
+      );
     const created = await this.db.refund.create({
       data: {
         orderId: order.id,
@@ -7043,6 +7059,8 @@ export class AdminService {
       productIds?: string[];
       amounts?: Array<{ productId: string; amount: number }>;
       remark?: string;
+      /** IKUISI：整单退款金额（分），透传 createUnshippedFullRefund 校验锁定 */
+      amount?: number;
     },
     operator: string,
     scope: string | null,
@@ -7052,8 +7070,9 @@ export class AdminService {
       throw new NotFoundException('订单不存在');
     // 道哥 2026-10-31 方案 A + 追加定稿：已支付未履约完成的单（未出库
     // paid/picking、已出库未送达）都支持后台发起整单退款申请——进审核
-    // 队列（批准才原路退），金额=商品额，配送费按审核开关定。
-    // 用户端悔单通道在出库即关闭，此入口是这类单唯一的系统内退款通道。
+    // 队列（批准才原路退），金额=弹窗核定/券后净实收（IKUISI），配送费按
+    // 审核开关定。用户端悔单通道在出库即关闭，此入口是这类单唯一的系统内
+    // 退款通道。
     if (
       (PRE_DELIVERY_REFUNDABLE_STATUSES as readonly string[]).includes(
         order.status,
