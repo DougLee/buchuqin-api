@@ -24,6 +24,7 @@ integration('已确认的夜宵备货库存流程（独立 PostgreSQL schema）'
   let staffId: string;
   let storeId: string;
   let catalogId: string;
+  const officialFixtureIds: string[] = [];
   beforeAll(async () => {
     const url = new URL(process.env.DATABASE_URL!);
     if (
@@ -103,6 +104,7 @@ integration('已确认的夜宵备货库存流程（独立 PostgreSQL schema）'
     catalogId = catalog.id;
   });
   afterAll(async () => {
+    if (db && officialFixtureIds.length) await db.product.deleteMany({ where: { id: { in: officialFixtureIds } } });
     await db?.$disconnect();
   });
 
@@ -1126,6 +1128,9 @@ integration('已确认的夜宵备货库存流程（独立 PostgreSQL schema）'
       description: '独立夜宵介绍\n保留多行内容', featured: true, featuredSort: 3,
     });
     const customer = new NightUserService(db, f.orders);
+    // 主档推荐不能覆盖楼长货架推荐，白天保存也不能修改楼长设置。
+    expect((await customer.storeProducts(f.campus.id, f.store.id))[0].featured).toBe(false);
+    await db.nightProduct.update({ where: { id: f.product.id }, data: { featured: true, featuredSort: 3 } });
     expect((await customer.storeProducts(f.campus.id, f.store.id))[0]).toMatchObject({ description: '独立夜宵介绍\n保留多行内容', images: expect.arrayContaining(['http://localhost:3150/api/v1/uploads/back.jpg']), featured: true });
     await new AdminService(db, new BusinessService(db)).saveFeatured([], f.campus.id);
     expect((await customer.storeProducts(f.campus.id, f.store.id))[0].featured).toBe(true);
@@ -1699,8 +1704,9 @@ integration('已确认的夜宵备货库存流程（独立 PostgreSQL schema）'
         barcode: `LG-${Date.now()}`,
       },
     });
+    officialFixtureIds.push(legacy.id);
     // 组织目录行：落同一伪校区，候选必须排除
-    await db.product.create({
+    const foreignOfficial = await db.product.create({
       data: {
         ...base,
         catalogScope: 'org',
@@ -1709,6 +1715,7 @@ integration('已确认的夜宵备货库存流程（独立 PostgreSQL schema）'
         barcode: `ORG-${Date.now()}`,
       },
     });
+    officialFixtureIds.push(foreignOfficial.id);
     const listed = await service.catalogCandidates();
     expect(listed.map((p) => p.name)).toContain(legacy.name);
     expect(listed.some((p) => p.name.startsWith('组织行-'))).toBe(false);
@@ -1740,6 +1747,7 @@ integration('已确认的夜宵备货库存流程（独立 PostgreSQL schema）'
         barcode: `LG2-${Date.now()}`,
       },
     });
+    officialFixtureIds.push(other.id);
     expect(
       (await service.catalogCandidates(undefined, undefined, category.id)).map(
         (p) => p.id,
@@ -1754,6 +1762,10 @@ integration('已确认的夜宵备货库存流程（独立 PostgreSQL schema）'
     const store = await db.nightStore.findUniqueOrThrow({
       where: { id: storeId },
     });
+    // 猜中组织商品 ID 也不能绕过候选接口直接导入；混合批次全回滚。
+    await expect(service.importCatalog('test-admin', store.campusId, [legacy.id, foreignOfficial.id])).rejects.toThrow('包含无效');
+    expect(await db.product.count({ where: { campusId: store.campusId, nightCatalog: true, sourceProductId: legacy.id } })).toBe(0);
+    expect(listed.find(p => p.id === legacy.id)?.categoryId).toBe(category.id);
     await service.importCatalog('test-admin', store.campusId, [legacy.id]);
     expect(
       (await service.catalogCandidates(undefined, store.campusId)).map(

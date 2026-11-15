@@ -236,19 +236,20 @@ export class NightAdminController {
     @Query('pageSize') pageSize?: string,
   ) {
     const campusId = await this.campusScope(req, campus);
-    return ok(
-      paginate(
-        // IKKRMY：无 cost.read 候选行剔除成本字段（售价+成本价展示口径）
-        await this.inventory.catalogCandidates(
-          keyword,
-          campusId,
-          categoryId,
-          this.rbac.allowCapability(this.ctx(req), 'cost.read'),
-        ),
-        page,
-        pageSize,
-      ),
+    // 类别字典来自全部候选，而非当前页或当前校区类别。
+    const rows = await this.inventory.catalogCandidates(
+      keyword,
+      campusId,
+      undefined,
+      this.rbac.allowCapability(this.ctx(req), 'cost.read'),
     );
+    const categories = [...new Map(rows.map(row => [
+      row.categoryId, { id: row.categoryId, name: row.category.name },
+    ])).values()];
+    return ok({
+      ...paginate(categoryId ? rows.filter(row => row.categoryId === categoryId) : rows, page, pageSize),
+      categories,
+    });
   }
 
   @Post('catalog/import')

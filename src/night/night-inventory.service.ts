@@ -357,6 +357,7 @@ export class NightInventoryService {
         originalPrice: true,
         retailUnit: true,
         unitsPerCase: true,
+        categoryId: true,
         // IKTWMM：带类别名供选择器聚合类别下拉（组件 items 自带 category 即聚合）
         category: { select: { name: true } },
       },
@@ -395,6 +396,7 @@ export class NightInventoryService {
           where: {
             id: { in: ids },
             campusId: OFFICIAL_CAMPUS_ID,
+            organizationId: null,
             // IKTVVJ：不按 catalogScope 过滤（同 catalogCandidates 口径）——
             // 历史官方行是默认值 'campus'，否则导入候选可见但导入被拒
             status: 'on-sale',
