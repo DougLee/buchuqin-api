@@ -2112,6 +2112,15 @@ export class BusinessService {
       orderBy: { isDefault: 'desc' },
     });
   }
+  /** IKVDHS：按名字解析楼栋——创建/编辑地址共用，id 与名字必须同源。
+   *  查不到直接拒绝，不再把名字字符串当 buildingId 落库（隐形脏数据）。 */
+  private async resolveBuildingByName(campusId: string, name: string) {
+    const building = await this.db.building.findFirst({
+      where: { campusId, name },
+    });
+    if (!building) throw new BadRequestException('楼栋不存在，请重新选择');
+    return building;
+  }
   async addAddress(userId: string, campusId: string, dto: CreateAddressDto) {
     if (dto.isDefault)
       await this.db.address.updateMany({
@@ -2119,15 +2128,16 @@ export class BusinessService {
         data: { isDefault: false },
       });
     const campus = await this.campus(campusId);
-    const building = await this.db.building.findFirst({
-      where: { campusId, name: dto.buildingName },
-    });
+    const building = await this.resolveBuildingByName(
+      campusId,
+      dto.buildingName,
+    );
     return this.db.address.create({
       data: {
         userId,
         campusId,
         campusName: campus.name,
-        buildingId: building?.id ?? dto.buildingName,
+        buildingId: building.id,
         ...dto,
         isDefault: dto.isDefault ?? false,
       },
@@ -2143,6 +2153,19 @@ export class BusinessService {
       where: { id, userId, campusId },
     });
     if (!found) throw new NotFoundException('地址不存在');
+    // IKVDHS：编辑换楼栋必须重绑 buildingId——此前只写名字快照，id 停在
+    // 原楼栋，夜宵店按 id 定楼即「显示东五、实指西5」。同名重存也重绑，
+    // 历史错位行重新保存一次即自愈。
+    if (dto.buildingName !== undefined) {
+      const building = await this.resolveBuildingByName(
+        campusId,
+        dto.buildingName,
+      );
+      return this.db.address.update({
+        where: { id },
+        data: { ...dto, buildingId: building.id },
+      });
+    }
     return this.db.address.update({ where: { id }, data: dto });
   }
   async deleteAddress(userId: string, campusId: string, id: string) {
