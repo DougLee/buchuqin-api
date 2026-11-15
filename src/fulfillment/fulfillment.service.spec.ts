@@ -9,6 +9,20 @@ describe('FulfillmentService PostgreSQL integration', () => {
     expect(profile.role).toBe('fulltime-rider');
     expect((await service.tasks(profile.id)).length).toBeGreaterThan(0);
   });
+  it('删除后状态写入不能恢复在职，在线切换仍可用于有效员工', async () => {
+    const staff = await db.staff.create({ data: {
+      campusId: 'campus-hbut', name: '状态竞态验收', role: 'fulltime-rider',
+      roleText: '骑手', staffNo: `audit-status-${Date.now()}`, building: '', onTimeRate: 100, income: 0,
+    } });
+    try {
+      await service.updateStatus(staff.id, 'paused');
+      expect((await db.staff.findUniqueOrThrow({ where: { id: staff.id } })).status).toBe('paused');
+      // 模拟 guard 通过后，后台先完成删除，再执行旧请求写入。
+      await db.staff.update({ where: { id: staff.id }, data: { status: 'deleted' } });
+      await expect(service.updateStatus(staff.id, 'online')).rejects.toThrow('员工身份已失效');
+      expect((await db.staff.findUniqueOrThrow({ where: { id: staff.id } })).status).toBe('deleted');
+    } finally { await db.staff.delete({ where: { id: staff.id } }); }
+  });
   // IKAJT4：顶部校区信息接口化——归属校区名/仓名随档案下发
   it('profile 带归属校区名与仓名（去硬编码）', async () => {
     const profile = await service.profile('staff-rider-001');

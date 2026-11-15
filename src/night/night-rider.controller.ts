@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { StaffIdentityGuard } from '../auth/staff-identity.guard';
 import type { AuthRequest } from '../auth/jwt-auth.guard';
 import { ok, type ApiResponse } from '../common/api-response';
 import { NightRiderService } from './night-rider.service';
@@ -34,7 +35,7 @@ import {
  */
 @ApiTags('楼长端-夜宵店')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, StaffIdentityGuard)
 @Controller('night-rider')
 export class NightRiderController {
   constructor(

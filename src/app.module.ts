@@ -10,6 +10,7 @@ import { AuthController } from './auth/auth.controller';
 import { AnalyticsController } from './analytics/analytics.controller';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { UserRoleGuard } from './auth/user-role.guard';
+import { StaffIdentityGuard } from './auth/staff-identity.guard';
 import { HealthController } from './health/health.controller';
 import { BusinessController } from './business/business.controller';
 import { BusinessService } from './business/business.service';
@@ -117,6 +118,7 @@ const adminDistDir = process.env.ADMIN_DIST_DIR ?? '';
     NightInventoryService,
     JwtAuthGuard,
     UserRoleGuard,
+    StaffIdentityGuard,
     // RBAC V1：权限登记同步 + 有效权限服务 + 后台鉴权守卫
     RbacService,
     AdminAuthGuard,

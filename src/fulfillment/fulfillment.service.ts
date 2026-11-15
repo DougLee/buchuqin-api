@@ -87,7 +87,10 @@ export class FulfillmentService {
     };
   }
   async updateStatus(staffId: string, status: 'online' | 'paused' | 'offline') {
-    await this.db.staff.update({ where: { id: staffId }, data: { status } });
+    const updated = await this.db.staff.updateMany({
+      where: { id: staffId, status: { not: 'deleted' } }, data: { status },
+    });
+    if (!updated.count) throw new ForbiddenException('员工身份已失效，请重新登录');
     return this.profile(staffId);
   }
   /** 骑手/楼长自助改号（IKP0AP）：履约端 token 即本人凭证（controller auth()

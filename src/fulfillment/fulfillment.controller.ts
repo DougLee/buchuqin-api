@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { StaffIdentityGuard } from '../auth/staff-identity.guard';
 import type { AuthRequest } from '../auth/jwt-auth.guard';
 import { ok } from '../common/api-response';
 import { paginate } from '../common/pagination';
@@ -29,7 +30,7 @@ import {
 
 @ApiTags('履约端 MVP')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, StaffIdentityGuard)
 @Controller('fulfillment')
 export class FulfillmentController {
   constructor(
