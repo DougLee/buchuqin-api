@@ -1,6 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../database/prisma.service';
+import { NightOpeningService } from './night-opening.service';
 import { NightOrderService } from './night-order.service';
 
 /**
@@ -19,10 +20,12 @@ export class NightTimeoutService {
   constructor(
     private readonly db: PrismaService,
     private readonly orders: NightOrderService,
+    @Optional() private readonly opening?: NightOpeningService,
   ) {}
 
   @Cron(CronExpression.EVERY_MINUTE)
   async sweep() {
+    try { await this.opening?.closeExpired(); } catch (error) { this.logger.warn(`临时营业到期核对失败：${error instanceof Error ? error.message : "unknown"}`); }
     try { await this.orders.reconcilePendingRefunds(NightTimeoutService.BATCH_LIMIT); }
     catch (error) { this.logger.warn(`夜宵退款核对待重试: ${error instanceof Error ? error.message : 'unknown'}`); }
     try { await this.orders.reconcilePendingDepositRefunds(NightTimeoutService.BATCH_LIMIT); }

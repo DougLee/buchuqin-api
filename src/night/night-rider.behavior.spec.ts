@@ -21,6 +21,7 @@ describe('配送端夜宵经营边界（内存测试，不连接数据库）', (
   };
   const store = {
     id: 'store',
+    status: 'closed',
     campusId: 'campus',
     managerStaffId: 'staff',
     deposit: 50000,
@@ -28,6 +29,7 @@ describe('配送端夜宵经营边界（内存测试，不连接数据库）', (
   };
   const mocked = () => {
     const db = {
+      nightOpeningRequest: { findFirst: jest.fn().mockResolvedValue(null) },
       staff: { findUnique: jest.fn().mockResolvedValue(staff) },
       nightStore: {
         findFirst: jest.fn().mockResolvedValue(store),
@@ -53,6 +55,7 @@ describe('配送端夜宵经营边界（内存测试，不连接数据库）', (
 
   it('押金档位由服务端校验，选择1500元档只收当前余额到目标档的差额', async () => {
     const db = {
+      campus: { findUnique: jest.fn().mockResolvedValue({ nightEnabled: true }) },
       nightStore: { findUnique: jest.fn().mockResolvedValue(store) },
       $queryRaw: jest.fn(),
       $transaction: jest.fn(),
@@ -105,6 +108,7 @@ describe('配送端夜宵经营边界（内存测试，不连接数据库）', (
       {} as NightOrderService,
     );
     expect((await service.businessContext('staff')).mode).toBe('day');
+    db.nightStore.findFirst.mockResolvedValue({ ...store, status: 'open' });
     db.staff.findUnique.mockResolvedValue({
       ...staff,
       campus: { ...campus, manualClosed: true },
@@ -112,6 +116,15 @@ describe('配送端夜宵经营边界（内存测试，不连接数据库）', (
     expect((await service.businessContext('staff')).mode).toBe('night');
     jest.setSystemTime(new Date('2026-11-06T12:00:00Z'));
     expect((await service.businessContext('staff')).mode).toBe('rest');
+  });
+
+  it('已绑店正式楼长在校区未开通时也无切换资格，开通后白天仍可备货', async () => {
+    const db = mocked();
+    const service = new NightRiderService(db as unknown as PrismaService, {} as NightOrderService);
+    db.staff.findUnique.mockResolvedValue({ ...staff, campus: { ...campus, nightEnabled: false } });
+    expect(await service.businessContext('staff')).toMatchObject({ nightEnabled: false, hasNightStore: true, canSwitchWorkspace: false });
+    db.staff.findUnique.mockResolvedValue(staff);
+    expect(await service.businessContext('staff')).toMatchObject({ nightEnabled: true, canSwitchWorkspace: true });
   });
 
   it('未绑定夜宵店的员工在白天闭店后只能休息', async () => {

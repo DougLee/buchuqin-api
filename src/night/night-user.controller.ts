@@ -39,8 +39,8 @@ export class NightUserController {
 
   @Get('entry')
   @ApiOperation({ summary: '夜宵入口数据（夜宵开关/窗口/白天闭店态）' })
-  async entry(@Req() req: AuthRequest) {
-    return ok(await this.service.entry(this.campusId(req)));
+  async entry(@Req() req: AuthRequest, @Query("buildingId") buildingId?: string) {
+    return ok(await this.service.entry(this.campusId(req), buildingId));
   }
 
   @Get('stores')

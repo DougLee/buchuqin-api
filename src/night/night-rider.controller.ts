@@ -7,6 +7,7 @@ import {
   Patch,
   Post,
   Query,
+  Optional,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -17,7 +18,10 @@ import type { AuthRequest } from '../auth/jwt-auth.guard';
 import { ok, type ApiResponse } from '../common/api-response';
 import { NightRiderService } from './night-rider.service';
 import { NightInventoryService } from './night-inventory.service';
+import { NightOpeningService } from './night-opening.service';
+import { NightCampusEnabledGuard } from './night-campus-enabled.guard';
 import {
+  NightOpeningDto,
   NightShelfDto,
   NightProductFeaturedDto,
   NightStockOrderDto,
@@ -41,6 +45,7 @@ export class NightRiderController {
   constructor(
     private readonly service: NightRiderService,
     private readonly inventory: NightInventoryService,
+    @Optional() private readonly opening?: NightOpeningService,
   ) {}
 
   private auth(req: AuthRequest): string {
@@ -51,9 +56,17 @@ export class NightRiderController {
     return req.user.id;
   }
 
+  @Get('night/opening-requests')
+  async openingRequests(@Req() r: AuthRequest) { return ok(await this.opening!.listStaff(this.auth(r))); }
+
+  @Post('night/opening-requests')
+  @UseGuards(NightCampusEnabledGuard)
+  async requestOpening(@Req() r: AuthRequest, @Body() body: NightOpeningDto) { return ok(await this.opening!.request(this.auth(r), body), '营业申请已提交，等待校区审核'); }
+
   /* ---------- 押金 ---------- */
 
   @Get('night/deposit/tiers')
+  @UseGuards(NightCampusEnabledGuard)
   @ApiOperation({ summary: '押金档位（当前余额/下一档/差额）' })
   async depositTiers(@Req() r: AuthRequest) {
     return ok(await this.service.depositTiers(this.auth(r)));
@@ -66,6 +79,7 @@ export class NightRiderController {
   }
 
   @Post('night/deposit/pay')
+  @UseGuards(NightCampusEnabledGuard)
   @ApiOperation({ summary: '发起押金缴纳（微信支付，500 档递增补缴）' })
   async depositPay(@Req() r: AuthRequest, @Body() d: NightDepositPayDto) {
     return ok(
@@ -85,12 +99,14 @@ export class NightRiderController {
   /* ---------- 备货 ---------- */
 
   @Get('night/stock/pool')
+  @UseGuards(NightCampusEnabledGuard)
   @ApiOperation({ summary: '商品池（夜主档+本店库存/售价）' })
   async stockPool(@Req() r: AuthRequest) {
     return ok(await this.service.stockPool(this.auth(r)));
   }
 
   @Post('night/stock/orders')
+  @UseGuards(NightCampusEnabledGuard)
   @ApiOperation({ summary: '提交备货申请，预占额度，待校区审核出库' })
   async createStockOrder(@Req() r: AuthRequest, @Body() d: NightStockOrderDto) {
     return ok(
@@ -187,12 +203,14 @@ export class NightRiderController {
   }
 
   @Get('night/dashboard')
+  @UseGuards(NightCampusEnabledGuard)
   @ApiOperation({ summary: '夜宵工作台（场次/押金/待接单/销售额/佣金两列）' })
   async dashboard(@Req() r: AuthRequest): Promise<ApiResponse<unknown>> {
     return ok(await this.service.dashboard(this.auth(r)));
   }
 
   @Post('night/store/open')
+  @UseGuards(NightCampusEnabledGuard)
   @ApiOperation({
     summary: '开店（互斥/押金/可售商品校验，不满足返回具体原因）',
   })
@@ -207,6 +225,7 @@ export class NightRiderController {
   }
 
   @Post('night/store/resume')
+  @UseGuards(NightCampusEnabledGuard)
   @ApiOperation({ summary: '恢复营业' })
   async resume(@Req() r: AuthRequest) {
     return ok(await this.service.resumeStore(this.auth(r)), '已恢复营业');
@@ -221,12 +240,14 @@ export class NightRiderController {
   /* ---------- 商品 ---------- */
 
   @Get('night/products')
+  @UseGuards(NightCampusEnabledGuard)
   @ApiOperation({ summary: '本店商品列表（含库存/上下架/可售状态）' })
   async products(@Req() r: AuthRequest) {
     return ok(await this.service.myProducts(this.auth(r)));
   }
 
   @Patch('night/products/:id/shelf')
+  @UseGuards(NightCampusEnabledGuard)
   @ApiOperation({ summary: '上架/下架切换（恢复上架校验后台停售）' })
   async toggleShelf(
     @Req() r: AuthRequest,
@@ -240,6 +261,7 @@ export class NightRiderController {
   }
 
   @Patch('night/products/:id/featured')
+  @UseGuards(NightCampusEnabledGuard)
   @ApiOperation({
     summary:
       '楼长推荐设置（IKTU033：楼栋行级 featured，本店首页/货架排序自管）',

@@ -1,0 +1,344 @@
+[p1 "不出寝 · 运营管理后台" | space "夜宵134–143验收"(11): 3 managed, 0 untracked — p1* "不出寝 · 运营管理后台", p2 "订单详情", p3 "支付成功"]
+root
+  container
+    container
+      text "不出寝食社"
+      container [ref=6]
+        container
+          button [ref=7]
+            text "运营中心"
+            text "⌄"
+          anchor [ref=8, loc=href:/?issues134=1#/, url=http://127.0.0.1:5191/?issues134=1#/]
+            svg_root
+            text "经营总览"
+          anchor [ref=9, loc=href:/?issues134=1#/orders, url=http://127.0.0.1:5191/?issues134=1#/orders]
+            svg_root
+            text "订单配送"
+          anchor [ref=10, loc=href:/?issues134=1#/after-sales, url=http://127.0.0.1:5191/?issues134=1#/after-sales]
+            svg_root
+            text "售后退款"
+          anchor [ref=11, loc=href:/?issues134=1#/battle-map, url=http://127.0.0.1:5191/?issues134=1#/battle-map]
+            svg_root
+            text "营销作战地图"
+          anchor [ref=12, loc=href:/?issues134=1#/campus-report, url=http://127.0.0.1:5191/?issues134=1#/campus-report]
+            svg_root
+            text "校区日报"
+          anchor [ref=13, loc=href:/?issues134=1#/behavior-analytics, url=http://127.0.0.1:5191/?issues134=1#/behavior-analytics]
+            svg_root
+            text "行为分析"
+          anchor [ref=14, loc=href:/?issues134=1#/transfer-logs, url=http://127.0.0.1:5191/?issues134=1#/transfer-logs]
+            svg_root
+            text "转单管理"
+          anchor [ref=15, loc=href:/?issues134=1#/building-rank, url=http://127.0.0.1:5191/?issues134=1#/building-rank]
+            svg_root
+            text "楼栋经营榜"
+        container
+          button [ref=16]
+            text "仓储中心"
+            text "⌄"
+          anchor [ref=17, loc=href:/?issues134=1#/official-products, url=http://127.0.0.1:5191/?issues134=1#/official-products]
+            svg_root
+            text "官方商品库"
+          anchor [ref=18, loc=href:/?issues134=1#/products, url=http://127.0.0.1:5191/?issues134=1#/products]
+            svg_root
+            text "商品管理"
+          anchor [ref=19, loc=href:/?issues134=1#/categories, url=http://127.0.0.1:5191/?issues134=1#/categories]
+            svg_root
+            text "商品类别"
+          anchor [ref=20, loc=href:/?issues134=1#/inventory, url=http://127.0.0.1:5191/?issues134=1#/inventory]
+            svg_root
+            text "库存盘点"
+          anchor [ref=21, loc=href:/?issues134=1#/warehouse-orders, url=http://127.0.0.1:5191/?issues134=1#/warehouse-orders]
+            svg_root
+            text "拣货任务"
+          anchor [ref=22, loc=href:/?issues134=1#/inventory-txns, url=http://127.0.0.1:5191/?issues134=1#/inventory-txns]
+            svg_root
+            text "出入库流水"
+          anchor [ref=23, loc=href:/?issues134=1#/locations, url=http://127.0.0.1:5191/?issues134=1#/locations]
+            svg_root
+            text "库位管理"
+          anchor [ref=24, loc=href:/?issues134=1#/platform-products, url=http://127.0.0.1:5191/?issues134=1#/platform-products]
+            svg_root
+            text "平台商品目录"
+          anchor [ref=25, loc=href:/?issues134=1#/org-products, url=http://127.0.0.1:5191/?issues134=1#/org-products]
+            svg_root
+            text "组织商品"
+    container
+      container
+        button "折叠菜单" [ref=26, loc=css:button[aria-label="折叠菜单"]]
+        container
+          text "当前组织 / 校区"
+          container
+            container [ref=27]
+              comboboxgrouping "选择组织" [ref=28, loc=css:input[aria-label="选择组织"]]
+              text "夜宵本机验收组织"
+              svg_root
+            container [ref=29]
+              comboboxgrouping "切换运营校区" [ref=30, loc=css:input[aria-label="切换运营校区"]]
+              text "夜宵验收"
+              svg_root
+        container
+          container [ref=31]
+            textbox [ref=32, loc=css:input[placeholder="搜索订单 / SKU / 人员"]]
+              text "搜索订单 / SKU / 人员"
+          button "查看待处理售后" [ref=33, loc=css:button[aria-label="查看待处理售后"]]
+          button "新订单提醒开（点击关闭）" [ref=34, loc=css:button[aria-label="新订单提醒开（点击关闭）"]]
+            text "🔔"
+          button [ref=35]
+            text "本"
+            text "本机夜宵验收"
+            svg_root
+      container
+        container
+          paragraph
+            text "NIGHT ORDERS"
+          heading
+            text "夜宵订单"
+          paragraph
+            text "楼栋夜宵店订单（YX 单号），与白天订单完全独立。"
+        container "夜宵订单筛选"
+          radiogroup "segmented"
+            text "全部"
+            text "待支付"
+            text "待接单"
+            text "配送中"
+            text "已送达"
+            text "已完成"
+            text "已取消"
+            text "取消退款中"
+            text "已退款"
+            text "支付异常"
+          container
+            container [ref=62]
+              textbox [ref=63, loc=css:input[placeholder="单号 / 用户 / 手机 / 楼栋 / 寝室"]]
+                text "单号 / 用户 / 手机 / 楼栋 / 寝室"
+            button [ref=64]
+              text "搜索"
+            container [ref=65]
+              container
+                comboboxgrouping [ref=66]
+                text "全部店铺"
+              svg_root
+            container [ref=67]
+              svg_root
+              comboboxgrouping [ref=68, loc=css:input[placeholder="营业日（跨零点属前一晚）"]]
+                text "营业日（跨零点属前一晚）"
+            container [ref=69]
+              comboboxgrouping [ref=70]
+              text "全部售后状态"
+              svg_root
+        container "夜宵订单列表"
+          container
+            table
+              table_row
+                table_cell
+                  text "单号"
+                table_cell
+                  text "楼栋"
+                table_cell
+                  text "用户"
+                table_cell
+                  text "商品"
+                table_cell
+                  text "商品额"
+                table_cell
+                  text "券优惠"
+                table_cell
+                  text "配送费"
+                table_cell
+                  text "实付"
+                table_cell
+                  text "状态"
+                table_cell
+                  text "营业日"
+                table_cell
+                  text "下单时间"
+                table_cell
+                  text "操作"
+            container [ref=71]
+              table
+                container [ref=72]
+                  table_row
+                    table_cell
+                      text "YX1794882425928XW95"
+                    table_cell
+                      text "西区9栋"
+                    table_cell
+                      text "夜宵验收用户"
+                    table_cell
+                      text "倍宝柠檬茶×3、体质能量饮料×1"
+                    table_cell
+                      text "¥24.50"
+                    table_cell
+                      text "—"
+                    table_cell
+                      text "¥2.00"
+                    table_cell
+                      text "¥26.50"
+                    table_cell
+                      text "配送中"
+                    table_cell
+                      text "2026-11-17"
+                    table_cell
+                      text "2026-11-17 10:27"
+                    table_cell
+                      button [ref=73]
+                        text "详情"
+                      button [ref=74]
+                        text "退款"
+          container "分页导航"
+            text "共 1 条"
+            container [ref=75]
+              comboboxgrouping [ref=76]
+              text "20条/页"
+              svg_root
+            button "上一页" [ref=77, loc=css:button[aria-label="上一页"]]
+              svg_root
+            unordered_list
+              list_item "第 1 页" [ref=78]
+                text "1"
+            button "下一页" [ref=79, loc=css:button[aria-label="下一页"]]
+              svg_root
+            container
+              text "前往"
+              container [ref=80]
+                spinbutton "页" [ref=81, loc=css:input[aria-label="页"]]
+                  text "1"
+              text "页"
+        dialog "夜宵订单详情"
+          container [ref=82]
+            container
+              heading
+                text "夜宵订单详情"
+              button "关闭此对话框" [ref=83, loc=css:button[aria-label="关闭此对话框"]]
+                svg_root
+            container [ref=84]
+              container
+                container
+                  text "YX1794882425928XW95"
+                  text "营业日 2026-11-17 · 佣金比例 20%"
+                text "配送中"
+              container
+                container
+                  text "下单"
+                  text "2026-11-17 10:27"
+                container
+                  text "支付"
+                  text "2026-11-17 10:27"
+                container
+                  text "完成"
+                  text "—"
+                container
+                  text "楼长"
+                  text "方福宁（本机验收）（NIGHT-PREVIEW）"
+                container
+                  text "收货"
+                  text "西区9栋 101 本机验收 13800001991"
+              heading
+                text "商品快照"
+              container
+                table
+                  table_row
+                    table_cell
+                      text "商品"
+                    table_cell
+                      text "夜宵售价"
+                    table_cell
+                      text "数量"
+                    table_cell
+                      text "成本 / 件"
+                    table_cell
+                      text "小计"
+                table
+                  container [ref=85]
+                    table_row
+                      table_cell
+                        text "倍宝柠檬茶"
+                      table_cell
+                        text "¥6.00"
+                      table_cell
+                        text "3"
+                      table_cell
+                        text "¥2.50"
+                      table_cell
+                        text "¥18.00"
+                    table_row
+                      table_cell
+                        text "体质能量饮料"
+                      table_cell
+                        text "¥6.50"
+                      table_cell
+                        text "1"
+                      table_cell
+                        text "¥2.50"
+                      table_cell
+                        text "¥6.50"
+              heading
+                text "金额"
+              container
+                container
+                  text "商品总额"
+                  text "¥24.50"
+                container
+                  text "券优惠"
+                  text "−¥0.00"
+                container
+                  text "配送费"
+                  text "¥2.00"
+                container
+                  text "实付"
+                  text "¥26.50"
+              container "订单毛利"
+                container
+                  text "商品成本"
+                  text "¥10.00"
+                container
+                  text "商品毛利"
+                  text "¥14.50"
+                container
+                  text "楼长商品佣金"
+                  text "¥4.90"
+                container
+                  text "预计校区毛利"
+                  text "¥9.60"
+                paragraph
+                  text "按订单成本快照及成功退款计算，配送费全额归楼长，不计入校区毛利。"
+              heading
+                text "佣金流水"
+              container
+                table
+                  table_row
+                    table_cell
+                      text "类别"
+                    table_cell
+                      text "基数/比例"
+                    table_cell
+                      text "金额"
+                    table_cell
+                      text "状态"
+                    table_cell
+                      text "批次"
+                table
+                  container [ref=86]
+                    table_row
+                      table_cell
+                        text "商品佣金"
+                      table_cell
+                        text "¥24.50×20%"
+                      table_cell
+                        text "¥4.90"
+                      table_cell
+                        text "预计"
+                      table_cell
+                        text "—"
+                    table_row
+                      table_cell
+                        text "配送费"
+                      table_cell
+                        text "—"
+                      table_cell
+                        text "¥2.00"
+                      table_cell
+                        text "预计"
+                      table_cell
+                        text "—"

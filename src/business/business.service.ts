@@ -1,3 +1,4 @@
+import { nightOpeningAllowed } from '../night/night-opening.service';
 import {
   BadRequestException,
   ForbiddenException,
@@ -1320,6 +1321,14 @@ export class BusinessService {
     return this.cart(userId);
   }
 
+  private async assertDayBuildingChannel(db: PrismaService | Prisma.TransactionClient, campusId: string, buildingId?: string | null, lock = false) {
+    if (!buildingId) return;
+    if (lock) await db.$queryRaw`SELECT id FROM "NightStore" WHERE "campusId" = ${campusId} AND "buildingId" = ${buildingId} FOR UPDATE`;
+    const night = await db.nightStore.findFirst({ where: { campusId, buildingId, status: 'open' }, include: { campus: true, managerStaff: { select: { role: true, status: true } } } });
+    if (night?.managerStaff?.role === 'building-manager' && night.managerStaff.status !== 'deleted' && await nightOpeningAllowed(db, night, night.campus))
+      throw new BadRequestException('本楼夜宵店营业中，请刷新后进入夜宵店下单');
+  }
+
   private async validateQuote(
     userId: string,
     campusId: string,
@@ -1342,6 +1351,7 @@ export class BusinessService {
     // IKAJT2：地址必须属当前校区（切换校区后旧默认地址不再可结算）
     if (address.campusId !== campusId)
       throw new BadRequestException('请选择当前校区的收货地址');
+    await this.assertDayBuildingChannel(this.db, campusId, address.buildingId);
     for (const line of cart.items) {
       const p = await this.db.product.findUnique({
         where: { id: line.product.id },
@@ -1473,6 +1483,7 @@ export class BusinessService {
       `${address.buildingName} ${address.room}`,
     );
     const order = await this.db.$transaction(async (tx) => {
+      await this.assertDayBuildingChannel(tx, campusId, address.buildingId, true);
       if (dto.couponId) {
         // 下单锁定优惠券：claimed/released -> locked，条件更新防并发重复占用。
         const locked = await tx.userCoupon.updateMany({

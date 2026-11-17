@@ -1,0 +1,27 @@
+{
+  "date": "2026-11-17",
+  "api": {
+    "suites": 83,
+    "passed": 703,
+    "failed": 0
+  },
+  "e2e": {
+    "suites": 1,
+    "passed": 5,
+    "failed": 0
+  },
+  "admin": {
+    "passed": 29,
+    "failed": 0
+  },
+  "user": {
+    "passed": 67,
+    "failed": 0
+  },
+  "delivery": {
+    "passed": 28,
+    "failed": 0
+  },
+  "realWechatReceipt": "pending-user-authorization-and-phone-verification",
+  "nonDuplicateAutomatedTotal": 832
+}

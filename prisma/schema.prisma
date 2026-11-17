@@ -1511,6 +1511,26 @@ model NightStore {
   inventoryReports NightInventoryReport[]
   commissionTxns NightCommissionTxn[]
   refunds        NightRefund[]
+  openingRequests NightOpeningRequest[]
+}
+
+/// 窗口外临时营业申请，一层校区审核；授权仅在申请时段内且同一楼长生效。
+model NightOpeningRequest {
+  id String @id @default(cuid())
+  storeId String
+  store NightStore @relation(fields: [storeId], references: [id])
+  managerStaffId String
+  requestId String
+  startAt DateTime
+  endAt DateTime
+  reason String
+  status String @default("pending")
+  reviewReason String @default("")
+  reviewedBy String?
+  reviewedAt DateTime?
+  createdAt DateTime @default(now())
+  @@unique([storeId, requestId])
+  @@index([storeId, status, startAt, endAt])
 }
 
 /// 夜宵商品楼栋行（每栋各选各的货；资料与售价引主档 Product 夜宵行）
@@ -1729,6 +1749,9 @@ model NightInventoryReport {
   reviewReason String @default("")
   reviewedBy String?
   reviewedAt DateTime?
+  responsibility String?
+  compensationAmount Int @default(0)
+  depositTxnId String? @unique
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

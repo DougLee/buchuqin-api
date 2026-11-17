@@ -5,6 +5,7 @@ import {
   IsArray,
   IsBoolean,
   IsIn,
+  IsISO8601,
   IsInt,
   IsOptional,
   IsString,
@@ -178,6 +179,11 @@ export class NightReasonDto {
   @IsString({ each: true })
   photos?: string[];
 }
+
+export class NightInventoryReviewDto extends NightReviewDto {
+  @IsOptional() @IsIn(['platform', 'manager']) responsibility?: 'platform' | 'manager';
+  @IsOptional() @IsInt() @Min(0) compensationAmount?: number;
+}
 export class NightReceiveItemDto {
   @IsString() catalogProductId!: string;
   @IsInt() @Min(0) @Max(9999) quantity!: number;
@@ -260,4 +266,11 @@ export class NightAfterSaleDto {
   @IsString() @MinLength(5) @MaxLength(300) description!: string;
   @IsOptional() @IsArray() @ArrayMaxSize(6) @IsString({ each: true }) @MaxLength(2048, { each: true }) images?: string[];
   @IsOptional() @IsArray() @ArrayMaxSize(100) @IsString({ each: true }) productIds?: string[];
+}
+
+export class NightOpeningDto {
+  @IsString() @MinLength(8) @MaxLength(100) requestId!: string;
+  @IsISO8601() startAt!: string;
+  @IsISO8601() endAt!: string;
+  @IsString() @MinLength(1) @MaxLength(500) reason!: string;
 }

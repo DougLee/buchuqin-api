@@ -1,9 +1,11 @@
+import { UserOrdersService } from './user-orders.service';
 import {
   Body,
   Controller,
   Delete,
   Get,
   Param,
+  Optional,
   Patch,
   Post,
   Put,
@@ -37,7 +39,7 @@ import {
 @UseGuards(JwtAuthGuard, UserRoleGuard)
 @Controller()
 export class BusinessController {
-  constructor(private readonly service: BusinessService) {}
+  constructor(private readonly service: BusinessService, @Optional() private readonly userOrders?: UserOrdersService) {}
   @Get('home') async home(@Req() req: AuthRequest, @Query('businessType') businessType?: string) {
     return ok(await this.service.home(req.user.campusId, businessType));
   }
@@ -195,7 +197,10 @@ export class BusinessController {
     @Query('status') status?: string,
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
+    @Query('unified') unified?: string,
+    @Query('businessType') businessType?: string,
   ) {
+    if (unified === 'true') return ok(await this.userOrders!.list(req.user.id, businessType, status, page, pageSize));
     return ok(
       paginate(await this.service.orders(req.user.id, status), page, pageSize),
     );

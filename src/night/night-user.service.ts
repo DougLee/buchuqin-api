@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
+import { nightOpeningAllowed } from './night-opening.service';
 import { nightPromotions } from './night-pricing';
 import { NightOrderService } from './night-order.service';
 import { beijingMinutes, inNightWindow } from './night.helpers';
@@ -19,7 +20,7 @@ export class NightUserService {
   ) {}
 
   /** 校区夜宵配置 + 当前窗口态（白天店与夜宵店入口互斥展示的判定源）。 */
-  private async campusNightConfig(campusId: string) {
+  private async campusNightConfig(campusId: string, buildingId?: string) {
     const campus = await this.db.campus.findUnique({
       where: { id: campusId },
       select: {
@@ -50,6 +51,8 @@ export class NightUserService {
           ? s >= cs && s < ce
           : s >= cs || s < ce
         : false);
+    const store = buildingId ? await this.db.nightStore.findFirst({ where: { buildingId, campusId }, include: { managerStaff: { select: { role: true, status: true } } } }) : null;
+    const currentStoreOpen = !!store && store.status === 'open' && store.managerStaff?.role === 'building-manager' && store.managerStaff.status !== 'deleted' && await nightOpeningAllowed(this.db, store, campus);
     return {
       campusId: campus.id,
       campusName: campus.name,
@@ -60,7 +63,7 @@ export class NightUserService {
       // 三元组：入口展示与下单校验共用（inNight = 夜宵可购窗口）
       dayClosed,
       inWindow,
-      inNightSession: campus.nightEnabled && dayClosed && inWindow,
+      inNightSession: currentStoreOpen,
       nowMinutes: s,
     };
   }
@@ -73,8 +76,8 @@ export class NightUserService {
   }
 
   /** 夜宵入口数据：当前校区是否可进夜宵（楼栋由前端带 buildingId 查店铺）。 */
-  async entry(campusId: string) {
-    return this.campusNightConfig(campusId);
+  async entry(campusId: string, buildingId?: string) {
+    return this.campusNightConfig(campusId, buildingId);
   }
 
   /**
@@ -82,7 +85,7 @@ export class NightUserService {
    * 营业 / open 营业中。可按 buildingId 过滤（进本楼店详情前置校验）。
    */
   async stores(campusId: string, buildingId?: string) {
-    const cfg = await this.campusNightConfig(campusId);
+    const cfg = await this.campusNightConfig(campusId, buildingId);
     const buildings = await this.db.building.findMany({
       where: {
         campusId,
@@ -93,27 +96,18 @@ export class NightUserService {
       include: {
         nightStore: {
           include: {
-            managerStaff: { select: { id: true, name: true } },
+            managerStaff: { select: { id: true, name: true, role: true, status: true } },
           },
         },
       },
     });
-    return {
-      session: {
-        nightEnabled: cfg.nightEnabled,
-        inWindow: cfg.inWindow,
-        dayClosed: cfg.dayClosed,
-        inNightSession: cfg.inNightSession,
-        nightStartAt: cfg.nightStartAt,
-        nightEndAt: cfg.nightEndAt,
-      },
-      stores: buildings.map((b) => {
+    const stores = await Promise.all(buildings.map(async b => {
         const store = b.nightStore;
         // 三态（PRD B03/U03）：无楼长招募中 → 有楼长休息中 → 营业中
         const state =
           !store || !store.managerStaffId
             ? 'no-manager'
-            : store.status === 'open' && cfg.inNightSession
+            : store.status === 'open' && store.managerStaff?.role === 'building-manager' && store.managerStaff.status !== 'deleted' && await nightOpeningAllowed(this.db, store, cfg)
               ? 'open'
               : 'resting';
         return {
@@ -126,13 +120,16 @@ export class NightUserService {
           // 公告位预留（一期无配置入口，恒空串）
           announcement: '',
         };
-      }),
-    };
+
+    }));
+    return { session: { nightEnabled: cfg.nightEnabled, inWindow: cfg.inWindow, dayClosed: cfg.dayClosed, inNightSession: stores.some(s => s.state === 'open'), nightStartAt: cfg.nightStartAt, nightEndAt: cfg.nightEndAt }, stores };
   }
 
   /** 店铺详情（三态 + 营业时间 + 公告位预留）。 */
   async storeDetail(campusId: string, storeId: string) {
-    const list = await this.stores(campusId);
+    const target = await this.db.nightStore.findFirst({ where: { id: storeId, campusId }, select: { buildingId: true } });
+    if (!target) throw new NotFoundException('夜宵店不存在');
+    const list = await this.stores(campusId, target.buildingId);
     const row = list.stores.find((s) => s.storeId === storeId);
     if (!row) throw new NotFoundException('夜宵店不存在');
     return { ...row, session: list.session };

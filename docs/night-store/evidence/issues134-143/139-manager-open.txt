@@ -1,0 +1,60 @@
+[p2 "夜宵店" | space "夜宵134–143验收"(11): 3 managed, 0 untracked — p1 "不出寝 · 运营管理后台", p2* "夜宵店", p3 "不出寝食社"]
+root
+  container
+    container
+      container
+        container
+          text "夜宵经营台"
+          text "西区9栋"
+        container
+          text "营业中"
+          container "切换白天店"
+            text "切换白天店"
+      container
+        container
+          text "TONIGHT · 夜宵经营"
+          text "早上好，方福宁（本机验收）"
+        container
+          text "0"
+          text "单待接单"
+      container
+        button
+          text "打烊收店"
+        text "临时营业申请 / 进度"
+      container
+        container
+          text "今日商品净销售额"
+          text "¥24.50"
+        container
+          text "今日夜宵收入"
+          text "¥0.00"
+        container
+          text "本月商品净销售额"
+          text "¥24.50"
+        container
+          text "本月夜宵收入"
+          text "¥0.00"
+      text "销售额不含配送费；收入含佣金与配送费，已扣冲回。"
+      container
+        container
+          text "NEXT ORDERS"
+          text "最新待接单"
+        text "全部订单"
+      button
+        text "暂无待接订单"
+        text "去订单页查看配送进度"
+      button
+        text "库存货值"
+        container
+          text "¥195.00 ·"
+          text "3 种商品"
+    container
+      button "夜宵店"
+        text "夜宵店"
+      button "订单"
+        text "订单"
+      button "收入"
+        text "¥"
+        text "收入"
+      button "我的"
+        text "我的"

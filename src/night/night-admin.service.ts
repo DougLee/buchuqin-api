@@ -894,8 +894,8 @@ export class NightAdminService {
   adminOrdersPage(campusId: string, filters: { storeId?: string; status?: string; date?: string; keyword?: string; afterSaleStatus?: string }, page?: string, pageSize?: string) { return this.orders.adminOrdersPage(campusId, filters, page, pageSize); }
   rejectAfterSale(operator: string, orderId: string, reason: string) { return this.orders.rejectAfterSale(operator, orderId, reason); }
 
-  adminOrderDetail(id: string) {
-    return this.orders.adminOrderDetail(id);
+  adminOrderDetail(id: string, includeCost = false) {
+    return this.orders.adminOrderDetail(id, includeCost);
   }
 
   adminRefund(operator: string, orderId: string, body: NightRefundDto) {

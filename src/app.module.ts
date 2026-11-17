@@ -1,3 +1,4 @@
+import { UserOrdersService } from './business/user-orders.service';
 import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
@@ -43,6 +44,8 @@ import { NightRiderService } from './night/night-rider.service';
 import { NightUserService } from './night/night-user.service';
 import { NightTimeoutService } from './night/night-timeout.service';
 import { NightInventoryService } from './night/night-inventory.service';
+import { NightOpeningService } from './night/night-opening.service';
+import { NightCampusEnabledGuard } from './night/night-campus-enabled.guard';
 
 // 部署模式下由 API 容器托管管理后台静态站（ADMIN_DIST_DIR 指向挂载目录）；
 // 本地开发不设置该变量，行为不变
@@ -95,6 +98,9 @@ const adminDistDir = process.env.ADMIN_DIST_DIR ?? '';
   providers: [
     PrismaService,
     BusinessService,
+    UserOrdersService,
+    NightCampusEnabledGuard,
+    NightOpeningService,
     FulfillmentService,
     AdminService,
     CommissionService,

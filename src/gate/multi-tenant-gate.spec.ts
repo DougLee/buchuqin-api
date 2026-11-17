@@ -356,6 +356,9 @@ describe('GATE: dual-org isolation & legacy-miniprogram compatibility (IKKRN0)',
     // 组织 B 履约员工（配送全链用）：骑手 + 与订单同楼栋的楼长。
     // 楼长 buildingId 走真实 Building 行（外键）——addAddress 按校区+楼栋名
     // 自动匹配同一行，isOwnBuilding 以 buildingId 优先比对，闭环一致。
+    // 地址校验要求真实楼栋：给现有兼容链补齐合法 A 校区楼栋夹具。
+    const gateBuildingA = await db.building.create({ data: { campusId: CAMPUS_A, name: `${tag}A栋` } });
+    buildingIds.push(gateBuildingA.id);
     const gateBuilding = await db.building.create({
       data: { campusId: CAMPUS_B1, name: `${tag}B1栋` },
     });

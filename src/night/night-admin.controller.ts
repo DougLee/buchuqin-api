@@ -6,6 +6,7 @@ import {
   Get,
   Param,
   Patch,
+  Optional,
   Post,
   Put,
   Query,
@@ -19,6 +20,7 @@ import { RbacService, type RbacContext } from '../admin/rbac/rbac.service';
 import { ok } from '../common/api-response';
 import { paginate } from '../common/pagination';
 import { NightAdminService } from './night-admin.service';
+import { NightOpeningService } from './night-opening.service';
 import { NightInventoryService } from './night-inventory.service';
 import {
   NightCatalogCreateDto,
@@ -35,6 +37,7 @@ import {
   NightStoreUpdateDto,
   NightCatalogImportDto,
   NightReviewDto,
+  NightInventoryReviewDto,
   NightReasonDto,
 } from './night.dto';
 
@@ -53,6 +56,7 @@ export class NightAdminController {
     private readonly service: NightAdminService,
     private readonly rbac: RbacService,
     private readonly inventory: NightInventoryService,
+    @Optional() private readonly opening?: NightOpeningService,
   ) {}
 
   /** 本请求 RBAC 上下文（守卫已装载） */
@@ -83,6 +87,15 @@ export class NightAdminController {
       return c;
     }
     return ctx.campusId;
+  }
+
+  @Get('opening-requests')
+  async openingRequests(@Req() req: AuthRequest, @Query('status') status?: string) { return ok(await this.opening!.listCampus(await this.campusScope(req), status)); }
+
+  @Post('opening-requests/:id/review')
+  async reviewOpening(@Req() req: AuthRequest, @Param('id') id: string, @Body() body: NightReviewDto) {
+    await this.guardStoreCampus(req, await this.opening!.storeOf(id));
+    return ok(await this.opening!.review(req.user.id, id, body.approved, body.reason));
   }
 
   /* ---------- 店铺管理 ---------- */
@@ -355,15 +368,19 @@ export class NightAdminController {
   async reviewInventoryReport(
     @Req() req: AuthRequest,
     @Param('id') id: string,
-    @Body() body: NightReviewDto,
+    @Body() body: NightInventoryReviewDto,
   ) {
-    await this.guardStoreCampus(req, await this.inventory.reportStore(id));
+    const storeId = await this.inventory.reportStore(id);
+    await this.guardStoreCampus(req, storeId);
+    if (body.approved && (body.compensationAmount ?? 0) > 0 && !this.rbac.allow(this.ctx(req), 'POST', `/admin/night/stores/${storeId}/deposit/deduct`))
+      throw new ForbiddenException('无押金判责扣除权限');
     return ok(
       await this.inventory.reviewReport(
         req.user.id,
         id,
         body.approved,
         body.reason,
+        { responsibility: body.responsibility, compensationAmount: body.compensationAmount },
       ),
     );
   }
@@ -476,7 +493,7 @@ export class NightAdminController {
   @Get('orders/:id')
   @ApiOperation({ summary: '夜宵订单详情（含佣金流水）' })
   async orderDetail(@Req() req: AuthRequest, @Param('id') id: string) {
-    const detail = await this.service.adminOrderDetail(id);
+    const detail = await this.service.adminOrderDetail(id, await this.rbac.allowCapability(this.ctx(req), 'cost.read'));
     await this.guardStoreCampus(req, detail.store!.id);
     return ok(detail);
   }

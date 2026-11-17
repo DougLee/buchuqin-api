@@ -6,6 +6,7 @@ import {
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
 import { campusOrganizationId } from '../common/organization';
+import { nightOpeningAllowed } from './night-opening.service';
 import { NightOrderService } from './night-order.service';
 import {
   inNightWindow,
@@ -52,15 +53,23 @@ export class NightRiderService {
           where: { managerStaffId: staffId, campusId: staff.campusId },
         })
       : null;
-    const nightWindow =
-      campus.nightEnabled &&
-      inNightWindow(campus.nightStartAt, campus.nightEndAt);
+    const nightWindow = store ? await nightOpeningAllowed(this.db, store, campus) : false;
+    const hasNightHistory = !!store && !campus.nightEnabled && (
+      store.deposit > 0 ||
+      (await this.db.nightOrder.count({ where: { storeId: store.id } })) > 0 ||
+      (await this.db.nightStockOrder.count({ where: { storeId: store.id } })) > 0 ||
+      (await this.db.nightProduct.count({ where: { storeId: store.id } })) > 0 ||
+      (await this.db.nightDepositTxn.count({ where: { storeId: store.id } })) > 0 ||
+      (await this.db.nightDepositOrder.count({ where: { storeId: store.id } })) > 0
+    );
     return {
       staffId: staff.id,
       staffRole: staff.role,
       // 工作台手动切换仅向已绑定夜宵店的正式楼长开放。
-      canSwitchWorkspace: staff.role === 'building-manager' && Boolean(store),
-      mode: !dayClosed ? 'day' : nightWindow && store ? 'night' : 'rest',
+      canSwitchWorkspace: campus.nightEnabled && staff.role === 'building-manager' && Boolean(store),
+      nightEnabled: campus.nightEnabled,
+      hasNightHistory,
+      mode: store?.status === 'open' && nightWindow && staff.role === 'building-manager' ? 'night' : !dayClosed ? 'day' : 'rest',
       hasNightStore: Boolean(store),
       campusName: campus.name,
       nightStartAt: campus.nightStartAt,
@@ -241,8 +250,9 @@ export class NightRiderService {
       if (action === 'resume' && store.status !== 'paused') throw new BadRequestException('当前不是暂停状态');
       if (action === 'close' && store.status === 'closed') return { id: store.id, status: 'closed' };
       if (action === 'open' || action === 'resume') {
+        if (staff.role !== 'building-manager') throw new BadRequestException('仅正式楼长可开始营业');
         const campus = await tx.campus.findUniqueOrThrow({ where: { id: store.campusId } });
-        this.orders.assertNightWindow(campus);
+        await this.orders.assertStoreWindow(tx, store, campus);
       }
       if (action === 'open') {
         if (store.deposit <= 0) throw new BadRequestException('请先缴纳经营押金（首次 500 元）');

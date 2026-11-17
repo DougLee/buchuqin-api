@@ -1,4 +1,6 @@
 import { purchaseWindowStart } from '../common/purchase-window';
+import { nightOpeningAllowed } from './night-opening.service';
+import { nightUnitCost, nightOrderProfit } from './night-order-cost';
 import {
   BadRequestException,
   ForbiddenException,
@@ -55,6 +57,7 @@ export interface NightOrderLine {
   price: number; // 夜宵售价（分）
   quantity: number;
   inventoryValue?: number;
+  unitGrossCost?: number;
   basePrice?: number;
   promotionId?: string;
   asSeckill?: boolean;
@@ -154,7 +157,10 @@ export class NightOrderService implements NightPaymentHandler {
       orderNo: order.orderNo,
       status: order.status,
       statusText: order.statusText,
-      items: order.items,
+      items: (Array.isArray(order.items) ? order.items : []).map(value => {
+        const { unitGrossCost: _cost, ...publicLine } = value as unknown as NightOrderLine;
+        return publicLine;
+      }),
       productAmount: order.productAmount,
       couponDiscount: order.couponDiscount,
       deliveryFee: order.deliveryFee,
@@ -247,7 +253,7 @@ export class NightOrderService implements NightPaymentHandler {
       throw new BadRequestException('本楼夜宵店暂无楼长经营');
     if (store.status !== 'open')
       throw new BadRequestException('夜宵店当前未营业');
-    this.assertNightWindow(store.campus);
+    await this.assertStoreWindow(this.db, store, store.campus);
     const address = await this.db.address.findFirst({
       where: { id: dto.addressId, userId },
     });
@@ -269,7 +275,7 @@ export class NightOrderService implements NightPaymentHandler {
       where: { id: { in: [...merged.keys()] }, storeId: store.id },
       include: {
         catalogProduct: {
-          select: { name: true, image: true, price: true, status: true },
+          select: { name: true, image: true, price: true, status: true, warehouseProduct: { select: { procurementMode: true, localPurchasePrice: true, wholesalePrice: true, unitsPerCase: true } } },
         },
       },
     });
@@ -290,6 +296,7 @@ export class NightOrderService implements NightPaymentHandler {
       image: p.catalogProduct.image,
       price: promotions.get(p.catalogProductId)?.price ?? p.catalogProduct.price,
       basePrice: p.catalogProduct.price,
+      unitGrossCost: nightUnitCost(p.catalogProduct.warehouseProduct),
       ...(seckillProducts.has(p.id) ? { asSeckill: true } : {}),
       ...(promotions.get(p.catalogProductId) ? { promotionId: promotions.get(p.catalogProductId)!.id } : {}),
       quantity: merged.get(p.id)!,
@@ -339,7 +346,7 @@ export class NightOrderService implements NightPaymentHandler {
       )
         throw new BadRequestException('店铺经营状态已变化，请刷新');
       const currentCampus = await tx.campus.findUniqueOrThrow({ where: { id: store.campusId } });
-      this.assertNightWindow(currentCampus);
+      await this.assertStoreWindow(tx, freshStore, currentCampus);
       if ((currentCampus.nightDeliveryFee ?? currentCampus.deliveryFeeInstant) !== deliveryFee) throw new BadRequestException('配送费已变化，请重新确认金额');
       if (userCoupon) {
         const freshCoupon = await tx.coupon.findUniqueOrThrow({ where: { id: userCoupon.couponId } });
@@ -754,7 +761,7 @@ export class NightOrderService implements NightPaymentHandler {
       proof.images.some((url) => !/^https?:\/\//.test(url))
     )
       throw new BadRequestException('请上传有效的送达照片');
-    await this.db.$transaction(async (tx) => {
+    const delivered = await this.db.$transaction(async (tx) => {
       await this.inventory.lockStore(tx, storeId, staffId);
       const order = await tx.nightOrder.findUnique({ where: { id } });
       if (!order) throw new NotFoundException('订单不存在');
@@ -798,7 +805,9 @@ export class NightOrderService implements NightPaymentHandler {
           content: `订单 ${order.orderNo} 已送达并完成，可在订单详情查看。`,
         },
       });
+      return order;
     });
+    if (delivered && this.push) void this.push.orderStatusPush({ ...delivered, businessType: 'night', status: 'delivered', statusText: '已送达' }).catch(error => this.logger.warn(`夜宵用户送达通知失败：${error.message}`));
     return { id, status: 'completed' };
   }
 
@@ -883,7 +892,7 @@ export class NightOrderService implements NightPaymentHandler {
    * 库存已于下单扣减，此处只确认不再重复扣。
    */
   async applyNightOrderPaid(orderNo: string, transactionId?: string) {
-    await this.db.$transaction(async (tx) => {
+    const notification = await this.db.$transaction(async (tx) => {
       const order = await tx.nightOrder.findUnique({ where: { orderNo } });
       if (!order) throw new NotFoundException('夜宵订单不存在');
       if (order.paidAt) return;
@@ -989,17 +998,12 @@ export class NightOrderService implements NightPaymentHandler {
           content: `订单 ${order.orderNo} 支付成功，楼长即将接单配送。`,
         },
       });
-      // 楼长新单推送：fire-and-forget（复用履约端订阅消息链），不进事务
-      if (store?.managerStaffId && this.push) {
-        void this.push.notifyNightManagerNewOrder({
-          staffId: store.managerStaffId,
-          campusId: store.campusId,
-          orderNo: order.orderNo,
-          amountFen: order.payableAmount,
-          buildingName: store.building.name,
-        });
-      }
+      return { order, manager: store?.managerStaffId ? { orderId: order.id, staffId: store.managerStaffId, campusId: store.campusId, orderNo: order.orderNo, amountFen: order.payableAmount, buildingName: store.building.name } : null };
     });
+    if (notification && this.push) {
+      if (notification.manager) void this.push.notifyNightManagerNewOrder(notification.manager).catch(error => this.logger.warn(`夜宵楼长新单通知失败：${error.message}`));
+      void this.push.orderStatusPush({ ...notification.order, businessType: 'night', status: 'paid', statusText: '支付成功' }).catch(error => this.logger.warn(`夜宵用户支付通知失败：${error.message}`));
+    }
   }
 
   /**
@@ -1351,7 +1355,7 @@ export class NightOrderService implements NightPaymentHandler {
     return { items: rows.map(o => ({ ...this.orderView(o), user: o.user })), total, ...paging };
   }
 
-  async adminOrderDetail(id: string) {
+  async adminOrderDetail(id: string, includeCost = false) {
     const order = await this.db.nightOrder.findUnique({
       where: { id },
       include: {
@@ -1369,6 +1373,7 @@ export class NightOrderService implements NightPaymentHandler {
     if (!order) throw new NotFoundException('订单不存在');
     return {
       ...this.orderView(order),
+      ...(includeCost ? { items: (Array.isArray(order.items) ? order.items : []) as unknown as NightOrderLine[], profit: nightOrderProfit(order) } : {}),
       user: order.user,
       manager: order.store.managerStaff,
       commissionTxns: order.commissionTxns,
@@ -1466,6 +1471,7 @@ export class NightOrderService implements NightPaymentHandler {
     const intent = await this.db.$transaction(async tx => {
     const store = await this.inventory.lockStore(tx, storeId);
     if (store.campusId !== campusId) throw new BadRequestException('店铺归属已变化，请刷新');
+    await this.inventory.assertCampusEnabled(campusId, tx);
     if (await tx.nightDepositRefund.count({ where: { storeId, status: { in: ['requested', 'submitting', 'processing', 'unknown'] } } })) throw new BadRequestException('押金退还处理中，请先完成核对再缴纳');
     const minimumTier = Math.max(
       50000,
@@ -1589,13 +1595,11 @@ export class NightOrderService implements NightPaymentHandler {
       throw new BadRequestException(
         `未到夜宵营业时间（${campus.nightStartAt ?? '--:--'}~${campus.nightEndAt ?? '--:--'}）`,
       );
-    // 白天闭店判定与白天业务 isClosedNow 同构：手动闭店优先，时间窗跨零点合法；
-    // closeStart === closeEnd = 24 小时营业 = 白天永不闭店 = 夜宵恒不可开（互斥）
-    const dayClosed =
-      campus.manualClosed ||
-      this.dayCloseWindowHit(campus.closeStart, campus.closeEnd);
-    if (!dayClosed)
-      throw new BadRequestException('校区白天业务未闭店，夜宵店暂不能营业');
+  }
+
+  async assertStoreWindow(db: PrismaService | Prisma.TransactionClient, store: { id: string; managerStaffId: string | null }, campus: { nightEnabled: boolean; nightStartAt: string | null; nightEndAt: string | null }) {
+    if (!campus.nightEnabled) throw new BadRequestException('本校区未开通夜宵服务');
+    if (!await nightOpeningAllowed(db, store, campus)) throw new BadRequestException('未到夜宵营业时间，请先申请临时营业并等待校区审核');
   }
 
   /** 白天打烊窗命中判定（照抄 business.service isClosedNow 时间窗分支）。 */

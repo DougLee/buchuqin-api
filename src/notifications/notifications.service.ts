@@ -9,6 +9,7 @@ import { campusWechatConfig } from '../common/wechat-org';
 
 /** 订单最小形态（渠道推送只需这些字段，避免服务间循环依赖具体类型）。 */
 export interface OrderPushContext {
+  businessType?: "day" | "night";
   id: string;
   userId: string;
   orderNo: string;
@@ -287,22 +288,22 @@ export class NotificationsService {
   private async orderWxCredentials(order: {
     id: string;
     orderNo: string;
+    businessType?: "day" | "night";
   }): Promise<{ appId: string; secret: string } | null> {
     try {
-      const row = await this.db.order.findFirst({
-        where: order.id ? { id: order.id } : { orderNo: order.orderNo },
-        select: { campusId: true },
-      });
+      const row = order.businessType === 'night'
+        ? await this.db.nightOrder.findFirst({ where: order.id ? { id: order.id } : { orderNo: order.orderNo }, select: { store: { select: { campusId: true } } } }).then(value => value ? { campusId: value.store.campusId } : null)
+        : await this.db.order.findFirst({ where: order.id ? { id: order.id } : { orderNo: order.orderNo }, select: { campusId: true } });
       const organizationId = await campusOrganizationId(this.db, row?.campusId);
       if (!organizationId) return null;
       const org = await this.db.organization.findUnique({
         where: { id: organizationId },
         select: { wxAppId: true, wxSecret: true },
       });
-      if (!org?.wxAppId || !org.wxSecret) return null;
+      if (!org?.wxAppId || !org.wxSecret) return order.businessType === 'night' && organizationId !== 'org-a' ? { appId: '', secret: '' } : null;
       return { appId: org.wxAppId, secret: org.wxSecret };
     } catch {
-      return null;
+      return order.businessType === 'night' ? { appId: '', secret: '' } : null;
     }
   }
 
@@ -362,26 +363,17 @@ export class NotificationsService {
       // 付款成功：thing11 商品名称 / date3 付款时间 / amount2 付款金额 / time13 订单时间
       // 配送完成：character_string2 订单编号 / thing3 配送地址 / time6 送达时间 / thing7 商品名称
       // （此前 thing1/phrase2 占位与模板不匹配，线上 47003 data.thing11.value is empty）
-      const row = order.id
-        ? await this.db.order.findUnique({
-            where: { id: order.id },
-            select: {
-              items: true,
-              address: true,
-              createdAt: true,
-              paidAt: true,
-            },
-          })
-        : null;
+      const query = { where: { id: order.id }, select: { items: true, address: true, createdAt: true, paidAt: true } } as const;
+      const row = order.id ? order.businessType === 'night' ? await this.db.nightOrder.findUnique(query) : await this.db.order.findUnique(query) : null;
       const items = Array.isArray(row?.items)
-        ? (row.items as Array<{ name?: string }>)
+        ? (row.items as Array<{ name?: string; product?: { name?: string } }>)
         : [];
       const addr = (row?.address ?? {}) as Record<string, unknown>;
       const clip = (text: string) =>
         text.length > 20 ? `${text.slice(0, 19)}…` : text;
       const itemSummary = clip(
         items
-          .map((item) => item.name ?? '')
+          .map((item) => item.name ?? item.product?.name ?? '')
           .filter(Boolean)
           .join('、') || '校园好物',
       );
@@ -431,7 +423,7 @@ export class NotificationsService {
           body: JSON.stringify({
             touser: user.openid,
             template_id: templateId,
-            page: `pages/order/detail?id=${order.id}`,
+            page: `${order.businessType === 'night' ? 'pages/night/order-detail' : 'pages/orders/detail'}?id=${encodeURIComponent(order.id)}`,
             data,
           }),
         },
@@ -570,6 +562,7 @@ export class NotificationsService {
     openid: string,
     data: Record<string, { value: string }>,
     config: DeliveryWechatConfig,
+    page = 'pages/tasks/index',
   ): Promise<'ok' | 'no-quota' | 'fail'> {
     try {
       const token = await this.deliveryAccessToken(config);
@@ -581,7 +574,7 @@ export class NotificationsService {
           body: JSON.stringify({
             touser: openid,
             template_id: config.templateId,
-            page: 'pages/tasks/index',
+            page,
             data,
           }),
         },
@@ -734,6 +727,7 @@ export class NotificationsService {
    * void 调用；任何失败静默不阻断支付主流程。
    */
   async notifyNightManagerNewOrder(payload: {
+    orderId: string;
     staffId: string;
     campusId: string;
     orderNo: string;
@@ -760,6 +754,7 @@ export class NotificationsService {
           time8: { value: NotificationsService.fmtCn(new Date()) },
         },
         deliveryConfig,
+        `pages/night/order-detail?id=${encodeURIComponent(payload.orderId)}`,
       );
     } catch (error) {
       this.logger.warn(

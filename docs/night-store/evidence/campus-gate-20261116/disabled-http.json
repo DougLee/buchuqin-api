@@ -1,0 +1,98 @@
+{
+  "origin": "https://admin-test.buchuqin.com",
+  "mode": "disabled",
+  "checks": 15,
+  "passed": true,
+  "evidence": [
+    {
+      "method": "GET",
+      "route": "fulfillment/business-context",
+      "status": 200,
+      "message": "success"
+    },
+    {
+      "method": "GET",
+      "route": "night-rider/night/dashboard",
+      "status": 403,
+      "message": "本校区未开通夜宵服务"
+    },
+    {
+      "method": "GET",
+      "route": "night-rider/night/stock/pool",
+      "status": 403,
+      "message": "本校区未开通夜宵服务"
+    },
+    {
+      "method": "GET",
+      "route": "night-rider/night/products",
+      "status": 403,
+      "message": "本校区未开通夜宵服务"
+    },
+    {
+      "method": "GET",
+      "route": "night-rider/night/deposit/tiers",
+      "status": 403,
+      "message": "本校区未开通夜宵服务"
+    },
+    {
+      "method": "POST",
+      "route": "night-rider/night/store/open",
+      "status": 403,
+      "message": "本校区未开通夜宵服务"
+    },
+    {
+      "method": "POST",
+      "route": "night-rider/night/store/resume",
+      "status": 403,
+      "message": "本校区未开通夜宵服务"
+    },
+    {
+      "method": "POST",
+      "route": "night-rider/night/deposit/pay",
+      "status": 403,
+      "message": "本校区未开通夜宵服务"
+    },
+    {
+      "method": "POST",
+      "route": "night-rider/night/stock/orders",
+      "status": 403,
+      "message": "本校区未开通夜宵服务"
+    },
+    {
+      "method": "PATCH",
+      "route": "night-rider/night/products/no-product/shelf",
+      "status": 403,
+      "message": "本校区未开通夜宵服务"
+    },
+    {
+      "method": "PATCH",
+      "route": "night-rider/night/products/no-product/featured",
+      "status": 403,
+      "message": "本校区未开通夜宵服务"
+    },
+    {
+      "method": "GET",
+      "route": "night-rider/night/orders",
+      "status": 200,
+      "message": "success"
+    },
+    {
+      "method": "GET",
+      "route": "night-rider/night/stock/orders",
+      "status": 200,
+      "message": "success"
+    },
+    {
+      "method": "GET",
+      "route": "night-rider/night/deposit",
+      "status": 200,
+      "message": "success"
+    },
+    {
+      "method": "GET",
+      "route": "night-rider/night/income",
+      "status": 200,
+      "message": "success"
+    }
+  ]
+}

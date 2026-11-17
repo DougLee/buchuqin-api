@@ -1,0 +1,7 @@
+{
+  "environment": "local-isolated-schema",
+  "beforeDeposit": 50000,
+  "compensationAmount": 300,
+  "afterDeposit": 49700,
+  "expectedAfterDeposit": 49700
+}

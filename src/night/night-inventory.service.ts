@@ -75,6 +75,11 @@ export function allocateInventoryValue(
 export class NightInventoryService {
   constructor(private readonly db: PrismaService) {}
 
+  async assertCampusEnabled(campusId: string, tx: Tx = this.db) {
+    const campus = await tx.campus.findUnique({ where: { id: campusId }, select: { nightEnabled: true } });
+    if (!campus?.nightEnabled) throw new ForbiddenException('本校区未开通夜宵服务');
+  }
+
   async catalog(
     campusId: string,
     keyword?: string,
@@ -748,6 +753,7 @@ export class NightInventoryService {
         }
         if (fresh.status === 'suspended')
           throw new BadRequestException('店铺已停业，暂不能申请备货');
+        await this.assertCampusEnabled(store.campusId, tx);
         const catalog = await tx.product.findMany({
           where: {
             id: { in: [...merged.keys()] },
@@ -1530,6 +1536,7 @@ export class NightInventoryService {
     id: string,
     approved: boolean,
     reason: string,
+    liability?: { responsibility?: 'platform' | 'manager'; compensationAmount?: number },
   ) {
     if (!reason.trim()) throw new BadRequestException('请填写审核说明');
     const raw = await this.db.nightInventoryReport.findUniqueOrThrow({
@@ -1537,24 +1544,44 @@ export class NightInventoryService {
     });
     return this.db.$transaction(
       async (tx) => {
-        await this.lockStore(tx, raw.storeId);
+        const store = await this.lockStore(tx, raw.storeId);
         const report = await tx.nightInventoryReport.findUniqueOrThrow({
           where: { id },
         });
         const status = approved ? 'approved' : 'rejected';
-        if (report.status === status) return report;
+        if (report.status === status) {
+          if (approved && liability && ((liability.responsibility ?? 'platform') !== report.responsibility || (liability.compensationAmount ?? 0) !== report.compensationAmount))
+            throw new BadRequestException('已审核单据不能修改责任和扣款金额');
+          return report;
+        }
         if (report.status !== 'pending')
           throw new BadRequestException('仅待审核报告可处理');
         const externalLoss = ['receipt-shortage', 'order-loss'].includes(
           report.kind,
         );
+        const lossValue = reportLines(report.items).filter(i => externalLoss || i.delta < 0).reduce((sum, i) => sum + i.value, 0);
+        const responsibility = approved ? liability?.responsibility ?? 'platform' : null;
+        const compensationAmount = approved ? liability?.compensationAmount ?? 0 : 0;
+        if (!Number.isSafeInteger(compensationAmount) || compensationAmount < 0 || compensationAmount > lossValue)
+          throw new BadRequestException('承担金额须介于0和申报损失货值之间');
+        if (responsibility !== 'manager' && compensationAmount !== 0)
+          throw new BadRequestException('平台责任不得扣除楼长押金');
+        let depositTxnId: string | null = null;
+        if (compensationAmount > 0) {
+          const quota = await this.summary(store.id, tx);
+          if (compensationAmount > store.deposit - quota.depositRefundReservedValue)
+            throw new BadRequestException('押金余额不足，请先处理补缴后再审核');
+          await tx.nightStore.update({ where: { id: store.id }, data: { deposit: { decrement: compensationAmount } } });
+          const deduction = await tx.nightDepositTxn.create({ data: { storeId: store.id, type: 'deduct', amount: compensationAmount, operatorId: operator, remark: `盘点/报损判责 ${id}：${reason.trim()}` } });
+          depositTxnId = deduction.id;
+        }
         if (!externalLoss) {
           if (approved) {
             const gains = reportLines(report.items)
               .filter((item) => item.delta > 0)
               .reduce((sum, item) => sum + item.value, 0);
             const quota = await this.summary(report.storeId, tx);
-            if (gains > quota.usableQuota + report.heldValue)
+            if (gains > 0 && gains > quota.deposit - quota.usedQuota + report.heldValue)
               throw new BadRequestException(
                 '盘盈入库超出押金额度，请楼长先补缴押金',
               );
@@ -1615,6 +1642,9 @@ export class NightInventoryService {
             reviewedBy: operator,
             reviewedAt: new Date(),
             reviewReason: reason.trim(),
+            responsibility,
+            compensationAmount,
+            depositTxnId,
             heldValue: externalLoss && !approved ? report.heldValue : 0,
           },
         });
@@ -1624,7 +1654,7 @@ export class NightInventoryService {
           'night.inventory.review',
           report.storeId,
           id,
-          { status, reason },
+          { status, reason, responsibility, compensationAmount, depositTxnId },
         );
         return after;
       },

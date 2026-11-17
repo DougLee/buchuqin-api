@@ -1,0 +1,15 @@
+{
+  "date": "2026-11-16",
+  "issue": "IKVQC3",
+  "scope": "用户端统一我的订单；配送端和后台保留独立渠道",
+  "apiTests": { "suites": 80, "passed": 686, "failed": 0 },
+  "apiE2e": { "passed": 5, "failed": 0 },
+  "userTests": { "passed": 65, "failed": 0 },
+  "uniqueTests": 756,
+  "checks": ["API tsc", "API build", "用户端 type-check", "H5 build", "mp-weixin build", "diff --check"],
+  "h5": ["跨日混合列表", "渠道筛选", "日夜详情分流", "旧夜单入口重定向", "未支付取消金额文案"],
+  "isolation": { "database": "本地一次性PostgreSQL测试schema", "httpOutboundBlocked": true, "productionAccess": false },
+  "limitations": ["未进行微信真机支付及真实退款/配送"],
+  "deployed": false,
+  "committed": false
+}
