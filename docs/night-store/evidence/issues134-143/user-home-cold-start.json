@@ -1,0 +1,87 @@
+{
+  "before": {
+    "error": true,
+    "profileRequests": 3,
+    "allObservedApiResponses": 200
+  },
+  "after": [
+    {
+      "iteration": 1,
+      "error": false,
+      "profiles": 1,
+      "responses": [
+        {
+          "path": "/api/v1/auth/profile",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/addresses",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/night/entry",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/addresses",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/home",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/night/stores",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/night/stores/cmwk3nuzg0007lo7odaxwhsuf",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/night/stores/cmwk3nuzg0007lo7odaxwhsuf/products",
+          "status": 200
+        }
+      ]
+    },
+    {
+      "iteration": 2,
+      "error": false,
+      "profiles": 1,
+      "responses": [
+        {
+          "path": "/api/v1/auth/profile",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/addresses",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/night/entry",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/addresses",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/home",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/night/stores",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/night/stores/cmwk3nuzg0007lo7odaxwhsuf/products",
+          "status": 200
+        },
+        {
+          "path": "/api/v1/night/stores/cmwk3nuzg0007lo7odaxwhsuf",
+          "status": 200
+        }
+      ]
+    }
+  ]
+}

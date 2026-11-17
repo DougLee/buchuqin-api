@@ -29,17 +29,17 @@
 
 | 检查 | 结果 |
 | --- | --- |
-| API全量Jest | 83 suites / 703 tests通过 |
+| API全量Jest | 83 suites / 704 tests通过 |
 | API e2e | 5/5通过 |
 | 后台脚本 | 29/29通过 |
-| 用户端脚本 | 67/67通过 |
+| 用户端脚本 | 70/70通过 |
 | 配送端脚本 | 28/28通过 |
 | API/后台/两端TypeScript | 通过 |
 | API/后台构建；两端不出寝品牌H5与mp-weixin构建 | 通过；小程序包使用测试API，未发布微信 |
 | 数据迁移 | 本地旧schema演练通过；测试库备份克隆演练通过；测试实际部署通过 |
 | 测试HTTP | 49条成功断言；详见[完整记录](evidence/issues134-143/test-http.json) |
 
-非重复自动化共832项；定向回归及此前历史批次不重复计数。测试HTTP另列，不与微信实际收信混算。
+非重复自动化共836项；定向回归及此前历史批次不重复计数。测试HTTP另列，不与微信实际收信混算。
 
 测试HTTP保留了一次夹具错误：单件6元的白天订单未满足原10元起送要求，返回400。改用两件满足原规则后创建成功，没有修改起送规则。首次元数据准备遗漏校区必填简称；确认仅有本轮空校区、无员工/商品/库存/资金后清理该未完成元数据，再完整准备。业务记录建立后继续同一批数据验收，没有清空重建账务。
 
@@ -57,7 +57,7 @@
 
 仅服务器 `139.199.3.190-buchuqin-test`、公网 `https://admin-test.buchuqin.com`。本轮没有连接生产环境。
 
-- API镜像 `buchuqin-api:issues134-20261117`；后台镜像 `buchuqin-admin:issues134-20261117`。
+- API镜像 `buchuqin-api:issues134-20261117-r2`；后台镜像 `buchuqin-admin:issues134-20261117`。
 - 当前compose为原base加 `/opt/buchuqin/docker-compose.issues134-20261117.yml`，没有启用旧验收支付/存储模拟挂载，没有改变既有组织外部通道。
 - 备份 `/opt/buchuqin/backups/issues134-143-20261117/before.dump`；发布材料 `/opt/buchuqin/releases/issues134-143-20261117/`。环境凭证和测试会话仅保存在受限私有文件，未归档进代码。
 - 保留镜像 `buchuqin-api:before-issues134-20261117`、`buchuqin-admin:before-issues134-20261117`，发布目录有 `rollback.yml`。迁移只增加表/字段，应用可回退旧镜像，不需要删除新表或恢复覆盖业务库。
@@ -72,4 +72,12 @@
 
 ## 实现提交
 
-均保留在原 `feature/night-store` 分支，未合并main：API `95ec409`、后台 `daf70a3`、用户端 `01b5d79`、配送端 `ad70bb7`。API本记录和补充证据会另有文档提交。
+均保留在原 `feature/night-store` 分支，未合并main：API `95ec409`及权限升级 `0c55aad`、后台 `daf70a3`、用户端 `01b5d79`及冷启动修复 `499d0b2`、配送端 `ad70bb7`。API本记录和补充证据会另有文档提交。
+
+## 最终补充验证
+
+- 存量菜单首次初始化后不再跟随registry覆写，已实际复现普通校区管理员的临时营业读/审403。新增幂等迁移仅向保留原夜宵读权限/配置写权限的标准菜单追加相应URL，并原子递增权限版本；不重建删除菜单或放开自定义空/缩窄权限。真实PG用例及测试克隆库迁移通过，r2已部署。非超管校区账号现已通过实际HTTP和后台H5批准申请，跨校区仍403：[证据](evidence/issues134-143/menu-upgrade.json)、[后台截图](evidence/issues134-143/test-campus-opening-approval.png)。
+- 137补充：有盘点审核权限但无扣押金权限的校区账号，尝试扣款403；平台责任0扣款可审。另按600分损失货值全额扣款、重复审核不重复扣，当前专属验收店累计两笔扣款100+600分，押金49300分。领域及HTTP状态见上述补充证据，不是真实微信资金收付。
+- 用户首页冷启动实际复现三路资料请求均200、重复身份初始化使夜宵入口请求失效。已有token的恢复也共享原登录Promise，同身份资料更新不重置渠道；换号/换校区仍失效旧请求。新增3项回归及两轴评审通过，另核对401重登不会循环。测试API的两次完整冷启动均仅1次资料请求、无需重试正常展示：[记录](evidence/issues134-143/user-home-cold-start.json)、[截图](evidence/issues134-143/test-user-home-cold-start.png)。两端H5/微信构建已按最终受影响代码完成。
+- r2发布前另备份 `before-menu-upgrade.dump`；`rollback-r2.yml`可回到本轮r1镜像，原`rollback.yml`与最初before镜像仍保留。没有恢复覆盖业务数据库。
+- 140微信手机真实收信仍待用户配合，目标保持进行中。

@@ -1,0 +1,65 @@
+{
+  "environment": "admin-test.buchuqin.com",
+  "payments": "domain-simulated-no-WeChat",
+  "checks": [
+    {
+      "route": "/admin/night/opening-requests?campus=issues134-20261117-campus",
+      "method": "GET",
+      "status": 200,
+      "expected": 200,
+      "message": "success"
+    },
+    {
+      "route": "/admin/night/opening-requests/cmwk4drwp001vlo01mhdwe9sb/review",
+      "method": "POST",
+      "status": 201,
+      "expected": 201,
+      "message": "success"
+    },
+    {
+      "route": "/admin/night/opening-requests?campus=issues134-20261117-other",
+      "method": "GET",
+      "status": 403,
+      "expected": 403,
+      "message": "未授权在该校区操作"
+    },
+    {
+      "route": "/admin/night/inventory-reports/4cb54df2-cf70-4f78-a29e-97935aba483d/review",
+      "method": "POST",
+      "status": 403,
+      "expected": 403,
+      "message": "无押金判责扣除权限"
+    },
+    {
+      "route": "/night-rider/night/opening-requests",
+      "method": "POST",
+      "status": 201,
+      "expected": 201,
+      "message": "营业申请已提交，等待校区审核"
+    }
+  ],
+  "assertions": [],
+  "liability": {
+    "platformCharge": 0,
+    "partialCharge": 100,
+    "fullCharge": 600,
+    "totalDeductions": 700,
+    "deductionTransactions": 2,
+    "deposit": 49300,
+    "fullReportTransactionLinked": true
+  },
+  "beforeUpgrade": {
+    "openingRead": 403,
+    "openingReview": 403,
+    "source": "review-supplement.mjs exited 0 and logged 11 checks; review-supplement.log retained on test host"
+  },
+  "uiOpeningId": "cmwk4jemu0002lf01j6d0x6hn",
+  "result": "passed",
+  "ui": {
+    "super": false,
+    "orgLevel": "campus",
+    "status": "approved",
+    "reviewedBy": "cmwk4drut0005loo3zd77rwvb",
+    "requestId": "cmwk4jemu0002lf01j6d0x6hn"
+  }
+}

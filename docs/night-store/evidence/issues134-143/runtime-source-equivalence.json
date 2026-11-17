@@ -1,7 +1,8 @@
 {
   "environment": "admin-test.buchuqin.com",
-  "runtimeSourceCommit": "95ec409",
-  "comparedFiles": 272,
+  "runtimeSourceCommit": "0c55aad",
+  "apiImage": "buchuqin-api:issues134-20261117-r2",
+  "comparedFiles": 273,
   "changed": [],
   "extra": [],
   "identical": true
