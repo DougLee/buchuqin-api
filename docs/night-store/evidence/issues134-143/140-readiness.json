@@ -1,0 +1,27 @@
+{
+  "environment": "admin-test.buchuqin.com",
+  "readOnly": true,
+  "lookup": "user-provided staff name",
+  "matches": [
+    {
+      "name": "方福宁",
+      "campus": "湖北工业大学",
+      "formalManager": true,
+      "active": true,
+      "nightEnabled": true,
+      "boundNightStore": true,
+      "nightStoreStatus": "open",
+      "openingAllowedNow": true,
+      "hasSaleableStock": true,
+      "staffWechatIdentityRegistered": true,
+      "notifyQuota": 4,
+      "deliveryChannelConfigured": true,
+      "userChannelConfigured": true,
+      "userPaidTemplatePresent": true,
+      "userDeliveredTemplatePresent": true,
+      "liveWechatReceiptVerified": false
+    }
+  ],
+  "checkedAt": "2026-11-17",
+  "scope": "configuration-and-eligibility-only; no live sends"
+}

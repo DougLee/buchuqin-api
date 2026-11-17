@@ -1,0 +1,156 @@
+{
+  "before": [
+    {
+      "width": 390,
+      "reason": "尺寸切换保留草稿",
+      "heights": [
+        7366.28125,
+        7366.28125
+      ],
+      "containers": [
+        {
+          "cls": "uni-picker-container uni-time-select",
+          "display": "none"
+        },
+        {
+          "cls": "uni-picker-container uni-time-select",
+          "display": "none"
+        }
+      ]
+    },
+    {
+      "width": 1200,
+      "reason": "尺寸切换保留草稿",
+      "heights": [
+        45.25,
+        45.25
+      ],
+      "containers": [
+        {
+          "cls": "uni-picker-container uni-time-select",
+          "display": "none"
+        },
+        {
+          "cls": "uni-picker-container uni-time-select",
+          "display": "none"
+        }
+      ]
+    },
+    {
+      "width": 390,
+      "reason": "尺寸切换保留草稿",
+      "heights": [
+        7366.28125,
+        7366.28125
+      ],
+      "containers": [
+        {
+          "cls": "uni-picker-container uni-time-select",
+          "display": "none"
+        },
+        {
+          "cls": "uni-picker-container uni-time-select",
+          "display": "none"
+        }
+      ]
+    }
+  ],
+  "after": [
+    {
+      "width": 390,
+      "reason": "尺寸切换保留草稿",
+      "rows": [
+        {
+          "text": "2026-11-17\n11:39",
+          "height": 46.9375
+        },
+        {
+          "text": "2026-11-17\n12:39",
+          "height": 46.9375
+        }
+      ],
+      "containers": [
+        {
+          "cls": "uni-picker-container uni-date-select",
+          "display": "none"
+        },
+        {
+          "cls": "uni-picker-container uni-time-select",
+          "display": "none"
+        },
+        {
+          "cls": "uni-picker-container uni-date-select",
+          "display": "none"
+        },
+        {
+          "cls": "uni-picker-container uni-time-select",
+          "display": "none"
+        }
+      ]
+    },
+    {
+      "width": 1200,
+      "reason": "尺寸切换保留草稿",
+      "rows": [
+        {
+          "text": "2026-11-17\n11:39",
+          "height": 46.9375
+        },
+        {
+          "text": "2026-11-17\n12:39",
+          "height": 46.9375
+        }
+      ],
+      "containers": [
+        {
+          "cls": "uni-picker-container uni-date-select",
+          "display": "none"
+        },
+        {
+          "cls": "uni-picker-container uni-time-select",
+          "display": "none"
+        },
+        {
+          "cls": "uni-picker-container uni-date-select",
+          "display": "none"
+        },
+        {
+          "cls": "uni-picker-container uni-time-select",
+          "display": "none"
+        }
+      ]
+    },
+    {
+      "width": 390,
+      "reason": "尺寸切换保留草稿",
+      "rows": [
+        {
+          "text": "2026-11-17\n11:39",
+          "height": 46.9375
+        },
+        {
+          "text": "2026-11-17\n12:39",
+          "height": 46.9375
+        }
+      ],
+      "containers": [
+        {
+          "cls": "uni-picker-container uni-date-select",
+          "display": "none"
+        },
+        {
+          "cls": "uni-picker-container uni-time-select",
+          "display": "none"
+        },
+        {
+          "cls": "uni-picker-container uni-date-select",
+          "display": "none"
+        },
+        {
+          "cls": "uni-picker-container uni-time-select",
+          "display": "none"
+        }
+      ]
+    }
+  ]
+}
