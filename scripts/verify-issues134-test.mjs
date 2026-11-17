@@ -57,16 +57,22 @@ try {
   await new RbacService(db).syncRegistry();
   const superRole = await db.adminRole.findUniqueOrThrow({ where: { code: 'super-admin' } });
   const readRole = await db.adminRole.create({ data: { code: prefix, name: '夜宵验收仅查订单', seeded: true, menusMigrated: true } });
+  const reviewRole = await db.adminRole.create({ data: { code: prefix + '-reviewer', name: '夜宵验收校区管理无扣押金', seeded: true, menusMigrated: true } });
   const menu = await db.adminMenu.findUniqueOrThrow({ where: { code: 'night-orders' } });
   await db.adminRoleMenu.create({ data: { roleId: readRole.id, menuId: menu.id } });
+  for (const code of ['night-stores', 'night-stores.write']) {
+    const node = await db.adminMenu.findUniqueOrThrow({ where: { code } });
+    await db.adminRoleMenu.create({ data: { roleId: reviewRole.id, menuId: node.id } });
+  }
   const accounts = [];
-  for (const [suffix, c, role, orgLevel] of [['admin', campus.id, superRole.id, 'platform'], ['reader', campus.id, readRole.id, 'campus'], ['foreign', otherCampus.id, readRole.id, 'campus']]) {
+  for (const [suffix, c, role, orgLevel] of [['admin', campus.id, superRole.id, 'platform'], ['reader', campus.id, readRole.id, 'campus'], ['foreign', otherCampus.id, readRole.id, 'campus'], ['reviewer', campus.id, reviewRole.id, 'campus']]) {
     const account = await db.adminAccount.create({ data: { username: `${prefix}-${suffix}`, nickname: '夜宵功能验收', passwordHash: await hash(randomBytes(24).toString('hex'), 10), role: orgLevel === 'platform' ? 'hq' : 'admin', orgLevel, campusId: c, rbacMigrated: true } });
     await db.adminAccountRole.create({ data: { accountId: account.id, roleId: role, scope: orgLevel === 'platform' ? 'platform' : 'campus', ...(orgLevel === 'platform' ? {} : { campusId: c }), grantedBy: prefix } });
     accounts.push(account);
   }
   session = { origin: 'https://admin-test.buchuqin.com', organizationId: org.id, campusId: campus.id, otherCampusId: otherCampus.id, buildingId: building.id, storeId: store.id, staffId: staff.id, userId: user.id, addressId: address.id, catalogId: catalog.id, warehouseId: warehouse.id, adminToken: token(accounts[0].id, campus.id, 'hq', { sv: accounts[0].sessionVersion, appKind: 'admin' }), adminUser: { id: accounts[0].id, campusId: campus.id, role: 'hq', nickname: accounts[0].nickname }, readerToken: token(accounts[1].id, campus.id, 'admin', { sv: accounts[1].sessionVersion, appKind: 'admin' }), foreignToken: token(accounts[2].id, otherCampus.id, 'admin', { sv: accounts[2].sessionVersion, appKind: 'admin' }), staffToken: token(staff.id, campus.id, staff.role, { appKind: 'delivery' }), userToken: token(user.id, campus.id, 'user', { appKind: 'user' }) };
   save();
+  session.reviewerToken = token(accounts[3].id, campus.id, 'admin', { sv: accounts[3].sessionVersion, appKind: 'admin' }); save();
   const orders = new NightOrderService(db, { registerNightPaymentHandler() {} }), business = new BusinessService(db);
   const payment = await db.nightDepositOrder.create({ data: { storeId: store.id, outTradeNo: 'ND-' + prefix, amount: 50000, targetTier: 50000 } });
   await orders.applyNightDepositPaid(payment.outTradeNo, 'SIMULATED-TEST-ONLY');
@@ -103,6 +109,7 @@ try {
   const currentProduct = (await call('/night-rider/night/products', 'GET', undefined, session.staffToken)).find(row => row.id === product.id);
   const report = await call('/night-rider/night/inventory/reports', 'POST', { requestId: randomUUID(), kind: 'loss', reason: '独立验收责任扣款', photos: [], items: [{ nightProductId: product.id, quantity: 1, inventoryVersion: currentProduct.inventoryVersion }] }, session.staffToken);
   const decision = { approved: true, reason: '楼长承担一元', responsibility: 'manager', compensationAmount: 100 };
+  await call(`/admin/night/inventory-reports/${report.id}/review`, 'POST', decision, session.reviewerToken, 403);
   await call(`/admin/night/inventory-reports/${report.id}/review`, 'POST', decision);
   await call(`/admin/night/inventory-reports/${report.id}/review`, 'POST', decision);
   assert.equal((await db.nightStore.findUniqueOrThrow({ where: { id: store.id } })).deposit, 49900);
@@ -112,7 +119,8 @@ try {
   await call('/admin/night/config', 'PUT', { campusId: campus.id, nightEnabled: true, nightStartAt: '02:00', nightEndAt: '02:01', nightDeliveryFee: 200, confirm: true });
   await call('/night-rider/night/store/open', 'POST', {}, session.staffToken, 400);
   const grant = await call('/night-rider/night/opening-requests', 'POST', { requestId: randomUUID(), startAt: new Date(Date.now() - 60000).toISOString(), endAt: new Date(Date.now() + 15000).toISOString(), reason: '本楼活动临时营业验收' }, session.staffToken);
-  await call(`/admin/night/opening-requests/${grant.id}/review`, 'POST', { approved: true, reason: '同意本楼临时营业' });
+  await call(`/admin/night/opening-requests?campus=${campus.id}`, 'GET', undefined, session.reviewerToken);
+  await call(`/admin/night/opening-requests/${grant.id}/review`, 'POST', { approved: true, reason: '同意本楼临时营业' }, session.reviewerToken);
   await call('/night-rider/night/store/open', 'POST', {}, session.staffToken);
   assert.equal((await call(`/night/entry?buildingId=${building.id}`, 'GET', undefined, session.userToken)).inNightSession, true);
   assert.equal((await call(`/night/entry?buildingId=${otherBuilding.id}`, 'GET', undefined, session.userToken)).inNightSession, false);

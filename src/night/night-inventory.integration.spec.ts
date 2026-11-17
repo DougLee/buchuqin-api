@@ -1,4 +1,6 @@
 import { NotificationsService } from '../notifications/notifications.service';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { NightOpeningService } from './night-opening.service';
 import { UserOrdersService } from '../business/user-orders.service';
 import { Prisma } from '@prisma/client';
@@ -280,6 +282,34 @@ integration('已确认的夜宵备货库存流程（独立 PostgreSQL schema）'
     expect((await db.nightProduct.findUniqueOrThrow({ where: { id: row.id } })).frozenStock).toBe(0);
     expect((await db.nightStore.findUniqueOrThrow({ where: { id: f.store.id } })).deposit).toBe(4000);
     expect(await db.nightDepositTxn.count({ where: { storeId: f.store.id, type: 'deduct' } })).toBe(1);
+  });
+
+  it('139存量菜单升级只补既有夜宵配置授权，幂等且不复活自定义空权限', async () => {
+    const codes = ['night-stores', 'night-stores.write'];
+    const old = await db.adminMenu.findMany({ where: { code: { in: codes } } });
+    expect(old).toHaveLength(2);
+    const sql = readFileSync(resolve(__dirname, '../../prisma/migrations/20261117120000_night_opening_menu_permissions/migration.sql'), 'utf8');
+    const state = await db.rbacState.findUniqueOrThrow({ where: { id: 'global' } });
+    try {
+      await db.adminMenu.update({ where: { code: codes[0] }, data: { perms: 'GET /admin/night/stores,GET /custom/read' } });
+      await db.adminMenu.update({ where: { code: codes[1] }, data: { perms: 'PUT /admin/night/config,POST /custom/write' } });
+      await db.$executeRawUnsafe(sql);
+      const read = await db.adminMenu.findUniqueOrThrow({ where: { code: codes[0] } });
+      const write = await db.adminMenu.findUniqueOrThrow({ where: { code: codes[1] } });
+      expect(read.perms).toBe('GET /admin/night/stores,GET /custom/read,GET /admin/night/opening-requests');
+      expect(write.perms).toBe('PUT /admin/night/config,POST /custom/write,POST /admin/night/opening-requests/:id/review');
+      expect((await db.rbacState.findUniqueOrThrow({ where: { id: 'global' } })).version).toBe(state.version + 1);
+      await db.$executeRawUnsafe(sql);
+      expect((await db.rbacState.findUniqueOrThrow({ where: { id: 'global' } })).version).toBe(state.version + 1);
+      await db.adminMenu.update({ where: { code: codes[0] }, data: { perms: '' } });
+      await db.adminMenu.update({ where: { code: codes[1] }, data: { perms: 'PATCH /admin/night/catalog/:id' } });
+      await db.$executeRawUnsafe(sql);
+      expect((await db.adminMenu.findUniqueOrThrow({ where: { code: codes[0] } })).perms).toBe('');
+      expect((await db.adminMenu.findUniqueOrThrow({ where: { code: codes[1] } })).perms).toBe('PATCH /admin/night/catalog/:id');
+      expect((await db.rbacState.findUniqueOrThrow({ where: { id: 'global' } })).version).toBe(state.version + 1);
+    } finally {
+      for (const menu of old) await db.adminMenu.update({ where: { id: menu.id }, data: { perms: menu.perms } });
+    }
   });
 
   it('139临时营业申请校区审批、本楼优先、到期失效及存量订单保留', async () => {
