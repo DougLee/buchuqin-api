@@ -33,8 +33,10 @@ import { NotificationsService } from './notifications/notifications.service';
 import { GzhController } from './notifications/gzh.controller';
 import { PrinterService } from './printer/printer.service';
 // IKW3E7 夜宵入口桩：恒返「夜宵关闭」全关态，撑住新版小程序首页链路；
-// night-store 分支上生产时删除本控制器与注册项，由真实 NightModule 接管
+// IKW3H9 工作台上下文桩：恒返纯白天工作台，撑住新配送端开屏；
+// night-store 分支上生产时删除两个桩控制器与注册项，由真实实现接管
 import { NightStubController } from './night/night-stub.controller';
+import { BusinessContextStubController } from './night/business-context-stub.controller';
 
 // 部署模式下由 API 容器托管管理后台静态站（ADMIN_DIST_DIR 指向挂载目录）；
 // 本地开发不设置该变量，行为不变
@@ -80,6 +82,7 @@ const adminDistDir = process.env.ADMIN_DIST_DIR ?? '';
     // 服务号回调（IKI3ZP）：微信服务器推送事件（subscribe 绑定/取关解绑）
     GzhController,
     NightStubController,
+    BusinessContextStubController,
   ],
   providers: [
     PrismaService,
