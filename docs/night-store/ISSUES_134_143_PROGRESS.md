@@ -61,7 +61,7 @@
 - 当前compose为原base加 `/opt/buchuqin/docker-compose.issues134-20261117.yml`，没有启用旧验收支付/存储模拟挂载，没有改变既有组织外部通道。
 - 备份 `/opt/buchuqin/backups/issues134-143-20261117/before.dump`；发布材料 `/opt/buchuqin/releases/issues134-143-20261117/`。环境凭证和测试会话仅保存在受限私有文件，未归档进代码。
 - 保留镜像 `buchuqin-api:before-issues134-20261117`、`buchuqin-admin:before-issues134-20261117`，发布目录有 `rollback.yml`。迁移只增加表/字段，应用可回退旧镜像，不需要删除新表或恢复覆盖业务库。
-- 两容器健康，公网health的database=up。[公网后台文件哈希](evidence/issues134-143/deployed-admin.json)与本地发布构建完全一致。
+- 两容器健康，公网health的database=up。[运行API源码与schema逐文件核对](evidence/issues134-143/runtime-source-equivalence.json)与实现提交一致。[公网后台文件哈希](evidence/issues134-143/deployed-admin.json)与本地发布构建完全一致。
 - 专属组织“夜宵134–143验收20261117”、校区 `issues134-20261117-campus`。没有调整武生院或其他既有校区的配置、库存、押金。
 - 验收支付仅通过既有领域落账入口模拟，库存、备货、审核、收货、营业申请、下单、配送和权限经真实HTTP接口验证。示意二维码/送达图片不代表真实扫码进群或物理配送。验收校区结束后恢复开通和营业，业务记录保留用于复查。
 
@@ -69,3 +69,7 @@
 
 - 140：已请求测试用户与楼长的微信手机授权及实际收信、通知跳转确认。H5和模拟通知不能代替此项。
 - 微信正式发布不在本轮测试部署中；生产环境保持不动。
+
+## 实现提交
+
+均保留在原 `feature/night-store` 分支，未合并main：API `95ec409`、后台 `daf70a3`、用户端 `01b5d79`、配送端 `ad70bb7`。API本记录和补充证据会另有文档提交。

@@ -51,12 +51,6 @@
       "expected": 200
     },
     {
-      "route": "/orders",
-      "method": "POST",
-      "status": 400,
-      "expected": 201
-    },
-    {
       "route": "/cart",
       "method": "PUT",
       "status": 200,
@@ -362,5 +356,14 @@
     }
   ],
   "previousAttemptError": "POST /orders: 商品金额满10.00元起送\n\n400 !== 201\n",
-  "successfulHttpAssertions": 49
+  "successfulHttpAssertions": 49,
+  "priorFixtureAttempts": [
+    {
+      "route": "/orders",
+      "method": "POST",
+      "status": 400,
+      "expected": 201
+    }
+  ],
+  "rawEvidenceRetainedOnTestServer": "/opt/buchuqin/releases/issues134-143-20261117/http-evidence.json"
 }
