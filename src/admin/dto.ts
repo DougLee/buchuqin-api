@@ -770,6 +770,8 @@ export class CreateCampusDto {
   buildingManagerBaseSalary?: number;
 }
 export class UpdateCampusDto {
+  /** Enrollment is restricted to super-admins and the owning organization's administrators. */
+  @IsOptional() @IsBoolean() nightEnabled?: boolean;
   /** 仅平台账号可调整；组织账号由控制器锁定在本组织。 */
   @IsOptional() @IsString() @MinLength(1) organizationId?: string;
   @IsOptional() @IsString() @MinLength(2) @MaxLength(30) name?: string;
@@ -928,6 +930,7 @@ export class UpdateCampusDto {
  * 小程序登录直接串组织，故唯一性在登记/改配两个入口都强校验。
  */
 export class CreateOrganizationDto {
+  @IsOptional() @IsBoolean() nightEnabled?: boolean;
   @IsString() @MinLength(2) @MaxLength(50) name!: string;
   @IsString() @MinLength(1) @MaxLength(20) shortName!: string;
   /** 组织小程序 AppID（必填唯一；登记即生效，见类注释 ADR 锚点） */
@@ -975,6 +978,7 @@ export class CreateOrganizationDto {
  * =覆盖，显式传 null =清除，不传 =保留；其余非敏感字段空串 =清空。
  */
 export class UpdateOrganizationDto {
+  @IsOptional() @IsBoolean() nightEnabled?: boolean;
   @IsOptional() @IsString() @MinLength(2) @MaxLength(50) name?: string;
   @IsOptional() @IsString() @MinLength(1) @MaxLength(20) shortName?: string;
   /** 换绑 AppID（唯一性强校验同创建；登记即生效） */

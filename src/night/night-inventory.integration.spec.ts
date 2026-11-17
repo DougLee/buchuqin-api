@@ -1,3 +1,4 @@
+import { RbacService } from '../admin/rbac/rbac.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -24,6 +25,7 @@ import { beijingMinutes, nightBusinessDate } from './night.helpers';
 const integration =
   process.env.NIGHT_STOCK_INTEGRATION === '1' ? describe : describe.skip;
 integration('已确认的夜宵备货库存流程（独立 PostgreSQL schema）', () => {
+  const organizationId = `night-inventory-${randomUUID()}`;
   let db: PrismaService;
   let service: NightInventoryService;
   let staffId: string;
@@ -39,12 +41,15 @@ integration('已确认的夜宵备货库存流程（独立 PostgreSQL schema）'
       throw new Error('夜宵库存集成测试只允许独立 night_stock_ 测试 schema');
     db = new PrismaService();
     await db.$connect();
+    await db.organization.create({ data: { id: organizationId, name: organizationId, nightEnabled: true } });
+    await new RbacService(db).syncRegistry();
     service = new NightInventoryService(db);
     const campus = await db.campus.create({
       data: {
         name: '库存验收校区',
         shortName: '库存验收',
         warehouseName: '验收仓',
+        organizationId,
         nightEnabled: true,
       },
     });
@@ -123,6 +128,7 @@ integration('已确认的夜宵备货库存流程（独立 PostgreSQL schema）'
         shortName: '验收',
         warehouseName: '验收仓',
         manualClosed: true,
+        organizationId,
         nightEnabled: true,
         nightStartAt: clock((nowMinutes + 1080) % 1440),
         nightEndAt: clock((nowMinutes + 360) % 1440),
@@ -963,7 +969,7 @@ integration('已确认的夜宵备货库存流程（独立 PostgreSQL schema）'
       productAmount: 500, totalQuantity: 1, deliveryThreshold: 0, deliveryFee: 0, discount: 0, payableAmount: 500, estimatedArrival: '', timeline: [],
     } });
     await db.campus.update({ where: { id: a.campus.id }, data: { nightEnabled: false, manualClosed: false } });
-    const service = new UserOrdersService(new BusinessService(db), a.orders);
+    const service = new UserOrdersService(new BusinessService(db), a.orders, db);
     const result = await service.list(a.user.id);
     expect(result.errors).toEqual([]); expect(result.total).toBe(2);
     expect(result.items.map(r => r.key)).toEqual(expect.arrayContaining([`day:${day.id}`, `night:${a.order.id}`]));
@@ -1244,7 +1250,8 @@ integration('已确认的夜宵备货库存流程（独立 PostgreSQL schema）'
     await expect(f.orders.submitOrder(f.user.id, { storeId: f.store.id, addressId: f.address.id, items: [{ productId: f.product.id, quantity: 1 }] })).rejects.toThrow();
     expect((await f.resources()).product.stock).toBe(before);
     await db.campus.update({ where: { id: f.campus.id }, data: { nightStartAt: clock((now + 1080) % 1440), nightEndAt: clock((now + 360) % 1440), nightEnabled: false } });
-    expect((await users.storeDetail(f.campus.id, f.store.id)).state).toBe('resting');
+    await expect(users.storeDetail(f.campus.id, f.store.id)).rejects.toThrow('夜宵店不存在');
+    expect((await users.stores(f.campus.id)).stores).toEqual([]);
     await db.campus.update({ where: { id: f.campus.id }, data: { nightEnabled: true, manualClosed: false, closeStart: '00:00', closeEnd: '00:00' } });
     expect((await users.storeDetail(f.campus.id, f.store.id)).state).toBe('open');
     await db.nightStore.update({ where: { id: f.store.id }, data: { managerStaffId: null } });

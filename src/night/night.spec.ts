@@ -53,6 +53,7 @@ describe('Night store PostgreSQL integration (IKSW1F)', () => {
     `${String(Math.floor(min / 60) % 24).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
 
   beforeAll(async () => {
+    await db.organization.create({ data: { id: tag, name: tag, nightEnabled: true } });
     campus = await db.campus.create({
       data: {
         name: `夜宵测试大学${tag}`,
@@ -60,6 +61,7 @@ describe('Night store PostgreSQL integration (IKSW1F)', () => {
         warehouseName: '夜宵测仓',
         // 手动闭店=白天已闭店（互斥放行夜宵）；场次窗口覆盖当前时刻
         manualClosed: true,
+        organizationId: tag,
         nightEnabled: true,
         nightStartAt: fmt(wStart),
         nightEndAt: fmt(wEnd),

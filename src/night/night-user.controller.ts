@@ -15,6 +15,7 @@ import { USER_ROLES_KEY, UserRoleGuard } from '../auth/user-role.guard';
 import type { AuthRequest } from '../auth/jwt-auth.guard';
 import { ok } from '../common/api-response';
 import { NightUserService } from './night-user.service';
+import { NightCampusEnabledGuard } from './night-campus-enabled.guard';
 import { NightAfterSaleDto, NightOrderCreateDto } from './night.dto';
 import { CancelReasonDto } from '../business/dto';
 
@@ -69,6 +70,7 @@ export class NightUserController {
   /* ---------- 订单 ---------- */
 
   @Post('orders')
+  @UseGuards(NightCampusEnabledGuard)
   @ApiOperation({ summary: '提交夜宵订单（服务端重验+券锁定+库存原子扣减）' })
   async submitOrder(@Req() req: AuthRequest, @Body() d: NightOrderCreateDto) {
     return ok(await this.service.submitOrder(req.user.id, d));

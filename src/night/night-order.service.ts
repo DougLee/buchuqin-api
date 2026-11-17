@@ -1,5 +1,6 @@
 import { purchaseWindowStart } from '../common/purchase-window';
 import { nightOpeningAllowed } from './night-opening.service';
+import { assertNightEnabled } from '../common/night-access';
 import { nightUnitCost, nightOrderProfit } from './night-order-cost';
 import {
   BadRequestException,
@@ -1618,6 +1619,7 @@ export class NightOrderService implements NightPaymentHandler {
 
   /** 领券中心/我的夜宵券（businessType=night 隔离；结构对齐白天 coupons）。 */
   async nightCoupons(userId: string, campusId: string) {
+    await assertNightEnabled(this.db, campusId);
     const marketing = await marketingEnabled(this.db, campusId);
     const [items, mine] = await Promise.all([
       this.db.coupon.findMany({
@@ -1681,6 +1683,7 @@ export class NightOrderService implements NightPaymentHandler {
 
   /** 领取夜宵券（复刻白天 claimCoupon 逻辑 + businessType=night 强校验）。 */
   async claimNightCoupon(userId: string, couponId: string, campusId: string) {
+    await assertNightEnabled(this.db, campusId);
     if (!(await marketingEnabled(this.db, campusId)))
       throw new ForbiddenException('营销能力未开通');
     return this.db.$transaction(async (tx) => {

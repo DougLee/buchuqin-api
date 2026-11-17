@@ -5,6 +5,8 @@ import { PaymentsService } from '../payments/payments.service';
 
 describe('配送端夜宵经营边界（内存测试，不连接数据库）', () => {
   const campus = {
+    id: 'campus',
+    organizationId: 'org',
     name: '测试校区',
     closeStart: '00:00',
     closeEnd: '00:00',
@@ -29,6 +31,8 @@ describe('配送端夜宵经营边界（内存测试，不连接数据库）', (
   };
   const mocked = () => {
     const db = {
+      organization: { findUnique: jest.fn().mockResolvedValue({ nightEnabled: true, status: 'active' }) },
+      campus: { findUnique: jest.fn().mockResolvedValue(campus) },
       nightOpeningRequest: { findFirst: jest.fn().mockResolvedValue(null) },
       staff: { findUnique: jest.fn().mockResolvedValue(staff) },
       nightStore: {
@@ -55,7 +59,8 @@ describe('配送端夜宵经营边界（内存测试，不连接数据库）', (
 
   it('押金档位由服务端校验，选择1500元档只收当前余额到目标档的差额', async () => {
     const db = {
-      campus: { findUnique: jest.fn().mockResolvedValue({ nightEnabled: true }) },
+      campus: { findUnique: jest.fn().mockResolvedValue({ nightEnabled: true, organizationId: 'org' }) },
+      organization: { findUnique: jest.fn().mockResolvedValue({ nightEnabled: true, status: 'active' }) },
       nightStore: { findUnique: jest.fn().mockResolvedValue(store) },
       $queryRaw: jest.fn(),
       $transaction: jest.fn(),
@@ -122,8 +127,10 @@ describe('配送端夜宵经营边界（内存测试，不连接数据库）', (
     const db = mocked();
     const service = new NightRiderService(db as unknown as PrismaService, {} as NightOrderService);
     db.staff.findUnique.mockResolvedValue({ ...staff, campus: { ...campus, nightEnabled: false } });
+    db.campus.findUnique.mockResolvedValue({ ...campus, nightEnabled: false });
     expect(await service.businessContext('staff')).toMatchObject({ nightEnabled: false, hasNightStore: true, canSwitchWorkspace: false });
     db.staff.findUnique.mockResolvedValue(staff);
+    db.campus.findUnique.mockResolvedValue(campus);
     expect(await service.businessContext('staff')).toMatchObject({ nightEnabled: true, canSwitchWorkspace: true });
   });
 

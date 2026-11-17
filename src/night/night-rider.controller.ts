@@ -19,7 +19,7 @@ import { ok, type ApiResponse } from '../common/api-response';
 import { NightRiderService } from './night-rider.service';
 import { NightInventoryService } from './night-inventory.service';
 import { NightOpeningService } from './night-opening.service';
-import { NightCampusEnabledGuard } from './night-campus-enabled.guard';
+import { NightCampusEnabledGuard, NightRiderAccessGuard } from './night-campus-enabled.guard';
 import {
   NightOpeningDto,
   NightShelfDto,
@@ -39,7 +39,7 @@ import {
  */
 @ApiTags('楼长端-夜宵店')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, StaffIdentityGuard)
+@UseGuards(JwtAuthGuard, StaffIdentityGuard, NightRiderAccessGuard)
 @Controller('night-rider')
 export class NightRiderController {
   constructor(

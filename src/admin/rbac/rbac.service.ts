@@ -12,6 +12,7 @@ import type { CreateAccountDto, UpdateAccountDto } from '../dto';
 import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../../database/prisma.service';
 import { HQ_CAMPUS_ID } from '../../common/campus';
+import { nightAccess, hasCampusNightHistory } from '../../common/night-access';
 import { isSuperOnlyOperation, PLATFORM_PATTERNS } from './access-policy';
 import {
   ALL_PERM_PATTERNS,
@@ -641,8 +642,12 @@ export class RbacService {
 
   /* ==================== permmenu 契约（对齐蛋词 {perms, menus}） ==================== */
 
-  async buildMeResponse(account: AdminAccount) {
+  async buildMeResponse(account: AdminAccount, selectedCampus?: string) {
     const ctx = await this.getEffective(account);
+    const campusId = selectedCampus === undefined ? account.campusId : selectedCampus;
+    if (campusId) await this.assertCampusInScope(ctx, campusId);
+    const access = await nightAccess(this.db, campusId);
+    const history = !access.enabled && await hasCampusNightHistory(this.db, campusId);
     const grants = await this.db.adminAccountRole.findMany({
       where: { accountId: account.id },
       include: { role: true },
@@ -724,7 +729,9 @@ export class RbacService {
               );
             })
             .sort(),
+      nightAccess: { ...access, history },
       menus: [...expanded.values()]
+        .filter(m => access.enabled || (history && ['g.night', 'night-stores', 'night-orders', 'night-settlements'].includes(m.code)) || (m.code !== 'g.night' && !m.code.startsWith('night-')))
         .sort((a, b) => a.orderNum - b.orderNum || a.code.localeCompare(b.code))
         .map((m) => ({
           id: m.id,

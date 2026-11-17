@@ -74,19 +74,20 @@ export class NightAdminController {
     const ctx = this.ctx(req);
     const c =
       (campus ?? (req.query?.campus as string | undefined))?.trim() ?? '';
-    if (ctx.orgLevel === 'org' && ctx.organizationId)
-      return this.rbac.resolveCampusInScope(ctx, c);
-    if (ctx.platform) {
+    let resolved = ctx.campusId;
+    if (ctx.orgLevel === 'org' && ctx.organizationId) {
+      resolved = await this.rbac.resolveCampusInScope(ctx, c);
+    } else if (ctx.platform) {
       if (c && !(await this.rbac.knownCampusIds()).has(c))
         throw new BadRequestException('目标校区不存在');
-      return c;
-    }
-    if (c && c !== ctx.campusId) {
+      resolved = c;
+    } else if (c && c !== ctx.campusId) {
       if (!ctx.campuses.includes(c))
         throw new ForbiddenException('未授权在该校区操作');
-      return c;
+      resolved = c;
     }
-    return ctx.campusId;
+    await this.service.assertAccess(resolved, req.method ?? 'GET', req.path ?? '');
+    return resolved;
   }
 
   @Get('opening-requests')

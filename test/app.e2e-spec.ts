@@ -13,6 +13,7 @@ describe('用户日夜 HTTP 契约（独立测试 schema）', () => {
   let db: PrismaService;
   let token: string, staffToken: string;
   let campusId: string, userId: string, otherId: string;
+  const organizationId = `night-http-${randomUUID()}`;
   beforeAll(async () => {
     const url = new URL(process.env.DATABASE_URL || '');
     if (!url.pathname.endsWith('_spec') || !url.searchParams.get('schema')?.startsWith('night_stock_parity_')) throw Error('E2E 仅允许独立 parity schema');
@@ -22,7 +23,8 @@ describe('用户日夜 HTTP 契约（独立测试 schema）', () => {
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
     await app.init();
     db = app.get(PrismaService);
-    const campus = await db.campus.create({ data: { name: 'HTTP日夜验收-' + randomUUID(), shortName: 'HTTP验收', warehouseName: '独立测试仓', manualClosed: true, nightEnabled: true, nightStartAt: '00:00', nightEndAt: '23:59' } });
+    await db.organization.create({ data: { id: organizationId, name: organizationId, nightEnabled: true } });
+    const campus = await db.campus.create({ data: { organizationId, name: 'HTTP日夜验收-' + randomUUID(), shortName: 'HTTP验收', warehouseName: '独立测试仓', manualClosed: true, nightEnabled: true, nightStartAt: '00:00', nightEndAt: '23:59' } });
     campusId = campus.id;
     const user = await db.user.create({ data: { campusId, nickname: 'HTTP本人', phone: randomUUID() } });
     const other = await db.user.create({ data: { campusId, nickname: 'HTTP他人', phone: randomUUID() } });
@@ -41,6 +43,7 @@ describe('用户日夜 HTTP 契约（独立测试 schema）', () => {
       await db.notification.deleteMany({ where: { userId: { in: [userId, otherId] } } });
       await db.user.deleteMany({ where: { id: { in: [userId, otherId] } } });
       await db.campus.delete({ where: { id: campusId } });
+      await db.organization.delete({ where: { id: organizationId } });
     }
     await app?.close();
   }, 30000);

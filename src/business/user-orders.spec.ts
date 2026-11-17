@@ -1,3 +1,4 @@
+import { PrismaService } from '../database/prisma.service';
 import {
   UserOrdersService,
   userOrderPage,
@@ -21,6 +22,14 @@ const raw = (
   items: [{ nightProductId: 'n', name: '夜宵', image: '/n.png', quantity: 1 }],
 });
 describe('IKVQC3 用户订单汇总', () => {
+  it('没有夜宵历史只读白天，不依赖夜宵订单来源，也不显示渠道选项', async () => {
+    const day = { orders: jest.fn().mockResolvedValue([raw('day', 'paid')]) };
+    const night = { myOrders: jest.fn().mockRejectedValue(Error('不应该访问夜宵来源')) };
+    const service = new UserOrdersService(day as unknown as BusinessService, night as unknown as NightOrderService,
+      { nightOrder: { count: jest.fn().mockResolvedValue(0) } } as unknown as PrismaService);
+    expect(await service.list('buyer')).toMatchObject({ total: 1, nightVisible: false, errors: [] });
+    expect(night.myOrders).not.toHaveBeenCalled();
+  });
   it('未完成夜单跨日可见且排在已完成前，同ID两渠道各保留一行', () => {
     const rows = [
       userOrderRow(raw('same'), 'night'),
@@ -96,6 +105,7 @@ describe('IKVQC3 用户订单汇总', () => {
     const service = new UserOrdersService(
       day as unknown as BusinessService,
       night as unknown as NightOrderService,
+      { nightOrder: { count: jest.fn().mockResolvedValue(1) } } as unknown as PrismaService,
     );
     expect((await service.list('buyer-a')).total).toBe(2);
     expect(day.orders).toHaveBeenCalledWith('buyer-a');
@@ -107,6 +117,7 @@ describe('IKVQC3 用户订单汇总', () => {
     const service = new UserOrdersService(
       day as unknown as BusinessService,
       night as unknown as NightOrderService,
+      { nightOrder: { count: jest.fn().mockResolvedValue(1) } } as unknown as PrismaService,
     );
     const result = await service.list('buyer');
     expect(result.errors).toEqual(['day']);

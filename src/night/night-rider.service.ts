@@ -7,6 +7,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
 import { campusOrganizationId } from '../common/organization';
 import { nightOpeningAllowed } from './night-opening.service';
+import { nightAccess, hasCampusNightHistory } from '../common/night-access';
 import { NightOrderService } from './night-order.service';
 import {
   inNightWindow,
@@ -44,6 +45,7 @@ export class NightRiderService {
     });
     if (!staff) throw new NotFoundException('员工不存在');
     const campus = staff.campus;
+    const enabled = (await nightAccess(this.db, campus.id)).enabled;
     const dayClosed =
       campus.manualClosed || inNightWindow(campus.closeStart, campus.closeEnd);
     const store = ['building-manager', 'intern-building-manager'].includes(
@@ -54,33 +56,26 @@ export class NightRiderService {
         })
       : null;
     const nightWindow = store ? await nightOpeningAllowed(this.db, store, campus) : false;
-    const hasNightHistory = !!store && !campus.nightEnabled && (
-      store.deposit > 0 ||
-      (await this.db.nightOrder.count({ where: { storeId: store.id } })) > 0 ||
-      (await this.db.nightStockOrder.count({ where: { storeId: store.id } })) > 0 ||
-      (await this.db.nightProduct.count({ where: { storeId: store.id } })) > 0 ||
-      (await this.db.nightDepositTxn.count({ where: { storeId: store.id } })) > 0 ||
-      (await this.db.nightDepositOrder.count({ where: { storeId: store.id } })) > 0
-    );
+    const hasNightHistory = !!store && !enabled && await hasCampusNightHistory(this.db, campus.id, staff.id);
     return {
       staffId: staff.id,
       staffRole: staff.role,
       // 工作台手动切换仅向已绑定夜宵店的正式楼长开放。
-      canSwitchWorkspace: campus.nightEnabled && staff.role === 'building-manager' && Boolean(store),
-      nightEnabled: campus.nightEnabled,
+      canSwitchWorkspace: enabled && staff.role === 'building-manager' && Boolean(store),
+      nightEnabled: enabled,
       hasNightHistory,
       mode: store?.status === 'open' && nightWindow && staff.role === 'building-manager' ? 'night' : !dayClosed ? 'day' : 'rest',
       hasNightStore: Boolean(store),
       campusName: campus.name,
-      nightStartAt: campus.nightStartAt,
-      nightEndAt: campus.nightEndAt,
+      nightStartAt: enabled ? campus.nightStartAt : null,
+      nightEndAt: enabled ? campus.nightEndAt : null,
       reason: !dayClosed
         ? ''
+        : !enabled
+          ? '当前已休息'
         : !store
           ? '当前已休息，暂无夜宵经营资格'
-          : !campus.nightEnabled
-            ? '校区尚未开放夜宵经营'
-            : '尚未进入夜宵营业时间',
+          : '尚未进入夜宵营业时间',
     };
   }
 

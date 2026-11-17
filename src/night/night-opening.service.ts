@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
 import { NightInventoryService } from './night-inventory.service';
 import { inNightWindow } from './night.helpers';
+import { nightAccess } from '../common/night-access';
 
 type Db = PrismaService | Prisma.TransactionClient;
 type Hours = { nightEnabled: boolean; nightStartAt: string | null; nightEndAt: string | null };
@@ -10,6 +11,8 @@ type Hours = { nightEnabled: boolean; nightStartAt: string | null; nightEndAt: s
 /** 用户入口、开店和提交订单共享同一营业许可；不以白天闭店作为本楼夜店的前提。 */
 export async function nightOpeningAllowed(db: Db, store: { id: string; managerStaffId: string | null; campusId?: string }, campus: Hours, now = new Date()): Promise<boolean> {
   if (!campus.nightEnabled || !store.managerStaffId) return false;
+  const campusId = store.campusId ?? (await db.nightStore.findUnique({ where: { id: store.id }, select: { campusId: true } }))?.campusId;
+  if (!(await nightAccess(db, campusId)).enabled) return false;
   const manager = await db.staff.findUnique({ where: { id: store.managerStaffId }, select: { role: true, status: true, campusId: true } });
   if (!manager || manager.role !== 'building-manager' || manager.status === 'deleted' || (store.campusId && manager.campusId !== store.campusId)) return false;
   if (inNightWindow(campus.nightStartAt, campus.nightEndAt, now)) return true;

@@ -3,6 +3,7 @@ import { BusinessService } from './business.service';
 import { NightOrderService } from '../night/night-order.service';
 import { DELIVERING_STATUSES } from '../common/order-state';
 import { parsePagination } from '../common/pagination';
+import { PrismaService } from '../database/prisma.service';
 
 export interface UserOrderRow {
   key: string;
@@ -130,6 +131,7 @@ export class UserOrdersService {
   constructor(
     private readonly day: BusinessService,
     private readonly night: NightOrderService,
+    private readonly db: PrismaService,
   ) {}
   async list(
     userId: string,
@@ -139,8 +141,9 @@ export class UserOrdersService {
     pageSize?: string,
   ) {
     userOrderPage([], channel, status, page, pageSize);
+    const nightVisible = await this.db.nightOrder.count({ where: { userId } }) > 0;
     const sources = (['day', 'night'] as const).filter(
-      (type) => channel === 'all' || type === channel,
+      (type) => (type !== 'night' || nightVisible) && (channel === 'all' || type === channel),
     );
     const results = await Promise.allSettled(
       sources.map(async (type) => {
@@ -157,6 +160,6 @@ export class UserOrdersService {
       errors.push(sources[i]);
       return [];
     });
-    return { ...userOrderPage(rows, channel, status, page, pageSize), errors };
+    return { ...userOrderPage(rows, channel, status, page, pageSize), errors, nightVisible };
   }
 }

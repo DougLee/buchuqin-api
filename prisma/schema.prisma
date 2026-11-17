@@ -64,6 +64,8 @@ model Organization {
   /// 已开通能力白名单（如 ["marketing"]，空数组=全关）。能力开关只收窄不放大
   /// ——组织关了校区不能显式开。
   capabilities             Json?
+  /// Super-admin grants the organization permission to enroll individual campuses.
+  nightEnabled             Boolean  @default(false)
   /// IKKRMV 配送履约模式：'rider_delivery'=骑手小程序履约（组织 A 现状）|
   /// 'staff_delivery'=后台员工履约（组织 B）。两种模式共用订单状态语义
   /// （12 态状态机不因模式增删，见 common/order-state.ts）——仅履约执行

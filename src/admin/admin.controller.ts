@@ -2442,6 +2442,8 @@ export class AdminController {
   ) {
     const ctx = this.ctx(req);
     await this.rbac.assertCampusInScope(ctx, id);
+    if (body.nightEnabled !== undefined && !ctx.super && !this.orgBounded(ctx))
+      throw new ForbiddenException('仅超管或本组织管理员可以开通或关闭夜宵服务');
     // 校区级账号只能维护本校区基础档案。校区启停、组织归属、配送配置和
     // 楼长底薪仍由对应的组织/平台操作或专用配置接口负责。
     const campusProfileUpdate =
@@ -2883,7 +2885,7 @@ export class AdminController {
     const ctx = this.ctx(req);
     const account = await this.service.findAccount(ctx.accountId);
     if (!account) throw new ForbiddenException('账号不存在');
-    return ok(await this.rbac.buildMeResponse(account));
+    return ok(await this.rbac.buildMeResponse(account, req.query?.campus as string | undefined));
   }
   @Get('rbac/catalog')
   rbacCatalog() {

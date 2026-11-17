@@ -1,3 +1,4 @@
+import { assertNightEnabled } from '../common/night-access';
 import {
   BadRequestException,
   ForbiddenException,
@@ -76,8 +77,7 @@ export class NightInventoryService {
   constructor(private readonly db: PrismaService) {}
 
   async assertCampusEnabled(campusId: string, tx: Tx = this.db) {
-    const campus = await tx.campus.findUnique({ where: { id: campusId }, select: { nightEnabled: true } });
-    if (!campus?.nightEnabled) throw new ForbiddenException('本校区未开通夜宵服务');
+    await assertNightEnabled(tx, campusId);
   }
 
   async catalog(
@@ -611,6 +611,7 @@ export class NightInventoryService {
 
   async stockPool(staffId: string) {
     const store = await this.myStore(staffId);
+    await this.assertCampusEnabled(store.campusId);
     const [catalog, products] = await Promise.all([
       this.db.product.findMany({
         where: {

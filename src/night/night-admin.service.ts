@@ -1,5 +1,7 @@
+import { assertNightEnabled, nightAccess, hasCampusNightHistory, isNightHistoryOperation } from '../common/night-access';
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   Logger,
   NotFoundException,
@@ -39,6 +41,13 @@ const NIGHT_CATEGORY_NAME = '夜宵专供';
 @Injectable()
 export class NightAdminService {
   private readonly logger = new Logger(NightAdminService.name);
+
+  async assertAccess(campusId: string, method: string, path: string) {
+    if (!campusId) throw new BadRequestException('请先选择校区');
+    if ((await nightAccess(this.db, campusId)).enabled) return;
+    if (isNightHistoryOperation(method, path) && await hasCampusNightHistory(this.db, campusId)) return;
+    throw new ForbiddenException('本校区未开通夜宵服务');
+  }
 
   constructor(
     private readonly db: PrismaService,
@@ -662,6 +671,8 @@ export class NightAdminService {
     const campusId = body.campusId;
     if (!campusId) throw new BadRequestException('请指定校区');
     const campus = await this.campusGuard(campusId);
+    await assertNightEnabled(this.db, campusId);
+    if (body.nightEnabled !== campus.nightEnabled) throw new ForbiddenException('请由组织管理员在校区管理中开通或关闭夜宵服务');
     if (body.nightEnabled) {
       const s = hhmmToMinutes(body.nightStartAt ?? null);
       const e = hhmmToMinutes(body.nightEndAt ?? null);
@@ -691,7 +702,6 @@ export class NightAdminService {
     const after = await this.db.campus.update({
       where: { id: campusId },
       data: {
-        nightEnabled: body.nightEnabled,
         nightStartAt: body.nightStartAt ?? null,
         nightEndAt: body.nightEndAt ?? null,
         nightPayTimeout: body.nightPayTimeout ?? null,

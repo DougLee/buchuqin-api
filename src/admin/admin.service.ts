@@ -1,3 +1,4 @@
+import { nightAccess, assertNightEnabled, closeNightStores } from '../common/night-access';
 import { RbacService } from './rbac/rbac.service';
 import {
   BadRequestException,
@@ -7455,6 +7456,7 @@ export class AdminService {
     return Promise.all(
       xs.map(async (x) => ({
         ...x,
+        nightAccess: await nightAccess(this.db, x.id),
         buildings: await this.db.building.count({
           where: { campusId: x.id },
         }),
@@ -7495,6 +7497,7 @@ export class AdminService {
         name: o.name,
         shortName: o.shortName,
         status: o.status,
+        nightEnabled: o.nightEnabled,
         createdAt: o.createdAt,
         campusCount: own.length,
         userCount: own.reduce((n, c) => n + (usersByCampus.get(c.id) ?? 0), 0),
@@ -7550,6 +7553,7 @@ export class AdminService {
       name: org.name,
       shortName: org.shortName,
       status: org.status,
+      nightEnabled: org.nightEnabled,
       createdAt: org.createdAt,
       // 微信配置（ADR-0001 决策 2 预留）：非敏感位透出，敏感凭据只回布尔
       wxAppId: org.wxAppId,
@@ -7584,6 +7588,7 @@ export class AdminService {
     name: string;
     shortName: string;
     status: string;
+    nightEnabled: boolean;
     createdAt: Date;
     wxAppId: string | null;
     deliveryWxAppId: string | null;
@@ -7607,6 +7612,7 @@ export class AdminService {
       name: org.name,
       shortName: org.shortName,
       status: org.status,
+      nightEnabled: org.nightEnabled,
       createdAt: org.createdAt,
       wxAppId: org.wxAppId,
       deliveryWxAppId: org.deliveryWxAppId,
@@ -7682,6 +7688,7 @@ export class AdminService {
     const org = await this.db.organization.create({
       data: {
         name: body.name.trim(),
+        nightEnabled: body.nightEnabled ?? false,
         shortName: body.shortName.trim(),
         wxAppId: body.wxAppId.trim(),
         ...(body.wxSecret ? { wxSecret: body.wxSecret } : {}),
@@ -7769,9 +7776,11 @@ export class AdminService {
       ],
       id,
     );
-    const after = await this.db.organization.update({
+    const after = await this.db.$transaction(async tx => {
+      const updated = await tx.organization.update({
       where: { id },
       data: {
+        ...(body.nightEnabled !== undefined ? { nightEnabled: body.nightEnabled } : {}),
         ...(body.name !== undefined ? { name: body.name.trim() } : {}),
         ...(body.shortName !== undefined
           ? { shortName: body.shortName.trim() }
@@ -7828,6 +7837,13 @@ export class AdminService {
           ? { gzhQrcodeUrl: body.gzhQrcodeUrl?.trim() || null }
           : {}),
       },
+      });
+      if (body.nightEnabled !== undefined && body.nightEnabled !== before.nightEnabled) {
+        const campuses = await tx.campus.findMany({ where: { organizationId: id }, select: { id: true } });
+        await tx.campus.updateMany({ where: { organizationId: id }, data: { nightEnabled: false } });
+        await closeNightStores(tx, campuses.map(c => c.id));
+      }
+      return updated;
     });
     await this.audit(
       operator,
@@ -7843,6 +7859,7 @@ export class AdminService {
 
   /** 审计快照（非敏感字段透出，敏感凭据只留布尔位）。 */
   private organizationAuditView(org: {
+    nightEnabled: boolean;
     name: string;
     shortName: string;
     wxAppId: string | null;
@@ -7863,6 +7880,7 @@ export class AdminService {
   }) {
     return {
       name: org.name,
+      nightEnabled: org.nightEnabled,
       shortName: org.shortName,
       wxAppId: org.wxAppId,
       deliveryWxAppId: org.deliveryWxAppId,
@@ -7890,9 +7908,14 @@ export class AdminService {
   ) {
     const before = await this.db.organization.findUnique({ where: { id } });
     if (!before) throw new BadRequestException(`组织不存在: ${id}`);
-    const after = await this.db.organization.update({
-      where: { id },
-      data: { status },
+    const after = await this.db.$transaction(async tx => {
+      const updated = await tx.organization.update({ where: { id }, data: { status } });
+      if (status === 'disabled') {
+        const campuses = await tx.campus.findMany({ where: { organizationId: id }, select: { id: true } });
+        await tx.campus.updateMany({ where: { organizationId: id }, data: { nightEnabled: false } });
+        await closeNightStores(tx, campuses.map(c => c.id));
+      }
+      return updated;
     });
     await this.audit(
       operator,
@@ -8141,9 +8164,16 @@ export class AdminService {
       if (organization.status !== 'active')
         throw new BadRequestException('不能将校区转移到停用组织');
     }
-    const after = await this.db.campus.update({
+    if (body.nightEnabled === true) {
+      const organizationId = body.organizationId ?? before.organizationId;
+      const org = organizationId ? await this.db.organization.findUnique({ where: { id: organizationId }, select: { nightEnabled: true, status: true } }) : null;
+      if (before.type === 'hq' || !org?.nightEnabled || org.status !== 'active') throw new ForbiddenException('所属组织尚未获授权开通夜宵服务');
+    }
+    const after = await this.db.$transaction(async tx => {
+      const updated = await tx.campus.update({
       where: { id },
       data: {
+        ...(body.nightEnabled !== undefined ? { nightEnabled: body.nightEnabled } : body.organizationId && body.organizationId !== before.organizationId ? { nightEnabled: false } : {}),
         ...(body.organizationId ? { organizationId: body.organizationId } : {}),
         ...(body.name != null ? { name: body.name } : {}),
         ...(body.shortName != null ? { shortName: body.shortName } : {}),
@@ -8258,6 +8288,9 @@ export class AdminService {
           ? { deliveryThreshold: body.deliveryThreshold }
           : {}),
       },
+      });
+      if (body.nightEnabled === false || (body.organizationId && body.organizationId !== before.organizationId)) await closeNightStores(tx, [id]);
+      return updated;
     });
     await this.audit(
       operator,
@@ -8268,11 +8301,13 @@ export class AdminService {
         name: before.name,
         status: before.status,
         organizationId: before.organizationId,
+        nightEnabled: before.nightEnabled,
       },
       {
         name: after.name,
         status: after.status,
         organizationId: after.organizationId,
+        nightEnabled: after.nightEnabled,
       },
       id,
     );
@@ -8407,6 +8442,9 @@ export class AdminService {
   }
   /** IKB5PA：status 过滤（active/paused），不传 = 全部。 */
   async coupons(campusId: string, status?: string, businessType?: string) {
+    const night = (await nightAccess(this.db, campusId)).enabled;
+    if (businessType === 'night') await assertNightEnabled(this.db, campusId);
+    if (!night) businessType = 'day';
     const xs = await this.db.coupon.findMany({
       where: {
         campusId,
@@ -9816,7 +9854,8 @@ export class AdminService {
         orderBy: { createdAt: 'asc' },
       }),
     ]);
-    return { campus, slots, notices };
+    const access = await nightAccess(this.db, campusId);
+    return { campus, slots, notices: notices.filter(n => n.businessType !== 'night' || access.enabled), nightAccess: access };
   }
 
   /* ---------- 送达时段管理（IKHM1O 补窟窿：原无后台入口） ---------- */

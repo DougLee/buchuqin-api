@@ -1,4 +1,5 @@
 import { nightOpeningAllowed } from '../night/night-opening.service';
+import { nightAccess, assertNightEnabled } from '../common/night-access';
 import {
   BadRequestException,
   ForbiddenException,
@@ -508,7 +509,7 @@ export class BusinessService {
     // showDeliveryContacts（IKRSIY #107）、groupQrcodeTip（IKRSJ3 #114）、
     // afterSalesGroupQrcode（IKQXSD）等校区自定义字段随行自动透出，
     // /campus/current 与 /home 的 campus 组共用本方法，新增字段无需改这里
-    return { ...item, closedNow: closed, closedReason: reason };
+    return { ...item, nightEnabled: (await nightAccess(this.db, campusId)).enabled, closedNow: closed, closedReason: reason };
   }
   /** 分类字典（IKKA1S 校区隔离）：只下发本校区类别（hidden 不下发，IKC9M4）。 */
   async categories(campusId: string) {
@@ -825,6 +826,7 @@ export class BusinessService {
     return `明天 (${d.toISOString().slice(5, 10).replace('-', '.')}) `;
   }
   async home(campusId: string, businessType = 'day') {
+    if (businessType === 'night') await assertNightEnabled(this.db, campusId);
     if (!['day', 'night'].includes(businessType)) throw new BadRequestException('业务类型不正确');
     // IKTZ7J 道哥 2026-11-09：首页日夜同构——夜渠道返回真实推荐/促销
     // （此前夜渠道在出口掏空为 []，C 端夜场首页只能走简化组件）。

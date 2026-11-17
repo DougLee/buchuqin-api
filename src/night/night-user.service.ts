@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
 import { nightOpeningAllowed } from './night-opening.service';
+import { nightAccess, assertNightEnabled } from '../common/night-access';
 import { nightPromotions } from './night-pricing';
 import { NightOrderService } from './night-order.service';
 import { beijingMinutes, inNightWindow } from './night.helpers';
@@ -39,6 +40,7 @@ export class NightUserService {
       },
     });
     if (!campus) throw new NotFoundException('校区不存在');
+    const enabled = (await nightAccess(this.db, campusId)).enabled;
     const inWindow = inNightWindow(campus.nightStartAt, campus.nightEndAt);
     // 白天闭店判定（与楼长开店互斥校验同口径）
     const s = beijingMinutes();
@@ -51,19 +53,19 @@ export class NightUserService {
           ? s >= cs && s < ce
           : s >= cs || s < ce
         : false);
-    const store = buildingId ? await this.db.nightStore.findFirst({ where: { buildingId, campusId }, include: { managerStaff: { select: { role: true, status: true } } } }) : null;
+    const store = enabled && buildingId ? await this.db.nightStore.findFirst({ where: { buildingId, campusId }, include: { managerStaff: { select: { role: true, status: true } } } }) : null;
     const currentStoreOpen = !!store && store.status === 'open' && store.managerStaff?.role === 'building-manager' && store.managerStaff.status !== 'deleted' && await nightOpeningAllowed(this.db, store, campus);
     return {
       campusId: campus.id,
       campusName: campus.name,
-      nightEnabled: campus.nightEnabled,
-      nightStartAt: campus.nightStartAt,
-      nightEndAt: campus.nightEndAt,
-      nightDeliveryFee: campus.nightDeliveryFee ?? campus.deliveryFeeInstant,
+      nightEnabled: enabled,
+      nightStartAt: enabled ? campus.nightStartAt : null,
+      nightEndAt: enabled ? campus.nightEndAt : null,
+      nightDeliveryFee: enabled ? campus.nightDeliveryFee ?? campus.deliveryFeeInstant : 0,
       // 三元组：入口展示与下单校验共用（inNight = 夜宵可购窗口）
       dayClosed,
-      inWindow,
-      inNightSession: currentStoreOpen,
+      inWindow: enabled && inWindow,
+      inNightSession: enabled && currentStoreOpen,
       nowMinutes: s,
     };
   }
@@ -86,7 +88,7 @@ export class NightUserService {
    */
   async stores(campusId: string, buildingId?: string) {
     const cfg = await this.campusNightConfig(campusId, buildingId);
-    const buildings = await this.db.building.findMany({
+    const buildings = cfg.nightEnabled ? await this.db.building.findMany({
       where: {
         campusId,
         status: 'active',
@@ -100,7 +102,7 @@ export class NightUserService {
           },
         },
       },
-    });
+    }) : [];
     const stores = await Promise.all(buildings.map(async b => {
         const store = b.nightStore;
         // 三态（PRD B03/U03）：无楼长招募中 → 有楼长休息中 → 营业中
@@ -140,6 +142,7 @@ export class NightUserService {
    * 图/名/价引夜主档 Product（夜宵统一售价）。
    */
   async storeProducts(campusId: string, storeId: string) {
+    await assertNightEnabled(this.db, campusId);
     const store = await this.db.nightStore.findFirst({
       where: { id: storeId, campusId },
     });
