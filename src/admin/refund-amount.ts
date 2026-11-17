@@ -86,3 +86,25 @@ export function refundCeiling(
     ? Math.round(payableAmount)
     : Math.round(payableAmount) - Math.round(deliveryFee);
 }
+
+/**
+ * IKUISI：未送达整单退款（后台发起）的锁定金额与创建期上限（分）。
+ * - 缺省锁定=「券后商品净实收」实付−配送费——此前写死 productAmount（未扣
+ *   券），券后单锁定额必超批准上限 refundCeiling（实付口径），结构性死锁；
+ *   净实取不含运费口径，任何审核口径（含/不含运费开关）的上限下都安全。
+ * - 显式金额按状态口径校验：已到店上限=实付（含运费），未到店=实付−运费
+ *  （与审核端 refundCeiling 同源，杜绝「创建放行、批准被拦」漂移）。
+ */
+export function unshippedRefundAmount(
+  payableAmount: number,
+  deliveryFee: number,
+  requestedAmount: number | undefined,
+  arrived: boolean,
+): { amount: number; ceiling: number } {
+  const paidNoFee =
+    Math.round(payableAmount) - Math.round(deliveryFee);
+  return {
+    amount: Math.round(requestedAmount ?? paidNoFee),
+    ceiling: arrived ? Math.round(payableAmount) : paidNoFee,
+  };
+}

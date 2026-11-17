@@ -1,4 +1,4 @@
-import { approvedRefundAmount, orderArrived, refundCeiling } from './refund-amount';
+import { approvedRefundAmount, orderArrived, refundCeiling, unshippedRefundAmount } from './refund-amount';
 
 describe('approvedRefundAmount', () => {
   it('保留未发货整单退款申请时锁定的金额（无商品明细）', () => {
@@ -59,5 +59,34 @@ describe('refundCeiling 配送费退款上限（IKRSIY #110/#91）', () => {
     expect(refundCeiling(5000, 400, true)).toBe(5000);
     // 已到店默认可退，审核开关关=false → 上限收紧回「实付−配送费」
     expect(refundCeiling(5000, 400, false)).toBe(4600);
+  });
+});
+
+describe('unshippedRefundAmount 未送达整单退款锁定金额（IKUISI）', () => {
+  // 生产事故订单：商品额 15.60 + 运费 1.50 − 券 5.00 = 实付 12.10
+  it('券后单缺省锁定=券后商品净实收（实付−运费），不再锁商品额死锁', () => {
+    const r = unshippedRefundAmount(1210, 150, undefined, true);
+    expect(r.amount).toBe(1060); // 净实收 10.60（旧逻辑锁商品额 15.60 必超上限）
+    expect(r.ceiling).toBe(1210); // 已到店上限=实付（含运费）
+  });
+  it('未到店上限=实付−运费（配送费不可退口径）', () => {
+    expect(unshippedRefundAmount(1210, 150, undefined, false)).toEqual({
+      amount: 1060,
+      ceiling: 1060,
+    });
+  });
+  it('显式金额按状态口径校验：超限值原样返回由 service 拦截（13.60 > 12.10）', () => {
+    const r = unshippedRefundAmount(1210, 150, 1360, true);
+    expect(r.amount).toBe(1360);
+    expect(r.amount > r.ceiling).toBe(true);
+  });
+  it('显式金额在限内直接锁定（弹窗核定 12.10 含运费全退）', () => {
+    const r = unshippedRefundAmount(1210, 150, 1210, true);
+    expect(r.amount).toBe(1210);
+    expect(r.amount <= r.ceiling).toBe(true);
+  });
+  it('无券单（实付=商品额+运费）缺省锁定=商品额，行为与旧逻辑一致', () => {
+    // 商品 15.60 + 运费 1.50 无券 → 实付 17.10；缺省锁 15.60=商品额
+    expect(unshippedRefundAmount(1710, 150, undefined, false).amount).toBe(1560);
   });
 });
