@@ -11,6 +11,7 @@ import { PrismaService } from '../../database/prisma.service';
 import { RbacService, matchUrl, type RbacContext } from './rbac.service';
 import { isSuperOnlyOperation } from './access-policy';
 import { ADMIN_URL_WHITELIST } from './registry';
+import { assertNightEnabled } from '../../common/night-access';
 
 export interface RbacRequest extends Request {
   user: AuthRequest['user'];
@@ -75,6 +76,30 @@ export class AdminAuthGuard implements CanActivate {
     if (ADMIN_URL_WHITELIST.has(`${method} ${path}`)) return true;
     if (!this.rbac.allow(ctx, method, path))
       throw new ForbiddenException('所在用户组暂无权限');
+    await this.assertNightMarketing(request, ctx, path);
     return true;
+  }
+
+  /** Shared marketing URLs must not bypass the night-store switches. */
+  private async assertNightMarketing(request: RbacRequest, ctx: RbacContext, path: string) {
+    const match = /^\/admin\/(banners|coupons|promotions|notices)(?:\/([^/]+))?(?:\/.*)?$/.exec(path);
+    if (!match) return;
+    const body = request.body ?? {};
+    let night = body.businessType === 'night' || request.query?.businessType === 'night';
+    let campusId = String(body.campusId || request.query?.campus || ctx.campusId || '');
+    const [, kind, id] = match;
+    if (id) {
+      const row = kind === 'promotions'
+        ? await this.db.promotion.findUnique({ where: { id }, select: { product: { select: { campusId: true, nightCatalog: true } } } })
+        : kind === 'banners' ? await this.db.banner.findUnique({ where: { id }, select: { campusId: true, businessType: true } })
+        : kind === 'coupons' ? await this.db.coupon.findUnique({ where: { id }, select: { campusId: true, businessType: true } })
+        : await this.db.notice.findUnique({ where: { id }, select: { campusId: true, businessType: true } });
+      if (row && 'product' in row) { night ||= row.product.nightCatalog; campusId = row.product.campusId; }
+      else if (row) { night ||= row.businessType === 'night'; campusId = row.campusId; }
+    } else if (kind === 'promotions' && body.productId) {
+      const product = await this.db.product.findUnique({ where: { id: body.productId }, select: { campusId: true, nightCatalog: true } });
+      if (product) { night ||= product.nightCatalog; campusId = product.campusId; }
+    }
+    if (night) await assertNightEnabled(this.db, campusId);
   }
 }

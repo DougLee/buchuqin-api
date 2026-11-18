@@ -2,6 +2,9 @@ import { PrinterService, ReceiptOrderContext } from './printer.service';
 
 /** 小票打印（IKBT6N）：sign 算法与 58mm 票面构建；网络调用用 stub 不真实外发。 */
 describe('PrinterService (IKBT6N)', () => {
+  const originalDelivery = { app: process.env.WX_APPID_DELIVERY, secret: process.env.WX_SECRET_DELIVERY };
+  beforeEach(() => { delete process.env.WX_APPID_DELIVERY; delete process.env.WX_SECRET_DELIVERY; });
+  afterEach(() => { if (originalDelivery.app === undefined) delete process.env.WX_APPID_DELIVERY; else process.env.WX_APPID_DELIVERY = originalDelivery.app; if (originalDelivery.secret === undefined) delete process.env.WX_SECRET_DELIVERY; else process.env.WX_SECRET_DELIVERY = originalDelivery.secret; });
   // IKHFDZ：printOrderReceipt 取号需 db（raw 发号+order 回写）——单测 stub；
   // IKRSJ2：库位开关读 campus.findUnique（null 行=receiptShowLocation 未配置，默认打）
   const dbStub = {
@@ -75,10 +78,10 @@ describe('PrinterService (IKBT6N)', () => {
       expect(content).not.toContain('13800001234');
     });
 
-    it('品名大字（IKRSJ2）：<CB> 放大按 16 半角位折行，量价贴右独立行', () => {
-      expect(content).toContain('<CB>农夫山泉 550ml</CB>');
+    it('品名量价统一加粗（11/04定稿），16半角位折行、量价独立行', () => {
+      expect(content).toContain('<B>农夫山泉 550ml</B>');
       // 短名一行放下（14 半角位 ≤ 16），「x2 ￥2」独立成行且贴右（左空白起排）
-      const qtyLine = content.split('\n').find((l) => l.trim() === 'x2 ￥2');
+      const qtyLine = content.split('\n').find((l) => l.trim() === '<B>x2 ￥2</B>');
       expect(qtyLine).toBeTruthy();
       expect((qtyLine as string).startsWith(' ')).toBe(true);
       // 长名（20 汉字）按 8 汉字折行，无 … 截断，每行裸宽 ≤ 16 半角位
@@ -89,7 +92,7 @@ describe('PrinterService (IKBT6N)', () => {
         );
       const bigLines = content
         .split('\n')
-        .filter((l) => l.includes('<CB>') && !l.includes('湖工大'));
+        .filter((l) => l.includes('<B>') && !l.includes('￥') && !l.includes('库位'));
       expect(bigLines.length).toBeGreaterThanOrEqual(4); // 短名 1 + 长名 3
       for (const line of bigLines) expect(w(line)).toBeLessThanOrEqual(16);
       expect(bigLines.some((l) => l.includes('特别长的一个商品'))).toBe(true);
@@ -109,8 +112,8 @@ describe('PrinterService (IKBT6N)', () => {
       expect(content).toContain('单号 7');
     });
 
-    it('库位行【】括号强调、常规字号（2026-09-05 道哥定版）', () => {
-      expect(content).toContain('  【库位:A区-01】');
+    it('库位行使用独立B标签加粗（2026-11-04定稿）', () => {
+      expect(content).toContain('<B>【库位:A区-01】</B>');
       expect(content).not.toContain('<B>  【库位');
     });
 

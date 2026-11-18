@@ -1,0 +1,16 @@
+夜宵预览HTTP出站白名单已启用；生产API、微信网关及外部存储均不可连接。
+{
+  "verified": true,
+  "orderId": "cmw58yokp0003zzb11jq6tpl4",
+  "status": "refunded",
+  "paid": true,
+  "productAmount": 350,
+  "couponDiscount": 100,
+  "deliveryFee": 200,
+  "payableAmount": 450,
+  "quotaHeld": 0,
+  "inventoryRestocked": false,
+  "stockTxnCount": 1,
+  "commissionTotal": 0,
+  "refundStatus": "succeeded"
+}

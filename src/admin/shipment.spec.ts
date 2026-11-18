@@ -279,7 +279,8 @@ describe('restock shipment (IKFOQ2)', () => {
   });
 
   it('总部日报：receivedAt 落日×校区聚合，与发货单毛利同源；校区筛选可用', async () => {
-    const today = new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10);
+    const today = '2001-01-18';
+    await db.restockShipment.updateMany({ where: { orderId: { in: [orderId1, orderId2] } }, data: { receivedAt: new Date(`${today}T12:00:00+08:00`) } });
     const rep = await admin.hqDailyReport(today, today);
     // 两单批发额 = 2×12000 + (12000+6000) = 42000；成本 = 13440 + (6720+6000) = 26160
     expect(rep.totals.shipments).toBe(2);

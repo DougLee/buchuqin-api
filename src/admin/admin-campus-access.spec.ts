@@ -26,6 +26,8 @@ describe('admin campus access (IKB3KG)', () => {
   const tag = `ca-${Date.now()}`;
   const campusBId = `${tag}-campus-b`;
   const accountIds: string[] = [];
+  const roleIds: string[] = [];
+  const opsCode = `spec-ops-${tag}`, warehouseCode = `spec-warehouse-${tag}`;
   // IKKRMQ：账号授权写路径现状超管独占端点——夹具操作者按超管声明
   const actor = { id: 'spec-hq', username: 'spec-hq', super: true };
 
@@ -34,6 +36,9 @@ describe('admin campus access (IKB3KG)', () => {
       await rbac.syncRegistry();
     } catch {
       await rbac.syncRegistry();
+    }
+    for (const code of [opsCode, warehouseCode]) {
+      const role = await rbac.createRole(actor, { code, name: code, menuCodes: ['orders', 'products'] }); roleIds.push(role.id);
     }
     await db.campus.create({
       data: {
@@ -52,6 +57,8 @@ describe('admin campus access (IKB3KG)', () => {
     // 授权行随账号级联删；校区业务数据独立清理
     await db.adminAccount.deleteMany({ where: { id: { in: accountIds } } });
     await db.campus.delete({ where: { id: campusBId } });
+    await db.adminRoleMenu.deleteMany({ where: { roleId: { in: roleIds } } });
+    await db.adminRole.deleteMany({ where: { id: { in: roleIds } } });
     await db.$disconnect();
   });
 
@@ -62,8 +69,8 @@ describe('admin campus access (IKB3KG)', () => {
         password: 'ops-pass-123',
         nickname: '规格运营',
         grants: [
-          { roleCode: 'campus-operations', scope: 'campus', campusId: ADMIN_CAMPUS_ID },
-          { roleCode: 'campus-operations', scope: 'campus', campusId: campusBId },
+          { roleCode: opsCode, scope: 'campus', campusId: ADMIN_CAMPUS_ID },
+          { roleCode: opsCode, scope: 'campus', campusId: campusBId },
         ],
       },
       'spec-hq',
@@ -71,8 +78,8 @@ describe('admin campus access (IKB3KG)', () => {
     accountIds.push(account.id);
     // 授权由 RbacService 落库（controller 编排同款调用面）
     await rbac.setAccountRoles(actor, account.id, [
-      { roleCode: 'campus-operations', scope: 'campus', campusId: ADMIN_CAMPUS_ID },
-      { roleCode: 'campus-operations', scope: 'campus', campusId: campusBId },
+      { roleCode: opsCode, scope: 'campus', campusId: ADMIN_CAMPUS_ID },
+      { roleCode: opsCode, scope: 'campus', campusId: campusBId },
     ]);
     const rows = await db.adminAccountRole.findMany({
       where: { accountId: account.id },
@@ -101,17 +108,17 @@ describe('admin campus access (IKB3KG)', () => {
         username: `${tag}-wh`,
         password: 'wh-pass-123',
         nickname: '规格仓储',
-        grants: [{ roleCode: 'campus-warehouse', scope: 'campus', campusId: ADMIN_CAMPUS_ID }],
+        grants: [{ roleCode: warehouseCode, scope: 'campus', campusId: ADMIN_CAMPUS_ID }],
       },
       'spec-hq',
     );
     accountIds.push(account.id);
     await rbac.setAccountRoles(actor, account.id, [
-      { roleCode: 'campus-warehouse', scope: 'campus', campusId: ADMIN_CAMPUS_ID },
+      { roleCode: warehouseCode, scope: 'campus', campusId: ADMIN_CAMPUS_ID },
     ]);
     // 重设=全量替换：只剩 B 校授权
     await rbac.setAccountRoles(actor, account.id, [
-      { roleCode: 'campus-warehouse', scope: 'campus', campusId: campusBId },
+      { roleCode: warehouseCode, scope: 'campus', campusId: campusBId },
     ]);
     const rows = await db.adminAccountRole.findMany({
       where: { accountId: account.id },
@@ -129,12 +136,12 @@ describe('admin campus access (IKB3KG)', () => {
     const [, wh] = accountIds;
     await expect(
       rbac.setAccountRoles(actor, wh, [
-        { roleCode: 'campus-warehouse', scope: 'campus' },
+        { roleCode: warehouseCode, scope: 'campus' },
       ]),
     ).rejects.toThrow(BadRequestException);
     await expect(
       rbac.setAccountRoles(actor, wh, [
-        { roleCode: 'campus-warehouse', scope: 'campus', campusId: 'campus-not-exist' },
+        { roleCode: warehouseCode, scope: 'campus', campusId: 'campus-not-exist' },
       ]),
     ).rejects.toThrow(BadRequestException);
     await expect(
@@ -145,7 +152,7 @@ describe('admin campus access (IKB3KG)', () => {
         { roleCode: 'campus-admin', scope: 'campus', campusId: ADMIN_CAMPUS_ID },
         { roleCode: 'campus-admin', scope: 'campus', campusId: campusBId },
       ]),
-    ).rejects.toThrow('校区管理员只能绑定一个校区');
+    ).rejects.toThrow('校区管理员或校区运营只能绑定一个校区');
   });
 
   it('顶栏切换：未授权校区被拒；授权校区换发 token 且落库', async () => {
@@ -218,7 +225,7 @@ describe('admin campus access (IKB3KG)', () => {
       data: { orgLevel: 'platform' },
     });
     await rbac.setAccountRoles(actor, hqAccount.id, [
-      { roleCode: 'hq-director', scope: 'platform' },
+      { roleCode: opsCode, scope: 'platform' },
     ]);
     const hqRow = await db.adminAccount.findUniqueOrThrow({ where: { id: hqAccount.id } });
     const switched = await auth.selectAdminCampus(

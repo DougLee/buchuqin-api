@@ -1,0 +1,2752 @@
+仅测试库：night_parity_spec / night_stock_parity_full2_20261107；HTTP 出站隔离已启用
+夜宵预览HTTP出站白名单已启用；生产API、微信网关及外部存储均不可连接。
+FAIL src/admin/rbac.integration.spec.ts
+  ● RBAC 蛋词体系 integration (real PG + HTTP) › rbac/me：超管 perms=["*"]；多角色账号返回全部授权与可切校区
+
+    BadRequestException: 超级管理员不可授予，系统仅保留内置超级管理员账号
+
+      915 |       // 仅由启动同步维护在系统主账号上；角色下拉亦不显示
+      916 |       if (g.roleCode === SUPER_ROLE_CODE)
+    > 917 |         throw new BadRequestException(
+          |               ^
+      918 |           '超级管理员不可授予，系统仅保留内置超级管理员账号',
+      919 |         );
+      920 |       if (g.scope === 'platform' && g.campusId)
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:917:15)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/rbac.integration.spec.ts:79:5)
+
+  ● RBAC 蛋词体系 integration (real PG + HTTP) › 同校区多角色并集正确：ops@A 订单写 + finance@A 结算同时在 A 生效
+
+    BadRequestException: 超级管理员不可授予，系统仅保留内置超级管理员账号
+
+      915 |       // 仅由启动同步维护在系统主账号上；角色下拉亦不显示
+      916 |       if (g.roleCode === SUPER_ROLE_CODE)
+    > 917 |         throw new BadRequestException(
+          |               ^
+      918 |           '超级管理员不可授予，系统仅保留内置超级管理员账号',
+      919 |         );
+      920 |       if (g.scope === 'platform' && g.campusId)
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:917:15)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/rbac.integration.spec.ts:79:5)
+
+  ● RBAC 蛋词体系 integration (real PG + HTTP) › 不同校区角色不串用：B 校区上下文只剩财务，商品域被拒；越权校区参数被忽略
+
+    BadRequestException: 超级管理员不可授予，系统仅保留内置超级管理员账号
+
+      915 |       // 仅由启动同步维护在系统主账号上；角色下拉亦不显示
+      916 |       if (g.roleCode === SUPER_ROLE_CODE)
+    > 917 |         throw new BadRequestException(
+          |               ^
+      918 |           '超级管理员不可授予，系统仅保留内置超级管理员账号',
+      919 |         );
+      920 |       if (g.scope === 'platform' && g.campusId)
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:917:15)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/rbac.integration.spec.ts:79:5)
+
+  ● RBAC 蛋词体系 integration (real PG + HTTP) › 撤销一个角色后其余授权仍有效（旧 token 因会话版本失效，重登后余权可用）
+
+    BadRequestException: 超级管理员不可授予，系统仅保留内置超级管理员账号
+
+      915 |       // 仅由启动同步维护在系统主账号上；角色下拉亦不显示
+      916 |       if (g.roleCode === SUPER_ROLE_CODE)
+    > 917 |         throw new BadRequestException(
+          |               ^
+      918 |           '超级管理员不可授予，系统仅保留内置超级管理员账号',
+      919 |         );
+      920 |       if (g.scope === 'platform' && g.campusId)
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:917:15)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/rbac.integration.spec.ts:79:5)
+
+  ● RBAC 蛋词体系 integration (real PG + HTTP) › 停用账号：旧 token 即刻 401，登录被拒；恢复后正常
+
+    BadRequestException: 超级管理员不可授予，系统仅保留内置超级管理员账号
+
+      915 |       // 仅由启动同步维护在系统主账号上；角色下拉亦不显示
+      916 |       if (g.roleCode === SUPER_ROLE_CODE)
+    > 917 |         throw new BadRequestException(
+          |               ^
+      918 |           '超级管理员不可授予，系统仅保留内置超级管理员账号',
+      919 |         );
+      920 |       if (g.scope === 'platform' && g.campusId)
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:917:15)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/rbac.integration.spec.ts:79:5)
+
+  ● RBAC 蛋词体系 integration (real PG + HTTP) › 超管重置密码后目标账号旧 token 失效
+
+    BadRequestException: 超级管理员不可授予，系统仅保留内置超级管理员账号
+
+      915 |       // 仅由启动同步维护在系统主账号上；角色下拉亦不显示
+      916 |       if (g.roleCode === SUPER_ROLE_CODE)
+    > 917 |         throw new BadRequestException(
+          |               ^
+      918 |           '超级管理员不可授予，系统仅保留内置超级管理员账号',
+      919 |         );
+      920 |       if (g.scope === 'platform' && g.campusId)
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:917:15)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/rbac.integration.spec.ts:79:5)
+
+  ● RBAC 蛋词体系 integration (real PG + HTTP) › 隐藏按钮直调 API 仍被拒（guard URL 模式）：warehouse 无财务/招募/手机号明文/直入
+
+    BadRequestException: 超级管理员不可授予，系统仅保留内置超级管理员账号
+
+      915 |       // 仅由启动同步维护在系统主账号上；角色下拉亦不显示
+      916 |       if (g.roleCode === SUPER_ROLE_CODE)
+    > 917 |         throw new BadRequestException(
+          |               ^
+      918 |           '超级管理员不可授予，系统仅保留内置超级管理员账号',
+      919 |         );
+      920 |       if (g.scope === 'platform' && g.campusId)
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:917:15)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/rbac.integration.spec.ts:79:5)
+
+  ● RBAC 蛋词体系 integration (real PG + HTTP) › 白名单：账号可读取自己的权限，完整菜单目录仅超管可读
+
+    BadRequestException: 超级管理员不可授予，系统仅保留内置超级管理员账号
+
+      915 |       // 仅由启动同步维护在系统主账号上；角色下拉亦不显示
+      916 |       if (g.roleCode === SUPER_ROLE_CODE)
+    > 917 |         throw new BadRequestException(
+          |               ^
+      918 |           '超级管理员不可授予，系统仅保留内置超级管理员账号',
+      919 |         );
+      920 |       if (g.scope === 'platform' && g.campusId)
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:917:15)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/rbac.integration.spec.ts:79:5)
+
+  ● RBAC 蛋词体系 integration (real PG + HTTP) › permmenu 契约：超管 menus 全量目录+菜单；校区角色=角色菜单并集且不含未勾板块
+
+    BadRequestException: 超级管理员不可授予，系统仅保留内置超级管理员账号
+
+      915 |       // 仅由启动同步维护在系统主账号上；角色下拉亦不显示
+      916 |       if (g.roleCode === SUPER_ROLE_CODE)
+    > 917 |         throw new BadRequestException(
+          |               ^
+      918 |           '超级管理员不可授予，系统仅保留内置超级管理员账号',
+      919 |         );
+      920 |       if (g.scope === 'platform' && g.campusId)
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:917:15)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/rbac.integration.spec.ts:79:5)
+
+  ● RBAC 蛋词体系 integration (real PG + HTTP) › 角色管理契约：GET roles 返回 menuCodes；建角色按 menuCodes 勾选
+
+    BadRequestException: 超级管理员不可授予，系统仅保留内置超级管理员账号
+
+      915 |       // 仅由启动同步维护在系统主账号上；角色下拉亦不显示
+      916 |       if (g.roleCode === SUPER_ROLE_CODE)
+    > 917 |         throw new BadRequestException(
+          |               ^
+      918 |           '超级管理员不可授予，系统仅保留内置超级管理员账号',
+      919 |         );
+      920 |       if (g.scope === 'platform' && g.campusId)
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:917:15)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/rbac.integration.spec.ts:79:5)
+
+  ● RBAC 蛋词体系 integration (real PG + HTTP) › 改价分权：仅 products.write 的角色夹带改价 403；补 products.price 后合并端点与拆分端点都通
+
+    BadRequestException: 超级管理员不可授予，系统仅保留内置超级管理员账号
+
+      915 |       // 仅由启动同步维护在系统主账号上；角色下拉亦不显示
+      916 |       if (g.roleCode === SUPER_ROLE_CODE)
+    > 917 |         throw new BadRequestException(
+          |               ^
+      918 |           '超级管理员不可授予，系统仅保留内置超级管理员账号',
+      919 |         );
+      920 |       if (g.scope === 'platform' && g.campusId)
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:917:15)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/rbac.integration.spec.ts:79:5)
+
+  ● RBAC 蛋词体系 integration (real PG + HTTP) › 校区列表只返回当前操作校区；全局账号/权限预览/授权审计不能由校区角色获得
+
+    BadRequestException: 超级管理员不可授予，系统仅保留内置超级管理员账号
+
+      915 |       // 仅由启动同步维护在系统主账号上；角色下拉亦不显示
+      916 |       if (g.roleCode === SUPER_ROLE_CODE)
+    > 917 |         throw new BadRequestException(
+          |               ^
+      918 |           '超级管理员不可授予，系统仅保留内置超级管理员账号',
+      919 |         );
+      920 |       if (g.scope === 'platform' && g.campusId)
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:917:15)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/rbac.integration.spec.ts:79:5)
+
+  ● RBAC 蛋词体系 integration (real PG + HTTP) › 越权目标校区：校区级账号把员工建到未授权校区被拒
+
+    BadRequestException: 超级管理员不可授予，系统仅保留内置超级管理员账号
+
+      915 |       // 仅由启动同步维护在系统主账号上；角色下拉亦不显示
+      916 |       if (g.roleCode === SUPER_ROLE_CODE)
+    > 917 |         throw new BadRequestException(
+          |               ^
+      918 |           '超级管理员不可授予，系统仅保留内置超级管理员账号',
+      919 |         );
+      920 |       if (g.scope === 'platform' && g.campusId)
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:917:15)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/rbac.integration.spec.ts:79:5)
+
+  ● RBAC 蛋词体系 integration (real PG + HTTP) › 员工按 ID 修改/删除必须检查来源校区，不能把 B 员工拉到 A 绕过校验
+
+    BadRequestException: 超级管理员不可授予，系统仅保留内置超级管理员账号
+
+      915 |       // 仅由启动同步维护在系统主账号上；角色下拉亦不显示
+      916 |       if (g.roleCode === SUPER_ROLE_CODE)
+    > 917 |         throw new BadRequestException(
+          |               ^
+      918 |           '超级管理员不可授予，系统仅保留内置超级管理员账号',
+      919 |         );
+      920 |       if (g.scope === 'platform' && g.campusId)
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:917:15)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/rbac.integration.spec.ts:79:5)
+
+  ● RBAC 蛋词体系 integration (real PG + HTTP) › 招募分权：仅备注角色可写备注不能动证件；idcard 拆分端点按按钮模式把关；运营全权可读证件且落审计
+
+    BadRequestException: 超级管理员不可授予，系统仅保留内置超级管理员账号
+
+      915 |       // 仅由启动同步维护在系统主账号上；角色下拉亦不显示
+      916 |       if (g.roleCode === SUPER_ROLE_CODE)
+    > 917 |         throw new BadRequestException(
+          |               ^
+      918 |           '超级管理员不可授予，系统仅保留内置超级管理员账号',
+      919 |         );
+      920 |       if (g.scope === 'platform' && g.campusId)
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:917:15)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/rbac.integration.spec.ts:79:5)
+
+  ● RBAC 蛋词体系 integration (real PG + HTTP) › 文件上传：停用/撤权/删除后台账号不能上传公开图片，无证件写权限不能上传私有图片
+
+    BadRequestException: 超级管理员不可授予，系统仅保留内置超级管理员账号
+
+      915 |       // 仅由启动同步维护在系统主账号上；角色下拉亦不显示
+      916 |       if (g.roleCode === SUPER_ROLE_CODE)
+    > 917 |         throw new BadRequestException(
+          |               ^
+      918 |           '超级管理员不可授予，系统仅保留内置超级管理员账号',
+      919 |         );
+      920 |       if (g.scope === 'platform' && g.campusId)
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:917:15)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/rbac.integration.spec.ts:79:5)
+
+  ● RBAC 蛋词体系 integration (real PG + HTTP) › 菜单管理：节点建改删；配置重启不覆盖，非法结构拒绝；role_menu 引用级联清
+
+    BadRequestException: 超级管理员不可授予，系统仅保留内置超级管理员账号
+
+      915 |       // 仅由启动同步维护在系统主账号上；角色下拉亦不显示
+      916 |       if (g.roleCode === SUPER_ROLE_CODE)
+    > 917 |         throw new BadRequestException(
+          |               ^
+      918 |           '超级管理员不可授予，系统仅保留内置超级管理员账号',
+      919 |         );
+      920 |       if (g.scope === 'platform' && g.campusId)
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:917:15)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/rbac.integration.spec.ts:79:5)
+
+  ● RBAC 蛋词体系 integration (real PG + HTTP) › 超管保护：唯一超管不可自摘授权/自停/自删
+
+    BadRequestException: 超级管理员不可授予，系统仅保留内置超级管理员账号
+
+      915 |       // 仅由启动同步维护在系统主账号上；角色下拉亦不显示
+      916 |       if (g.roleCode === SUPER_ROLE_CODE)
+    > 917 |         throw new BadRequestException(
+          |               ^
+      918 |           '超级管理员不可授予，系统仅保留内置超级管理员账号',
+      919 |         );
+      920 |       if (g.scope === 'platform' && g.campusId)
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:917:15)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/rbac.integration.spec.ts:79:5)
+
+  ● RBAC 蛋词体系 integration (real PG + HTTP) › 账号创建/资料/密码/状态/授权失败全部回滚，角色删除清理关联
+
+    BadRequestException: 超级管理员不可授予，系统仅保留内置超级管理员账号
+
+      915 |       // 仅由启动同步维护在系统主账号上；角色下拉亦不显示
+      916 |       if (g.roleCode === SUPER_ROLE_CODE)
+    > 917 |         throw new BadRequestException(
+          |               ^
+      918 |           '超级管理员不可授予，系统仅保留内置超级管理员账号',
+      919 |         );
+      920 |       if (g.scope === 'platform' && g.campusId)
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:917:15)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/rbac.integration.spec.ts:79:5)
+
+  ● RBAC 蛋词体系 integration (real PG + HTTP) › 并发删除与撤权共用锁，不能移除最后一个有效超管
+
+    BadRequestException: 超级管理员不可授予，系统仅保留内置超级管理员账号
+
+      915 |       // 仅由启动同步维护在系统主账号上；角色下拉亦不显示
+      916 |       if (g.roleCode === SUPER_ROLE_CODE)
+    > 917 |         throw new BadRequestException(
+          |               ^
+      918 |           '超级管理员不可授予，系统仅保留内置超级管理员账号',
+      919 |         );
+      920 |       if (g.scope === 'platform' && g.campusId)
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:917:15)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/rbac.integration.spec.ts:79:5)
+
+  ● RBAC 蛋词体系 integration (real PG + HTTP) › 可配置单会话：默认并存，开启后新登录使旧令牌失效且不可自助改密
+
+    BadRequestException: 超级管理员不可授予，系统仅保留内置超级管理员账号
+
+      915 |       // 仅由启动同步维护在系统主账号上；角色下拉亦不显示
+      916 |       if (g.roleCode === SUPER_ROLE_CODE)
+    > 917 |         throw new BadRequestException(
+          |               ^
+      918 |           '超级管理员不可授予，系统仅保留内置超级管理员账号',
+      919 |         );
+      920 |       if (g.scope === 'platform' && g.campusId)
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:917:15)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/rbac.integration.spec.ts:79:5)
+
+  ● RBAC 蛋词体系 integration (real PG + HTTP) › 授权审计：授权重设与菜单变更都有 rbac.* 审计行
+
+    BadRequestException: 超级管理员不可授予，系统仅保留内置超级管理员账号
+
+      915 |       // 仅由启动同步维护在系统主账号上；角色下拉亦不显示
+      916 |       if (g.roleCode === SUPER_ROLE_CODE)
+    > 917 |         throw new BadRequestException(
+          |               ^
+      918 |           '超级管理员不可授予，系统仅保留内置超级管理员账号',
+      919 |         );
+      920 |       if (g.scope === 'platform' && g.campusId)
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:917:15)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/rbac.integration.spec.ts:79:5)
+
+  ● RBAC 蛋词体系 integration (real PG + HTTP) › 未知菜单节点：建角色 400；平台域按钮校区级角色不可达（finance 角色无采购）
+
+    BadRequestException: 超级管理员不可授予，系统仅保留内置超级管理员账号
+
+      915 |       // 仅由启动同步维护在系统主账号上；角色下拉亦不显示
+      916 |       if (g.roleCode === SUPER_ROLE_CODE)
+    > 917 |         throw new BadRequestException(
+          |               ^
+      918 |           '超级管理员不可授予，系统仅保留内置超级管理员账号',
+      919 |         );
+      920 |       if (g.scope === 'platform' && g.campusId)
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:917:15)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/rbac.integration.spec.ts:79:5)
+
+  ● RBAC 蛋词体系 integration (real PG + HTTP) › 非后台 token（C 端 user）访问 admin 一律 403
+
+    BadRequestException: 超级管理员不可授予，系统仅保留内置超级管理员账号
+
+      915 |       // 仅由启动同步维护在系统主账号上；角色下拉亦不显示
+      916 |       if (g.roleCode === SUPER_ROLE_CODE)
+    > 917 |         throw new BadRequestException(
+          |               ^
+      918 |           '超级管理员不可授予，系统仅保留内置超级管理员账号',
+      919 |         );
+      920 |       if (g.scope === 'platform' && g.campusId)
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:917:15)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/rbac.integration.spec.ts:79:5)
+
+  ● RBAC 蛋词体系 integration (real PG + HTTP) › 全端点矩阵扫描（超管 token）：AdminController 每条路由非 403（403=模式漏配暴露）
+
+    BadRequestException: 超级管理员不可授予，系统仅保留内置超级管理员账号
+
+      915 |       // 仅由启动同步维护在系统主账号上；角色下拉亦不显示
+      916 |       if (g.roleCode === SUPER_ROLE_CODE)
+    > 917 |         throw new BadRequestException(
+          |               ^
+      918 |           '超级管理员不可授予，系统仅保留内置超级管理员账号',
+      919 |         );
+      920 |       if (g.scope === 'platform' && g.campusId)
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:917:15)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/rbac.integration.spec.ts:79:5)
+
+  ● RBAC 蛋词体系 integration (real PG + HTTP) › 普通角色即使勾选管理接口也不能修改角色、菜单或账号授权
+
+    BadRequestException: 超级管理员不可授予，系统仅保留内置超级管理员账号
+
+      915 |       // 仅由启动同步维护在系统主账号上；角色下拉亦不显示
+      916 |       if (g.roleCode === SUPER_ROLE_CODE)
+    > 917 |         throw new BadRequestException(
+          |               ^
+      918 |           '超级管理员不可授予，系统仅保留内置超级管理员账号',
+      919 |         );
+      920 |       if (g.scope === 'platform' && g.campusId)
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:917:15)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/rbac.integration.spec.ts:79:5)
+
+  ● RBAC 蛋词体系 integration (real PG + HTTP) › 平台只读角色不能把校区角色的平台操作扩权，超级管理员不能绑定校区范围
+
+    BadRequestException: 超级管理员不可授予，系统仅保留内置超级管理员账号
+
+      915 |       // 仅由启动同步维护在系统主账号上；角色下拉亦不显示
+      916 |       if (g.roleCode === SUPER_ROLE_CODE)
+    > 917 |         throw new BadRequestException(
+          |               ^
+      918 |           '超级管理员不可授予，系统仅保留内置超级管理员账号',
+      919 |         );
+      920 |       if (g.scope === 'platform' && g.campusId)
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:917:15)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/rbac.integration.spec.ts:79:5)
+
+  ● RBAC 蛋词体系 integration (real PG + HTTP) › 撤销旧角色账号全部授权以及清空旧角色菜单后，重复启动同步不恢复权限
+
+    BadRequestException: 超级管理员不可授予，系统仅保留内置超级管理员账号
+
+      915 |       // 仅由启动同步维护在系统主账号上；角色下拉亦不显示
+      916 |       if (g.roleCode === SUPER_ROLE_CODE)
+    > 917 |         throw new BadRequestException(
+          |               ^
+      918 |           '超级管理员不可授予，系统仅保留内置超级管理员账号',
+      919 |         );
+      920 |       if (g.scope === 'platform' && g.campusId)
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:917:15)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/rbac.integration.spec.ts:79:5)
+
+  ● RBAC 蛋词体系 integration (real PG + HTTP) › 旧会话不能通过切换校区重新换发有效 token
+
+    BadRequestException: 超级管理员不可授予，系统仅保留内置超级管理员账号
+
+      915 |       // 仅由启动同步维护在系统主账号上；角色下拉亦不显示
+      916 |       if (g.roleCode === SUPER_ROLE_CODE)
+    > 917 |         throw new BadRequestException(
+          |               ^
+      918 |           '超级管理员不可授予，系统仅保留内置超级管理员账号',
+      919 |         );
+      920 |       if (g.scope === 'platform' && g.campusId)
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:917:15)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/rbac.integration.spec.ts:79:5)
+
+  ● RBAC 蛋词体系 integration (real PG + HTTP) › 校区切换后旧 token 的数据校区与当前权限校区保持一致
+
+    BadRequestException: 超级管理员不可授予，系统仅保留内置超级管理员账号
+
+      915 |       // 仅由启动同步维护在系统主账号上；角色下拉亦不显示
+      916 |       if (g.roleCode === SUPER_ROLE_CODE)
+    > 917 |         throw new BadRequestException(
+          |               ^
+      918 |           '超级管理员不可授予，系统仅保留内置超级管理员账号',
+      919 |         );
+      920 |       if (g.scope === 'platform' && g.campusId)
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:917:15)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/rbac.integration.spec.ts:79:5)
+
+  ● RBAC 蛋词体系 integration (real PG + HTTP) › 动态菜单：隐藏不撤权、祖先仅补展示、视图与修改重启持久化、循环和未知接口拒绝
+
+    BadRequestException: 超级管理员不可授予，系统仅保留内置超级管理员账号
+
+      915 |       // 仅由启动同步维护在系统主账号上；角色下拉亦不显示
+      916 |       if (g.roleCode === SUPER_ROLE_CODE)
+    > 917 |         throw new BadRequestException(
+          |               ^
+      918 |           '超级管理员不可授予，系统仅保留内置超级管理员账号',
+      919 |         );
+      920 |       if (g.scope === 'platform' && g.campusId)
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:917:15)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/rbac.integration.spec.ts:79:5)
+
+FAIL src/admin/org-boundary.spec.ts
+  ● org boundary (IKKRMP / ADR-0001) › 历史账号推导回归：campus-hq/空 campusId→platform，真实校区→campus；organizationId 沿用 IKKRMM 推导
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: "org-a"
+    Received: null
+
+      249 |     expect(histHqCtx.orgLevel).toBe('platform');
+      250 |     expect(histHqCtx.platform).toBe(false);
+    > 251 |     expect(histHqCtx.organizationId).toBe('org-a');
+          |                                      ^
+      252 |     // 落真实校区的历史账号：校区级 + org-a
+      253 |     expect(histRealCtx.orgLevel).toBe('campus');
+      254 |     expect(histRealCtx.organizationId).toBe('org-a');
+
+      at Object.<anonymous> (admin/org-boundary.spec.ts:251:38)
+
+[Nest] 27499  - 11/07/2026, 11:54:33 PM     LOG [AuthController] 用户端登录诊断（IKI3ZP 排查）：appid=wx-gate-a-gatemw6l3f73 unionid=未返回
+[Nest] 27499  - 11/07/2026, 11:54:33 PM    WARN [BusinessService] signup coupon grant skipped: no active signup coupon for campus=campus-hbut userId=cmw6l3fd2001izz7v1ixilasv
+[Nest] 27499  - 11/07/2026, 11:54:33 PM     LOG [AuthController] 用户端登录诊断（IKI3ZP 排查）：appid=wx-gate-a-gatemw6l3f73 unionid=未返回
+[Nest] 27499  - 11/07/2026, 11:54:33 PM    WARN [BusinessService] signup coupon grant skipped: no active signup coupon for campus=campus-hbut userId=cmw6l3fd9001kzz7vxlnaki88
+[Nest] 27499  - 11/07/2026, 11:54:33 PM     LOG [AuthController] 用户端登录诊断（IKI3ZP 排查）：appid=wx-gate-b-user-gatemw6l3f73 unionid=未返回
+[Nest] 27499  - 11/07/2026, 11:54:33 PM    WARN [BusinessService] signup coupon grant skipped: no active signup coupon for campus=campus-gate-b1-gatemw6l3f73 userId=cmw6l3ffq001xzz7vmm6xwz50
+[Nest] 27499  - 11/07/2026, 11:54:33 PM     LOG [AuthController] 用户端登录诊断（IKI3ZP 排查）：appid=wx-gate-b-user-gatemw6l3f73 unionid=未返回
+FAIL src/gate/multi-tenant-gate.spec.ts
+  ● GATE: dual-org isolation & legacy-miniprogram compatibility (IKKRN0) › GATE 4 迁移对账：组织 A 校区回填 + campus-official 平台层 › 组织 A 回填锚点：主校区 campus-hbut 与总部仓 campus-hq 均 organizationId=org-a
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: "org-a"
+    Received: null
+
+      504 |     it('组织 A 回填锚点：主校区 campus-hbut 与总部仓 campus-hq 均 organizationId=org-a', async () => {
+      505 |       expect(await campusOrganizationId(db, 'campus-hbut')).toBe('org-a');
+    > 506 |       expect(await campusOrganizationId(db, 'campus-hq')).toBe('org-a');
+          |                                                           ^
+      507 |     });
+      508 |
+      509 |     it('全量对账：迁移存量真实校区不存在「漏回填」空归属', async () => {
+
+      at Object.<anonymous> (gate/multi-tenant-gate.spec.ts:506:59)
+
+FAIL src/admin/admin-campus-access.spec.ts
+  ● admin campus access (IKB3KG) › 建号带多校区授权：授权行落库，列表回显 grants
+
+    BadRequestException: 校区管理员或校区运营只能绑定一个校区
+
+      906 |         campusIds.size !== 1
+      907 |       ) {
+    > 908 |         throw new BadRequestException('校区管理员或校区运营只能绑定一个校区');
+          |               ^
+      909 |       }
+      910 |     }
+      911 |     for (const g of grants) {
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:908:15)
+      at admin/rbac/rbac.service.ts:1132:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.createAccount (admin/rbac/rbac.service.ts:1110:21)
+      at Object.<anonymous> (admin/admin-campus-access.spec.ts:59:21)
+
+  ● admin campus access (IKB3KG) › 重设授权：全量替换语义；失配的上下文校区自动对齐
+
+    BadRequestException: 角色不存在: campus-warehouse
+
+      925 |         where: { code: g.roleCode },
+      926 |       });
+    > 927 |       if (!role) throw new BadRequestException(`角色不存在: ${g.roleCode}`);
+          |                        ^
+      928 |       if (g.scope === 'campus') {
+      929 |         const campus = await tx.campus.findUnique({
+      930 |           where: { id: g.campusId! },
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:927:24)
+      at admin/rbac/rbac.service.ts:1132:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.createAccount (admin/rbac/rbac.service.ts:1110:21)
+      at Object.<anonymous> (admin/admin-campus-access.spec.ts:99:21)
+
+  ● admin campus access (IKB3KG) › 非法授权被拒绝：校区级缺校区 / 校区不存在 / 角色不存在 / 校区管理员多校区
+
+    expect(received).rejects.toThrow(expected)
+
+    Expected constructor: BadRequestException
+    Received constructor: PrismaClientValidationError
+
+    Received message: "
+    Invalid `tx.adminAccount.findUnique()` invocation in
+    /Users/douglee/Documents/Codes/nongmo-tech/night-store/buchuqin-api/src/admin/rbac/rbac.service.ts:872:43·
+      869   where: { accountId },
+      870   include: { role: { select: { code: true } } },
+      871 });
+    → 872 const account = await tx.adminAccount.findUnique({
+            where: {
+              id: undefined,
+          ?   username?: String,
+          ?   AND?: AdminAccountWhereInput | AdminAccountWhereInput[],
+          ?   OR?: AdminAccountWhereInput[],
+          ?   NOT?: AdminAccountWhereInput | AdminAccountWhereInput[],
+          ?   passwordHash?: StringFilter | String,
+          ?   nickname?: StringFilter | String,
+          ?   role?: StringFilter | String,
+          ?   campusId?: StringFilter | String,
+          ?   status?: StringFilter | String,
+          ?   sessionVersion?: IntFilter | Int,
+          ?   rbacMigrated?: BoolFilter | Boolean,
+          ?   orgLevel?: StringNullableFilter | String | Null,
+          ?   organizationId?: StringNullableFilter | String | Null,
+          ?   createdAt?: DateTimeFilter | DateTime,
+          ?   updatedAt?: DateTimeFilter | DateTime,
+          ?   accesses?: AdminCampusAccessListRelationFilter,
+          ?   rbacRoles?: AdminAccountRoleListRelationFilter
+            }
+          })·
+    Argument `where` of type AdminAccountWhereUniqueInput needs at least one of `id` or `username` arguments. Available options are marked with ?."
+
+          870 |       include: { role: { select: { code: true } } },
+          871 |     });
+        > 872 |     const account = await tx.adminAccount.findUnique({
+              |                     ^
+          873 |       where: { id: accountId },
+          874 |     });
+          875 |     if (!account) throw new BadRequestException('账号不存在');
+
+      at Nn (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/core/errorRendering/throwValidationException.ts:45:9)
+      at ei.throwValidationException [as handleRequestError] (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/RequestHandler.ts:202:7)
+      at ei.handleAndLogRequestError (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/RequestHandler.ts:174:12)
+      at ei.request (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/RequestHandler.ts:143:12)
+      at a (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:833:24)
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:872:21)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/admin-campus-access.spec.ts:130:5)
+      at Object.toThrow (../node_modules/.pnpm/expect@30.4.1/node_modules/expect/build/index.js:2155:20)
+      at Object.<anonymous> (admin/admin-campus-access.spec.ts:134:15)
+
+  ● admin campus access (IKB3KG) › 顶栏切换：未授权校区被拒；授权校区换发 token 且落库
+
+    UnauthorizedException: 账号或密码不正确
+
+      170 |       : false;
+      171 |     if (!account || !passwordOk)
+    > 172 |       throw new UnauthorizedException('账号或密码不正确');
+          |             ^
+      173 |     // RBAC V1：停用账号登录双拒（旧 token 也会被 Guard 拦）
+      174 |     if (account.status === 'disabled')
+      175 |       throw new UnauthorizedException('账号已停用，请联系超级管理员');
+
+      at AuthController.adminLogin (auth/auth.controller.ts:172:13)
+      at Object.<anonymous> (admin/admin-campus-access.spec.ts:153:20)
+
+  ● admin campus access (IKB3KG) › 平台数据范围账号可切任意校区，用户端角色不可使用后台切换
+
+    BadRequestException: 角色不存在: hq-director
+
+      925 |         where: { code: g.roleCode },
+      926 |       });
+    > 927 |       if (!role) throw new BadRequestException(`角色不存在: ${g.roleCode}`);
+          |                        ^
+      928 |       if (g.scope === 'campus') {
+      929 |         const campus = await tx.campus.findUnique({
+      930 |           where: { id: g.campusId! },
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:927:24)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/admin-campus-access.spec.ts:220:5)
+
+FAIL src/admin/rbac-scope.integration.spec.ts
+  ● RBAC valid A/B target isolation (HTTP + PostgreSQL) › serializes operation-scoped platform grants as an array for browser sessions
+
+    BadRequestException: 每个账号只能授予一个角色
+
+      881 |     const roleCodes = new Set(grants.map((grant) => grant.roleCode));
+      882 |     if (roleCodes.size > 1)
+    > 883 |       throw new BadRequestException('每个账号只能授予一个角色');
+          |             ^
+      884 |     // IKKRMQ：目标账号层级（分配边界适配用）——历史账号 NULL 按 campusId 推导
+      885 |     const targetLevel = normalizeOrgLevel(
+      886 |       targetOrgLevel !== undefined ? targetOrgLevel : account.orgLevel,
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:883:13)
+      at admin/rbac/rbac.service.ts:1132:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.createAccount (admin/rbac/rbac.service.ts:1110:21)
+      at Object.<anonymous> (admin/rbac-scope.integration.spec.ts:72:21)
+
+  ● RBAC valid A/B target isolation (HTTP + PostgreSQL) › list endpoints and new-order watermark ignore foreign campus query and exclude real B records
+
+    BadRequestException: 每个账号只能授予一个角色
+
+      881 |     const roleCodes = new Set(grants.map((grant) => grant.roleCode));
+      882 |     if (roleCodes.size > 1)
+    > 883 |       throw new BadRequestException('每个账号只能授予一个角色');
+          |             ^
+      884 |     // IKKRMQ：目标账号层级（分配边界适配用）——历史账号 NULL 按 campusId 推导
+      885 |     const targetLevel = normalizeOrgLevel(
+      886 |       targetOrgLevel !== undefined ? targetOrgLevel : account.orgLevel,
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:883:13)
+      at admin/rbac/rbac.service.ts:1132:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.createAccount (admin/rbac/rbac.service.ts:1110:21)
+      at Object.<anonymous> (admin/rbac-scope.integration.spec.ts:72:21)
+
+  ● RBAC valid A/B target isolation (HTTP + PostgreSQL) › delivery configuration and building mutations remain in A despite body/query campus overrides
+
+    BadRequestException: 每个账号只能授予一个角色
+
+      881 |     const roleCodes = new Set(grants.map((grant) => grant.roleCode));
+      882 |     if (roleCodes.size > 1)
+    > 883 |       throw new BadRequestException('每个账号只能授予一个角色');
+          |             ^
+      884 |     // IKKRMQ：目标账号层级（分配边界适配用）——历史账号 NULL 按 campusId 推导
+      885 |     const targetLevel = normalizeOrgLevel(
+      886 |       targetOrgLevel !== undefined ? targetOrgLevel : account.orgLevel,
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:883:13)
+      at admin/rbac/rbac.service.ts:1132:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.createAccount (admin/rbac/rbac.service.ts:1110:21)
+      at Object.<anonymous> (admin/rbac-scope.integration.spec.ts:72:21)
+
+  ● RBAC valid A/B target isolation (HTTP + PostgreSQL) › wheel rejects a foreign coupon before saving and own config cannot overwrite B
+
+    BadRequestException: 每个账号只能授予一个角色
+
+      881 |     const roleCodes = new Set(grants.map((grant) => grant.roleCode));
+      882 |     if (roleCodes.size > 1)
+    > 883 |       throw new BadRequestException('每个账号只能授予一个角色');
+          |             ^
+      884 |     // IKKRMQ：目标账号层级（分配边界适配用）——历史账号 NULL 按 campusId 推导
+      885 |     const targetLevel = normalizeOrgLevel(
+      886 |       targetOrgLevel !== undefined ? targetOrgLevel : account.orgLevel,
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:883:13)
+      at admin/rbac/rbac.service.ts:1132:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.createAccount (admin/rbac/rbac.service.ts:1110:21)
+      at Object.<anonymous> (admin/rbac-scope.integration.spec.ts:72:21)
+
+  ● RBAC valid A/B target isolation (HTTP + PostgreSQL) › counts, audit, creation and recruitment transitions preserve campus scope
+
+    BadRequestException: 每个账号只能授予一个角色
+
+      881 |     const roleCodes = new Set(grants.map((grant) => grant.roleCode));
+      882 |     if (roleCodes.size > 1)
+    > 883 |       throw new BadRequestException('每个账号只能授予一个角色');
+          |             ^
+      884 |     // IKKRMQ：目标账号层级（分配边界适配用）——历史账号 NULL 按 campusId 推导
+      885 |     const targetLevel = normalizeOrgLevel(
+      886 |       targetOrgLevel !== undefined ? targetOrgLevel : account.orgLevel,
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:883:13)
+      at admin/rbac/rbac.service.ts:1132:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.createAccount (admin/rbac/rbac.service.ts:1110:21)
+      at Object.<anonymous> (admin/rbac-scope.integration.spec.ts:72:21)
+
+  ● RBAC valid A/B target isolation (HTTP + PostgreSQL) › merged campus config, notice and delivery-slot routes enforce A/B scope and preserve new fields
+
+    BadRequestException: 每个账号只能授予一个角色
+
+      881 |     const roleCodes = new Set(grants.map((grant) => grant.roleCode));
+      882 |     if (roleCodes.size > 1)
+    > 883 |       throw new BadRequestException('每个账号只能授予一个角色');
+          |             ^
+      884 |     // IKKRMQ：目标账号层级（分配边界适配用）——历史账号 NULL 按 campusId 推导
+      885 |     const targetLevel = normalizeOrgLevel(
+      886 |       targetOrgLevel !== undefined ? targetOrgLevel : account.orgLevel,
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:883:13)
+      at admin/rbac/rbac.service.ts:1132:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.createAccount (admin/rbac/rbac.service.ts:1110:21)
+      at Object.<anonymous> (admin/rbac-scope.integration.spec.ts:72:21)
+
+  ● RBAC valid A/B target isolation (HTTP + PostgreSQL) › order IDs and printers: own detail succeeds, foreign detail/status/actions/print reject before external call
+
+    BadRequestException: 每个账号只能授予一个角色
+
+      881 |     const roleCodes = new Set(grants.map((grant) => grant.roleCode));
+      882 |     if (roleCodes.size > 1)
+    > 883 |       throw new BadRequestException('每个账号只能授予一个角色');
+          |             ^
+      884 |     // IKKRMQ：目标账号层级（分配边界适配用）——历史账号 NULL 按 campusId 推导
+      885 |     const targetLevel = normalizeOrgLevel(
+      886 |       targetOrgLevel !== undefined ? targetOrgLevel : account.orgLevel,
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:883:13)
+      at admin/rbac/rbac.service.ts:1132:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.createAccount (admin/rbac/rbac.service.ts:1110:21)
+      at Object.<anonymous> (admin/rbac-scope.integration.spec.ts:72:21)
+
+  ● RBAC valid A/B target isolation (HTTP + PostgreSQL) › batch products and featured lists strip B targets; foreign stock and detail writes reject
+
+    BadRequestException: 每个账号只能授予一个角色
+
+      881 |     const roleCodes = new Set(grants.map((grant) => grant.roleCode));
+      882 |     if (roleCodes.size > 1)
+    > 883 |       throw new BadRequestException('每个账号只能授予一个角色');
+          |             ^
+      884 |     // IKKRMQ：目标账号层级（分配边界适配用）——历史账号 NULL 按 campusId 推导
+      885 |     const targetLevel = normalizeOrgLevel(
+      886 |       targetOrgLevel !== undefined ? targetOrgLevel : account.orgLevel,
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:883:13)
+      at admin/rbac/rbac.service.ts:1132:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.createAccount (admin/rbac/rbac.service.ts:1110:21)
+      at Object.<anonymous> (admin/rbac-scope.integration.spec.ts:72:21)
+
+  ● RBAC valid A/B target isolation (HTTP + PostgreSQL) › nested rooms and building targets cannot cross campus or mismatch their parent
+
+    BadRequestException: 每个账号只能授予一个角色
+
+      881 |     const roleCodes = new Set(grants.map((grant) => grant.roleCode));
+      882 |     if (roleCodes.size > 1)
+    > 883 |       throw new BadRequestException('每个账号只能授予一个角色');
+          |             ^
+      884 |     // IKKRMQ：目标账号层级（分配边界适配用）——历史账号 NULL 按 campusId 推导
+      885 |     const targetLevel = normalizeOrgLevel(
+      886 |       targetOrgLevel !== undefined ? targetOrgLevel : account.orgLevel,
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:883:13)
+      at admin/rbac/rbac.service.ts:1132:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.createAccount (admin/rbac/rbac.service.ts:1110:21)
+      at Object.<anonymous> (admin/rbac-scope.integration.spec.ts:72:21)
+
+  ● RBAC valid A/B target isolation (HTTP + PostgreSQL) › coupon issuance checks both coupon ownership and every explicit recipient before issuing any coupon
+
+    BadRequestException: 每个账号只能授予一个角色
+
+      881 |     const roleCodes = new Set(grants.map((grant) => grant.roleCode));
+      882 |     if (roleCodes.size > 1)
+    > 883 |       throw new BadRequestException('每个账号只能授予一个角色');
+          |             ^
+      884 |     // IKKRMQ：目标账号层级（分配边界适配用）——历史账号 NULL 按 campusId 推导
+      885 |     const targetLevel = normalizeOrgLevel(
+      886 |       targetOrgLevel !== undefined ? targetOrgLevel : account.orgLevel,
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:883:13)
+      at admin/rbac/rbac.service.ts:1132:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.createAccount (admin/rbac/rbac.service.ts:1110:21)
+      at Object.<anonymous> (admin/rbac-scope.integration.spec.ts:72:21)
+
+  ● RBAC valid A/B target isolation (HTTP + PostgreSQL) › banner and promotion ID ownership and nested product ownership
+
+    BadRequestException: 每个账号只能授予一个角色
+
+      881 |     const roleCodes = new Set(grants.map((grant) => grant.roleCode));
+      882 |     if (roleCodes.size > 1)
+    > 883 |       throw new BadRequestException('每个账号只能授予一个角色');
+          |             ^
+      884 |     // IKKRMQ：目标账号层级（分配边界适配用）——历史账号 NULL 按 campusId 推导
+      885 |     const targetLevel = normalizeOrgLevel(
+      886 |       targetOrgLevel !== undefined ? targetOrgLevel : account.orgLevel,
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:883:13)
+      at admin/rbac/rbac.service.ts:1132:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.createAccount (admin/rbac/rbac.service.ts:1110:21)
+      at Object.<anonymous> (admin/rbac-scope.integration.spec.ts:72:21)
+
+  ● RBAC valid A/B target isolation (HTTP + PostgreSQL) › sensitive recruitment/user reads and finance writes reject real B records
+
+    BadRequestException: 每个账号只能授予一个角色
+
+      881 |     const roleCodes = new Set(grants.map((grant) => grant.roleCode));
+      882 |     if (roleCodes.size > 1)
+    > 883 |       throw new BadRequestException('每个账号只能授予一个角色');
+          |             ^
+      884 |     // IKKRMQ：目标账号层级（分配边界适配用）——历史账号 NULL 按 campusId 推导
+      885 |     const targetLevel = normalizeOrgLevel(
+      886 |       targetOrgLevel !== undefined ? targetOrgLevel : account.orgLevel,
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:883:13)
+      at admin/rbac/rbac.service.ts:1132:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.createAccount (admin/rbac/rbac.service.ts:1110:21)
+      at Object.<anonymous> (admin/rbac-scope.integration.spec.ts:72:21)
+
+  ● RBAC valid A/B target isolation (HTTP + PostgreSQL) › locations, commissions and dispatch validate both record ownership and nested staff/building IDs
+
+    BadRequestException: 每个账号只能授予一个角色
+
+      881 |     const roleCodes = new Set(grants.map((grant) => grant.roleCode));
+      882 |     if (roleCodes.size > 1)
+    > 883 |       throw new BadRequestException('每个账号只能授予一个角色');
+          |             ^
+      884 |     // IKKRMQ：目标账号层级（分配边界适配用）——历史账号 NULL 按 campusId 推导
+      885 |     const targetLevel = normalizeOrgLevel(
+      886 |       targetOrgLevel !== undefined ? targetOrgLevel : account.orgLevel,
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:883:13)
+      at admin/rbac/rbac.service.ts:1132:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.createAccount (admin/rbac/rbac.service.ts:1110:21)
+      at Object.<anonymous> (admin/rbac-scope.integration.spec.ts:72:21)
+
+  ● RBAC valid A/B target isolation (HTTP + PostgreSQL) › shared category names remain global but product counts stay in the current campus
+
+    BadRequestException: 每个账号只能授予一个角色
+
+      881 |     const roleCodes = new Set(grants.map((grant) => grant.roleCode));
+      882 |     if (roleCodes.size > 1)
+    > 883 |       throw new BadRequestException('每个账号只能授予一个角色');
+          |             ^
+      884 |     // IKKRMQ：目标账号层级（分配边界适配用）——历史账号 NULL 按 campusId 推导
+      885 |     const targetLevel = normalizeOrgLevel(
+      886 |       targetOrgLevel !== undefined ? targetOrgLevel : account.orgLevel,
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:883:13)
+      at admin/rbac/rbac.service.ts:1132:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.createAccount (admin/rbac/rbac.service.ts:1110:21)
+      at Object.<anonymous> (admin/rbac-scope.integration.spec.ts:72:21)
+
+  ● RBAC valid A/B target isolation (HTTP + PostgreSQL) › restock details/receipt reject foreign records and batch aggregates do not leak global purchasing
+
+    BadRequestException: 每个账号只能授予一个角色
+
+      881 |     const roleCodes = new Set(grants.map((grant) => grant.roleCode));
+      882 |     if (roleCodes.size > 1)
+    > 883 |       throw new BadRequestException('每个账号只能授予一个角色');
+          |             ^
+      884 |     // IKKRMQ：目标账号层级（分配边界适配用）——历史账号 NULL 按 campusId 推导
+      885 |     const targetLevel = normalizeOrgLevel(
+      886 |       targetOrgLevel !== undefined ? targetOrgLevel : account.orgLevel,
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:883:13)
+      at admin/rbac/rbac.service.ts:1132:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.createAccount (admin/rbac/rbac.service.ts:1110:21)
+      at Object.<anonymous> (admin/rbac-scope.integration.spec.ts:72:21)
+
+  ● RBAC valid A/B target isolation (HTTP + PostgreSQL) › two independent RBAC caches observe role removal/disable; state read failure or missing state never uses stale allow
+
+    BadRequestException: 每个账号只能授予一个角色
+
+      881 |     const roleCodes = new Set(grants.map((grant) => grant.roleCode));
+      882 |     if (roleCodes.size > 1)
+    > 883 |       throw new BadRequestException('每个账号只能授予一个角色');
+          |             ^
+      884 |     // IKKRMQ：目标账号层级（分配边界适配用）——历史账号 NULL 按 campusId 推导
+      885 |     const targetLevel = normalizeOrgLevel(
+      886 |       targetOrgLevel !== undefined ? targetOrgLevel : account.orgLevel,
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:883:13)
+      at admin/rbac/rbac.service.ts:1132:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.createAccount (admin/rbac/rbac.service.ts:1110:21)
+      at Object.<anonymous> (admin/rbac-scope.integration.spec.ts:72:21)
+
+  ● RBAC valid A/B target isolation (HTTP + PostgreSQL) › new campus stays outside explicit A/B grants; an explicit platform grant includes it without reassigning
+
+    BadRequestException: 每个账号只能授予一个角色
+
+      881 |     const roleCodes = new Set(grants.map((grant) => grant.roleCode));
+      882 |     if (roleCodes.size > 1)
+    > 883 |       throw new BadRequestException('每个账号只能授予一个角色');
+          |             ^
+      884 |     // IKKRMQ：目标账号层级（分配边界适配用）——历史账号 NULL 按 campusId 推导
+      885 |     const targetLevel = normalizeOrgLevel(
+      886 |       targetOrgLevel !== undefined ? targetOrgLevel : account.orgLevel,
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:883:13)
+      at admin/rbac/rbac.service.ts:1132:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.createAccount (admin/rbac/rbac.service.ts:1110:21)
+      at Object.<anonymous> (admin/rbac-scope.integration.spec.ts:72:21)
+
+FAIL src/admin/hq-multicampus.spec.ts
+  ● hq role & cross-campus views (IKAJSL) › 账号管理（IKBFJ4→RBAC V1）：建号+授权分离；登录闭环与跨校区列表
+
+    BadRequestException: 角色不存在: hq-director
+
+      925 |         where: { code: g.roleCode },
+      926 |       });
+    > 927 |       if (!role) throw new BadRequestException(`角色不存在: ${g.roleCode}`);
+          |                        ^
+      928 |       if (g.scope === 'campus') {
+      929 |         const campus = await tx.campus.findUnique({
+      930 |           where: { id: g.campusId! },
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:927:24)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/hq-multicampus.spec.ts:231:5)
+
+FAIL src/admin/accounts.spec.ts
+  ● admin account management (IK9KWO) › 建号+授权分离：账号落库、授权行走 RBAC、登录发 token（role 标记 rbac）
+
+    BadRequestException: 超级管理员不可授予，系统仅保留内置超级管理员账号
+
+      915 |       // 仅由启动同步维护在系统主账号上；角色下拉亦不显示
+      916 |       if (g.roleCode === SUPER_ROLE_CODE)
+    > 917 |         throw new BadRequestException(
+          |               ^
+      918 |           '超级管理员不可授予，系统仅保留内置超级管理员账号',
+      919 |         );
+      920 |       if (g.scope === 'platform' && g.campusId)
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:917:15)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/accounts.spec.ts:52:5)
+
+  ● admin account management (IK9KWO) › 重复用户名被拒绝
+
+    BadRequestException: 超级管理员不可授予，系统仅保留内置超级管理员账号
+
+      915 |       // 仅由启动同步维护在系统主账号上；角色下拉亦不显示
+      916 |       if (g.roleCode === SUPER_ROLE_CODE)
+    > 917 |         throw new BadRequestException(
+          |               ^
+      918 |           '超级管理员不可授予，系统仅保留内置超级管理员账号',
+      919 |         );
+      920 |       if (g.scope === 'platform' && g.campusId)
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:917:15)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/accounts.spec.ts:52:5)
+
+  ● admin account management (IK9KWO) › 不能删除当前登录账号
+
+    BadRequestException: 超级管理员不可授予，系统仅保留内置超级管理员账号
+
+      915 |       // 仅由启动同步维护在系统主账号上；角色下拉亦不显示
+      916 |       if (g.roleCode === SUPER_ROLE_CODE)
+    > 917 |         throw new BadRequestException(
+          |               ^
+      918 |           '超级管理员不可授予，系统仅保留内置超级管理员账号',
+      919 |         );
+      920 |       if (g.scope === 'platform' && g.campusId)
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:917:15)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/accounts.spec.ts:52:5)
+
+  ● admin account management (IK9KWO) › 最后一个超管不可摘权也不可删除（AdminAccountRole 维度保护）
+
+    BadRequestException: 超级管理员不可授予，系统仅保留内置超级管理员账号
+
+      915 |       // 仅由启动同步维护在系统主账号上；角色下拉亦不显示
+      916 |       if (g.roleCode === SUPER_ROLE_CODE)
+    > 917 |         throw new BadRequestException(
+          |               ^
+      918 |           '超级管理员不可授予，系统仅保留内置超级管理员账号',
+      919 |         );
+      920 |       if (g.scope === 'platform' && g.campusId)
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:917:15)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/accounts.spec.ts:52:5)
+
+  ● admin account management (IK9KWO) › 自助改密：旧密码失效、新密码可登录、错旧密码 401
+
+    BadRequestException: 超级管理员不可授予，系统仅保留内置超级管理员账号
+
+      915 |       // 仅由启动同步维护在系统主账号上；角色下拉亦不显示
+      916 |       if (g.roleCode === SUPER_ROLE_CODE)
+    > 917 |         throw new BadRequestException(
+          |               ^
+      918 |           '超级管理员不可授予，系统仅保留内置超级管理员账号',
+      919 |         );
+      920 |       if (g.scope === 'platform' && g.campusId)
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:917:15)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/accounts.spec.ts:52:5)
+
+  ● admin account management (IK9KWO) › 账号操作留审计
+
+    BadRequestException: 超级管理员不可授予，系统仅保留内置超级管理员账号
+
+      915 |       // 仅由启动同步维护在系统主账号上；角色下拉亦不显示
+      916 |       if (g.roleCode === SUPER_ROLE_CODE)
+    > 917 |         throw new BadRequestException(
+          |               ^
+      918 |           '超级管理员不可授予，系统仅保留内置超级管理员账号',
+      919 |         );
+      920 |       if (g.scope === 'platform' && g.campusId)
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:917:15)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/accounts.spec.ts:52:5)
+
+  ● admin account management (IK9KWO) › 列表不泄露 passwordHash
+
+    BadRequestException: 超级管理员不可授予，系统仅保留内置超级管理员账号
+
+      915 |       // 仅由启动同步维护在系统主账号上；角色下拉亦不显示
+      916 |       if (g.roleCode === SUPER_ROLE_CODE)
+    > 917 |         throw new BadRequestException(
+          |               ^
+      918 |           '超级管理员不可授予，系统仅保留内置超级管理员账号',
+      919 |         );
+      920 |       if (g.scope === 'platform' && g.campusId)
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:917:15)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/accounts.spec.ts:52:5)
+
+FAIL src/admin/organization.spec.ts
+  ● organization baseline (IKKRMM / ADR-0001) › 组织 A 基线（org-a）存在且真实校区已回填，campus-official 留空=平台层
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: "org-a"
+    Received: null
+
+      90 |       select: { organizationId: true },
+      91 |     });
+    > 92 |     expect(hq?.organizationId).toBe('org-a');
+         |                                ^
+      93 |   });
+      94 |
+      95 |   it('organizations()：列表含每组织校区数/用户数聚合（经校区归属汇总）', async () => {
+
+      at Object.<anonymous> (admin/organization.spec.ts:92:32)
+
+  ● organization baseline (IKKRMM / ADR-0001) › organizations()：列表含每组织校区数/用户数聚合（经校区归属汇总）
+
+    expect(received).toBeGreaterThanOrEqual(expected)
+
+    Expected: >= 2
+    Received:    1
+
+      107 |     const orgA = list.find((o) => o.id === 'org-a');
+      108 |     expect(orgA).toBeDefined();
+    > 109 |     expect(orgA!.campusCount).toBeGreaterThanOrEqual(2);
+          |                               ^
+      110 |   });
+      111 |
+      112 |   it('organizationDetail()：校区清单+聚合；敏感凭据只回「已配置」位', async () => {
+
+      at Object.<anonymous> (admin/organization.spec.ts:109:31)
+
+  ● organization baseline (IKKRMM / ADR-0001) › campuses() 契约兼容：仅多透出 organizationId（组织 A 现有行为零变化）
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: "org-a"
+    Received: null
+
+      132 |     expect(mine?.organizationId).toBe(ORG_ID);
+      133 |     const hq = rows.find((c) => c.id === 'campus-hq');
+    > 134 |     expect(hq?.organizationId).toBe('org-a');
+          |                                ^
+      135 |     // 官方库伪校区仍不出现在校区列表（IKAJSM 语义不因组织层改变）
+      136 |     expect(rows.some((c) => c.id === 'campus-official')).toBe(false);
+      137 |     // 新建真实校区必须明确归属组织，禁止产生 organizationId 为空的数据。
+
+      at Object.<anonymous> (admin/organization.spec.ts:134:32)
+
+[Nest] 27499  - 11/07/2026, 11:54:37 PM    WARN [BusinessService] signup coupon grant skipped: no active signup coupon for campus=campus-hbut userId=cmw6l3hwj00huzz7v6gpxkyl0
+[Nest] 27499  - 11/07/2026, 11:54:37 PM    WARN [BusinessService] signup coupon grant skipped: no active signup coupon for campus=campus-test-b userId=cmw6l3hwj00huzz7v6gpxkyl0
+FAIL src/admin/campus-context.spec.ts
+  ● campus context (IKJA7Y) › bannerScope/productCampus 校区级授权集内可切
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: "campus-b"
+    Received: Promise {}
+
+      105 |
+      106 |   it('bannerScope/productCampus 校区级授权集内可切', () => {
+    > 107 |     expect(controller['bannerScope'](campusReq({ campus: 'campus-b' }))).toBe(
+          |                                                                          ^
+      108 |       'campus-b',
+      109 |     );
+      110 |     expect(controller['bannerScope'](campusReq({ campus: 'campus-hq' }))).toBe(
+
+      at Object.<anonymous> (admin/campus-context.spec.ts:107:74)
+
+[Nest] 27499  - 11/07/2026, 11:54:37 PM     LOG [AuthController] 用户端登录诊断（IKI3ZP 排查）：appid=wx-specb-user-ikkrmo-1794066877635 unionid=未返回
+[Nest] 27499  - 11/07/2026, 11:54:37 PM    WARN [BusinessService] signup coupon grant skipped: no active signup coupon for campus=campus-specb1-ikkrmo-1794066877635 userId=cmw6l3ie500jlzz7vwjjeamph
+[Nest] 27499  - 11/07/2026, 11:54:37 PM     LOG [AuthController] 用户端登录诊断（IKI3ZP 排查）：appid=wx-specb-user-ikkrmo-1794066877635 unionid=未返回
+[Nest] 27499  - 11/07/2026, 11:54:37 PM    WARN [BusinessService] signup coupon grant skipped: no active signup coupon for campus=campus-specb1-ikkrmo-1794066877635 userId=cmw6l3ief00jnzz7vdjcc06ge
+[Nest] 27499  - 11/07/2026, 11:54:37 PM     LOG [AuthController] 用户端登录诊断（IKI3ZP 排查）：appid=wx-empty-user-ikkrmo-1794066877635 unionid=未返回
+[Nest] 27499  - 11/07/2026, 11:54:37 PM     LOG [AuthController] 用户端登录诊断（IKI3ZP 排查）：appid=wx-specb-user-ikkrmo-1794066877635 unionid=未返回
+[Nest] 27499  - 11/07/2026, 11:54:37 PM    WARN [BusinessService] signup coupon grant skipped: no active signup coupon for campus=campus-specb2-ikkrmo-1794066877635 userId=cmw6l3iez00jpzz7vzbakv1za
+[Nest] 27499  - 11/07/2026, 11:54:37 PM     LOG [AuthController] 用户端登录诊断（IKI3ZP 排查）：appid=wx-specb-user-ikkrmo-1794066877635 unionid=未返回
+[Nest] 27499  - 11/07/2026, 11:54:37 PM     LOG [AuthController] 用户端登录诊断（IKI3ZP 排查）：appid=wx-specb-user-ikkrmo-1794066877635 unionid=未返回
+[Nest] 27499  - 11/07/2026, 11:54:37 PM    WARN [BusinessService] signup coupon grant skipped: no active signup coupon for campus=campus-specb1-ikkrmo-1794066877635 userId=cmw6l3if800jrzz7vwfpmn8hq
+[Nest] 27499  - 11/07/2026, 11:54:37 PM     LOG [AuthController] 用户端登录诊断（IKI3ZP 排查）：appid=wx-specb-user-ikkrmo-1794066877635 unionid=未返回
+[Nest] 27499  - 11/07/2026, 11:54:37 PM     LOG [AuthController] 用户端登录诊断（IKI3ZP 排查）：appid=wx-specb-compat-ikkrmo-1794066877635 unionid=未返回
+[Nest] 27499  - 11/07/2026, 11:54:37 PM    WARN [BusinessService] signup coupon grant skipped: no active signup coupon for campus=campus-hbut userId=cmw6l3ife00jtzz7vzge4cz9v
+[Nest] 27499  - 11/07/2026, 11:54:37 PM    WARN [BusinessService] signup coupon grant skipped: no active signup coupon for campus=campus-specb2-ikkrmo-1794066877635 userId=cmw6l3ifl00jvzz7vpx1xxojp
+[Nest] 27499  - 11/07/2026, 11:54:37 PM    WARN [BusinessService] signup coupon grant skipped: no active signup coupon for campus=campus-specb2-ikkrmo-1794066877635 userId=cmw6l3igb00k1zz7vj1na3pjd
+[Nest] 27499  - 11/07/2026, 11:54:37 PM     LOG [AuthController] 骑手静默登录诊断：staff=staff-specb2-ikkrmo-1794066877635 code2session unionid=未返回（用户未关注同平台服务号或绑定不一致）
+FAIL src/admin/orders-status.spec.ts
+  ● Admin orders status tabs (IKAJSP) › 运营补录送达/完成必须填原因，保留审计且完结后冻结
+
+    expect(received).rejects.toThrow(expected)
+
+    Expected substring: "不可修改"
+    Received message:   "未知订单状态：delivering"
+
+          5477 |     const before = await this.order(id, campusId);
+          5478 |     if (!ORDER_STATUSES.includes(body.status as OrderStatus))
+        > 5479 |       throw new BadRequestException(`未知订单状态：${body.status}`);
+               |             ^
+          5480 |     // 2026-10-16 道哥定稿（A 方案）：钱货不清/已完结五态禁改——本弹窗只管
+          5481 |     // 履约中的单（paid→delivered 各态可改，→异常是送达纠纷的兜底）。
+          5482 |     // 未支付走支付/超时；取消/退款/完成走逆向专案（客服人工），复活即双花。
+
+      at AdminService.updateOrderStatus (admin/admin.service.ts:5479:13)
+      at Object.<anonymous> (admin/orders-status.spec.ts:121:5)
+      at Object.toThrow (../node_modules/.pnpm/expect@30.4.1/node_modules/expect/build/index.js:2155:20)
+      at Object.<anonymous> (admin/orders-status.spec.ts:121:123)
+
+FAIL src/admin/coupon-records.spec.ts
+  ● coupon records (IKRSIX #99/#184) › join 用户脱敏/券名/核销订单，按领取时间倒序
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: "139****1111"
+    Received: "13900001111"
+
+      113 |     expect(usedRow.userNickname).toBe('券明细用户');
+      114 |     // 手机号脱敏：保留前 3 后 4（orders 列表同口径 maskPhone）
+    > 115 |     expect(usedRow.userPhone).toBe('139****1111');
+          |                               ^
+      116 |     // 核销单号回查 + usedAt=核销订单 paidAt（ISO）
+      117 |     expect(usedRow.orderNo).toBe(`CRC${seed}`);
+      118 |     expect(usedRow.usedAt).toBe(
+
+      at Object.<anonymous> (admin/coupon-records.spec.ts:115:31)
+
+FAIL src/admin/campus-report.spec.ts
+  ● campus daily report (IKFOPS) › hq 全部校区：昨日有效单口径（IKLEDG），快照成本+无快照按 0
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 4
+    Received: 5
+
+      198 |     });
+      199 |     // IKLEDG 有效单口径：O1(2400)+O2(1100)+O3 paid(999) 计入；O5 退款单列
+    > 200 |     expect(r.totals.orders).toBe(4);
+          |                             ^
+      201 |     expect(r.totals.salesTotal).toBe(4300);
+      202 |     // 退款单列：O5=888（不进销售额）。共享夹具库有其他套件残留的已退款单，
+      203 |     // totals 全库聚合会被污染（本套件历史失败根因）——按带 tag 的校区行聚合断言
+
+      at Object.<anonymous> (admin/campus-report.spec.ts:200:29)
+
+FAIL src/admin/dashboard-coupon.spec.ts
+  ● dashboard coupon consumption › uses today paid orders and keeps the single-campus total isolated
+
+    expect(received).toHaveLength(expected)
+
+    Expected length: 2
+    Received length: 1
+    Received array:  [{"avatar": "", "campusId": "campus-hbut", "createdAt": 2026-11-07T15:54:10.954Z, "id": "user-001", "nickname": "湖工大小橙", "openid": null, "phone": "13800132026", "role": "user"}]
+
+      20 |       take: 2,
+      21 |     });
+    > 22 |     expect(users).toHaveLength(2);
+         |                   ^
+      23 |     const [targetUser, otherUser] = users;
+      24 |     const [multiBefore, singleBefore] = await Promise.all([
+      25 |       service.dashboard(''),
+
+      at Object.<anonymous> (admin/dashboard-coupon.spec.ts:22:19)
+
+FAIL src/admin/shipment.spec.ts
+  ● restock shipment (IKFOQ2) › 总部日报：receivedAt 落日×校区聚合，与发货单毛利同源；校区筛选可用
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 2
+    Received: 3
+
+      283 |     const rep = await admin.hqDailyReport(today, today);
+      284 |     // 两单批发额 = 2×12000 + (12000+6000) = 42000；成本 = 13440 + (6720+6000) = 26160
+    > 285 |     expect(rep.totals.shipments).toBe(2);
+          |                                  ^
+      286 |     expect(rep.totals.wholesaleTotal).toBe(42000);
+      287 |     expect(rep.totals.costTotal).toBe(26160);
+      288 |     expect(rep.totals.gross).toBe(15840);
+
+      at Object.<anonymous> (admin/shipment.spec.ts:285:34)
+
+[Nest] 27499  - 11/07/2026, 11:54:51 PM     LOG [PaymentsService] 回调解密命中组织密钥 org:org-wxspec-b(微信路由测试组织B)
+[Nest] 27499  - 11/07/2026, 11:54:51 PM   ERROR [PaymentsService] 回调解密失败：env 与全部组织 APIv3 密钥均未命中
+[Nest] 27499  - 11/07/2026, 11:54:53 PM   DEBUG [PaymentsService] 回调验签头 serial=PUB_KEY_ID_LOCAL
+[Nest] 27499  - 11/07/2026, 11:54:53 PM   DEBUG [PaymentsService] 回调验签头 serial=PUB_KEY_ID_LOCAL
+[Nest] 27499  - 11/07/2026, 11:54:53 PM   ERROR [PaymentsService] 夜宵支付落账失败：outTradeNo=YX_LOCAL_1 wxTradeId=WX_LOCAL_TX reason=夜宵支付金额、币种或商户信息不匹配，已阻止落账
+[Nest] 27499  - 11/07/2026, 11:54:53 PM   DEBUG [PaymentsService] 回调验签头 serial=PUB_KEY_ID_LOCAL
+[Nest] 27499  - 11/07/2026, 11:54:53 PM   ERROR [PaymentsService] 夜宵支付落账失败：outTradeNo=YX_LOCAL_1 wxTradeId=WX_LOCAL_TX reason=夜宵支付金额、币种或商户信息不匹配，已阻止落账
+[Nest] 27499  - 11/07/2026, 11:54:53 PM   DEBUG [PaymentsService] 回调验签头 serial=PUB_KEY_ID_LOCAL
+[Nest] 27499  - 11/07/2026, 11:54:53 PM   ERROR [PaymentsService] 夜宵支付落账失败：outTradeNo=YX_LOCAL_1 wxTradeId=WX_LOCAL_TX reason=夜宵支付金额、币种或商户信息不匹配，已阻止落账
+[Nest] 27499  - 11/07/2026, 11:54:53 PM   DEBUG [PaymentsService] 回调验签头 serial=PUB_KEY_ID_LOCAL
+[Nest] 27499  - 11/07/2026, 11:54:53 PM   ERROR [PaymentsService] 夜宵支付落账失败：outTradeNo=YX_LOCAL_1 wxTradeId=WX_LOCAL_TX reason=夜宵支付金额、币种或商户信息不匹配，已阻止落账
+[Nest] 27499  - 11/07/2026, 11:54:53 PM   DEBUG [PaymentsService] 回调验签头 serial=PUB_KEY_ID_LOCAL
+[Nest] 27499  - 11/07/2026, 11:54:53 PM   ERROR [PaymentsService] 夜宵支付落账失败：outTradeNo=YX_LOCAL_1 wxTradeId=WX_LOCAL_TX reason=夜宵支付金额、币种或商户信息不匹配，已阻止落账
+[Nest] 27499  - 11/07/2026, 11:54:53 PM   DEBUG [PaymentsService] 回调验签头 serial=PUB_KEY_ID_LOCAL
+[Nest] 27499  - 11/07/2026, 11:54:53 PM   ERROR [PaymentsService] 回调验签失败 serial=PUB_KEY_ID_LOCAL
+[Nest] 27499  - 11/07/2026, 11:54:53 PM   DEBUG [PaymentsService] 回调验签头 serial=PUB_KEY_ID_LOCAL
+[Nest] 27499  - 11/07/2026, 11:54:53 PM   DEBUG [PaymentsService] 回调验签头 serial=s
+[Nest] 27499  - 11/07/2026, 11:54:53 PM   DEBUG [PaymentsService] 回调验签头 serial=PUB_KEY_ID_actual_from_wechat
+[Nest] 27499  - 11/07/2026, 11:54:53 PM   ERROR [PaymentsService] 回调验签失败 serial=PUB_KEY_ID_actual_from_wechat
+[Nest] 27499  - 11/07/2026, 11:54:53 PM   ERROR [PaymentsService] 支付落账失败转异常单：order=cmw6l3uvx04zvzz7vnmbln8al orderNo=BCQG11794066893852RZFL wxTradeId=wx-tid-g1 reason=幽灵商品库存不足
+[Nest] 27499  - 11/07/2026, 11:54:54 PM     LOG [NotificationsService] 发货信息上报成功 → BCQSHIP1794066894005SAUZ logistics_type=2
+[Nest] 27499  - 11/07/2026, 11:54:54 PM     LOG [NotificationsService] 发货信息上报成功 → BCQSHIP1794066894010KE7A logistics_type=4
+[Nest] 27499  - 11/07/2026, 11:54:54 PM     LOG [NotificationsService] 发货信息上报成功 → BCQSHIP1794066894014SOD3 logistics_type=2
+[Nest] 27499  - 11/07/2026, 11:54:54 PM    WARN [NotificationsService] 发货信息重复上报，微信幂等拒绝（已忽略，勿重试）→ BCQSHIP179406689401933B9: 10060002 idempotent-reject
+[Nest] 27499  - 11/07/2026, 11:54:54 PM    WARN [NotificationsService] 发货信息重复上报，微信幂等拒绝（已忽略，勿重试）→ BCQSHIP1794066894022WPC0: 10060003 idempotent-reject
+[Nest] 27499  - 11/07/2026, 11:54:54 PM    WARN [NotificationsService] 发货信息重复上报，微信幂等拒绝（已忽略，勿重试）→ BCQSHIP1794066894026TGO2: 10060023 idempotent-reject
+[Nest] 27499  - 11/07/2026, 11:54:54 PM    WARN [NotificationsService] 发货信息上报失败（已忽略，不阻断出库）: order=BCQSHIP17940668940293L9P 10060001 order not exist
+[Nest] 27499  - 11/07/2026, 11:54:54 PM    WARN [NotificationsService] 发货信息上报跳过（组织凭证/商户号未配置）→ BCQSHIP1794066894032BRQ7
+[Nest] 27499  - 11/07/2026, 11:54:54 PM     LOG [NotificationsService] 发货信息上报成功 → BCQSHIP1794066894036QOFC logistics_type=2
+[Nest] 27499  - 11/07/2026, 11:54:54 PM   DEBUG [PrinterService] 芯烨云凭证未配置（XPYUN_USER/USERKEY/PRINTER_SN），跳过打印
+[Nest] 27499  - 11/07/2026, 11:54:54 PM   DEBUG [PrinterService] 配送小程序凭证未配置（组织与 env 均无），小票二维码回落订单号文本
+[Nest] 27499  - 11/07/2026, 11:54:54 PM   DEBUG [PrinterService] 配送小程序凭证未配置（组织与 env 均无），小票二维码回落订单号文本
+[Nest] 27499  - 11/07/2026, 11:54:54 PM   DEBUG [PrinterService] 配送小程序凭证未配置（组织与 env 均无），小票二维码回落订单号文本
+[Nest] 27499  - 11/07/2026, 11:54:54 PM   DEBUG [PrinterService] 配送小程序凭证未配置（组织与 env 均无），小票二维码回落订单号文本
+[Nest] 27499  - 11/07/2026, 11:54:54 PM   DEBUG [PrinterService] 配送小程序凭证未配置（组织与 env 均无），小票二维码回落订单号文本
+[Nest] 27499  - 11/07/2026, 11:54:54 PM   DEBUG [PrinterService] 配送小程序凭证未配置（组织与 env 均无），小票二维码回落订单号文本
+[Nest] 27499  - 11/07/2026, 11:54:54 PM   DEBUG [PrinterService] 配送小程序凭证未配置（组织与 env 均无），小票二维码回落订单号文本
+
+Summary of all failing tests
+FAIL admin/rbac.integration.spec.ts
+  ● RBAC 蛋词体系 integration (real PG + HTTP) › rbac/me：超管 perms=["*"]；多角色账号返回全部授权与可切校区
+
+    BadRequestException: 超级管理员不可授予，系统仅保留内置超级管理员账号
+
+      915 |       // 仅由启动同步维护在系统主账号上；角色下拉亦不显示
+      916 |       if (g.roleCode === SUPER_ROLE_CODE)
+    > 917 |         throw new BadRequestException(
+          |               ^
+      918 |           '超级管理员不可授予，系统仅保留内置超级管理员账号',
+      919 |         );
+      920 |       if (g.scope === 'platform' && g.campusId)
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:917:15)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/rbac.integration.spec.ts:79:5)
+
+  ● RBAC 蛋词体系 integration (real PG + HTTP) › 同校区多角色并集正确：ops@A 订单写 + finance@A 结算同时在 A 生效
+
+    BadRequestException: 超级管理员不可授予，系统仅保留内置超级管理员账号
+
+      915 |       // 仅由启动同步维护在系统主账号上；角色下拉亦不显示
+      916 |       if (g.roleCode === SUPER_ROLE_CODE)
+    > 917 |         throw new BadRequestException(
+          |               ^
+      918 |           '超级管理员不可授予，系统仅保留内置超级管理员账号',
+      919 |         );
+      920 |       if (g.scope === 'platform' && g.campusId)
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:917:15)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/rbac.integration.spec.ts:79:5)
+
+  ● RBAC 蛋词体系 integration (real PG + HTTP) › 不同校区角色不串用：B 校区上下文只剩财务，商品域被拒；越权校区参数被忽略
+
+    BadRequestException: 超级管理员不可授予，系统仅保留内置超级管理员账号
+
+      915 |       // 仅由启动同步维护在系统主账号上；角色下拉亦不显示
+      916 |       if (g.roleCode === SUPER_ROLE_CODE)
+    > 917 |         throw new BadRequestException(
+          |               ^
+      918 |           '超级管理员不可授予，系统仅保留内置超级管理员账号',
+      919 |         );
+      920 |       if (g.scope === 'platform' && g.campusId)
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:917:15)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/rbac.integration.spec.ts:79:5)
+
+  ● RBAC 蛋词体系 integration (real PG + HTTP) › 撤销一个角色后其余授权仍有效（旧 token 因会话版本失效，重登后余权可用）
+
+    BadRequestException: 超级管理员不可授予，系统仅保留内置超级管理员账号
+
+      915 |       // 仅由启动同步维护在系统主账号上；角色下拉亦不显示
+      916 |       if (g.roleCode === SUPER_ROLE_CODE)
+    > 917 |         throw new BadRequestException(
+          |               ^
+      918 |           '超级管理员不可授予，系统仅保留内置超级管理员账号',
+      919 |         );
+      920 |       if (g.scope === 'platform' && g.campusId)
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:917:15)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/rbac.integration.spec.ts:79:5)
+
+  ● RBAC 蛋词体系 integration (real PG + HTTP) › 停用账号：旧 token 即刻 401，登录被拒；恢复后正常
+
+    BadRequestException: 超级管理员不可授予，系统仅保留内置超级管理员账号
+
+      915 |       // 仅由启动同步维护在系统主账号上；角色下拉亦不显示
+      916 |       if (g.roleCode === SUPER_ROLE_CODE)
+    > 917 |         throw new BadRequestException(
+          |               ^
+      918 |           '超级管理员不可授予，系统仅保留内置超级管理员账号',
+      919 |         );
+      920 |       if (g.scope === 'platform' && g.campusId)
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:917:15)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/rbac.integration.spec.ts:79:5)
+
+  ● RBAC 蛋词体系 integration (real PG + HTTP) › 超管重置密码后目标账号旧 token 失效
+
+    BadRequestException: 超级管理员不可授予，系统仅保留内置超级管理员账号
+
+      915 |       // 仅由启动同步维护在系统主账号上；角色下拉亦不显示
+      916 |       if (g.roleCode === SUPER_ROLE_CODE)
+    > 917 |         throw new BadRequestException(
+          |               ^
+      918 |           '超级管理员不可授予，系统仅保留内置超级管理员账号',
+      919 |         );
+      920 |       if (g.scope === 'platform' && g.campusId)
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:917:15)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/rbac.integration.spec.ts:79:5)
+
+  ● RBAC 蛋词体系 integration (real PG + HTTP) › 隐藏按钮直调 API 仍被拒（guard URL 模式）：warehouse 无财务/招募/手机号明文/直入
+
+    BadRequestException: 超级管理员不可授予，系统仅保留内置超级管理员账号
+
+      915 |       // 仅由启动同步维护在系统主账号上；角色下拉亦不显示
+      916 |       if (g.roleCode === SUPER_ROLE_CODE)
+    > 917 |         throw new BadRequestException(
+          |               ^
+      918 |           '超级管理员不可授予，系统仅保留内置超级管理员账号',
+      919 |         );
+      920 |       if (g.scope === 'platform' && g.campusId)
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:917:15)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/rbac.integration.spec.ts:79:5)
+
+  ● RBAC 蛋词体系 integration (real PG + HTTP) › 白名单：账号可读取自己的权限，完整菜单目录仅超管可读
+
+    BadRequestException: 超级管理员不可授予，系统仅保留内置超级管理员账号
+
+      915 |       // 仅由启动同步维护在系统主账号上；角色下拉亦不显示
+      916 |       if (g.roleCode === SUPER_ROLE_CODE)
+    > 917 |         throw new BadRequestException(
+          |               ^
+      918 |           '超级管理员不可授予，系统仅保留内置超级管理员账号',
+      919 |         );
+      920 |       if (g.scope === 'platform' && g.campusId)
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:917:15)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/rbac.integration.spec.ts:79:5)
+
+  ● RBAC 蛋词体系 integration (real PG + HTTP) › permmenu 契约：超管 menus 全量目录+菜单；校区角色=角色菜单并集且不含未勾板块
+
+    BadRequestException: 超级管理员不可授予，系统仅保留内置超级管理员账号
+
+      915 |       // 仅由启动同步维护在系统主账号上；角色下拉亦不显示
+      916 |       if (g.roleCode === SUPER_ROLE_CODE)
+    > 917 |         throw new BadRequestException(
+          |               ^
+      918 |           '超级管理员不可授予，系统仅保留内置超级管理员账号',
+      919 |         );
+      920 |       if (g.scope === 'platform' && g.campusId)
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:917:15)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/rbac.integration.spec.ts:79:5)
+
+  ● RBAC 蛋词体系 integration (real PG + HTTP) › 角色管理契约：GET roles 返回 menuCodes；建角色按 menuCodes 勾选
+
+    BadRequestException: 超级管理员不可授予，系统仅保留内置超级管理员账号
+
+      915 |       // 仅由启动同步维护在系统主账号上；角色下拉亦不显示
+      916 |       if (g.roleCode === SUPER_ROLE_CODE)
+    > 917 |         throw new BadRequestException(
+          |               ^
+      918 |           '超级管理员不可授予，系统仅保留内置超级管理员账号',
+      919 |         );
+      920 |       if (g.scope === 'platform' && g.campusId)
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:917:15)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/rbac.integration.spec.ts:79:5)
+
+  ● RBAC 蛋词体系 integration (real PG + HTTP) › 改价分权：仅 products.write 的角色夹带改价 403；补 products.price 后合并端点与拆分端点都通
+
+    BadRequestException: 超级管理员不可授予，系统仅保留内置超级管理员账号
+
+      915 |       // 仅由启动同步维护在系统主账号上；角色下拉亦不显示
+      916 |       if (g.roleCode === SUPER_ROLE_CODE)
+    > 917 |         throw new BadRequestException(
+          |               ^
+      918 |           '超级管理员不可授予，系统仅保留内置超级管理员账号',
+      919 |         );
+      920 |       if (g.scope === 'platform' && g.campusId)
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:917:15)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/rbac.integration.spec.ts:79:5)
+
+  ● RBAC 蛋词体系 integration (real PG + HTTP) › 校区列表只返回当前操作校区；全局账号/权限预览/授权审计不能由校区角色获得
+
+    BadRequestException: 超级管理员不可授予，系统仅保留内置超级管理员账号
+
+      915 |       // 仅由启动同步维护在系统主账号上；角色下拉亦不显示
+      916 |       if (g.roleCode === SUPER_ROLE_CODE)
+    > 917 |         throw new BadRequestException(
+          |               ^
+      918 |           '超级管理员不可授予，系统仅保留内置超级管理员账号',
+      919 |         );
+      920 |       if (g.scope === 'platform' && g.campusId)
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:917:15)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/rbac.integration.spec.ts:79:5)
+
+  ● RBAC 蛋词体系 integration (real PG + HTTP) › 越权目标校区：校区级账号把员工建到未授权校区被拒
+
+    BadRequestException: 超级管理员不可授予，系统仅保留内置超级管理员账号
+
+      915 |       // 仅由启动同步维护在系统主账号上；角色下拉亦不显示
+      916 |       if (g.roleCode === SUPER_ROLE_CODE)
+    > 917 |         throw new BadRequestException(
+          |               ^
+      918 |           '超级管理员不可授予，系统仅保留内置超级管理员账号',
+      919 |         );
+      920 |       if (g.scope === 'platform' && g.campusId)
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:917:15)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/rbac.integration.spec.ts:79:5)
+
+  ● RBAC 蛋词体系 integration (real PG + HTTP) › 员工按 ID 修改/删除必须检查来源校区，不能把 B 员工拉到 A 绕过校验
+
+    BadRequestException: 超级管理员不可授予，系统仅保留内置超级管理员账号
+
+      915 |       // 仅由启动同步维护在系统主账号上；角色下拉亦不显示
+      916 |       if (g.roleCode === SUPER_ROLE_CODE)
+    > 917 |         throw new BadRequestException(
+          |               ^
+      918 |           '超级管理员不可授予，系统仅保留内置超级管理员账号',
+      919 |         );
+      920 |       if (g.scope === 'platform' && g.campusId)
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:917:15)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/rbac.integration.spec.ts:79:5)
+
+  ● RBAC 蛋词体系 integration (real PG + HTTP) › 招募分权：仅备注角色可写备注不能动证件；idcard 拆分端点按按钮模式把关；运营全权可读证件且落审计
+
+    BadRequestException: 超级管理员不可授予，系统仅保留内置超级管理员账号
+
+      915 |       // 仅由启动同步维护在系统主账号上；角色下拉亦不显示
+      916 |       if (g.roleCode === SUPER_ROLE_CODE)
+    > 917 |         throw new BadRequestException(
+          |               ^
+      918 |           '超级管理员不可授予，系统仅保留内置超级管理员账号',
+      919 |         );
+      920 |       if (g.scope === 'platform' && g.campusId)
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:917:15)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/rbac.integration.spec.ts:79:5)
+
+  ● RBAC 蛋词体系 integration (real PG + HTTP) › 文件上传：停用/撤权/删除后台账号不能上传公开图片，无证件写权限不能上传私有图片
+
+    BadRequestException: 超级管理员不可授予，系统仅保留内置超级管理员账号
+
+      915 |       // 仅由启动同步维护在系统主账号上；角色下拉亦不显示
+      916 |       if (g.roleCode === SUPER_ROLE_CODE)
+    > 917 |         throw new BadRequestException(
+          |               ^
+      918 |           '超级管理员不可授予，系统仅保留内置超级管理员账号',
+      919 |         );
+      920 |       if (g.scope === 'platform' && g.campusId)
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:917:15)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/rbac.integration.spec.ts:79:5)
+
+  ● RBAC 蛋词体系 integration (real PG + HTTP) › 菜单管理：节点建改删；配置重启不覆盖，非法结构拒绝；role_menu 引用级联清
+
+    BadRequestException: 超级管理员不可授予，系统仅保留内置超级管理员账号
+
+      915 |       // 仅由启动同步维护在系统主账号上；角色下拉亦不显示
+      916 |       if (g.roleCode === SUPER_ROLE_CODE)
+    > 917 |         throw new BadRequestException(
+          |               ^
+      918 |           '超级管理员不可授予，系统仅保留内置超级管理员账号',
+      919 |         );
+      920 |       if (g.scope === 'platform' && g.campusId)
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:917:15)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/rbac.integration.spec.ts:79:5)
+
+  ● RBAC 蛋词体系 integration (real PG + HTTP) › 超管保护：唯一超管不可自摘授权/自停/自删
+
+    BadRequestException: 超级管理员不可授予，系统仅保留内置超级管理员账号
+
+      915 |       // 仅由启动同步维护在系统主账号上；角色下拉亦不显示
+      916 |       if (g.roleCode === SUPER_ROLE_CODE)
+    > 917 |         throw new BadRequestException(
+          |               ^
+      918 |           '超级管理员不可授予，系统仅保留内置超级管理员账号',
+      919 |         );
+      920 |       if (g.scope === 'platform' && g.campusId)
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:917:15)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/rbac.integration.spec.ts:79:5)
+
+  ● RBAC 蛋词体系 integration (real PG + HTTP) › 账号创建/资料/密码/状态/授权失败全部回滚，角色删除清理关联
+
+    BadRequestException: 超级管理员不可授予，系统仅保留内置超级管理员账号
+
+      915 |       // 仅由启动同步维护在系统主账号上；角色下拉亦不显示
+      916 |       if (g.roleCode === SUPER_ROLE_CODE)
+    > 917 |         throw new BadRequestException(
+          |               ^
+      918 |           '超级管理员不可授予，系统仅保留内置超级管理员账号',
+      919 |         );
+      920 |       if (g.scope === 'platform' && g.campusId)
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:917:15)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/rbac.integration.spec.ts:79:5)
+
+  ● RBAC 蛋词体系 integration (real PG + HTTP) › 并发删除与撤权共用锁，不能移除最后一个有效超管
+
+    BadRequestException: 超级管理员不可授予，系统仅保留内置超级管理员账号
+
+      915 |       // 仅由启动同步维护在系统主账号上；角色下拉亦不显示
+      916 |       if (g.roleCode === SUPER_ROLE_CODE)
+    > 917 |         throw new BadRequestException(
+          |               ^
+      918 |           '超级管理员不可授予，系统仅保留内置超级管理员账号',
+      919 |         );
+      920 |       if (g.scope === 'platform' && g.campusId)
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:917:15)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/rbac.integration.spec.ts:79:5)
+
+  ● RBAC 蛋词体系 integration (real PG + HTTP) › 可配置单会话：默认并存，开启后新登录使旧令牌失效且不可自助改密
+
+    BadRequestException: 超级管理员不可授予，系统仅保留内置超级管理员账号
+
+      915 |       // 仅由启动同步维护在系统主账号上；角色下拉亦不显示
+      916 |       if (g.roleCode === SUPER_ROLE_CODE)
+    > 917 |         throw new BadRequestException(
+          |               ^
+      918 |           '超级管理员不可授予，系统仅保留内置超级管理员账号',
+      919 |         );
+      920 |       if (g.scope === 'platform' && g.campusId)
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:917:15)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/rbac.integration.spec.ts:79:5)
+
+  ● RBAC 蛋词体系 integration (real PG + HTTP) › 授权审计：授权重设与菜单变更都有 rbac.* 审计行
+
+    BadRequestException: 超级管理员不可授予，系统仅保留内置超级管理员账号
+
+      915 |       // 仅由启动同步维护在系统主账号上；角色下拉亦不显示
+      916 |       if (g.roleCode === SUPER_ROLE_CODE)
+    > 917 |         throw new BadRequestException(
+          |               ^
+      918 |           '超级管理员不可授予，系统仅保留内置超级管理员账号',
+      919 |         );
+      920 |       if (g.scope === 'platform' && g.campusId)
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:917:15)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/rbac.integration.spec.ts:79:5)
+
+  ● RBAC 蛋词体系 integration (real PG + HTTP) › 未知菜单节点：建角色 400；平台域按钮校区级角色不可达（finance 角色无采购）
+
+    BadRequestException: 超级管理员不可授予，系统仅保留内置超级管理员账号
+
+      915 |       // 仅由启动同步维护在系统主账号上；角色下拉亦不显示
+      916 |       if (g.roleCode === SUPER_ROLE_CODE)
+    > 917 |         throw new BadRequestException(
+          |               ^
+      918 |           '超级管理员不可授予，系统仅保留内置超级管理员账号',
+      919 |         );
+      920 |       if (g.scope === 'platform' && g.campusId)
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:917:15)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/rbac.integration.spec.ts:79:5)
+
+  ● RBAC 蛋词体系 integration (real PG + HTTP) › 非后台 token（C 端 user）访问 admin 一律 403
+
+    BadRequestException: 超级管理员不可授予，系统仅保留内置超级管理员账号
+
+      915 |       // 仅由启动同步维护在系统主账号上；角色下拉亦不显示
+      916 |       if (g.roleCode === SUPER_ROLE_CODE)
+    > 917 |         throw new BadRequestException(
+          |               ^
+      918 |           '超级管理员不可授予，系统仅保留内置超级管理员账号',
+      919 |         );
+      920 |       if (g.scope === 'platform' && g.campusId)
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:917:15)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/rbac.integration.spec.ts:79:5)
+
+  ● RBAC 蛋词体系 integration (real PG + HTTP) › 全端点矩阵扫描（超管 token）：AdminController 每条路由非 403（403=模式漏配暴露）
+
+    BadRequestException: 超级管理员不可授予，系统仅保留内置超级管理员账号
+
+      915 |       // 仅由启动同步维护在系统主账号上；角色下拉亦不显示
+      916 |       if (g.roleCode === SUPER_ROLE_CODE)
+    > 917 |         throw new BadRequestException(
+          |               ^
+      918 |           '超级管理员不可授予，系统仅保留内置超级管理员账号',
+      919 |         );
+      920 |       if (g.scope === 'platform' && g.campusId)
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:917:15)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/rbac.integration.spec.ts:79:5)
+
+  ● RBAC 蛋词体系 integration (real PG + HTTP) › 普通角色即使勾选管理接口也不能修改角色、菜单或账号授权
+
+    BadRequestException: 超级管理员不可授予，系统仅保留内置超级管理员账号
+
+      915 |       // 仅由启动同步维护在系统主账号上；角色下拉亦不显示
+      916 |       if (g.roleCode === SUPER_ROLE_CODE)
+    > 917 |         throw new BadRequestException(
+          |               ^
+      918 |           '超级管理员不可授予，系统仅保留内置超级管理员账号',
+      919 |         );
+      920 |       if (g.scope === 'platform' && g.campusId)
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:917:15)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/rbac.integration.spec.ts:79:5)
+
+  ● RBAC 蛋词体系 integration (real PG + HTTP) › 平台只读角色不能把校区角色的平台操作扩权，超级管理员不能绑定校区范围
+
+    BadRequestException: 超级管理员不可授予，系统仅保留内置超级管理员账号
+
+      915 |       // 仅由启动同步维护在系统主账号上；角色下拉亦不显示
+      916 |       if (g.roleCode === SUPER_ROLE_CODE)
+    > 917 |         throw new BadRequestException(
+          |               ^
+      918 |           '超级管理员不可授予，系统仅保留内置超级管理员账号',
+      919 |         );
+      920 |       if (g.scope === 'platform' && g.campusId)
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:917:15)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/rbac.integration.spec.ts:79:5)
+
+  ● RBAC 蛋词体系 integration (real PG + HTTP) › 撤销旧角色账号全部授权以及清空旧角色菜单后，重复启动同步不恢复权限
+
+    BadRequestException: 超级管理员不可授予，系统仅保留内置超级管理员账号
+
+      915 |       // 仅由启动同步维护在系统主账号上；角色下拉亦不显示
+      916 |       if (g.roleCode === SUPER_ROLE_CODE)
+    > 917 |         throw new BadRequestException(
+          |               ^
+      918 |           '超级管理员不可授予，系统仅保留内置超级管理员账号',
+      919 |         );
+      920 |       if (g.scope === 'platform' && g.campusId)
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:917:15)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/rbac.integration.spec.ts:79:5)
+
+  ● RBAC 蛋词体系 integration (real PG + HTTP) › 旧会话不能通过切换校区重新换发有效 token
+
+    BadRequestException: 超级管理员不可授予，系统仅保留内置超级管理员账号
+
+      915 |       // 仅由启动同步维护在系统主账号上；角色下拉亦不显示
+      916 |       if (g.roleCode === SUPER_ROLE_CODE)
+    > 917 |         throw new BadRequestException(
+          |               ^
+      918 |           '超级管理员不可授予，系统仅保留内置超级管理员账号',
+      919 |         );
+      920 |       if (g.scope === 'platform' && g.campusId)
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:917:15)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/rbac.integration.spec.ts:79:5)
+
+  ● RBAC 蛋词体系 integration (real PG + HTTP) › 校区切换后旧 token 的数据校区与当前权限校区保持一致
+
+    BadRequestException: 超级管理员不可授予，系统仅保留内置超级管理员账号
+
+      915 |       // 仅由启动同步维护在系统主账号上；角色下拉亦不显示
+      916 |       if (g.roleCode === SUPER_ROLE_CODE)
+    > 917 |         throw new BadRequestException(
+          |               ^
+      918 |           '超级管理员不可授予，系统仅保留内置超级管理员账号',
+      919 |         );
+      920 |       if (g.scope === 'platform' && g.campusId)
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:917:15)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/rbac.integration.spec.ts:79:5)
+
+  ● RBAC 蛋词体系 integration (real PG + HTTP) › 动态菜单：隐藏不撤权、祖先仅补展示、视图与修改重启持久化、循环和未知接口拒绝
+
+    BadRequestException: 超级管理员不可授予，系统仅保留内置超级管理员账号
+
+      915 |       // 仅由启动同步维护在系统主账号上；角色下拉亦不显示
+      916 |       if (g.roleCode === SUPER_ROLE_CODE)
+    > 917 |         throw new BadRequestException(
+          |               ^
+      918 |           '超级管理员不可授予，系统仅保留内置超级管理员账号',
+      919 |         );
+      920 |       if (g.scope === 'platform' && g.campusId)
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:917:15)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/rbac.integration.spec.ts:79:5)
+
+FAIL admin/org-boundary.spec.ts
+  ● org boundary (IKKRMP / ADR-0001) › 历史账号推导回归：campus-hq/空 campusId→platform，真实校区→campus；organizationId 沿用 IKKRMM 推导
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: "org-a"
+    Received: null
+
+      249 |     expect(histHqCtx.orgLevel).toBe('platform');
+      250 |     expect(histHqCtx.platform).toBe(false);
+    > 251 |     expect(histHqCtx.organizationId).toBe('org-a');
+          |                                      ^
+      252 |     // 落真实校区的历史账号：校区级 + org-a
+      253 |     expect(histRealCtx.orgLevel).toBe('campus');
+      254 |     expect(histRealCtx.organizationId).toBe('org-a');
+
+      at Object.<anonymous> (admin/org-boundary.spec.ts:251:38)
+
+FAIL gate/multi-tenant-gate.spec.ts
+  ● GATE: dual-org isolation & legacy-miniprogram compatibility (IKKRN0) › GATE 4 迁移对账：组织 A 校区回填 + campus-official 平台层 › 组织 A 回填锚点：主校区 campus-hbut 与总部仓 campus-hq 均 organizationId=org-a
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: "org-a"
+    Received: null
+
+      504 |     it('组织 A 回填锚点：主校区 campus-hbut 与总部仓 campus-hq 均 organizationId=org-a', async () => {
+      505 |       expect(await campusOrganizationId(db, 'campus-hbut')).toBe('org-a');
+    > 506 |       expect(await campusOrganizationId(db, 'campus-hq')).toBe('org-a');
+          |                                                           ^
+      507 |     });
+      508 |
+      509 |     it('全量对账：迁移存量真实校区不存在「漏回填」空归属', async () => {
+
+      at Object.<anonymous> (gate/multi-tenant-gate.spec.ts:506:59)
+
+FAIL admin/admin-campus-access.spec.ts
+  ● admin campus access (IKB3KG) › 建号带多校区授权：授权行落库，列表回显 grants
+
+    BadRequestException: 校区管理员或校区运营只能绑定一个校区
+
+      906 |         campusIds.size !== 1
+      907 |       ) {
+    > 908 |         throw new BadRequestException('校区管理员或校区运营只能绑定一个校区');
+          |               ^
+      909 |       }
+      910 |     }
+      911 |     for (const g of grants) {
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:908:15)
+      at admin/rbac/rbac.service.ts:1132:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.createAccount (admin/rbac/rbac.service.ts:1110:21)
+      at Object.<anonymous> (admin/admin-campus-access.spec.ts:59:21)
+
+  ● admin campus access (IKB3KG) › 重设授权：全量替换语义；失配的上下文校区自动对齐
+
+    BadRequestException: 角色不存在: campus-warehouse
+
+      925 |         where: { code: g.roleCode },
+      926 |       });
+    > 927 |       if (!role) throw new BadRequestException(`角色不存在: ${g.roleCode}`);
+          |                        ^
+      928 |       if (g.scope === 'campus') {
+      929 |         const campus = await tx.campus.findUnique({
+      930 |           where: { id: g.campusId! },
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:927:24)
+      at admin/rbac/rbac.service.ts:1132:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.createAccount (admin/rbac/rbac.service.ts:1110:21)
+      at Object.<anonymous> (admin/admin-campus-access.spec.ts:99:21)
+
+  ● admin campus access (IKB3KG) › 非法授权被拒绝：校区级缺校区 / 校区不存在 / 角色不存在 / 校区管理员多校区
+
+    expect(received).rejects.toThrow(expected)
+
+    Expected constructor: BadRequestException
+    Received constructor: PrismaClientValidationError
+
+    Received message: "
+    Invalid `tx.adminAccount.findUnique()` invocation in
+    /Users/douglee/Documents/Codes/nongmo-tech/night-store/buchuqin-api/src/admin/rbac/rbac.service.ts:872:43·
+      869   where: { accountId },
+      870   include: { role: { select: { code: true } } },
+      871 });
+    → 872 const account = await tx.adminAccount.findUnique({
+            where: {
+              id: undefined,
+          ?   username?: String,
+          ?   AND?: AdminAccountWhereInput | AdminAccountWhereInput[],
+          ?   OR?: AdminAccountWhereInput[],
+          ?   NOT?: AdminAccountWhereInput | AdminAccountWhereInput[],
+          ?   passwordHash?: StringFilter | String,
+          ?   nickname?: StringFilter | String,
+          ?   role?: StringFilter | String,
+          ?   campusId?: StringFilter | String,
+          ?   status?: StringFilter | String,
+          ?   sessionVersion?: IntFilter | Int,
+          ?   rbacMigrated?: BoolFilter | Boolean,
+          ?   orgLevel?: StringNullableFilter | String | Null,
+          ?   organizationId?: StringNullableFilter | String | Null,
+          ?   createdAt?: DateTimeFilter | DateTime,
+          ?   updatedAt?: DateTimeFilter | DateTime,
+          ?   accesses?: AdminCampusAccessListRelationFilter,
+          ?   rbacRoles?: AdminAccountRoleListRelationFilter
+            }
+          })·
+    Argument `where` of type AdminAccountWhereUniqueInput needs at least one of `id` or `username` arguments. Available options are marked with ?."
+
+          870 |       include: { role: { select: { code: true } } },
+          871 |     });
+        > 872 |     const account = await tx.adminAccount.findUnique({
+              |                     ^
+          873 |       where: { id: accountId },
+          874 |     });
+          875 |     if (!account) throw new BadRequestException('账号不存在');
+
+      at Nn (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/core/errorRendering/throwValidationException.ts:45:9)
+      at ei.throwValidationException [as handleRequestError] (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/RequestHandler.ts:202:7)
+      at ei.handleAndLogRequestError (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/RequestHandler.ts:174:12)
+      at ei.request (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/RequestHandler.ts:143:12)
+      at a (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:833:24)
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:872:21)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/admin-campus-access.spec.ts:130:5)
+      at Object.toThrow (../node_modules/.pnpm/expect@30.4.1/node_modules/expect/build/index.js:2155:20)
+      at Object.<anonymous> (admin/admin-campus-access.spec.ts:134:15)
+
+  ● admin campus access (IKB3KG) › 顶栏切换：未授权校区被拒；授权校区换发 token 且落库
+
+    UnauthorizedException: 账号或密码不正确
+
+      170 |       : false;
+      171 |     if (!account || !passwordOk)
+    > 172 |       throw new UnauthorizedException('账号或密码不正确');
+          |             ^
+      173 |     // RBAC V1：停用账号登录双拒（旧 token 也会被 Guard 拦）
+      174 |     if (account.status === 'disabled')
+      175 |       throw new UnauthorizedException('账号已停用，请联系超级管理员');
+
+      at AuthController.adminLogin (auth/auth.controller.ts:172:13)
+      at Object.<anonymous> (admin/admin-campus-access.spec.ts:153:20)
+
+  ● admin campus access (IKB3KG) › 平台数据范围账号可切任意校区，用户端角色不可使用后台切换
+
+    BadRequestException: 角色不存在: hq-director
+
+      925 |         where: { code: g.roleCode },
+      926 |       });
+    > 927 |       if (!role) throw new BadRequestException(`角色不存在: ${g.roleCode}`);
+          |                        ^
+      928 |       if (g.scope === 'campus') {
+      929 |         const campus = await tx.campus.findUnique({
+      930 |           where: { id: g.campusId! },
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:927:24)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/admin-campus-access.spec.ts:220:5)
+
+FAIL admin/rbac-scope.integration.spec.ts
+  ● RBAC valid A/B target isolation (HTTP + PostgreSQL) › serializes operation-scoped platform grants as an array for browser sessions
+
+    BadRequestException: 每个账号只能授予一个角色
+
+      881 |     const roleCodes = new Set(grants.map((grant) => grant.roleCode));
+      882 |     if (roleCodes.size > 1)
+    > 883 |       throw new BadRequestException('每个账号只能授予一个角色');
+          |             ^
+      884 |     // IKKRMQ：目标账号层级（分配边界适配用）——历史账号 NULL 按 campusId 推导
+      885 |     const targetLevel = normalizeOrgLevel(
+      886 |       targetOrgLevel !== undefined ? targetOrgLevel : account.orgLevel,
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:883:13)
+      at admin/rbac/rbac.service.ts:1132:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.createAccount (admin/rbac/rbac.service.ts:1110:21)
+      at Object.<anonymous> (admin/rbac-scope.integration.spec.ts:72:21)
+
+  ● RBAC valid A/B target isolation (HTTP + PostgreSQL) › list endpoints and new-order watermark ignore foreign campus query and exclude real B records
+
+    BadRequestException: 每个账号只能授予一个角色
+
+      881 |     const roleCodes = new Set(grants.map((grant) => grant.roleCode));
+      882 |     if (roleCodes.size > 1)
+    > 883 |       throw new BadRequestException('每个账号只能授予一个角色');
+          |             ^
+      884 |     // IKKRMQ：目标账号层级（分配边界适配用）——历史账号 NULL 按 campusId 推导
+      885 |     const targetLevel = normalizeOrgLevel(
+      886 |       targetOrgLevel !== undefined ? targetOrgLevel : account.orgLevel,
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:883:13)
+      at admin/rbac/rbac.service.ts:1132:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.createAccount (admin/rbac/rbac.service.ts:1110:21)
+      at Object.<anonymous> (admin/rbac-scope.integration.spec.ts:72:21)
+
+  ● RBAC valid A/B target isolation (HTTP + PostgreSQL) › delivery configuration and building mutations remain in A despite body/query campus overrides
+
+    BadRequestException: 每个账号只能授予一个角色
+
+      881 |     const roleCodes = new Set(grants.map((grant) => grant.roleCode));
+      882 |     if (roleCodes.size > 1)
+    > 883 |       throw new BadRequestException('每个账号只能授予一个角色');
+          |             ^
+      884 |     // IKKRMQ：目标账号层级（分配边界适配用）——历史账号 NULL 按 campusId 推导
+      885 |     const targetLevel = normalizeOrgLevel(
+      886 |       targetOrgLevel !== undefined ? targetOrgLevel : account.orgLevel,
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:883:13)
+      at admin/rbac/rbac.service.ts:1132:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.createAccount (admin/rbac/rbac.service.ts:1110:21)
+      at Object.<anonymous> (admin/rbac-scope.integration.spec.ts:72:21)
+
+  ● RBAC valid A/B target isolation (HTTP + PostgreSQL) › wheel rejects a foreign coupon before saving and own config cannot overwrite B
+
+    BadRequestException: 每个账号只能授予一个角色
+
+      881 |     const roleCodes = new Set(grants.map((grant) => grant.roleCode));
+      882 |     if (roleCodes.size > 1)
+    > 883 |       throw new BadRequestException('每个账号只能授予一个角色');
+          |             ^
+      884 |     // IKKRMQ：目标账号层级（分配边界适配用）——历史账号 NULL 按 campusId 推导
+      885 |     const targetLevel = normalizeOrgLevel(
+      886 |       targetOrgLevel !== undefined ? targetOrgLevel : account.orgLevel,
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:883:13)
+      at admin/rbac/rbac.service.ts:1132:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.createAccount (admin/rbac/rbac.service.ts:1110:21)
+      at Object.<anonymous> (admin/rbac-scope.integration.spec.ts:72:21)
+
+  ● RBAC valid A/B target isolation (HTTP + PostgreSQL) › counts, audit, creation and recruitment transitions preserve campus scope
+
+    BadRequestException: 每个账号只能授予一个角色
+
+      881 |     const roleCodes = new Set(grants.map((grant) => grant.roleCode));
+      882 |     if (roleCodes.size > 1)
+    > 883 |       throw new BadRequestException('每个账号只能授予一个角色');
+          |             ^
+      884 |     // IKKRMQ：目标账号层级（分配边界适配用）——历史账号 NULL 按 campusId 推导
+      885 |     const targetLevel = normalizeOrgLevel(
+      886 |       targetOrgLevel !== undefined ? targetOrgLevel : account.orgLevel,
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:883:13)
+      at admin/rbac/rbac.service.ts:1132:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.createAccount (admin/rbac/rbac.service.ts:1110:21)
+      at Object.<anonymous> (admin/rbac-scope.integration.spec.ts:72:21)
+
+  ● RBAC valid A/B target isolation (HTTP + PostgreSQL) › merged campus config, notice and delivery-slot routes enforce A/B scope and preserve new fields
+
+    BadRequestException: 每个账号只能授予一个角色
+
+      881 |     const roleCodes = new Set(grants.map((grant) => grant.roleCode));
+      882 |     if (roleCodes.size > 1)
+    > 883 |       throw new BadRequestException('每个账号只能授予一个角色');
+          |             ^
+      884 |     // IKKRMQ：目标账号层级（分配边界适配用）——历史账号 NULL 按 campusId 推导
+      885 |     const targetLevel = normalizeOrgLevel(
+      886 |       targetOrgLevel !== undefined ? targetOrgLevel : account.orgLevel,
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:883:13)
+      at admin/rbac/rbac.service.ts:1132:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.createAccount (admin/rbac/rbac.service.ts:1110:21)
+      at Object.<anonymous> (admin/rbac-scope.integration.spec.ts:72:21)
+
+  ● RBAC valid A/B target isolation (HTTP + PostgreSQL) › order IDs and printers: own detail succeeds, foreign detail/status/actions/print reject before external call
+
+    BadRequestException: 每个账号只能授予一个角色
+
+      881 |     const roleCodes = new Set(grants.map((grant) => grant.roleCode));
+      882 |     if (roleCodes.size > 1)
+    > 883 |       throw new BadRequestException('每个账号只能授予一个角色');
+          |             ^
+      884 |     // IKKRMQ：目标账号层级（分配边界适配用）——历史账号 NULL 按 campusId 推导
+      885 |     const targetLevel = normalizeOrgLevel(
+      886 |       targetOrgLevel !== undefined ? targetOrgLevel : account.orgLevel,
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:883:13)
+      at admin/rbac/rbac.service.ts:1132:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.createAccount (admin/rbac/rbac.service.ts:1110:21)
+      at Object.<anonymous> (admin/rbac-scope.integration.spec.ts:72:21)
+
+  ● RBAC valid A/B target isolation (HTTP + PostgreSQL) › batch products and featured lists strip B targets; foreign stock and detail writes reject
+
+    BadRequestException: 每个账号只能授予一个角色
+
+      881 |     const roleCodes = new Set(grants.map((grant) => grant.roleCode));
+      882 |     if (roleCodes.size > 1)
+    > 883 |       throw new BadRequestException('每个账号只能授予一个角色');
+          |             ^
+      884 |     // IKKRMQ：目标账号层级（分配边界适配用）——历史账号 NULL 按 campusId 推导
+      885 |     const targetLevel = normalizeOrgLevel(
+      886 |       targetOrgLevel !== undefined ? targetOrgLevel : account.orgLevel,
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:883:13)
+      at admin/rbac/rbac.service.ts:1132:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.createAccount (admin/rbac/rbac.service.ts:1110:21)
+      at Object.<anonymous> (admin/rbac-scope.integration.spec.ts:72:21)
+
+  ● RBAC valid A/B target isolation (HTTP + PostgreSQL) › nested rooms and building targets cannot cross campus or mismatch their parent
+
+    BadRequestException: 每个账号只能授予一个角色
+
+      881 |     const roleCodes = new Set(grants.map((grant) => grant.roleCode));
+      882 |     if (roleCodes.size > 1)
+    > 883 |       throw new BadRequestException('每个账号只能授予一个角色');
+          |             ^
+      884 |     // IKKRMQ：目标账号层级（分配边界适配用）——历史账号 NULL 按 campusId 推导
+      885 |     const targetLevel = normalizeOrgLevel(
+      886 |       targetOrgLevel !== undefined ? targetOrgLevel : account.orgLevel,
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:883:13)
+      at admin/rbac/rbac.service.ts:1132:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.createAccount (admin/rbac/rbac.service.ts:1110:21)
+      at Object.<anonymous> (admin/rbac-scope.integration.spec.ts:72:21)
+
+  ● RBAC valid A/B target isolation (HTTP + PostgreSQL) › coupon issuance checks both coupon ownership and every explicit recipient before issuing any coupon
+
+    BadRequestException: 每个账号只能授予一个角色
+
+      881 |     const roleCodes = new Set(grants.map((grant) => grant.roleCode));
+      882 |     if (roleCodes.size > 1)
+    > 883 |       throw new BadRequestException('每个账号只能授予一个角色');
+          |             ^
+      884 |     // IKKRMQ：目标账号层级（分配边界适配用）——历史账号 NULL 按 campusId 推导
+      885 |     const targetLevel = normalizeOrgLevel(
+      886 |       targetOrgLevel !== undefined ? targetOrgLevel : account.orgLevel,
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:883:13)
+      at admin/rbac/rbac.service.ts:1132:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.createAccount (admin/rbac/rbac.service.ts:1110:21)
+      at Object.<anonymous> (admin/rbac-scope.integration.spec.ts:72:21)
+
+  ● RBAC valid A/B target isolation (HTTP + PostgreSQL) › banner and promotion ID ownership and nested product ownership
+
+    BadRequestException: 每个账号只能授予一个角色
+
+      881 |     const roleCodes = new Set(grants.map((grant) => grant.roleCode));
+      882 |     if (roleCodes.size > 1)
+    > 883 |       throw new BadRequestException('每个账号只能授予一个角色');
+          |             ^
+      884 |     // IKKRMQ：目标账号层级（分配边界适配用）——历史账号 NULL 按 campusId 推导
+      885 |     const targetLevel = normalizeOrgLevel(
+      886 |       targetOrgLevel !== undefined ? targetOrgLevel : account.orgLevel,
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:883:13)
+      at admin/rbac/rbac.service.ts:1132:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.createAccount (admin/rbac/rbac.service.ts:1110:21)
+      at Object.<anonymous> (admin/rbac-scope.integration.spec.ts:72:21)
+
+  ● RBAC valid A/B target isolation (HTTP + PostgreSQL) › sensitive recruitment/user reads and finance writes reject real B records
+
+    BadRequestException: 每个账号只能授予一个角色
+
+      881 |     const roleCodes = new Set(grants.map((grant) => grant.roleCode));
+      882 |     if (roleCodes.size > 1)
+    > 883 |       throw new BadRequestException('每个账号只能授予一个角色');
+          |             ^
+      884 |     // IKKRMQ：目标账号层级（分配边界适配用）——历史账号 NULL 按 campusId 推导
+      885 |     const targetLevel = normalizeOrgLevel(
+      886 |       targetOrgLevel !== undefined ? targetOrgLevel : account.orgLevel,
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:883:13)
+      at admin/rbac/rbac.service.ts:1132:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.createAccount (admin/rbac/rbac.service.ts:1110:21)
+      at Object.<anonymous> (admin/rbac-scope.integration.spec.ts:72:21)
+
+  ● RBAC valid A/B target isolation (HTTP + PostgreSQL) › locations, commissions and dispatch validate both record ownership and nested staff/building IDs
+
+    BadRequestException: 每个账号只能授予一个角色
+
+      881 |     const roleCodes = new Set(grants.map((grant) => grant.roleCode));
+      882 |     if (roleCodes.size > 1)
+    > 883 |       throw new BadRequestException('每个账号只能授予一个角色');
+          |             ^
+      884 |     // IKKRMQ：目标账号层级（分配边界适配用）——历史账号 NULL 按 campusId 推导
+      885 |     const targetLevel = normalizeOrgLevel(
+      886 |       targetOrgLevel !== undefined ? targetOrgLevel : account.orgLevel,
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:883:13)
+      at admin/rbac/rbac.service.ts:1132:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.createAccount (admin/rbac/rbac.service.ts:1110:21)
+      at Object.<anonymous> (admin/rbac-scope.integration.spec.ts:72:21)
+
+  ● RBAC valid A/B target isolation (HTTP + PostgreSQL) › shared category names remain global but product counts stay in the current campus
+
+    BadRequestException: 每个账号只能授予一个角色
+
+      881 |     const roleCodes = new Set(grants.map((grant) => grant.roleCode));
+      882 |     if (roleCodes.size > 1)
+    > 883 |       throw new BadRequestException('每个账号只能授予一个角色');
+          |             ^
+      884 |     // IKKRMQ：目标账号层级（分配边界适配用）——历史账号 NULL 按 campusId 推导
+      885 |     const targetLevel = normalizeOrgLevel(
+      886 |       targetOrgLevel !== undefined ? targetOrgLevel : account.orgLevel,
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:883:13)
+      at admin/rbac/rbac.service.ts:1132:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.createAccount (admin/rbac/rbac.service.ts:1110:21)
+      at Object.<anonymous> (admin/rbac-scope.integration.spec.ts:72:21)
+
+  ● RBAC valid A/B target isolation (HTTP + PostgreSQL) › restock details/receipt reject foreign records and batch aggregates do not leak global purchasing
+
+    BadRequestException: 每个账号只能授予一个角色
+
+      881 |     const roleCodes = new Set(grants.map((grant) => grant.roleCode));
+      882 |     if (roleCodes.size > 1)
+    > 883 |       throw new BadRequestException('每个账号只能授予一个角色');
+          |             ^
+      884 |     // IKKRMQ：目标账号层级（分配边界适配用）——历史账号 NULL 按 campusId 推导
+      885 |     const targetLevel = normalizeOrgLevel(
+      886 |       targetOrgLevel !== undefined ? targetOrgLevel : account.orgLevel,
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:883:13)
+      at admin/rbac/rbac.service.ts:1132:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.createAccount (admin/rbac/rbac.service.ts:1110:21)
+      at Object.<anonymous> (admin/rbac-scope.integration.spec.ts:72:21)
+
+  ● RBAC valid A/B target isolation (HTTP + PostgreSQL) › two independent RBAC caches observe role removal/disable; state read failure or missing state never uses stale allow
+
+    BadRequestException: 每个账号只能授予一个角色
+
+      881 |     const roleCodes = new Set(grants.map((grant) => grant.roleCode));
+      882 |     if (roleCodes.size > 1)
+    > 883 |       throw new BadRequestException('每个账号只能授予一个角色');
+          |             ^
+      884 |     // IKKRMQ：目标账号层级（分配边界适配用）——历史账号 NULL 按 campusId 推导
+      885 |     const targetLevel = normalizeOrgLevel(
+      886 |       targetOrgLevel !== undefined ? targetOrgLevel : account.orgLevel,
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:883:13)
+      at admin/rbac/rbac.service.ts:1132:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.createAccount (admin/rbac/rbac.service.ts:1110:21)
+      at Object.<anonymous> (admin/rbac-scope.integration.spec.ts:72:21)
+
+  ● RBAC valid A/B target isolation (HTTP + PostgreSQL) › new campus stays outside explicit A/B grants; an explicit platform grant includes it without reassigning
+
+    BadRequestException: 每个账号只能授予一个角色
+
+      881 |     const roleCodes = new Set(grants.map((grant) => grant.roleCode));
+      882 |     if (roleCodes.size > 1)
+    > 883 |       throw new BadRequestException('每个账号只能授予一个角色');
+          |             ^
+      884 |     // IKKRMQ：目标账号层级（分配边界适配用）——历史账号 NULL 按 campusId 推导
+      885 |     const targetLevel = normalizeOrgLevel(
+      886 |       targetOrgLevel !== undefined ? targetOrgLevel : account.orgLevel,
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:883:13)
+      at admin/rbac/rbac.service.ts:1132:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.createAccount (admin/rbac/rbac.service.ts:1110:21)
+      at Object.<anonymous> (admin/rbac-scope.integration.spec.ts:72:21)
+
+FAIL admin/hq-multicampus.spec.ts
+  ● hq role & cross-campus views (IKAJSL) › 账号管理（IKBFJ4→RBAC V1）：建号+授权分离；登录闭环与跨校区列表
+
+    BadRequestException: 角色不存在: hq-director
+
+      925 |         where: { code: g.roleCode },
+      926 |       });
+    > 927 |       if (!role) throw new BadRequestException(`角色不存在: ${g.roleCode}`);
+          |                        ^
+      928 |       if (g.scope === 'campus') {
+      929 |         const campus = await tx.campus.findUnique({
+      930 |           where: { id: g.campusId! },
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:927:24)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/hq-multicampus.spec.ts:231:5)
+
+FAIL admin/accounts.spec.ts
+  ● admin account management (IK9KWO) › 建号+授权分离：账号落库、授权行走 RBAC、登录发 token（role 标记 rbac）
+
+    BadRequestException: 超级管理员不可授予，系统仅保留内置超级管理员账号
+
+      915 |       // 仅由启动同步维护在系统主账号上；角色下拉亦不显示
+      916 |       if (g.roleCode === SUPER_ROLE_CODE)
+    > 917 |         throw new BadRequestException(
+          |               ^
+      918 |           '超级管理员不可授予，系统仅保留内置超级管理员账号',
+      919 |         );
+      920 |       if (g.scope === 'platform' && g.campusId)
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:917:15)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/accounts.spec.ts:52:5)
+
+  ● admin account management (IK9KWO) › 重复用户名被拒绝
+
+    BadRequestException: 超级管理员不可授予，系统仅保留内置超级管理员账号
+
+      915 |       // 仅由启动同步维护在系统主账号上；角色下拉亦不显示
+      916 |       if (g.roleCode === SUPER_ROLE_CODE)
+    > 917 |         throw new BadRequestException(
+          |               ^
+      918 |           '超级管理员不可授予，系统仅保留内置超级管理员账号',
+      919 |         );
+      920 |       if (g.scope === 'platform' && g.campusId)
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:917:15)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/accounts.spec.ts:52:5)
+
+  ● admin account management (IK9KWO) › 不能删除当前登录账号
+
+    BadRequestException: 超级管理员不可授予，系统仅保留内置超级管理员账号
+
+      915 |       // 仅由启动同步维护在系统主账号上；角色下拉亦不显示
+      916 |       if (g.roleCode === SUPER_ROLE_CODE)
+    > 917 |         throw new BadRequestException(
+          |               ^
+      918 |           '超级管理员不可授予，系统仅保留内置超级管理员账号',
+      919 |         );
+      920 |       if (g.scope === 'platform' && g.campusId)
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:917:15)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/accounts.spec.ts:52:5)
+
+  ● admin account management (IK9KWO) › 最后一个超管不可摘权也不可删除（AdminAccountRole 维度保护）
+
+    BadRequestException: 超级管理员不可授予，系统仅保留内置超级管理员账号
+
+      915 |       // 仅由启动同步维护在系统主账号上；角色下拉亦不显示
+      916 |       if (g.roleCode === SUPER_ROLE_CODE)
+    > 917 |         throw new BadRequestException(
+          |               ^
+      918 |           '超级管理员不可授予，系统仅保留内置超级管理员账号',
+      919 |         );
+      920 |       if (g.scope === 'platform' && g.campusId)
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:917:15)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/accounts.spec.ts:52:5)
+
+  ● admin account management (IK9KWO) › 自助改密：旧密码失效、新密码可登录、错旧密码 401
+
+    BadRequestException: 超级管理员不可授予，系统仅保留内置超级管理员账号
+
+      915 |       // 仅由启动同步维护在系统主账号上；角色下拉亦不显示
+      916 |       if (g.roleCode === SUPER_ROLE_CODE)
+    > 917 |         throw new BadRequestException(
+          |               ^
+      918 |           '超级管理员不可授予，系统仅保留内置超级管理员账号',
+      919 |         );
+      920 |       if (g.scope === 'platform' && g.campusId)
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:917:15)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/accounts.spec.ts:52:5)
+
+  ● admin account management (IK9KWO) › 账号操作留审计
+
+    BadRequestException: 超级管理员不可授予，系统仅保留内置超级管理员账号
+
+      915 |       // 仅由启动同步维护在系统主账号上；角色下拉亦不显示
+      916 |       if (g.roleCode === SUPER_ROLE_CODE)
+    > 917 |         throw new BadRequestException(
+          |               ^
+      918 |           '超级管理员不可授予，系统仅保留内置超级管理员账号',
+      919 |         );
+      920 |       if (g.scope === 'platform' && g.campusId)
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:917:15)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/accounts.spec.ts:52:5)
+
+  ● admin account management (IK9KWO) › 列表不泄露 passwordHash
+
+    BadRequestException: 超级管理员不可授予，系统仅保留内置超级管理员账号
+
+      915 |       // 仅由启动同步维护在系统主账号上；角色下拉亦不显示
+      916 |       if (g.roleCode === SUPER_ROLE_CODE)
+    > 917 |         throw new BadRequestException(
+          |               ^
+      918 |           '超级管理员不可授予，系统仅保留内置超级管理员账号',
+      919 |         );
+      920 |       if (g.scope === 'platform' && g.campusId)
+
+      at RbacService.replaceAccountGrants (admin/rbac/rbac.service.ts:917:15)
+      at admin/rbac/rbac.service.ts:850:7
+      at Proxy._transactionWithCallback (../node_modules/.pnpm/@prisma+client@6.19.0_prisma@6.19.0_typescript@5.9.3__typescript@5.9.3/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:722:18)
+      at RbacService.setAccountRoles (admin/rbac/rbac.service.ts:848:5)
+      at Object.<anonymous> (admin/accounts.spec.ts:52:5)
+
+FAIL admin/organization.spec.ts
+  ● organization baseline (IKKRMM / ADR-0001) › 组织 A 基线（org-a）存在且真实校区已回填，campus-official 留空=平台层
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: "org-a"
+    Received: null
+
+      90 |       select: { organizationId: true },
+      91 |     });
+    > 92 |     expect(hq?.organizationId).toBe('org-a');
+         |                                ^
+      93 |   });
+      94 |
+      95 |   it('organizations()：列表含每组织校区数/用户数聚合（经校区归属汇总）', async () => {
+
+      at Object.<anonymous> (admin/organization.spec.ts:92:32)
+
+  ● organization baseline (IKKRMM / ADR-0001) › organizations()：列表含每组织校区数/用户数聚合（经校区归属汇总）
+
+    expect(received).toBeGreaterThanOrEqual(expected)
+
+    Expected: >= 2
+    Received:    1
+
+      107 |     const orgA = list.find((o) => o.id === 'org-a');
+      108 |     expect(orgA).toBeDefined();
+    > 109 |     expect(orgA!.campusCount).toBeGreaterThanOrEqual(2);
+          |                               ^
+      110 |   });
+      111 |
+      112 |   it('organizationDetail()：校区清单+聚合；敏感凭据只回「已配置」位', async () => {
+
+      at Object.<anonymous> (admin/organization.spec.ts:109:31)
+
+  ● organization baseline (IKKRMM / ADR-0001) › campuses() 契约兼容：仅多透出 organizationId（组织 A 现有行为零变化）
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: "org-a"
+    Received: null
+
+      132 |     expect(mine?.organizationId).toBe(ORG_ID);
+      133 |     const hq = rows.find((c) => c.id === 'campus-hq');
+    > 134 |     expect(hq?.organizationId).toBe('org-a');
+          |                                ^
+      135 |     // 官方库伪校区仍不出现在校区列表（IKAJSM 语义不因组织层改变）
+      136 |     expect(rows.some((c) => c.id === 'campus-official')).toBe(false);
+      137 |     // 新建真实校区必须明确归属组织，禁止产生 organizationId 为空的数据。
+
+      at Object.<anonymous> (admin/organization.spec.ts:134:32)
+
+FAIL admin/campus-context.spec.ts
+  ● campus context (IKJA7Y) › bannerScope/productCampus 校区级授权集内可切
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: "campus-b"
+    Received: Promise {}
+
+      105 |
+      106 |   it('bannerScope/productCampus 校区级授权集内可切', () => {
+    > 107 |     expect(controller['bannerScope'](campusReq({ campus: 'campus-b' }))).toBe(
+          |                                                                          ^
+      108 |       'campus-b',
+      109 |     );
+      110 |     expect(controller['bannerScope'](campusReq({ campus: 'campus-hq' }))).toBe(
+
+      at Object.<anonymous> (admin/campus-context.spec.ts:107:74)
+
+FAIL admin/orders-status.spec.ts
+  ● Admin orders status tabs (IKAJSP) › 运营补录送达/完成必须填原因，保留审计且完结后冻结
+
+    expect(received).rejects.toThrow(expected)
+
+    Expected substring: "不可修改"
+    Received message:   "未知订单状态：delivering"
+
+          5477 |     const before = await this.order(id, campusId);
+          5478 |     if (!ORDER_STATUSES.includes(body.status as OrderStatus))
+        > 5479 |       throw new BadRequestException(`未知订单状态：${body.status}`);
+               |             ^
+          5480 |     // 2026-10-16 道哥定稿（A 方案）：钱货不清/已完结五态禁改——本弹窗只管
+          5481 |     // 履约中的单（paid→delivered 各态可改，→异常是送达纠纷的兜底）。
+          5482 |     // 未支付走支付/超时；取消/退款/完成走逆向专案（客服人工），复活即双花。
+
+      at AdminService.updateOrderStatus (admin/admin.service.ts:5479:13)
+      at Object.<anonymous> (admin/orders-status.spec.ts:121:5)
+      at Object.toThrow (../node_modules/.pnpm/expect@30.4.1/node_modules/expect/build/index.js:2155:20)
+      at Object.<anonymous> (admin/orders-status.spec.ts:121:123)
+
+FAIL admin/coupon-records.spec.ts
+  ● coupon records (IKRSIX #99/#184) › join 用户脱敏/券名/核销订单，按领取时间倒序
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: "139****1111"
+    Received: "13900001111"
+
+      113 |     expect(usedRow.userNickname).toBe('券明细用户');
+      114 |     // 手机号脱敏：保留前 3 后 4（orders 列表同口径 maskPhone）
+    > 115 |     expect(usedRow.userPhone).toBe('139****1111');
+          |                               ^
+      116 |     // 核销单号回查 + usedAt=核销订单 paidAt（ISO）
+      117 |     expect(usedRow.orderNo).toBe(`CRC${seed}`);
+      118 |     expect(usedRow.usedAt).toBe(
+
+      at Object.<anonymous> (admin/coupon-records.spec.ts:115:31)
+
+FAIL admin/campus-report.spec.ts
+  ● campus daily report (IKFOPS) › hq 全部校区：昨日有效单口径（IKLEDG），快照成本+无快照按 0
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 4
+    Received: 5
+
+      198 |     });
+      199 |     // IKLEDG 有效单口径：O1(2400)+O2(1100)+O3 paid(999) 计入；O5 退款单列
+    > 200 |     expect(r.totals.orders).toBe(4);
+          |                             ^
+      201 |     expect(r.totals.salesTotal).toBe(4300);
+      202 |     // 退款单列：O5=888（不进销售额）。共享夹具库有其他套件残留的已退款单，
+      203 |     // totals 全库聚合会被污染（本套件历史失败根因）——按带 tag 的校区行聚合断言
+
+      at Object.<anonymous> (admin/campus-report.spec.ts:200:29)
+
+FAIL admin/dashboard-coupon.spec.ts
+  ● dashboard coupon consumption › uses today paid orders and keeps the single-campus total isolated
+
+    expect(received).toHaveLength(expected)
+
+    Expected length: 2
+    Received length: 1
+    Received array:  [{"avatar": "", "campusId": "campus-hbut", "createdAt": 2026-11-07T15:54:10.954Z, "id": "user-001", "nickname": "湖工大小橙", "openid": null, "phone": "13800132026", "role": "user"}]
+
+      20 |       take: 2,
+      21 |     });
+    > 22 |     expect(users).toHaveLength(2);
+         |                   ^
+      23 |     const [targetUser, otherUser] = users;
+      24 |     const [multiBefore, singleBefore] = await Promise.all([
+      25 |       service.dashboard(''),
+
+      at Object.<anonymous> (admin/dashboard-coupon.spec.ts:22:19)
+
+FAIL admin/shipment.spec.ts
+  ● restock shipment (IKFOQ2) › 总部日报：receivedAt 落日×校区聚合，与发货单毛利同源；校区筛选可用
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 2
+    Received: 3
+
+      283 |     const rep = await admin.hqDailyReport(today, today);
+      284 |     // 两单批发额 = 2×12000 + (12000+6000) = 42000；成本 = 13440 + (6720+6000) = 26160
+    > 285 |     expect(rep.totals.shipments).toBe(2);
+          |                                  ^
+      286 |     expect(rep.totals.wholesaleTotal).toBe(42000);
+      287 |     expect(rep.totals.costTotal).toBe(26160);
+      288 |     expect(rep.totals.gross).toBe(15840);
+
+      at Object.<anonymous> (admin/shipment.spec.ts:285:34)
+
+
+Test Suites: 14 failed, 63 passed, 77 total
+Tests:       72 failed, 584 passed, 656 total
+Snapshots:   0 total
+Time:        23.681 s
+Ran all test suites.

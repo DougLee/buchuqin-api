@@ -526,6 +526,7 @@ export class AdminController {
   })
   async banners(
     @Req() req: AuthRequest,
+    @Query('businessType') businessType?: string,
     @Query('placement') placement?: string,
     @Query('status') status?: string,
     @Query('page') page?: string,
@@ -540,6 +541,7 @@ export class AdminController {
           await this.bannerScope(req),
           placement,
           status,
+          businessType,
         ),
         page,
         pageSize,
@@ -594,6 +596,7 @@ export class AdminController {
     // paginate，秒杀页搜索为死控件（其余列表端点均有）
     @Query('keyword') keyword?: string,
     @Query('categoryId') categoryId?: string,
+    @Query('businessType') businessType?: string,
   ) {
     return ok(
       paginate(
@@ -601,6 +604,7 @@ export class AdminController {
           await this.scopedCampus(req),
           state,
           categoryId,
+          businessType,
         ),
         page,
         pageSize,
@@ -2438,6 +2442,8 @@ export class AdminController {
   ) {
     const ctx = this.ctx(req);
     await this.rbac.assertCampusInScope(ctx, id);
+    if (body.nightEnabled !== undefined && !ctx.super && !this.orgBounded(ctx))
+      throw new ForbiddenException('仅超管或本组织管理员可以开通或关闭夜宵服务');
     // 校区级账号只能维护本校区基础档案。校区启停、组织归属、配送配置和
     // 楼长底薪仍由对应的组织/平台操作或专用配置接口负责。
     const campusProfileUpdate =
@@ -2678,11 +2684,17 @@ export class AdminController {
     @Query('pageSize') pageSize?: string,
     @Query('status') status?: string,
     @Query('keyword') keyword?: string,
+    // IKSW1F 夜宵券 Tab 过滤：不传=不过滤（存量行为零变化）
+    @Query('businessType') businessType?: string,
   ) {
     return ok(
       // IKB5PA：status 过滤（发放中/已暂停 Tab）
       paginate(
-        await this.service.coupons(await this.scopedCampus(req), status),
+        await this.service.coupons(
+          await this.scopedCampus(req),
+          status,
+          businessType,
+        ),
         page,
         pageSize,
         keyword,
@@ -2873,7 +2885,7 @@ export class AdminController {
     const ctx = this.ctx(req);
     const account = await this.service.findAccount(ctx.accountId);
     if (!account) throw new ForbiddenException('账号不存在');
-    return ok(await this.rbac.buildMeResponse(account));
+    return ok(await this.rbac.buildMeResponse(account, req.query?.campus as string | undefined));
   }
   @Get('rbac/catalog')
   rbacCatalog() {

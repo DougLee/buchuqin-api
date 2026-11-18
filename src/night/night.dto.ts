@@ -1,0 +1,276 @@
+import { Type } from 'class-transformer';
+import {
+  ArrayMinSize,
+  ArrayMaxSize,
+  IsArray,
+  IsBoolean,
+  IsIn,
+  IsISO8601,
+  IsInt,
+  IsOptional,
+  IsString,
+  Max,
+  MaxLength,
+  Min,
+  MinLength,
+  ValidateNested,
+} from 'class-validator';
+
+/* ==================== 后台 /admin/night/* ==================== */
+
+export class NightStoreCreateDto {
+  @IsOptional() @IsString() campusId?: string;
+  @IsString() buildingId!: string;
+  /** 楼长（Staff id），可空=招募中 */
+  @IsOptional() @IsString() managerStaffId?: string;
+  /** 佣金比例万分比（0~10000，显式 0 合法；PRD B09） */
+  @IsInt() @Min(0) @Max(10000) commissionRate!: number;
+}
+
+export class NightStoreUpdateDto {
+  /** suspended 停业 / closed 打烊（恢复走楼长开店） */
+  @IsOptional() @IsIn(['closed', 'suspended']) status?: string;
+  /** 换楼长：传新 Staff id（解绑重绑）；传 null=解绑（招募中） */
+  @IsOptional() @IsString() managerStaffId?: string | null;
+  @IsOptional() @IsInt() @Min(0) @Max(10000) commissionRate?: number;
+}
+
+export class NightCatalogCreateDto {
+  @IsOptional() @IsIn(['none', 'once', 'weekly', 'monthly']) purchaseLimit?: string;
+  @IsOptional() @IsInt() @Min(1) @Max(9999) purchaseLimitQty?: number;
+  @IsOptional() @IsString() campusId?: string;
+  @IsString() @MinLength(1) @MaxLength(60) name!: string;
+  /** 夜宵统一售价（分）：同一校区同 SKU 统一执行（PRD B06） */
+  @IsInt() @Min(1) price!: number;
+  @IsOptional() @IsInt() @Min(0) originalPrice?: number;
+  @IsOptional() @IsString() image?: string;
+  @IsOptional() @IsArray() @ArrayMaxSize(10) @IsString({ each: true }) @MaxLength(2048, { each: true }) images?: string[];
+  @IsOptional() @IsString() @MaxLength(2000) description?: string;
+  @IsOptional() @IsBoolean() featured?: boolean;
+  @IsOptional() @IsInt() @Min(0) @Max(9999) featuredSort?: number;
+  @IsOptional() @IsString() subtitle?: string;
+  /** 缺省自动挂本校区「夜宵专供」隐藏分类 */
+  @IsOptional() @IsString() categoryId?: string;
+  @IsOptional() @IsString() @MinLength(1) @MaxLength(20) retailUnit?: string;
+  @IsOptional() @IsString() barcode?: string;
+}
+
+export class NightCatalogUpdateDto {
+  @IsOptional() @IsIn(['none', 'once', 'weekly', 'monthly']) purchaseLimit?: string;
+  @IsOptional() @IsInt() @Min(1) @Max(9999) purchaseLimitQty?: number;
+  @IsOptional() @IsString() @MinLength(1) categoryId?: string;
+  @IsOptional() @IsString() @MinLength(1) @MaxLength(20) retailUnit?: string;
+  @IsOptional() @IsString() @MinLength(1) @MaxLength(60) name?: string;
+  @IsOptional() @IsInt() @Min(1) price?: number;
+  @IsOptional() @IsInt() @Min(0) originalPrice?: number;
+  @IsOptional() @IsString() image?: string;
+  @IsOptional() @IsArray() @ArrayMaxSize(10) @IsString({ each: true }) @MaxLength(2048, { each: true }) images?: string[];
+  @IsOptional() @IsString() @MaxLength(2000) description?: string;
+  @IsOptional() @IsBoolean() featured?: boolean;
+  @IsOptional() @IsInt() @Min(0) @Max(9999) featuredSort?: number;
+  @IsOptional() @IsString() subtitle?: string;
+  /** on-sale / off-sale（下架后楼栋行不可再备货） */
+  @IsOptional() @IsIn(['on-sale', 'off-sale']) status?: string;
+}
+
+export class NightStoreProductAttachDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @IsString({ each: true })
+  catalogProductIds!: string[];
+}
+
+export class NightProductUpdateDto {
+  /** 后台强制下架/恢复（saleAllowed 优先于楼长 onShelf 选择） */
+  @IsOptional() @IsBoolean() saleAllowed?: boolean;
+}
+
+/** IKTU033 楼长推荐：楼栋行级 featured（本店首页/货架排序自管） */
+export class NightProductFeaturedDto {
+  @IsBoolean() featured!: boolean;
+  /** 推荐位顺序（小值在前）；取消推荐时忽略 */
+  @IsOptional() @IsInt() @Min(0) @Max(9999) featuredSort?: number;
+}
+
+export class NightStockAdjustDto {
+  @IsInt() delta!: number;
+  @IsIn(['adjust', 'returnOut', 'loss', 'stocktake']) type!:
+    'adjust' | 'returnOut' | 'loss' | 'stocktake';
+  @IsString() @MinLength(1) @MaxLength(200) reason!: string;
+}
+
+export class NightConfigDto {
+  @IsOptional() @IsString() campusId?: string;
+  @IsBoolean() nightEnabled!: boolean;
+  @IsOptional() @IsString() nightStartAt?: string | null;
+  @IsOptional() @IsString() nightEndAt?: string | null;
+  /** 待支付超时（分钟）；null=回落默认 15 分钟 */
+  @IsOptional() @IsInt() @Min(1) @Max(120) nightPayTimeout?: number | null;
+  /** 接单超时（分钟）；一期记录不自动关单 */
+  @IsOptional() @IsInt() @Min(1) @Max(240) nightAcceptTimeout?: number | null;
+  /** 夜间配送费（分）；null=回落白天即时送口径；0=显式免费 */
+  @IsOptional() @IsInt() @Min(0) @Max(5000) nightDeliveryFee?: number | null;
+  /** 强警告二次确认：夜宵开始早于校区闭店时刻时须显式 true（PRD V1.5 A02） */
+  @IsOptional() @IsBoolean() confirm?: boolean;
+}
+
+export class NightRefundDto {
+  /** 商品退款金额（分）；缺省=整单商品部分全额（productAmount−券优惠） */
+  @IsOptional() @IsInt() @Min(0) productRefund?: number;
+  /** 是否退配送费（整单取消/未履约场景；配送费退款触发楼长侧 clawback） */
+  @IsOptional() @IsBoolean() refundDeliveryFee?: boolean;
+  /** 退款商品是否回库（默认 true；已送出/损耗场景传 false 只退钱不回库） */
+  @IsOptional() @IsBoolean() restock?: boolean;
+  @IsString() @MinLength(1) @MaxLength(200) reason!: string;
+}
+
+export class NightSettleDto {
+  @IsOptional() @IsString() campusId?: string;
+  /** 缺省=该范围全部待结算店铺；显式列表则只出这些店 */
+  @IsOptional() @IsArray() @IsString({ each: true }) storeIds?: string[];
+}
+
+export class NightDepositDeductDto {
+  @IsInt() @Min(1) amount!: number;
+  @IsString() @MinLength(1) @MaxLength(200) reason!: string;
+}
+
+export class NightDepositRefundDto {
+  @IsString() @MinLength(8) @MaxLength(80) requestId!: string;
+  /** 缺省=全额退当前押金余额 */
+  @IsOptional() @IsInt() @Min(1) amount?: number;
+  @IsOptional() @IsString() @MaxLength(200) reason?: string;
+}
+
+/* ==================== 楼长端 /night-rider/* ==================== */
+
+export class NightStockOrderDto {
+  @IsOptional() @IsString() @MinLength(8) @MaxLength(100) requestId?: string;
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(100)
+  @ValidateNested({ each: true })
+  @Type(() => NightStockItemDto)
+  items!: NightStockItemDto[];
+}
+
+export class NightStockItemDto {
+  @IsString() catalogProductId!: string;
+  @IsInt() @Min(1) @Max(9999) quantity!: number;
+}
+
+export class NightCatalogImportDto {
+  @IsOptional() @IsString() campusId?: string;
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(100)
+  @IsString({ each: true })
+  productIds!: string[];
+}
+export class NightReviewDto {
+  @IsBoolean() approved!: boolean;
+  @IsString() @MaxLength(500) reason!: string;
+}
+export class NightReasonDto {
+  @IsString() @MinLength(1) @MaxLength(500) reason!: string;
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(9)
+  @IsString({ each: true })
+  photos?: string[];
+}
+
+export class NightInventoryReviewDto extends NightReviewDto {
+  @IsOptional() @IsIn(['platform', 'manager']) responsibility?: 'platform' | 'manager';
+  @IsOptional() @IsInt() @Min(0) compensationAmount?: number;
+}
+export class NightReceiveItemDto {
+  @IsString() catalogProductId!: string;
+  @IsInt() @Min(0) @Max(9999) quantity!: number;
+}
+export class NightReceiveDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(100)
+  @ValidateNested({ each: true })
+  @Type(() => NightReceiveItemDto)
+  items!: NightReceiveItemDto[];
+}
+export class NightReportItemDto {
+  @IsString() nightProductId!: string;
+  /** loss 为报损件数，stocktake 为盘点可售实数（不含冻结/待配送）。 */
+  @IsInt() @Min(0) @Max(99999) quantity!: number;
+  @IsInt() @Min(0) inventoryVersion!: number;
+}
+export class NightReportDto extends NightReasonDto {
+  @IsString() @MinLength(8) @MaxLength(100) requestId!: string;
+  @IsIn(['loss', 'stocktake']) kind!: 'loss' | 'stocktake';
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(100)
+  @ValidateNested({ each: true })
+  @Type(() => NightReportItemDto)
+  items!: NightReportItemDto[];
+}
+
+export class NightShelfDto {
+  @IsBoolean() onShelf!: boolean;
+}
+
+export class NightDeliverDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(3)
+  @IsString({ each: true })
+  images!: string[];
+  @IsOptional() @IsString() @MaxLength(200) remark?: string;
+}
+
+export class NightDepositPayDto {
+  @IsOptional() @IsInt() @Min(50000) @Max(5000000) targetTier?: number;
+}
+
+/* ==================== 用户端 /night/* ==================== */
+
+export class NightOrderItemDto {
+  @IsOptional() @IsString() @MaxLength(100) promotionId?: string;
+  @IsOptional() @IsBoolean() asSeckill?: boolean;
+  /** NightProduct 楼栋行 id */
+  @IsString() productId!: string;
+  @IsInt() @Min(1) @Max(999) quantity!: number;
+}
+
+export class NightOrderCreateDto {
+  @IsOptional() @IsString() @MinLength(8) @MaxLength(80) requestId?: string;
+  /** 客户端展示过的金额仅用于变化提示，服务端仍独立重算。 */
+  @IsOptional() @IsInt() @Min(0) expectedProductAmount?: number;
+  @IsOptional() @IsInt() @Min(0) expectedDeliveryFee?: number;
+  @IsString() storeId!: string;
+  @IsArray()
+  @ArrayMinSize(1)
+  @ValidateNested({ each: true })
+  @Type(() => NightOrderItemDto)
+  items!: NightOrderItemDto[];
+  /** 夜宵券（UserCoupon id），可空 */
+  @IsOptional() @IsString() couponId?: string;
+  @IsString({ message: '请先选择寝室地址' }) addressId!: string;
+  @IsOptional()
+  @IsString()
+  @MaxLength(60, { message: '备注最多 60 字' })
+  remark?: string;
+}
+
+export class NightAfterSaleDto {
+  @IsIn(['quality', 'missing', 'damaged', 'wrong', 'other']) type!:
+    'quality' | 'missing' | 'damaged' | 'wrong' | 'other';
+  @IsString() @MinLength(5) @MaxLength(300) description!: string;
+  @IsOptional() @IsArray() @ArrayMaxSize(6) @IsString({ each: true }) @MaxLength(2048, { each: true }) images?: string[];
+  @IsOptional() @IsArray() @ArrayMaxSize(100) @IsString({ each: true }) productIds?: string[];
+}
+
+export class NightOpeningDto {
+  @IsString() @MinLength(8) @MaxLength(100) requestId!: string;
+  @IsISO8601() startAt!: string;
+  @IsISO8601() endAt!: string;
+  @IsString() @MinLength(1) @MaxLength(500) reason!: string;
+}

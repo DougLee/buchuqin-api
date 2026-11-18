@@ -1,0 +1,3 @@
+仅测试库：buchuqinshishe_spec / night_stock_parity_20261107；HTTP 出站隔离已启用
+夜宵预览HTTP出站白名单已启用；生产API、微信网关及外部存储均不可连接。
+迁移兼容验收通过：旧库存/历史备货单/在配订单/条码迁移/缺仓库补链/菜单授权，独立 schema night_stock_migration_1794068078071

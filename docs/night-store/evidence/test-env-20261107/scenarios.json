@@ -1,0 +1,72 @@
+{
+  "date": "2026-11-07",
+  "environment": "https://admin-test.buchuqin.com",
+  "productionTouched": false,
+  "totalPassed": 52,
+  "groups": {
+    "permissions": [
+      "intern cannot switch workspace",
+      "rider cannot switch workspace",
+      "unbound cannot switch workspace",
+      "formal bound manager can switch",
+      "reader can list scoped stores",
+      "reader cannot mutate catalog",
+      "reader cannot upload product image",
+      "operator cannot query foreign campus",
+      "foreign operator cannot read main store",
+      "foreign operator cannot edit main catalog",
+      "user cannot access manager dashboard",
+      "rider cannot access manager dashboard",
+      "unbound manager has no night store",
+      "user cannot access admin",
+      "manager cannot access user purchase channel",
+      "foreign buyer cannot read store",
+      "other buyer cannot read order",
+      "intern cannot read other managers order",
+      "foreign manager cannot read main order",
+      "cannot unbind store with unsettled stock and deposit",
+      "day coupon cannot be claimed through night channel",
+      "night coupon cannot be claimed through day channel"
+    ],
+    "inventory": [
+      "main H5 purchase completed with 340 cents income and quota released",
+      "duplicate stock submission holds quota once; requested cancellation restores it",
+      "rejected stock request releases quota without warehouse mutation",
+      "approved stock cancellation restores warehouse reservation exactly once",
+      "over quota request is rejected without stock or quota mutation",
+      "loss freezes goods but holds quota; rejection restores availability",
+      "loss approval releases held value once",
+      "stocktake gain is unavailable until approval, then added once",
+      "stocktake loss holds value until approval",
+      "editing catalog price does not revalue existing store assets",
+      "repeat main actual receipt is idempotent; changing received count is rejected"
+    ],
+    "orders": [
+      "unpaid duplicate submission is one order; cancel returns stock and quota",
+      "foreign building address is rejected",
+      "paid user cancellation refunds, returns inventory and cancels commission",
+      "paid undelivered no-restock refund creates held loss, releases only on approval",
+      "completed order after-sale partial refund adjusts income without creating new loss"
+    ],
+    "finance": [
+      "main deposit top-up charges only 500 yuan difference and repeated confirmation credits once",
+      "stock prevents deposit refund and accounts without finance permission are rejected",
+      "pending commissions settle once, financial paid marker is idempotent",
+      "empty comparison store deposit deduction and original-route partial/full refund maintain ledger"
+    ],
+    "businessStates": [
+      "admin sale ban and manager shelf state independently control user visibility",
+      "pause, platform suspension and out-of-window block new purchases and cannot be bypassed",
+      "night reservation blocks day checkout; day unpaid cancellation preserves warehouse",
+      "staff role downgrade is enforced immediately despite old manager JWT",
+      "deployed API uses 60 minute acceptance deadline after confirmed payment"
+    ],
+    "organizations": [
+      "other organization cannot list main campus stores",
+      "other organization cannot read main store by id",
+      "other organization cannot edit main catalog",
+      "other organization cannot configure main campus",
+      "other organization cannot refund main order"
+    ]
+  }
+}

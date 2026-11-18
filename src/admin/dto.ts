@@ -226,6 +226,7 @@ export class ImportOrgProductDto {
 }
 /** 首页 Banner（IK9RX2）：后台可管；color 为预置主题键（green/orange/dark）或自定义 hex。 */
 export class CreateBannerDto {
+  @IsOptional() @IsIn(['day', 'night']) businessType?: 'day' | 'night';
   @IsString() @MinLength(1) @MaxLength(30) title!: string;
   @IsOptional() @IsString() @MaxLength(50) subtitle?: string;
   @IsOptional() @IsString() @MaxLength(20) badge?: string;
@@ -406,6 +407,11 @@ export class CreateCouponDto {
   // 不传 = 长期有效（IKDCVO）。
   @IsOptional() @IsString() expiresAt?: string;
   @IsOptional() @IsIn(['platform', 'partner']) kind?: string;
+  // IKSW1F 夜宵券（T52 双向隔离）：不传=day（存量行为零变化）；night=夜宵
+  // 专用券（夜宵领券入口/夜宵订单可用，白天链路全拒）。创建后不可改
+  // （UpdateCouponDto 不收此字段）。
+  @IsOptional() @IsIn(['day', 'night']) businessType?: string;
+  @IsOptional() @IsArray() @ArrayMaxSize(200) @IsString({ each: true }) nightProductIds?: string[];
   @IsOptional() @IsIn(['manual', 'lottery', 'signup']) trigger?: string;
   @IsOptional() @IsString() @MaxLength(60) remark?: string;
   /** 支付后推荐（道哥 2026-09-08）：支付成功页领券卡展示 */
@@ -422,6 +428,7 @@ export class CreateCouponDto {
  * null=转不限量；expiresAt null=转长期。kind/trigger 不开放编辑。
  */
 export class UpdateCouponDto {
+  @IsOptional() @IsArray() @ArrayMaxSize(200) @IsString({ each: true }) nightProductIds?: string[];
   @IsOptional() @IsIn(['active', 'paused']) status?: 'active' | 'paused';
   /** 支付后推荐（道哥 2026-09-08）：支付成功页领券卡展示。 */
   @IsOptional() @IsBoolean() featuredAfterPay?: boolean;
@@ -763,6 +770,8 @@ export class CreateCampusDto {
   buildingManagerBaseSalary?: number;
 }
 export class UpdateCampusDto {
+  /** Enrollment is restricted to super-admins and the owning organization's administrators. */
+  @IsOptional() @IsBoolean() nightEnabled?: boolean;
   /** 仅平台账号可调整；组织账号由控制器锁定在本组织。 */
   @IsOptional() @IsString() @MinLength(1) organizationId?: string;
   @IsOptional() @IsString() @MinLength(2) @MaxLength(30) name?: string;
@@ -921,6 +930,7 @@ export class UpdateCampusDto {
  * 小程序登录直接串组织，故唯一性在登记/改配两个入口都强校验。
  */
 export class CreateOrganizationDto {
+  @IsOptional() @IsBoolean() nightEnabled?: boolean;
   @IsString() @MinLength(2) @MaxLength(50) name!: string;
   @IsString() @MinLength(1) @MaxLength(20) shortName!: string;
   /** 组织小程序 AppID（必填唯一；登记即生效，见类注释 ADR 锚点） */
@@ -968,6 +978,7 @@ export class CreateOrganizationDto {
  * =覆盖，显式传 null =清除，不传 =保留；其余非敏感字段空串 =清空。
  */
 export class UpdateOrganizationDto {
+  @IsOptional() @IsBoolean() nightEnabled?: boolean;
   @IsOptional() @IsString() @MinLength(2) @MaxLength(50) name?: string;
   @IsOptional() @IsString() @MinLength(1) @MaxLength(20) shortName?: string;
   /** 换绑 AppID（唯一性强校验同创建；登记即生效） */
@@ -1141,6 +1152,7 @@ export class UpdateSlotDto {
 }
 /** 小程序公告（IKHM1P）：校区多条 + 生效窗 + 启停。 */
 export class CreateNoticeDto {
+  @IsOptional() @IsIn(['day', 'night']) businessType?: 'day' | 'night';
   @IsString() campusId!: string;
   @IsString() @MinLength(2) @MaxLength(200) content!: string;
   @IsString() startsAt!: string;

@@ -23,8 +23,9 @@ describe('campus daily report (IKFOPS)', () => {
     new Date(Date.now() + 8 * 3600 * 1000 - offset * 86400 * 1000)
       .toISOString()
       .slice(0, 10);
-  const YD = day(1);
-  const DBY = day(2);
+  const YD = "2001-01-17"; // 固定独立业务日，避免共享seed/其他套件同日订单污染聚合
+
+  const DBY = "2001-01-16";
 
   let userId = '';
   let orderIds: string[] = [];

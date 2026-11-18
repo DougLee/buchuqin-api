@@ -178,8 +178,8 @@ describe('wechat groups & admin users (IKAJSY/IKAJSZ/IKAJSW)', () => {
     const a = page.items.find((x) => x.id === USER_A)!;
     expect(a.orderCount).toBe(2); // 未支付单不计
     expect(a.totalSpend).toBe(3500); // 分
-    // maskPhone 口径：前 3 + **** + 后 4
-    expect(a.phoneMasked).toMatch(/^\d{3}\*\*\*\*\d{4}$/);
+    // 11/01后台联系电话明文，phoneMasked保留为兼容字段名
+    expect(a.phoneMasked).toBe('13800000001');
     expect(a.buildingName).toBe('群码一号楼');
     const b = page.items.find((x) => x.id === USER_B)!;
     expect(b.orderCount).toBe(0);

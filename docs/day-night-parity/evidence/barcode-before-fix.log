@@ -1,0 +1,32 @@
+仅测试库：night_parity_spec / night_stock_parity_full4_20261108；HTTP 出站隔离已启用
+夜宵预览HTTP出站白名单已启用；生产API、微信网关及外部存储均不可连接。
+[Nest] 39173  - 11/08/2026, 1:17:41 AM    WARN [BusinessService] signup coupon grant skipped: no active signup coupon for campus=campus-hbut userId=cmw6o2bod000azz8508umewn2
+[Nest] 39173  - 11/08/2026, 1:17:41 AM    WARN [BusinessService] signup coupon grant skipped: no active signup coupon for campus=campus-test-b userId=cmw6o2bod000azz8508umewn2
+FAIL src/business/campus-isolation.spec.ts
+  ● cross-campus isolation (IK8W5J) › 用户商品关键词同时支持名称和条码，仍隔离校区和夜宵主档
+
+    expect(received).toEqual(expected) // deep equality
+
+    - Expected  - 3
+    + Received  + 1
+
+    - Array [
+    -   "cmw6o2bkq0003zz8561uj0t63",
+    - ]
+    + Array []
+
+      130 |
+      131 |   it('用户商品关键词同时支持名称和条码，仍隔离校区和夜宵主档', async () => {
+    > 132 |     expect((await service.listProducts(CAMPUS_B, 'all', ' PARITY-BARCODE-B ') as IdLike[]).map(row => row.id)).toEqual([productB]);
+          |                                                                                                                ^
+      133 |     expect((await service.listProducts(CAMPUS_B, 'all', '专属可乐') as IdLike[]).map(row => row.id)).toEqual([productB]);
+      134 |     expect(await service.listProducts(CAMPUS_A, 'all', 'PARITY-BARCODE-B')).toEqual([]);
+      135 |     await db.product.update({ where: { id: productB }, data: { nightCatalog: true } });
+
+      at Object.<anonymous> (business/campus-isolation.spec.ts:132:112)
+
+Test Suites: 1 failed, 1 total
+Tests:       1 failed, 5 passed, 6 total
+Snapshots:   0 total
+Time:        0.753 s, estimated 1 s
+Ran all test suites matching src/business/campus-isolation.spec.ts.

@@ -111,25 +111,13 @@ describe('Admin orders status tabs (IKAJSP)', () => {
     });
   });
 
-  it('rejects manual delivered/completed states that bypass proof or user confirmation', async () => {
-    const order = await db.order.findFirstOrThrow({
-      where: { orderNo: 'BCQTAB1' },
-    });
-    await expect(
-      service.updateOrderStatus(
-        order.id,
-        { status: 'delivered', reason: '测试送达' },
-        'tester',
-        CAMPUS,
-      ),
-    ).rejects.toThrow('待用户确认状态必须由配送端提交送达凭证');
-    await expect(
-      service.updateOrderStatus(
-        order.id,
-        { status: 'completed', reason: '测试完成' },
-        'tester',
-        CAMPUS,
-      ),
-    ).rejects.toThrow('已完成状态必须由用户确认收货');
+  it('运营补录送达/完成必须填原因，保留审计且完结后冻结', async () => {
+    const order = await db.order.findFirstOrThrow({ where: { orderNo: 'BCQTAB1' } });
+    await expect(service.updateOrderStatus(order.id, { status: 'delivered' }, 'tester', CAMPUS)).rejects.toThrow('必须填写变更原因');
+    expect((await service.updateOrderStatus(order.id, { status: 'delivered', reason: '线下送达核实' }, 'tester', CAMPUS)).status).toBe('delivered');
+    expect((await service.updateOrderStatus(order.id, { status: 'completed', reason: '已电话核实收货' }, 'tester', CAMPUS)).status).toBe('completed');
+    const audit = await db.auditLog.findMany({ where: { entityId: order.id, action: 'order.manual-status' } });
+    expect(audit).toHaveLength(2);
+    await expect(service.updateOrderStatus(order.id, { status: 'paid', reason: '不能复活' }, 'tester', CAMPUS)).rejects.toThrow('不可修改');
   });
 });

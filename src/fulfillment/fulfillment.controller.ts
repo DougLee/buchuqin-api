@@ -12,10 +12,12 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { StaffIdentityGuard } from '../auth/staff-identity.guard';
 import type { AuthRequest } from '../auth/jwt-auth.guard';
 import { ok } from '../common/api-response';
 import { paginate } from '../common/pagination';
 import { FulfillmentService } from './fulfillment.service';
+import { NightRiderService } from '../night/night-rider.service';
 import {
   LeaveRequestDto,
   RejectDto,
@@ -28,10 +30,16 @@ import {
 
 @ApiTags('履约端 MVP')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, StaffIdentityGuard)
 @Controller('fulfillment')
 export class FulfillmentController {
-  constructor(private readonly service: FulfillmentService) {}
+  constructor(
+    private readonly service: FulfillmentService,
+    private readonly night: NightRiderService,
+  ) {}
+  @Get('business-context') async businessContext(@Req() r: AuthRequest) {
+    return ok(await this.night.businessContext(this.auth(r)));
+  }
   private auth(req: AuthRequest) {
     // IKEAGE：实习楼长与正式楼长同权（招募审批产出，履约动作全放行）
     if (
@@ -135,10 +143,7 @@ export class FulfillmentController {
   }
   /** 订阅消息额度上报（IKDQP9）：前端授权 accept N 次后上报，返回最新水位。 */
   @Post('notify/grant')
-  async notifyGrant(
-    @Req() r: AuthRequest,
-    @Body() b: { count?: number },
-  ) {
+  async notifyGrant(@Req() r: AuthRequest, @Body() b: { count?: number }) {
     return ok(
       await this.service.grantNotifyQuota(this.auth(r), Number(b?.count) || 0),
     );

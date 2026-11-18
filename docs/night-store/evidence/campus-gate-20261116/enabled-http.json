@@ -1,0 +1,50 @@
+{
+  "origin": "https://admin-test.buchuqin.com",
+  "mode": "enabled",
+  "checks": 7,
+  "passed": true,
+  "evidence": [
+    {
+      "method": "GET",
+      "route": "fulfillment/business-context",
+      "status": 200,
+      "message": "success"
+    },
+    {
+      "method": "GET",
+      "route": "night-rider/night/dashboard",
+      "status": 200,
+      "message": "success"
+    },
+    {
+      "method": "GET",
+      "route": "night-rider/night/stock/pool",
+      "status": 200,
+      "message": "success"
+    },
+    {
+      "method": "GET",
+      "route": "night-rider/night/products",
+      "status": 200,
+      "message": "success"
+    },
+    {
+      "method": "GET",
+      "route": "night-rider/night/deposit/tiers",
+      "status": 200,
+      "message": "success"
+    },
+    {
+      "method": "POST",
+      "route": "night-rider/night/store/open",
+      "status": 400,
+      "message": "未到夜宵营业时间（00:00~00:00）"
+    },
+    {
+      "method": "POST",
+      "route": "night-rider/night/stock/orders",
+      "status": 400,
+      "message": "商品已下架或不属于本校区，请刷新"
+    }
+  ]
+}

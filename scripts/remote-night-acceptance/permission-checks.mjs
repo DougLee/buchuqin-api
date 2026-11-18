@@ -1,0 +1,32 @@
+import assert from 'node:assert/strict';
+import { call, state, q, items } from './http.mjs';
+const report = [];
+const test = async (name, fn) => { await fn(); report.push(name); };
+const normal = '/api/v1/night-rider/night/';
+for (const key of ['intern', 'rider', 'unbound']) await test(key + ' cannot switch workspace', async () => {
+  const context = await call('/api/v1/fulfillment/business-context', 'GET', undefined, state.staffSessions[key].token);
+  assert.equal(context.canSwitchWorkspace, false);
+});
+await test('formal bound manager can switch', async () => assert.equal((await call('/api/v1/fulfillment/business-context', 'GET', undefined, state.manager.token)).canSwitchWorkspace, true));
+await test('reader can list scoped stores', async () => assert.ok(items(await call('/api/v1/admin/night/stores' + q(state.campusId), 'GET', undefined, state.adminSessions.reader.token)).some(row => row.id === state.storeId)));
+await test('reader cannot mutate catalog', () => call('/api/v1/admin/night/catalog/' + state.catalog[0].id + q(state.campusId), 'PATCH', { price: 900 }, state.adminSessions.reader.token, 403));
+await test('reader cannot upload product image', async () => {
+  const body = new FormData(); body.append('file', new Blob([new Uint8Array([1, 2, 3])], { type: 'image/png' }), 'invalid.png');
+  await call('/api/v1/files/images' + q(state.campusId) + '&folder=app/product', 'POST', body, state.adminSessions.reader.token, 403);
+});
+await test('operator cannot query foreign campus', () => call('/api/v1/admin/night/stores' + q(state.foreignCampusId), 'GET', undefined, state.adminSessions.operator.token, 403));
+await test('foreign operator cannot read main store', () => call('/api/v1/admin/night/stores/' + state.storeId + q(state.foreignCampusId), 'GET', undefined, state.adminSessions.foreignOperator.token, 403));
+await test('foreign operator cannot edit main catalog', () => call('/api/v1/admin/night/catalog/' + state.catalog[0].id + q(state.foreignCampusId), 'PATCH', { price: 900 }, state.adminSessions.foreignOperator.token, 403));
+await test('user cannot access manager dashboard', () => call(normal + 'dashboard', 'GET', undefined, state.users.buyer.token, 403));
+await test('rider cannot access manager dashboard', () => call(normal + 'dashboard', 'GET', undefined, state.staffSessions.rider.token, 403));
+await test('unbound manager has no night store', () => call(normal + 'dashboard', 'GET', undefined, state.staffSessions.unbound.token, 404));
+await test('user cannot access admin', () => call('/api/v1/admin/night/stores' + q(state.campusId), 'GET', undefined, state.users.buyer.token, 403));
+await test('manager cannot access user purchase channel', () => call('/api/v1/night/stores', 'GET', undefined, state.manager.token, 403));
+await test('foreign buyer cannot read store', () => call('/api/v1/night/stores/' + state.storeId, 'GET', undefined, state.users.foreignBuyer.token, 404));
+await test('other buyer cannot read order', () => call('/api/v1/night/orders/' + state.mainOrderId, 'GET', undefined, state.users.candidate.token, 404));
+await test('intern cannot read other managers order', () => call(normal + 'orders/' + state.mainOrderId, 'GET', undefined, state.staffSessions.intern.token, 404));
+await test('foreign manager cannot read main order', () => call(normal + 'orders/' + state.mainOrderId, 'GET', undefined, state.staffSessions.foreignManager.token, 404));
+await test('cannot unbind store with unsettled stock and deposit', () => call('/api/v1/admin/night/stores/' + state.storeId + q(state.campusId), 'PATCH', { managerStaffId: null }, undefined, 400));
+await test('day coupon cannot be claimed through night channel', () => call('/api/v1/night/coupons/' + state.coupons.day + '/claim', 'POST', undefined, state.users.buyer.token, 400));
+await test('night coupon cannot be claimed through day channel', () => call('/api/v1/coupons/' + state.coupons.night + '/claim', 'POST', undefined, state.users.buyer.token, 400));
+console.log(JSON.stringify({ passed: report.length, cases: report }, null, 2));

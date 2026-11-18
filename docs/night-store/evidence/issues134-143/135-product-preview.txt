@@ -1,0 +1,71 @@
+[p2 "订单详情" | space "夜宵134–143验收"(11): 3 managed, 0 untracked — p1 "不出寝 · 运营管理后台", p2* "订单详情", p3 "夜宵订单进度"]
+root
+  container
+    container
+      svg_root
+      text "订单详情"
+    container
+      container
+        text "配送中"
+        text "单号 YX1794882425928XW95"
+        text "下单 11-17 10:27"
+      container
+        text "商品快照"
+        container
+          button
+            text "倍宝柠檬茶"
+          text "×3"
+          text "¥18.00"
+        container
+          button
+            text "体质能量饮料"
+          text "×1"
+          text "¥6.50"
+        container
+          container
+            text "商品金额"
+            text "¥24.50"
+          container
+            text "券优惠"
+            text "-¥0.00"
+          container
+            text "配送费"
+            text "¥2.00"
+          container
+            text "实付"
+            text "¥26.50"
+      container
+        text "配送地址"
+        button
+          container
+            text "西区9栋 · 101"
+            text "本机验收　13800001991"
+          text "拨打"
+      container
+        text "本单所得（佣金试算）"
+        container
+          container
+            text "商品佣金"
+            text "券后金额 × 20%（基数 ¥24.50）"
+          text "¥4.90"
+        container
+          container
+            text "配送费收入"
+            text "夜间配送费全额归楼长"
+          text "¥2.00"
+        container
+          text "本单合计"
+          text "¥6.90"
+        text "佣金按「券后商品实收 × 比例」计；退款会重算，配送费退款会冲回。"
+      container
+        text "订单进度"
+        container
+          text "订单已提交"
+          text "11-17 10:27"
+        container
+          text "支付成功"
+          text "11-17 10:27"
+        container
+          text "楼长已接单"
+          text "11-17 10:27"
+[more content below the viewport: scrollY=0, viewport 928 / page 1218 px; scroll or use snapshot({ scope: "full_page" })]

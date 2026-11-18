@@ -6,15 +6,26 @@ describe('dashboard coupon consumption', () => {
   const db = new PrismaService();
   const service = new AdminService(db, new BusinessService(db));
   const orderIds: string[] = [];
+  const ownUsers: string[] = [], ownCampuses: string[] = [];
+  beforeAll(async () => {
+    for (const label of ['甲', '乙']) {
+      const campus = await db.campus.create({ data: { name: `券统计隔离${label}`, shortName: label, warehouseName: label } });
+      ownCampuses.push(campus.id);
+      const user = await db.user.create({ data: { campusId: campus.id, nickname: `券统计用户${label}`, phone: label === "甲" ? "13800009903" : "13800009904" } });
+      ownUsers.push(user.id);
+    }
+  });
 
   afterAll(async () => {
     await db.order.deleteMany({ where: { id: { in: orderIds } } });
+    await db.user.deleteMany({ where: { id: { in: ownUsers } } });
+    await db.campus.deleteMany({ where: { id: { in: ownCampuses } } });
     await db.$disconnect();
   });
 
   it('uses today paid orders and keeps the single-campus total isolated', async () => {
     const users = await db.user.findMany({
-      where: { campus: { status: { not: 'official' } } },
+      where: { id: { in: ownUsers } },
       distinct: ['campusId'],
       orderBy: { campusId: 'asc' },
       take: 2,

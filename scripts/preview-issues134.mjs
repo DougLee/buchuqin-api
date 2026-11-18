@@ -1,0 +1,70 @@
+import fs from 'node:fs';
+import { randomBytes } from 'node:crypto';
+import { createRequire } from 'node:module';
+const require = createRequire(import.meta.url);
+const url = new URL(process.env.DATABASE_URL || '');
+if (url.hostname !== '127.0.0.1' || url.port !== '15449' || url.pathname !== '/night_parity_spec' || url.searchParams.get('schema') !== 'night_stock_parity_issues134_previewc20261117') throw Error('仅允许本轮本机预览schema');
+const { PrismaService } = require('../dist/src/database/prisma.service.js');
+const { NightInventoryService } = require('../dist/src/night/night-inventory.service.js');
+const { NightOrderService } = require('../dist/src/night/night-order.service.js');
+const { NightOpeningService } = require('../dist/src/night/night-opening.service.js');
+const { BusinessService } = require('../dist/src/business/business.service.js');
+const { RbacService } = require('../dist/src/admin/rbac/rbac.service.js');
+const { JwtService } = require('@nestjs/jwt');
+const { hash } = require('bcryptjs');
+const db = new PrismaService();
+try {
+  const campusId = 'night-preview-campus', staffId = 'night-preview-staff', storeId = 'night-preview-store', userId = 'night-demo-customer-0';
+  let saved;
+  const marker = await db.auditLog.findFirst({ where: { action: 'issues134.preview.ready', campusId } });
+  if (marker) saved = marker.after;
+  else {
+    if (await db.campus.count()) throw Error('首次准备仅允许空schema，不覆盖已有夹具');
+    const art = (title, color) => 'data:image/svg+xml,' + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="320" height="320"><rect width="320" height="320" rx="32" fill="${color}"/><circle cx="160" cy="125" r="66" fill="#ffe19a"/><path d="M120 130h80v100h-80z" fill="#245c3e"/><text x="160" y="280" text-anchor="middle" fill="#173c2b" font-size="24">${title}</text></svg>`);
+    await db.organization.create({ data: { id: 'night-preview-org', name: '夜宵本机验收组织', capabilities: [] } });
+    await db.campus.create({ data: { id: campusId, organizationId: 'night-preview-org', name: '夜宵功能验收校区', shortName: '夜宵验收', warehouseName: '验收仓', nightEnabled: true, nightStartAt: '00:00', nightEndAt: '23:59', manualClosed: false, deliveryThreshold: 0, deliveryFeeInstant: 200, nightDeliveryFee: 200, afterSalesGroupQrcode: art('售后福利群示意', '#e4efdf') } });
+    await db.building.create({ data: { id: 'night-preview-building', campusId, name: '西区9栋' } });
+    await db.room.createMany({ data: [101, 102].map(room => ({ buildingId: 'night-preview-building', floor: 1, roomNo: String(room), qrToken: `issues134-room-${room}` })) });
+    await db.staff.create({ data: { id: staffId, campusId, name: '方福宁（本机验收）', role: 'building-manager', roleText: '楼长', staffNo: 'NIGHT-PREVIEW', buildingId: 'night-preview-building', building: '西区9栋', openid: 'LOCAL_PREVIEW_MANAGER', onTimeRate: 100, income: 0 } });
+    await db.nightStore.create({ data: { id: storeId, campusId, buildingId: 'night-preview-building', managerStaffId: staffId, commissionRate: 2000 } });
+    await db.user.create({ data: { id: userId, campusId, nickname: '夜宵验收用户', phone: '13800001991', openid: 'LOCAL_PREVIEW_USER' } });
+    const address = await db.address.create({ data: { userId, campusId, campusName: '夜宵功能验收校区', buildingId: 'night-preview-building', buildingName: '西区9栋', room: '101', floor: 1, contactName: '本机验收', phone: '13800001991', isDefault: true } });
+    const category = await db.category.create({ data: { campusId, name: '夜宵验收商品' } });
+    const inventory = new NightInventoryService(db), orders = new NightOrderService(db, { registerNightPaymentHandler() {} }), business = new BusinessService(db);
+    const deposit = await db.nightDepositOrder.create({ data: { storeId, outTradeNo: 'ND-ISSUES134-LOCAL', amount: 50000, targetTier: 50000 } });
+    await orders.applyNightDepositPaid(deposit.outTradeNo, 'LOCAL_DEPOSIT');
+    const products = [];
+    for (const [i, name] of ['倍宝柠檬茶', '体质能量饮料', '纯净水'].entries()) {
+      const warehouse = await db.product.create({ data: { campusId, categoryId: category.id, name, subtitle: '本机功能验收', price: 600 + i * 50, originalPrice: 800, image: art(name, ['#e1ead2','#e9dfc8','#d7e8e4'][i]), tag: '', weight: 0, stock: 100, wholesalePrice: 250, costPrice: 200, procurementMode: 'HQ' } });
+      const catalog = await db.product.create({ data: { campusId, categoryId: category.id, name, subtitle: '夜宵送到寝室', price: warehouse.price, originalPrice: 800, image: warehouse.image, tag: '', weight: 0, stock: 0, nightCatalog: true, warehouseProductId: warehouse.id } });
+      products.push({ warehouse, catalog });
+    }
+    await business.updateCart(userId, { items: [{ productId: products[0].warehouse.id, quantity: 1 }] });
+    const day = await business.createOrder(userId, campusId, { addressId: address.id, deliveryMode: 'instant' });
+    await business.pay(userId, day.id);
+    const stock = await inventory.createStockOrder(staffId, { requestId: 'preview-initial-stock', items: products.map(p => ({ catalogProductId: p.catalog.id, quantity: 10 })) });
+    await inventory.reviewStockOrder('local-admin', stock.id, true, '验收备货'); await inventory.shipStockOrder('local-admin', stock.id); await inventory.receiveStockOrder(staffId, stock.id, products.map(p => ({ catalogProductId: p.catalog.id, quantity: 10 })));
+    const mine = await db.nightProduct.findMany({ where: { storeId }, orderBy: { createdAt: 'asc' } });
+    await db.nightStore.update({ where: { id: storeId }, data: { status: 'open' } });
+    const night = await orders.submitOrder(userId, { storeId, addressId: address.id, items: [{ productId: mine[0].id, quantity: 3 }, { productId: mine[1].id, quantity: 1 }] });
+    await orders.applyNightOrderPaid(night.orderNo, 'LOCAL_PAID'); await orders.acceptOrder(staffId, storeId, night.id);
+    const report = await inventory.createReport(staffId, { requestId: 'preview-loss-report', kind: 'loss', reason: '演示盘点损耗责任审核', items: [{ nightProductId: mine[2].id, quantity: 2, inventoryVersion: mine[2].inventoryVersion }] });
+    const picking = await inventory.createStockOrder(staffId, { requestId: 'preview-picking-stock', items: [{ catalogProductId: products[0].catalog.id, quantity: 2 }] });
+    await inventory.reviewStockOrder('local-admin', picking.id, true, '可打印拣货交接单');
+    await db.nightStore.update({ where: { id: storeId }, data: { status: 'closed' } });
+    await db.campus.update({ where: { id: campusId }, data: { nightStartAt: '00:00', nightEndAt: '00:00' } });
+    const opening = await new NightOpeningService(db, inventory).request(staffId, { requestId: 'preview-opening-request', startAt: new Date(Date.now() - 60000).toISOString(), endAt: new Date(Date.now() + 4 * 3600000).toISOString(), reason: '本楼活动临时营业验证' });
+    saved = { nightOrderId: night.id, dayOrderId: day.id, reportId: report.id, pickingId: picking.id, openingId: opening.id, addressId: address.id };
+    await db.auditLog.create({ data: { campusId, operator: 'local-preview', action: 'issues134.preview.ready', entityType: 'system', entityId: storeId, after: saved } });
+  }
+  await new RbacService(db).syncRegistry();
+  const account = await db.adminAccount.upsert({ where: { id: 'night-preview-admin' }, update: {}, create: { id: 'night-preview-admin', username: 'night-preview', nickname: '本机夜宵验收', passwordHash: await hash(randomBytes(24).toString('hex'), 10), role: 'hq', campusId, orgLevel: 'platform', rbacMigrated: true } });
+  const role = await db.adminRole.upsert({ where: { code: 'super-admin' }, update: {}, create: { code: 'super-admin', name: '验收管理员', builtin: true, seeded: true, menusMigrated: true } });
+  if (!await db.adminAccountRole.count({ where: { accountId: account.id, roleId: role.id } })) await db.adminAccountRole.create({ data: { accountId: account.id, roleId: role.id, scope: 'platform', grantedBy: 'local-preview' } });
+  const secretFile = '/tmp/night-stock-preview-secret';
+  if (!fs.existsSync(secretFile)) fs.writeFileSync(secretFile, randomBytes(48).toString('hex'), { mode: 0o600 });
+  const secret = fs.readFileSync(secretFile, 'utf8').trim(); if (!/^[a-f0-9]{96}$/.test(secret)) throw Error('预览密钥格式不正确');
+  const jwt = new JwtService({ secret });
+  fs.writeFileSync('/tmp/night-stock-preview.json', JSON.stringify({ campusId, storeId, staffId, ...saved, adminToken: jwt.sign({ id: account.id, campusId, role: account.role, sv: account.sessionVersion }, { expiresIn: '1d' }), adminUser: { id: account.id, campusId, role: account.role, nickname: account.nickname }, staffToken: jwt.sign({ id: staffId, campusId, role: 'building-manager', appKind: 'delivery' }, { expiresIn: '1d' }), userToken: jwt.sign({ id: userId, campusId, role: 'user', appKind: 'user' }, { expiresIn: '1d' }) }), { mode: 0o600 });
+  console.log('134–143本机隔离预览已准备，会话只存/tmp；未调用外部支付、推送或存储。');
+} finally { await db.$disconnect(); }

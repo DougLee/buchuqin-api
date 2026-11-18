@@ -1,0 +1,13 @@
+{
+  "time": "2026-11-07T17:38:44.338862+00:00",
+  "testHealth": {
+    "status": "ok",
+    "database": "up",
+    "timestamp": "2026-11-07T17:38:43.674Z"
+  },
+  "containers": [
+    "/buchuqin-api buchuqin-api:parity-20261108-r4 sha256:277775c3a1082aeb2eaea3ca11c78d3d65493de5bcd4715a2e1eff0f9a3210a9 healthy",
+    "/buchuqin-admin buchuqin-admin:parity-20261108 sha256:710b5787f6b66c1cf03d184ab70f3814c387cccf5bf967048f72aef831034bc5 healthy"
+  ],
+  "productionConnected": false
+}

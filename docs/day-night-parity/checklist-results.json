@@ -1,0 +1,1191 @@
+{
+  "date": "2026-11-08",
+  "total": 118,
+  "passed": 111,
+  "pendingNative": 7,
+  "checkboxMeaning": "按证据层级通过，不等同微信真机",
+  "rows": [
+    {
+      "id": "A1.1",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "A1.2",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json",
+        "docs/day-night-parity/evidence/final-http-checks.log"
+      ]
+    },
+    {
+      "id": "A1.3",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "A1.4",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "A1.5",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "A1.6",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "A1.7",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "A1.8",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "A1.9",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "A2.1",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "A2.2",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "A2.3",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "A2.4",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "A3.1",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "A3.2",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "A3.3",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "A3.4",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "A3.5",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "A3.6",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "A3.7",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "A4.1",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "A4.2",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "A4.3",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json",
+        "docs/day-night-parity/evidence/final-http-checks.log"
+      ]
+    },
+    {
+      "id": "A4.4",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "A5.1",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "A5.2",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "A5.3",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "A5.4",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "A5.5",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "A5.6",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "A5.7",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "A5.8",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "A5.9",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "A5.10",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "B1.1",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "B1.2",
+      "status": "pending-native",
+      "note": "真实微信收银台/支付通知未验收；测试渠道差额、落账、幂等已过。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "B1.3",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "B1.4",
+      "status": "pending-native",
+      "note": "取消/超时与重建预付意图的内部业务已过，真实收银台取消及查单待真机。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "B1.5",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "B2.1",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "B2.2",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "B2.3",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "B2.4",
+      "status": "passed",
+      "note": "新增完整组合：额度不足同requestId被拒→正常预付意图取消不增押金→同意图重试→到账幂等→同requestId备货成功且仅预占一次，独立PostgreSQL通过；非真实微信支付。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "B2.5",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "B2.6",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "B3.1",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "B3.2",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "B3.3",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "B3.4",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "B3.5",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "B4.1",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "B4.2",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "B4.3",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "B4.4",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "B5.1",
+      "status": "pending-native",
+      "note": "真实微信订阅授权和新单推送需真机/服务配置，未发送真实推送。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "B5.2",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "B5.3",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "B5.4",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "B5.5",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "B5.6",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "B6.1",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "B6.2",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "B6.3",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "C1.1",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "C1.2",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "C1.3",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "C1.4",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "C1.5",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "C1.6",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "C1.7",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "C3.7",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "C2.1",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "C2.2",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "C2.3",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "C2.4",
+      "status": "pending-native",
+      "note": "H5朋友/朋友圈等价深链、楼栋确认和商品定位已过；原生微信分享未实测。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "C3.1",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "C3.2",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "C3.3",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "C3.4",
+      "status": "pending-native",
+      "note": "H5模拟渠道完成真实业务状态，但不是微信实际扣款/支付回调。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "C3.5",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "C3.6",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "C4.1",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "C4.2",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "C4.3",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "C4.4",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "C4.5",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "C5.1",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "C5.2",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "C5.3",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "C5.4",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "C5.5",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "C5.6",
+      "status": "pending-native",
+      "note": "订单联系人/原校区客服数据和入口已测；未拨真实电话，设备拨号待验收。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/browser-acceptance.jsonl",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "D1",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/test-ledger-final.json",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "D2",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/test-ledger-final.json",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "D3",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/test-ledger-final.json",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "D4",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/test-ledger-final.json",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "D5",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/test-ledger-final.json",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "D6",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/test-ledger-final.json",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "D7",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/test-ledger-final.json",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "D8",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/test-ledger-final.json",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "D9",
+      "status": "pending-native",
+      "note": "本地业务订单、测试意图、退款账本已核对；没有真实微信商户账单，不能宣称对账完成。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/test-ledger-final.json",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "E1",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/test-ledger-final.json",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "E2",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/test-ledger-final.json",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "E3",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/test-ledger-final.json",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "E4",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/test-ledger-final.json",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "E5",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/test-ledger-final.json",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "E6",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/test-ledger-final.json",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "F1",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/test-ledger-final.json",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "F2",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/test-ledger-final.json",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "F3",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/test-ledger-final.json",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "F4",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/test-ledger-final.json",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "F5",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/test-ledger-final.json",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "F6",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/test-ledger-final.json",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "G1",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/test-ledger-final.json",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "G2",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/test-ledger-final.json",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "G3",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/test-ledger-final.json",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "G4",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/test-ledger-final.json",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    },
+    {
+      "id": "G5",
+      "status": "passed",
+      "note": "API/真实PostgreSQL业务断言通过；页面交互以H5日志所列实际动作及11-07 TEST兼容证据为限，不宣称所有按钮均在本轮重复点击。",
+      "evidence": [
+        "docs/day-night-parity/evidence/api-full-local-final.log",
+        "docs/day-night-parity/evidence/test-ledger-final.json",
+        "docs/night-store/evidence/test-env-20261107/scenarios.json"
+      ]
+    }
+  ]
+}

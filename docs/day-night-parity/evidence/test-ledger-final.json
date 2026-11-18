@@ -1,0 +1,73 @@
+{
+  "audit": "passed",
+  "readOnly": true,
+  "productionConnected": false,
+  "results": [
+    {
+      "storeId": "cmw5fra8n0027ki0136pkv5fq",
+      "deposit": 100000,
+      "quota": {
+        "deposit": 100000,
+        "stockValue": 20800,
+        "reservedValue": 0,
+        "refundReservedValue": 0,
+        "depositRefundReservedValue": 0,
+        "frozenValue": 0,
+        "shortageValue": 0,
+        "usedQuota": 20800,
+        "usableQuota": 79200
+      },
+      "products": [
+        {
+          "id": "cmw5g2id5004kki01wxcvi73m",
+          "stock": 8,
+          "frozenStock": 0,
+          "inventoryValue": 6400
+        },
+        {
+          "id": "cmw5g2id8004mki0103gacya9",
+          "stock": 18,
+          "frozenStock": 0,
+          "inventoryValue": 14400
+        }
+      ],
+      "openOrders": 0,
+      "pendingReports": 0,
+      "depositLedgerBalanced": true
+    },
+    {
+      "storeId": "cmw5g6jul005vki01kdpjpyo2",
+      "deposit": 0,
+      "quota": {
+        "deposit": 0,
+        "stockValue": 0,
+        "reservedValue": 0,
+        "refundReservedValue": 0,
+        "depositRefundReservedValue": 0,
+        "frozenValue": 0,
+        "shortageValue": 0,
+        "usedQuota": 0,
+        "usableQuota": 0
+      },
+      "products": [],
+      "openOrders": 0,
+      "pendingReports": 0,
+      "depositLedgerBalanced": true
+    }
+  ],
+  "warehouses": [
+    {
+      "id": "cmw5g0n3l002xki01ufs6ty2b",
+      "stock": 90,
+      "lockedStock": 0,
+      "nightReservedStock": 0
+    },
+    {
+      "id": "cmw5g0n3t0030ki01jiqb6v1e",
+      "stock": 78,
+      "lockedStock": 0,
+      "nightReservedStock": 0
+    }
+  ],
+  "pendingRefunds": 0
+}

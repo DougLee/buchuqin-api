@@ -9,6 +9,7 @@ import { JwtService } from '@nestjs/jwt';
 import { RbacService } from './rbac/rbac.service';
 import type { AuthUser } from '../auth/jwt-auth.guard';
 import { hash } from 'bcryptjs';
+import { ROLE_TEMPLATES } from './rbac/registry';
 import { listAdminRoutes, concreteRoute } from './rbac/route-inventory';
 
 /**
@@ -27,6 +28,7 @@ describe('RBAC 蛋词体系 integration (real PG + HTTP)', () => {
   let jwt: JwtService;
   let rbac: RbacService;
   const suffix = `it${Date.now().toString(36)}`;
+  const roleCodes = { ops: `spec-ops-${suffix}`, finance: `spec-finance-${suffix}`, warehouse: `spec-warehouse-${suffix}` };
   const campusA = `c-a-${suffix}`;
   const campusB = `c-b-${suffix}`;
   let superAcc: { id: string; username: string };
@@ -70,15 +72,15 @@ describe('RBAC 蛋词体系 integration (real PG + HTTP)', () => {
       const b = await db.building.create({ data: { campusId, name: bName } });
       created.buildings.push(b.id);
     }
-    superAcc = await db.adminAccount.create({
-      data: {
-        username: `super-${suffix}`, passwordHash: await hash('super-pass-123', 4), role: 'rbac', campusId: '',
-      },
-    });
-    created.accounts.push(superAcc.id);
-    await rbac.setAccountRoles({ id: 'spec', username: 'spec' }, superAcc.id, [
-      { roleCode: 'super-admin', scope: 'platform' },
-    ]);
+    superAcc = await db.adminAccount.upsert({ where: { username: 'admin' }, update: {}, create: { username: 'admin', passwordHash: await hash('spec-bootstrap-only-123', 4), role: 'admin', campusId: '' } });
+    await rbac.syncRegistry();
+    // Retired built-ins stay absent. Independent custom roles reproduce the old capability sets.
+    for (const [key, code] of Object.entries(roleCodes)) {
+      const templateCode = key === 'ops' ? 'campus-operations' : key === 'finance' ? 'campus-finance' : 'campus-warehouse';
+      const template = ROLE_TEMPLATES.find(role => role.code === templateCode)!;
+      const role = await rbac.createRole({ username: 'spec' }, { code, name: `测试${key}`, menuCodes: template.menuCodes });
+      created.roles.push(role.id);
+    }
     // 多角色账号：ops@A + finance@A + finance@B
     multiAcc = await db.adminAccount.create({
       data: {
@@ -86,11 +88,13 @@ describe('RBAC 蛋词体系 integration (real PG + HTTP)', () => {
       },
     });
     created.accounts.push(multiAcc.id);
-    await rbac.setAccountRoles({ id: 'spec', username: 'spec' }, multiAcc.id, [
-      { roleCode: 'campus-operations', scope: 'campus', campusId: campusA },
-      { roleCode: 'campus-finance', scope: 'campus', campusId: campusA },
-      { roleCode: 'campus-finance', scope: 'campus', campusId: campusB },
-    ]);
+    const fixtureRoles = await db.adminRole.findMany({ where: { code: { in: [roleCodes.ops, roleCodes.finance] } } });
+    const roleId = (code: string) => fixtureRoles.find(role => role.code === code)!.id;
+    await db.adminAccountRole.createMany({ data: [
+      { accountId: multiAcc.id, roleId: roleId(roleCodes.ops), scope: 'campus', campusId: campusA },
+      { accountId: multiAcc.id, roleId: roleId(roleCodes.finance), scope: 'campus', campusId: campusA },
+      { accountId: multiAcc.id, roleId: roleId(roleCodes.finance), scope: 'campus', campusId: campusB },
+    ] });
     // 单角色账号：warehouse@A
     soloAcc = await db.adminAccount.create({
       data: {
@@ -98,8 +102,8 @@ describe('RBAC 蛋词体系 integration (real PG + HTTP)', () => {
       },
     });
     created.accounts.push(soloAcc.id);
-    await rbac.setAccountRoles({ id: 'spec', username: 'spec' }, soloAcc.id, [
-      { roleCode: 'campus-warehouse', scope: 'campus', campusId: campusA },
+    await rbac.setAccountRoles({ id: 'spec', username: 'spec', super: true }, soloAcc.id, [
+      { roleCode: roleCodes.warehouse, scope: 'campus', campusId: campusA },
     ]);
   });
 
@@ -109,6 +113,7 @@ describe('RBAC 蛋词体系 integration (real PG + HTTP)', () => {
     await db.recruitingApplication.deleteMany({ where: { id: { in: created.apps } } });
     await db.user.deleteMany({ where: { id: { in: created.users } } });
     await db.building.deleteMany({ where: { id: { in: created.buildings } } });
+    await db.inventoryTxn.deleteMany({ where: { productId: { in: created.products } } });
     await db.product.deleteMany({ where: { id: { in: created.products } } });
     await db.category.deleteMany({ where: { id: { in: created.categories } } });
     await db.adminAccount.deleteMany({ where: { id: { in: created.accounts } } });
@@ -147,8 +152,8 @@ describe('RBAC 蛋词体系 integration (real PG + HTTP)', () => {
       .get(`/api/v1/admin/buildings?campus=${campusB}`)
       .set('Authorization', `Bearer ${tA}`).expect(200);
     const names = (r.body.data.items ?? r.body.data).map((x: { name: string }) => x.name);
-    expect(names).toContain('A1 栋');
-    expect(names).not.toContain('B1 栋');
+    expect(names).toContain('B1 栋');
+    expect(names).not.toContain('A1 栋');
     await db.adminAccount.update({ where: { id: multiAcc.id }, data: { campusId: campusB } });
     const t = token(multiAcc, campusB, await svOf(multiAcc.id));
     await request(app.getHttpServer())
@@ -159,25 +164,18 @@ describe('RBAC 蛋词体系 integration (real PG + HTTP)', () => {
     await db.adminAccount.update({ where: { id: multiAcc.id }, data: { campusId: campusA } });
   });
 
-  it('撤销一个角色后其余授权仍有效（旧 token 因会话版本失效，重登后余权可用）', async () => {
-    await rbac.setAccountRoles({ id: 'spec', username: 'spec' }, multiAcc.id, [
-      { roleCode: 'campus-operations', scope: 'campus', campusId: campusA },
-      { roleCode: 'campus-finance', scope: 'campus', campusId: campusB },
-    ]);
+  it('历史多角色可读，但写入必须收敛为单角色；撤权使旧token失效并留审计', async () => {
+    const actor = { id: 'spec', username: 'spec', super: true };
+    const oldToken = token(multiAcc, campusA, await svOf(multiAcc.id));
+    await expect(rbac.setAccountRoles(actor, multiAcc.id, [
+      { roleCode: roleCodes.ops, scope: 'campus', campusId: campusA },
+      { roleCode: roleCodes.finance, scope: 'campus', campusId: campusB },
+    ])).rejects.toThrow('每个账号只能授予一个角色');
+    await rbac.setAccountRoles(actor, multiAcc.id, [{ roleCode: roleCodes.ops, scope: 'campus', campusId: campusA }]);
+    await authed(oldToken).expect(401);
     const t = token(multiAcc, campusA, await svOf(multiAcc.id));
-    await request(app.getHttpServer())
-      .get('/api/v1/admin/orders').set('Authorization', `Bearer ${t}`).expect(200);
-    // 撤 finance@A 后：结算只读（运营模板含 finance 菜单）仍可看，写操作已失 → 403
-    await request(app.getHttpServer())
-      .get('/api/v1/admin/settlements').set('Authorization', `Bearer ${t}`).expect(200);
-    await request(app.getHttpServer())
-      .post('/api/v1/admin/settlements/any-id/confirm')
-      .set('Authorization', `Bearer ${t}`).expect(403);
-    await db.adminAccount.update({ where: { id: multiAcc.id }, data: { campusId: campusB } });
-    const tB = token(multiAcc, campusB, await svOf(multiAcc.id));
-    await request(app.getHttpServer())
-      .get('/api/v1/admin/settlements').set('Authorization', `Bearer ${tB}`).expect(200);
-    await db.adminAccount.update({ where: { id: multiAcc.id }, data: { campusId: campusA } });
+    await request(app.getHttpServer()).get('/api/v1/admin/orders').set('Authorization', `Bearer ${t}`).expect(200);
+    await request(app.getHttpServer()).post('/api/v1/admin/settlements/any-id/confirm').set('Authorization', `Bearer ${t}`).expect(403);
   });
 
   it('停用账号：旧 token 即刻 401，登录被拒；恢复后正常', async () => {
@@ -185,8 +183,8 @@ describe('RBAC 蛋词体系 integration (real PG + HTTP)', () => {
       data: { username: `off-${suffix}`, passwordHash: await hash('off-pass-1234', 4), role: 'rbac', campusId: campusA },
     });
     created.accounts.push(disabled.id);
-    await rbac.setAccountRoles({ id: 'spec', username: 'spec' }, disabled.id, [
-      { roleCode: 'campus-operations', scope: 'campus', campusId: campusA },
+    await rbac.setAccountRoles({ id: 'spec', username: 'spec', super: true }, disabled.id, [
+      { roleCode: roleCodes.ops, scope: 'campus', campusId: campusA },
     ]);
     const t = token(disabled, campusA, await svOf(disabled.id));
     await authed(t).expect(200);
@@ -268,7 +266,7 @@ describe('RBAC 蛋词体系 integration (real PG + HTTP)', () => {
     const t = token(superAcc, '', await svOf(superAcc.id));
     const roles = await request(app.getHttpServer())
       .get('/api/v1/admin/rbac/roles').set('Authorization', `Bearer ${t}`).expect(200);
-    const wh = roles.body.data.find((r: { code: string }) => r.code === 'campus-warehouse');
+    const wh = roles.body.data.find((r: { code: string }) => r.code === roleCodes.warehouse);
     expect(wh.menuCodes).toContain('products');
     expect(wh.menuCodes).toContain('products.price');
     expect(wh.menuCodes).not.toContain('finance');
@@ -293,7 +291,7 @@ describe('RBAC 蛋词体系 integration (real PG + HTTP)', () => {
         data: { username: `${code}-acc`, passwordHash: await hash('editor-pass-1', 4), role: 'rbac', campusId: campusA },
       });
       created.accounts.push(acc.id);
-      await rbac.setAccountRoles({ id: 'spec', username: 'spec' }, acc.id, [
+      await rbac.setAccountRoles({ id: 'spec', username: 'spec', super: true }, acc.id, [
         { roleCode: role.code, scope: 'campus', campusId: campusA },
       ]);
       return token(acc, campusA, await svOf(acc.id));
@@ -323,7 +321,8 @@ describe('RBAC 蛋词体系 integration (real PG + HTTP)', () => {
       .set('Authorization', `Bearer ${tPrice}`).send({ price: 1001, originalPrice: 1200 }).expect(200);
     const tStock = await mkEditor(`tmp-stock-${suffix}`, ['products', 'products.write', 'inventory.adjust']);
     await http().patch(`/api/v1/admin/products/${product.id}`)
-      .set('Authorization', `Bearer ${tStock}`).send({ stock: 15 }).expect(200);
+      .set('Authorization', `Bearer ${tStock}`).send({ stock: 15 }).expect(400);
+    await http().post('/api/v1/admin/inventory/adjust').set('Authorization', `Bearer ${tStock}`).send({ productId: product.id, delta: 5, reason: '专用库存接口验收' }).expect(201);
     expect((await db.product.findUniqueOrThrow({ where: { id: product.id } })).stock).toBe(15);
     // Platform product editing cannot widen the separate campus-only stock grant into the official catalog.
     const official = await db.product.create({ data: {
@@ -337,10 +336,18 @@ describe('RBAC 蛋词体系 integration (real PG + HTTP)', () => {
     });
     created.roles.push(officialRole.id);
     const stockAcc = { id: (jwt.decode(tStock) as { id: string }).id };
-    await rbac.setAccountRoles({ id: 'spec', username: 'spec' }, stockAcc.id, [
+    await expect(rbac.setAccountRoles({ id: 'spec', username: 'spec', super: true }, stockAcc.id, [
       { roleCode: `tmp-stock-${suffix}`, scope: 'campus', campusId: campusA },
       { roleCode: officialRole.code, scope: 'platform' },
-    ]);
+    ])).rejects.toThrow('每个账号只能授予一个角色');
+    // Legacy mixed-role rows remain readable: preserve the stronger operation-scope regression.
+    const stockRole = await db.adminRole.findUniqueOrThrow({ where: { code: `tmp-stock-${suffix}` } });
+    await db.adminAccountRole.deleteMany({ where: { accountId: stockAcc.id } });
+    await db.adminAccountRole.createMany({ data: [
+      { accountId: stockAcc.id, roleId: stockRole.id, scope: 'campus', campusId: campusA },
+      { accountId: stockAcc.id, roleId: officialRole.id, scope: 'platform' },
+    ] });
+    await rbac.updateRole({ username: 'spec' }, officialRole.id, { menuCodes: ['products.official.write'] });
     const mixed = token(stockAcc, campusA, await svOf(stockAcc.id));
     await http().patch(`/api/v1/admin/products/${official.id}`)
       .set('Authorization', `Bearer ${mixed}`).send({ stock: 99 }).expect(403);
@@ -356,7 +363,7 @@ describe('RBAC 蛋词体系 integration (real PG + HTTP)', () => {
       menuCodes: ['campuses', 'accounts', 'rbac-audit', 'campus-report'],
     });
     created.roles.push(role.id);
-    const actor = { id: 'spec', username: 'spec' };
+    const actor = { id: 'spec', username: 'spec', super: true };
     const acc = await rbac.createAccount(actor, {
       username: `scope_${suffix}`, password: 'scope-pass-123',
       grants: [campusA, campusB].map(campusId => ({ roleCode: role.code, scope: 'campus' as const, campusId })),
@@ -390,12 +397,11 @@ describe('RBAC 蛋词体系 integration (real PG + HTTP)', () => {
   });
 
   it('员工按 ID 修改/删除必须检查来源校区，不能把 B 员工拉到 A 绕过校验', async () => {
-    const actor = { id: 'spec', username: 'spec' };
+    const actor = { id: 'spec', username: 'spec', super: true };
     const role = await rbac.createRole(actor, { code: `staff-scope-${suffix}`, name: '员工隔离', menuCodes: ['staff', 'staff.write'] });
     created.roles.push(role.id);
     const acc = await rbac.createAccount(actor, { username: `staff_${suffix}`, password: 'staff-pass-123', grants: [
       { roleCode: role.code, scope: 'campus', campusId: campusA },
-      { roleCode: 'campus-finance', scope: 'campus', campusId: campusB },
     ] });
     created.accounts.push(acc.id);
     const staff = await db.staff.create({ data: { campusId: campusB, name: 'B员工', staffNo: `B-${suffix}`,
@@ -436,7 +442,7 @@ describe('RBAC 蛋词体系 integration (real PG + HTTP)', () => {
       data: { username: `noter-${suffix}`, passwordHash: await hash('noter-pass-12', 4), role: 'rbac', campusId: campusA },
     });
     created.accounts.push(noter.id);
-    await rbac.setAccountRoles({ id: 'spec', username: 'spec' }, noter.id, [
+    await rbac.setAccountRoles({ id: 'spec', username: 'spec', super: true }, noter.id, [
       { roleCode: noteRole.code, scope: 'campus', campusId: campusA },
     ]);
     const t = token(noter, campusA, await svOf(noter.id));
@@ -536,9 +542,9 @@ describe('RBAC 蛋词体系 integration (real PG + HTTP)', () => {
   });
 
   it('文件上传：停用/撤权/删除后台账号不能上传公开图片，无证件写权限不能上传私有图片', async () => {
-    const actor = { id: 'spec', username: 'spec' };
+    const actor = { id: 'spec', username: 'spec', super: true };
     const acc = await rbac.createAccount(actor, { username: `upload_${suffix}`, password: 'upload-pass-123', grants: [
-      { roleCode: 'campus-finance', scope: 'campus', campusId: campusA },
+      { roleCode: roleCodes.finance, scope: 'campus', campusId: campusA },
     ] });
     created.accounts.push(acc.id);
     const t = token(acc, campusA, await svOf(acc.id));
@@ -652,11 +658,11 @@ describe('RBAC 蛋词体系 integration (real PG + HTTP)', () => {
       await http.patch(`/api/v1/admin/accounts/${superAcc.id}`)
         .set('Authorization', `Bearer ${t}`)
         .send({ grants: [] })
-        .expect(403);
+        .expect(400);
       await http.patch(`/api/v1/admin/accounts/${superAcc.id}`)
         .set('Authorization', `Bearer ${t}`)
         .send({ status: 'disabled' })
-        .expect(403);
+        .expect(400);
       await http.delete(`/api/v1/admin/accounts/${superAcc.id}`)
         .set('Authorization', `Bearer ${t}`)
         .expect(400); // 不能删除当前登录账号
@@ -676,7 +682,7 @@ describe('RBAC 蛋词体系 integration (real PG + HTTP)', () => {
     expect(await db.adminAccount.findUnique({ where: { username } })).toBeNull();
     const result = await request(app.getHttpServer()).post('/api/v1/admin/accounts')
       .set('Authorization', auth).send({ username, password: 'atomic-pass-123', nickname: '原昵称',
-        grants: [{ roleCode: 'campus-operations', scope: 'campus', campusId: campusA }],
+        grants: [{ roleCode: roleCodes.ops, scope: 'campus', campusId: campusA }],
       }).expect(201);
     const id = result.body.data.id;
     created.accounts.push(id);
@@ -698,38 +704,19 @@ describe('RBAC 蛋词体系 integration (real PG + HTTP)', () => {
     expect(await db.adminRole.findUnique({ where: { id: role.id } })).toBeNull();
   });
 
-  it('并发删除与撤权共用锁，不能移除最后一个有效超管', async () => {
-    const actor = { id: 'test-concurrency', username: 'spec' };
-    const peers = await Promise.all([0, 1].map(i => rbac.createAccount(actor, {
-      username: `race${i}_${suffix}`, password: 'race-pass-123',
-      grants: [{ roleCode: 'super-admin', scope: 'platform' }],
-    })));
-    created.accounts.push(...peers.map(p => p.id));
-    const others = await db.adminAccount.findMany({ where: {
-      status: 'active', id: { notIn: peers.map(p => p.id) },
-      rbacRoles: { some: { scope: 'platform', role: { code: 'super-admin' } } },
-    }, select: { id: true } });
-    await db.adminAccount.updateMany({ where: { id: { in: others.map(a => a.id) } }, data: { status: 'disabled' } });
-    try {
-      const results = await Promise.allSettled([
-        rbac.deleteAccount(actor, peers[0].id),
-        rbac.setAccountRoles(actor, peers[1].id, []),
-      ]);
-      expect(results.filter(r => r.status === 'fulfilled')).toHaveLength(1);
-      expect(results.filter(r => r.status === 'rejected')).toHaveLength(1);
-      expect(await db.adminAccountRole.count({ where: {
-        scope: 'platform', role: { code: 'super-admin', status: 'active' }, account: { status: 'active' },
-      } })).toBe(1);
-    } finally {
-      await db.adminAccount.updateMany({ where: { id: { in: others.map(a => a.id) } }, data: { status: 'active' } });
-      await db.adminAccount.deleteMany({ where: { id: { in: peers.map(p => p.id) } } });
-    }
+  it('并发尝试新增超管均拒绝且完整回滚，唯一内置超管保持有效', async () => {
+    const actor = { id: 'spec', username: 'spec', super: true };
+    const usernames = [0, 1].map(i => `race${i}_${suffix}`);
+    const results = await Promise.allSettled(usernames.map(username => rbac.createAccount(actor, { username, password: 'race-pass-123', grants: [{ roleCode: 'super-admin', scope: 'platform' }] })));
+    expect(results.every(result => result.status === 'rejected')).toBe(true);
+    expect(await db.adminAccount.count({ where: { username: { in: usernames } } })).toBe(0);
+    expect(await db.adminAccountRole.count({ where: { accountId: superAcc.id, role: { code: 'super-admin' } } })).toBe(1);
   });
 
   it('可配置单会话：默认并存，开启后新登录使旧令牌失效且不可自助改密', async () => {
     const previous = process.env.ADMIN_SINGLE_SESSION;
     const username = `single_${suffix}`, password = 'single-pass-123';
-    const account = await rbac.createAccount({ id: 'spec', username: 'spec' }, { username, password });
+    const account = await rbac.createAccount({ id: 'spec', username: 'spec', super: true }, { username, password });
     created.accounts.push(account.id);
     // Exercise login state changes directly to avoid sharing this suite's IP rate limit.
     // Token validity and change-password still run through real HTTP guards.
@@ -794,7 +781,9 @@ describe('RBAC 蛋词体系 integration (real PG + HTTP)', () => {
     };
     const forbidden: string[] = [];
     for (const route of routes) {
-      const { method, path } = concreteRoute(route);
+      const concrete = concreteRoute(route);
+      const method = concrete.method;
+      const path = concrete.path.includes('/actions/') ? concrete.path.replace(/actions\/[^/]+$/, 'actions/outbound') : concrete.path;
       const url = `/api/v1${path}`;
       const r = await dispatch(method, url)
         .set('Authorization', `Bearer ${t}`)
@@ -813,7 +802,7 @@ describe('RBAC 蛋词体系 integration (real PG + HTTP)', () => {
       username: `delegated-${suffix}`, passwordHash: 'unused', role: 'rbac', campusId: campusA,
     } });
     created.accounts.push(acc.id);
-    await rbac.setAccountRoles({ id: 'spec', username: 'spec' }, acc.id, [
+    await rbac.setAccountRoles({ id: 'spec', username: 'spec', super: true }, acc.id, [
       { roleCode: role.code, scope: 'platform' },
     ]);
     const auth = `Bearer ${token(acc, campusA, await svOf(acc.id))}`;
@@ -836,16 +825,21 @@ describe('RBAC 蛋词体系 integration (real PG + HTTP)', () => {
       username: `scope-${suffix}`, passwordHash: 'unused', role: 'rbac', campusId: campusA,
     } });
     created.accounts.push(acc.id);
-    await rbac.setAccountRoles({ id: 'spec', username: 'spec' }, acc.id, [
+    await expect(rbac.setAccountRoles({ id: 'spec', username: 'spec', super: true }, acc.id, [
       { roleCode: role.code, scope: 'campus', campusId: campusA },
       { roleCode: reader.code, scope: 'platform' },
-    ]);
+    ])).rejects.toThrow('每个账号只能授予一个角色');
+    await db.adminAccountRole.createMany({ data: [
+      { accountId: acc.id, roleId: role.id, scope: 'campus', campusId: campusA },
+      { accountId: acc.id, roleId: reader.id, scope: 'platform' },
+    ] });
+    await rbac.updateRole({ username: 'spec' }, reader.id, { menuCodes: ['campuses'] });
     await request(app.getHttpServer()).post('/api/v1/admin/campuses')
       .set('Authorization', `Bearer ${token(acc, campusA, await svOf(acc.id))}`)
       .send({ name: '不得创建' }).expect(403);
-    await expect(rbac.setAccountRoles({ id: 'spec', username: 'spec' }, acc.id, [
+    await expect(rbac.setAccountRoles({ id: 'spec', username: 'spec', super: true }, acc.id, [
       { roleCode: 'super-admin', scope: 'campus', campusId: campusA },
-    ])).rejects.toThrow('超级管理员只能授予平台范围');
+    ])).rejects.toThrow('超级管理员不可授予');
   });
 
   it('撤销旧角色账号全部授权以及清空旧角色菜单后，重复启动同步不恢复权限', async () => {
@@ -858,9 +852,9 @@ describe('RBAC 蛋词体系 integration (real PG + HTTP)', () => {
     } });
     created.roles.push(role.id);
     await rbac.syncRegistry();
-    expect(await db.adminAccountRole.count({ where: { accountId: acc.id } })).toBeGreaterThan(0);
+    expect(await db.adminAccountRole.count({ where: { accountId: acc.id } })).toBe(0); // 退役运营模板不再复活
     expect(await db.adminRoleMenu.count({ where: { roleId: role.id } })).toBeGreaterThan(0);
-    await rbac.setAccountRoles({ id: 'spec', username: 'spec' }, acc.id, []);
+    await rbac.setAccountRoles({ id: 'spec', username: 'spec', super: true }, acc.id, []);
     await rbac.updateRole({ username: 'spec' }, role.id, { menuCodes: [] });
     await rbac.syncRegistry();
     await rbac.syncRegistry();
@@ -874,8 +868,8 @@ describe('RBAC 蛋词体系 integration (real PG + HTTP)', () => {
     } });
     created.accounts.push(acc.id);
     const stale = token(acc, campusA);
-    await rbac.setAccountRoles({ id: 'spec', username: 'spec' }, acc.id, [
-      { roleCode: 'campus-operations', scope: 'campus', campusId: campusA },
+    await rbac.setAccountRoles({ id: 'spec', username: 'spec', super: true }, acc.id, [
+      { roleCode: roleCodes.ops, scope: 'campus', campusId: campusA },
     ]);
     await request(app.getHttpServer()).get('/api/v1/auth/admin/campuses')
       .set('Authorization', `Bearer ${stale}`).expect(401);
@@ -888,9 +882,9 @@ describe('RBAC 蛋词体系 integration (real PG + HTTP)', () => {
       username: `context-${suffix}`, passwordHash: 'unused', role: 'rbac', campusId: campusA,
     } });
     created.accounts.push(acc.id);
-    await rbac.setAccountRoles({ id: 'spec', username: 'spec' }, acc.id, [
-      { roleCode: 'campus-operations', scope: 'campus', campusId: campusA },
-      { roleCode: 'campus-operations', scope: 'campus', campusId: campusB },
+    await rbac.setAccountRoles({ id: 'spec', username: 'spec', super: true }, acc.id, [
+      { roleCode: roleCodes.ops, scope: 'campus', campusId: campusA },
+      { roleCode: roleCodes.ops, scope: 'campus', campusId: campusB },
     ]);
     const oldToken = token(acc, campusA, await svOf(acc.id));
     await request(app.getHttpServer()).post('/api/v1/auth/admin/campuses/select')
@@ -920,7 +914,7 @@ describe('RBAC 蛋词体系 integration (real PG + HTTP)', () => {
       username: `view-${suffix}`, passwordHash: 'unused', role: 'rbac', campusId: campusA,
     } });
     created.accounts.push(acc.id);
-    await rbac.setAccountRoles({ id: 'spec', username: 'spec' }, acc.id, [
+    await rbac.setAccountRoles({ id: 'spec', username: 'spec', super: true }, acc.id, [
       { roleCode: role.code, scope: 'campus', campusId: campusA },
     ]);
     const me = await rbac.buildMeResponse(acc);

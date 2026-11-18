@@ -1,0 +1,40 @@
+TAP version 13
+# Subtest: 账号和楼栋分桶互相隔离，返回原账号保留自己的商品
+ok 1 - 账号和楼栋分桶互相隔离，返回原账号保留自己的商品
+  ---
+  duration_ms: 3.548167
+  type: 'test'
+  ...
+# Subtest: 重验最新售价和资料，保留缺货数量让用户核对，金额随快照更新
+ok 2 - 重验最新售价和资料，保留缺货数量让用户核对，金额随快照更新
+  ---
+  duration_ms: 0.989459
+  type: 'test'
+  ...
+# Subtest: 数量为整数且不超过库存，无效数量不能污染金额
+ok 3 - 数量为整数且不超过库存，无效数量不能污染金额
+  ---
+  duration_ms: 0.986292
+  type: 'test'
+  ...
+# Subtest: 损坏或旧的无归属购物车不会带入其他用户
+ok 4 - 损坏或旧的无归属购物车不会带入其他用户
+  ---
+  duration_ms: 1.222708
+  type: 'test'
+  ...
+# Subtest: 支付只扣除该单已选数量，保留新加商品，重查支付与刷新都不重复清车
+ok 5 - 支付只扣除该单已选数量，保留新加商品，重查支付与刷新都不重复清车
+  ---
+  duration_ms: 1.008
+  type: 'test'
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 445.645958

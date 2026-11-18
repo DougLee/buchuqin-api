@@ -29,7 +29,7 @@ describe('admin account management (IK9KWO)', () => {
   const CAMPUS = ADMIN_CAMPUS_ID;
   const tag = `spec-${Date.now()}`;
   const ids: string[] = [];
-  const actor = { id: 'spec-bootstrap', username: 'spec-bootstrap' };
+  const actor = { id: 'spec-bootstrap', username: 'spec-bootstrap', super: true };
   let superAdminId = '';
 
   beforeAll(async () => {
@@ -39,19 +39,9 @@ describe('admin account management (IK9KWO)', () => {
     } catch {
       await rbac.syncRegistry();
     }
-    const superAdmin = await service.createAccount(
-      {
-        username: `${tag}-root`,
-        password: 'root-pass-123',
-        nickname: '规格超管',
-      },
-      'spec-bootstrap',
-    );
+    const superAdmin = await db.adminAccount.upsert({ where: { username: 'admin' }, update: {}, create: { username: 'admin', passwordHash: 'bootstrap-only', role: 'admin', campusId: '' } });
     superAdminId = superAdmin.id;
-    ids.push(superAdminId);
-    await rbac.setAccountRoles(actor, superAdminId, [
-      { roleCode: 'super-admin', scope: 'platform' },
-    ]);
+    await rbac.syncRegistry();
   });
 
   afterAll(async () => {
@@ -68,21 +58,21 @@ describe('admin account management (IK9KWO)', () => {
         username: `${tag}-ops`,
         password: 'ops-pass-123',
         nickname: '规格运营',
-        grants: [{ roleCode: 'campus-operations', scope: 'campus', campusId: CAMPUS }],
+        grants: [{ roleCode: 'campus-operator', scope: 'campus', campusId: CAMPUS }],
       },
       superAdminId,
     );
     ids.push(account.id);
     // 授权由 RbacService 落库（controller 编排同款调用面）
     await rbac.setAccountRoles(actor, account.id, [
-      { roleCode: 'campus-operations', scope: 'campus', campusId: CAMPUS },
+      { roleCode: 'campus-operator', scope: 'campus', campusId: CAMPUS },
     ]);
     const grants = await db.adminAccountRole.findMany({
       where: { accountId: account.id },
       include: { role: { select: { code: true } } },
     });
     expect(grants).toHaveLength(1);
-    expect(grants[0].role.code).toBe('campus-operations');
+    expect(grants[0].role.code).toBe('campus-operator');
     expect(grants[0].scope).toBe('campus');
     expect(grants[0].campusId).toBe(CAMPUS);
     const result = (await auth.adminLogin({
@@ -129,13 +119,13 @@ describe('admin account management (IK9KWO)', () => {
       // V1 变化：旧「降级 role 字段」通道已拆——摘权=重设授权，保护下探到授权行
       await expect(
         rbac.setAccountRoles(actor, superAdminId, [
-          { roleCode: 'campus-operations', scope: 'campus', campusId: CAMPUS },
+          { roleCode: 'campus-operator', scope: 'campus', campusId: CAMPUS },
         ]),
       ).rejects.toThrow('必须保留至少一个有效的超级管理员');
       // 用另一个操作者身份绕过"不能删自己"，验证最后超管保护独立生效
       await expect(
         service.deleteAccount(superAdminId, 'someone-else'),
-      ).rejects.toThrow(ForbiddenException);
+      ).rejects.toThrow('内置超级管理员账号不可删除');
     } finally {
       for (const o of others)
         await db.adminAccount.update({

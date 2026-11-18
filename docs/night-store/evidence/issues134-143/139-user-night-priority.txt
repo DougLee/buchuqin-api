@@ -1,0 +1,73 @@
+[p3 "不出寝食社" | space "夜宵134–143验收"(11): 3 managed, 0 untracked — p1 "不出寝 · 运营管理后台", p2 "夜宵店", p3* "不出寝食社"]
+root
+  container
+    text "不出寝食社"
+    container
+      text "●"
+      text "夜宵功能验收校区"
+      text "·"
+      text "西区9栋 101"
+      text "⌄"
+    container
+      container
+        text "⌕"
+        container
+          text "今天想吃什么？"
+          form
+            searchbox [ref=4]
+        text "搜索"
+      container
+        text "售后福利群"
+        text "进群领福利 · 优惠早知道"
+        text "一键加入 ›"
+      container
+        container
+          text "为你推荐"
+          text "更多"
+        container
+          container
+            image
+            container
+              text "倍宝柠檬茶"
+              text "夜宵送到寝室"
+              container
+                container
+                  text "¥"
+                  text "6.00"
+                container "加入购物车"
+                  text "＋"
+          container
+            image
+            container
+              text "体质能量饮料"
+              text "夜宵送到寝室"
+              container
+                container
+                  text "¥"
+                  text "6.50"
+                container "加入购物车"
+                  text "＋"
+          container
+            image
+            container
+              text "纯净水"
+              text "夜宵送到寝室"
+              container
+                container
+                  text "¥"
+                  text "7.00"
+                container "加入购物车"
+                  text "＋"
+    tablist
+      tab "首页"
+        image
+        text "首页"
+      tab "商品"
+        image
+        text "商品"
+      tab "购物车"
+        text "购物车"
+      tab "我的"
+        image
+        text "我的"
+[more content below the viewport: scrollY=0, viewport 844 / page 903 px; scroll or use snapshot({ scope: "full_page" })]

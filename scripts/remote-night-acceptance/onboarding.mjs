@@ -1,0 +1,35 @@
+import fs from 'node:fs';
+import assert from 'node:assert/strict';
+import { call, state, save, q, root } from './http.mjs';
+const material = JSON.parse(fs.readFileSync(root + '/credentials.json', 'utf8'));
+const candidate = state.users.candidate;
+let application = await call('/api/v1/recruit/application', 'GET', undefined, candidate.token);
+if (!application || application.status === 'rejected') application = await call('/api/v1/recruit/applications', 'POST', { campusId: state.campusId, buildingId: state.buildingId, name: '验收楼长周宁', phone: candidate.testPhone, note: '【夜宵店经营意向】20261107部署验收，测试资料' }, candidate.token);
+state.applicationId = application.id; save();
+if (application.status === 'pending') await call(`/api/v1/admin/recruit-applications/${application.id}/transition` + q(state.campusId), 'POST');
+let approved;
+if (application.status !== 'approved') approved = await call(`/api/v1/admin/recruit-applications/${application.id}/approve` + q(state.campusId), 'POST');
+else approved = { application, staff: application.staff };
+state.mainStaffId = approved.staff?.id || application.staffId;
+state.mainStaffNo = approved.staff?.staffNo || application.staffNo;
+assert.ok(state.mainStaffId && state.mainStaffNo); save();
+const bind = () => call('/api/v1/auth/staff-bind', 'POST', { code: `QA20261107:${material.authNonce}:manager`, appid: 'wx2026110700000002', staffNo: state.mainStaffNo, name: '验收楼长周宁' }, null, 200);
+state.manager = await bind(); save();
+if (!state.storeId) {
+  const context = await call('/api/v1/fulfillment/business-context', 'GET', undefined, state.manager.token);
+  assert.equal(context.staffRole, 'intern-building-manager'); assert.equal(context.canSwitchWorkspace, false);
+  const store = await call('/api/v1/admin/night/stores' + q(state.campusId), 'POST', { campusId: state.campusId, buildingId: state.buildingId, managerStaffId: state.mainStaffId, commissionRate: 2000 });
+  state.storeId = store.id; save();
+  const stillIntern = await call('/api/v1/fulfillment/business-context', 'GET', undefined, state.manager.token);
+  assert.equal(stillIntern.hasNightStore, true); assert.equal(stillIntern.canSwitchWorkspace, false);
+}
+await call(`/api/v1/admin/staff/${state.mainStaffId}` + q(state.campusId), 'PATCH', { role: 'building-manager', phone: candidate.testPhone });
+state.manager = await bind(); save();
+const formal = await call('/api/v1/fulfillment/business-context', 'GET', undefined, state.manager.token);
+assert.equal(formal.staffRole, 'building-manager'); assert.equal(formal.canSwitchWorkspace, true);
+await call('/api/v1/admin/delivery-config' + q(state.campusId), 'PATCH', { manualClosed: true, deliveryFeeInstant: 200, deliveryFeeScheduled: 100, deliveryThreshold: 0 });
+await call('/api/v1/admin/night/config' + q(state.campusId), 'PUT', { campusId: state.campusId, nightEnabled: true, nightStartAt: '03:00', nightEndAt: '09:00', nightPayTimeout: 15, nightAcceptTimeout: 60, nightDeliveryFee: 200, confirm: true });
+const dash = await call('/api/v1/night-rider/night/dashboard', 'GET', undefined, state.manager.token);
+assert.equal(dash.deposit, 0);
+await call('/api/v1/night-rider/night/store/open', 'POST', {}, state.manager.token, 400);
+console.log(JSON.stringify({ onboarding: 'passed', applicationId: state.applicationId, staffId: state.mainStaffId, storeId: state.storeId, deposit: dash.deposit, internSwitchRejected: true, formalBoundSwitchAllowed: true, businessMoneyOrStockSeeded: false }, null, 2));

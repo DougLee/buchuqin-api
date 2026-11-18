@@ -1,0 +1,244 @@
+TAP version 13
+# Subtest: 地址管理与夜宵结算均能选择超过首屏的旧地址，尊重服务端分页大小
+ok 1 - 地址管理与夜宵结算均能选择超过首屏的旧地址，尊重服务端分页大小
+  ---
+  duration_ms: 1.234166
+  type: 'test'
+  ...
+# Subtest: 地址后续页加载失败不能伪装成完整列表或无本楼地址
+ok 2 - 地址后续页加载失败不能伪装成完整列表或无本楼地址
+  ---
+  duration_ms: 2.050541
+  type: 'test'
+  ...
+# Subtest: 当前营业上下文决定渠道，已关闭场次回到白天，历史渠道可显式指定
+ok 3 - 当前营业上下文决定渠道，已关闭场次回到白天，历史渠道可显式指定
+  ---
+  duration_ms: 0.489708
+  type: 'test'
+  ...
+# Subtest: 网络失败不能解释成白天，非法业务类型不能默默落入另一渠道
+ok 4 - 网络失败不能解释成白天，非法业务类型不能默默落入另一渠道
+  ---
+  duration_ms: 0.308625
+  type: 'test'
+  ...
+# Subtest: 校区或账号在请求中变化时拒绝旧响应，不把旧渠道结果显示给新身份
+ok 5 - 校区或账号在请求中变化时拒绝旧响应，不把旧渠道结果显示给新身份
+  ---
+  duration_ms: 0.101375
+  type: 'test'
+  ...
+# Subtest: 楼栋记忆跟随用户与校区，清除当前选择不影响其他作用域
+ok 6 - 楼栋记忆跟随用户与校区，清除当前选择不影响其他作用域
+  ---
+  duration_ms: 0.101875
+  type: 'test'
+  ...
+# Subtest: 旧楼栋请求返回无店时，不能清除新校区的楼栋记忆
+ok 7 - 旧楼栋请求返回无店时，不能清除新校区的楼栋记忆
+  ---
+  duration_ms: 0.192334
+  type: 'test'
+  ...
+# Subtest: 白天购物车旧账号响应与排队写操作不能覆盖新账号
+ok 8 - 白天购物车旧账号响应与排队写操作不能覆盖新账号
+  ---
+  duration_ms: 4.5865
+  type: 'test'
+  ...
+# Subtest: 购物车旧查询晚到，不能盖掉查询期间已经成功的新加购
+ok 9 - 购物车旧查询晚到，不能盖掉查询期间已经成功的新加购
+  ---
+  duration_ms: 1.627459
+  type: 'test'
+  ...
+# Subtest: 清空之前的在途写入不能吞掉清空之后新增的商品
+ok 10 - 清空之前的在途写入不能吞掉清空之后新增的商品
+  ---
+  duration_ms: 1.457292
+  type: 'test'
+  ...
+# Subtest: 支付本机清车后，旧加购响应不能让已购商品重新出现
+ok 11 - 支付本机清车后，旧加购响应不能让已购商品重新出现
+  ---
+  duration_ms: 0.884708
+  type: 'test'
+  ...
+# Subtest: 排队中的普通加购与秒杀加购分别保留各自的价格身份
+ok 12 - 排队中的普通加购与秒杀加购分别保留各自的价格身份
+  ---
+  duration_ms: 1.03925
+  type: 'test'
+  ...
+# Subtest: 首次加购先读取服务端购物车，保留已有其他商品并提交版本
+ok 13 - 首次加购先读取服务端购物车，保留已有其他商品并提交版本
+  ---
+  duration_ms: 0.653667
+  type: 'test'
+  ...
+# Subtest: 已加载旧版本时清空等待在途加购后重读版本，最终服务端为空
+ok 14 - 已加载旧版本时清空等待在途加购后重读版本，最终服务端为空
+  ---
+  duration_ms: 0.938125
+  type: 'test'
+  ...
+# Subtest: 校区确认页先存本次合法token再解除等待，挂起原请求应直接继续
+ok 15 - 校区确认页先存本次合法token再解除等待，挂起原请求应直接继续
+  ---
+  duration_ms: 1.497833
+  type: 'test'
+  ...
+# Subtest: 真正的旧微信登录返回不能覆盖后来登录的新身份
+ok 16 - 真正的旧微信登录返回不能覆盖后来登录的新身份
+  ---
+  duration_ms: 2.456417
+  type: 'test'
+  ...
+# Subtest: 自动登录成功后同步实际用户与校区，购物车owner不会继续用旧身份
+ok 17 - 自动登录成功后同步实际用户与校区，购物车owner不会继续用旧身份
+  ---
+  duration_ms: 1.154125
+  type: 'test'
+  ...
+# Subtest: 账号和楼栋分桶互相隔离，返回原账号保留自己的商品
+ok 18 - 账号和楼栋分桶互相隔离，返回原账号保留自己的商品
+  ---
+  duration_ms: 2.909625
+  type: 'test'
+  ...
+# Subtest: 重验最新售价和资料，保留缺货数量让用户核对，金额随快照更新
+ok 19 - 重验最新售价和资料，保留缺货数量让用户核对，金额随快照更新
+  ---
+  duration_ms: 0.9065
+  type: 'test'
+  ...
+# Subtest: 数量为整数且不超过库存，无效数量不能污染金额
+ok 20 - 数量为整数且不超过库存，无效数量不能污染金额
+  ---
+  duration_ms: 0.795916
+  type: 'test'
+  ...
+# Subtest: 损坏或旧的无归属购物车不会带入其他用户
+ok 21 - 损坏或旧的无归属购物车不会带入其他用户
+  ---
+  duration_ms: 1.132458
+  type: 'test'
+  ...
+# Subtest: 支付只扣除该单已选数量，保留新加商品，重查支付与刷新都不重复清车
+ok 22 - 支付只扣除该单已选数量，保留新加商品，重查支付与刷新都不重复清车
+  ---
+  duration_ms: 0.954916
+  type: 'test'
+  ...
+# Subtest: 同一用户跨校区购物车隔离，切回原校区保留商品
+ok 23 - 同一用户跨校区购物车隔离，切回原校区保留商品
+  ---
+  duration_ms: 0.636792
+  type: 'test'
+  ...
+# Subtest: 秒杀行锁定渠道与数量，过期不悄悄改成原价，原单支付不清掉新换的普通行
+ok 24 - 秒杀行锁定渠道与数量，过期不悄悄改成原价，原单支付不清掉新换的普通行
+  ---
+  duration_ms: 1.449916
+  type: 'test'
+  ...
+# Subtest: 旧秒杀活动不会迁移到下一场，新活动车行也不会被旧订单支付清除
+ok 25 - 旧秒杀活动不会迁移到下一场，新活动车行也不会被旧订单支付清除
+  ---
+  duration_ms: 0.666708
+  type: 'test'
+  ...
+# Subtest: 夜宵分享保留校区楼栋商品，但必须经过楼栋确认入口
+ok 26 - 夜宵分享保留校区楼栋商品，但必须经过楼栋确认入口
+  ---
+  duration_ms: 0.439417
+  type: 'test'
+  ...
+# Subtest: 夜宵运营券和订单入口落正确渠道
+ok 27 - 夜宵运营券和订单入口落正确渠道
+  ---
+  duration_ms: 26.91425
+  type: 'test'
+  ...
+# Subtest: 夜宵商品目标经过楼栋选择；遗留白天商品链接不得打开白天详情
+ok 28 - 夜宵商品目标经过楼栋选择；遗留白天商品链接不得打开白天详情
+  ---
+  duration_ms: 16.2615
+  type: 'test'
+  ...
+# Subtest: 白天商品目标与tab导航保持原有行为
+ok 29 - 白天商品目标与tab导航保持原有行为
+  ---
+  duration_ms: 15.589084
+  type: 'test'
+  ...
+# Subtest: 夜宵朋友圈query明确渠道并保留商品参数，无楼栋也能确认楼栋
+ok 30 - 夜宵朋友圈query明确渠道并保留商品参数，无楼栋也能确认楼栋
+  ---
+  duration_ms: 0.122625
+  type: 'test'
+  ...
+# Subtest: 账号或校区切换后，旧成功响应不能再交给页面或store
+ok 31 - 账号或校区切换后，旧成功响应不能再交给页面或store
+  ---
+  duration_ms: 2.817416
+  type: 'test'
+  ...
+# Subtest: 旧401响应不能清掉后来登录的新身份令牌
+ok 32 - 旧401响应不能清掉后来登录的新身份令牌
+  ---
+  duration_ms: 0.844
+  type: 'test'
+  ...
+# Subtest: 上下文不变时正常解包响应
+ok 33 - 上下文不变时正常解包响应
+  ---
+  duration_ms: 0.687042
+  type: 'test'
+  ...
+# Subtest: 昵称以当前用户服务端资料为准，历史全局缓存不串账号
+ok 34 - 昵称以当前用户服务端资料为准，历史全局缓存不串账号
+  ---
+  duration_ms: 2.716
+  type: 'test'
+  ...
+# Subtest: each mini program has an independent app id
+ok 35 - each mini program has an independent app id
+  ---
+  duration_ms: 0.517875
+  type: 'test'
+  ...
+# Subtest: global navigation title follows the selected brand
+ok 36 - global navigation title follows the selected brand
+  ---
+  duration_ms: 0.177541
+  type: 'test'
+  ...
+# Subtest: dev and build outputs are isolated by brand
+ok 37 - dev and build outputs are isolated by brand
+  ---
+  duration_ms: 0.081208
+  type: 'test'
+  ...
+# Subtest: unknown brand fails before compiling
+ok 38 - unknown brand fails before compiling
+  ---
+  duration_ms: 0.918209
+  type: 'test'
+  ...
+# Subtest: brand metadata is applied before uni compiles the manifest
+ok 39 - brand metadata is applied before uni compiles the manifest
+  ---
+  duration_ms: 1.906583
+  type: 'test'
+  ...
+1..39
+# tests 39
+# suites 0
+# pass 39
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 462.372417

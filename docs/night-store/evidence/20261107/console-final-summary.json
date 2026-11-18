@@ -1,0 +1,9 @@
+{
+  "collected": true,
+  "uncaught": 0,
+  "unhandledRejections": 0,
+  "vueRuntimeWarnings": 0,
+  "expectedOfflineResponses": 802,
+  "blockedExternalTelemetryWarnings": 706,
+  "note": "受控断网、CSP阻止遥测的日志单列；未归档原始请求或凭证。"
+}

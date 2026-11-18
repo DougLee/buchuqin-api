@@ -52,6 +52,7 @@ describe('cross-campus isolation (IK8W5J)', () => {
           campusId: CAMPUS_B,
           categoryId: 'drink',
           name: '隔离测试专属可乐',
+          barcode: 'PARITY-BARCODE-B',
           subtitle: '仅 B 校园在售',
           price: 3,
           originalPrice: 4,
@@ -125,6 +126,15 @@ describe('cross-campus isolation (IK8W5J)', () => {
     await expect(service.product(productB, CAMPUS_A)).rejects.toThrow(
       '商品不存在',
     );
+  });
+
+  it('用户商品关键词同时支持名称和条码，仍隔离校区和夜宵主档', async () => {
+    expect((await service.listProducts(CAMPUS_B, 'all', ' PARITY-BARCODE-B ') as IdLike[]).map(row => row.id)).toEqual([productB]);
+    expect((await service.listProducts(CAMPUS_B, 'all', '专属可乐') as IdLike[]).map(row => row.id)).toEqual([productB]);
+    expect(await service.listProducts(CAMPUS_A, 'all', 'PARITY-BARCODE-B')).toEqual([]);
+    await db.product.update({ where: { id: productB }, data: { nightCatalog: true } });
+    try { expect(await service.listProducts(CAMPUS_B, 'all', 'PARITY-BARCODE-B')).toEqual([]); }
+    finally { await db.product.update({ where: { id: productB }, data: { nightCatalog: false } }); }
   });
 
   it('orders: campus-B orders must be invisible to campus-A admin/users', async () => {

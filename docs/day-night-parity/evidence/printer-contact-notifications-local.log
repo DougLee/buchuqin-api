@@ -1,0 +1,16 @@
+仅测试库：night_parity_spec / night_stock_parity_20261107；HTTP 出站隔离已启用
+夜宵预览HTTP出站白名单已启用；生产API、微信网关及外部存储均不可连接。
+[Nest] 27368  - 11/07/2026, 11:53:56 PM   DEBUG [PrinterService] 芯烨云凭证未配置（XPYUN_USER/USERKEY/PRINTER_SN），跳过打印
+[Nest] 27368  - 11/07/2026, 11:53:56 PM   DEBUG [PrinterService] 配送小程序凭证未配置（组织与 env 均无），小票二维码回落订单号文本
+[Nest] 27368  - 11/07/2026, 11:53:56 PM   DEBUG [PrinterService] 配送小程序凭证未配置（组织与 env 均无），小票二维码回落订单号文本
+[Nest] 27368  - 11/07/2026, 11:53:56 PM   DEBUG [PrinterService] 配送小程序凭证未配置（组织与 env 均无），小票二维码回落订单号文本
+[Nest] 27368  - 11/07/2026, 11:53:56 PM   DEBUG [PrinterService] 配送小程序凭证未配置（组织与 env 均无），小票二维码回落订单号文本
+[Nest] 27368  - 11/07/2026, 11:53:56 PM   DEBUG [PrinterService] 配送小程序凭证未配置（组织与 env 均无），小票二维码回落订单号文本
+[Nest] 27368  - 11/07/2026, 11:53:56 PM   DEBUG [PrinterService] 配送小程序凭证未配置（组织与 env 均无），小票二维码回落订单号文本
+[Nest] 27368  - 11/07/2026, 11:53:56 PM   DEBUG [PrinterService] 配送小程序凭证未配置（组织与 env 均无），小票二维码回落订单号文本
+
+Test Suites: 4 passed, 4 total
+Tests:       35 passed, 35 total
+Snapshots:   0 total
+Time:        1.751 s
+Ran all test suites within paths "src/printer/printer.service.spec.ts", "src/admin/battle-map.spec.ts", "src/admin/wechat-groups-users.spec.ts", "src/admin/staff-delivery.spec.ts".

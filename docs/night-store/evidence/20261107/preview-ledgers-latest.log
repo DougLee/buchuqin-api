@@ -1,0 +1,69 @@
+夜宵预览HTTP出站白名单已启用；生产API、微信网关及外部存储均不可连接。
+{
+  "verified": true,
+  "schema": "night_stock_preview_20261106",
+  "stores": [
+    {
+      "storeId": "night-demo-store-0",
+      "deposit": 50000,
+      "depositLedger": 50000,
+      "depositTxnCount": 1,
+      "depositRefundCount": 0,
+      "stockValue": 26510,
+      "reservedValue": 4360,
+      "refundReservedValue": 0,
+      "depositRefundReservedValue": 0,
+      "frozenValue": 0,
+      "shortageValue": 0,
+      "usedQuota": 30870,
+      "usableQuota": 19130
+    },
+    {
+      "storeId": "night-demo-store-1",
+      "deposit": 50000,
+      "depositLedger": 50000,
+      "depositTxnCount": 1,
+      "depositRefundCount": 0,
+      "stockValue": 27790,
+      "reservedValue": 7500,
+      "refundReservedValue": 0,
+      "depositRefundReservedValue": 0,
+      "frozenValue": 0,
+      "shortageValue": 0,
+      "usedQuota": 35290,
+      "usableQuota": 14710
+    },
+    {
+      "storeId": "night-preview-store",
+      "deposit": 200000,
+      "depositLedger": 200000,
+      "depositTxnCount": 2,
+      "depositRefundCount": 0,
+      "stockValue": 118050,
+      "reservedValue": 2700,
+      "refundReservedValue": 0,
+      "depositRefundReservedValue": 0,
+      "frozenValue": 1950,
+      "shortageValue": 400,
+      "usedQuota": 120750,
+      "usableQuota": 79250
+    },
+    {
+      "storeId": "night-preview-clearance-store",
+      "deposit": 15000,
+      "depositLedger": 15000,
+      "depositTxnCount": 5,
+      "depositRefundCount": 4,
+      "stockValue": 0,
+      "reservedValue": 0,
+      "refundReservedValue": 0,
+      "depositRefundReservedValue": 0,
+      "frozenValue": 0,
+      "shortageValue": 0,
+      "usedQuota": 0,
+      "usableQuota": 15000
+    }
+  ],
+  "warehouseCount": 21,
+  "paidDepositIntents": 2
+}

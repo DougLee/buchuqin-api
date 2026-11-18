@@ -41,6 +41,8 @@ describe('hq role & cross-campus views (IKAJSL)', () => {
   const bannerIds: string[] = [];
   const accountIds: string[] = [];
 
+  const customRoleIds: string[] = [];
+  const hqCode = `spec-hq-${tag}`;
   beforeAll(async () => {
     // 角色/权限登记入库（生产为启动同步；spec 手动触发）
     try {
@@ -48,6 +50,7 @@ describe('hq role & cross-campus views (IKAJSL)', () => {
     } catch {
       await rbac.syncRegistry();
     }
+    const hqRole = await rbac.createRole({ username: 'spec' }, { code: hqCode, name: '测试总部角色', menuCodes: ['products', 'products.official.write', 'organizations'] }); customRoleIds.push(hqRole.id);
     await db.organization.create({
       data: { id: ORG_B, name: '总部视角测试组织', shortName: '测试组织' },
     });
@@ -110,6 +113,8 @@ describe('hq role & cross-campus views (IKAJSL)', () => {
     await db.user.deleteMany({ where: { id: userB } });
     await db.campus.deleteMany({ where: { id: CAMPUS_B } });
     await db.organization.deleteMany({ where: { id: ORG_B } });
+    await db.adminRoleMenu.deleteMany({ where: { roleId: { in: customRoleIds } } });
+    await db.adminRole.deleteMany({ where: { id: { in: customRoleIds } } });
     await db.$disconnect();
   });
 
@@ -229,7 +234,7 @@ describe('hq role & cross-campus views (IKAJSL)', () => {
     );
     accountIds.push(campusAdmin.id);
     await rbac.setAccountRoles(actor, campusAdmin.id, [
-      { roleCode: 'hq-director', scope: 'platform' },
+      { roleCode: hqCode, scope: 'platform' },
     ]);
     // 超管造总部长（hq-director 平台级授权；V1：role 字段不再入参）
     const adminMintedHq = await service.createAccount(
@@ -244,13 +249,13 @@ describe('hq role & cross-campus views (IKAJSL)', () => {
     await rbac.setAccountRoles(
       { id: campusAdmin.id, username: `${tag}-a-admin`, super: true },
       adminMintedHq.id,
-      [{ roleCode: 'hq-director', scope: 'platform' }],
+      [{ roleCode: hqCode, scope: 'platform' }],
     );
     const hqGrants = await db.adminAccountRole.findMany({
       where: { accountId: adminMintedHq.id },
       include: { role: { select: { code: true } } },
     });
-    expect(hqGrants.map((g) => g.role.code)).toEqual(['hq-director']);
+    expect(hqGrants.map((g) => g.role.code)).toEqual([hqCode]);
     expect(hqGrants[0].scope).toBe('platform');
     const mintedRow = await db.adminAccount.findUniqueOrThrow({
       where: { id: adminMintedHq.id },
@@ -266,7 +271,7 @@ describe('hq role & cross-campus views (IKAJSL)', () => {
           password: 'whatever-123',
           grants: [
             {
-              roleCode: 'campus-operations',
+              roleCode: 'campus-operator',
               scope: 'campus',
               campusId: 'campus-not-exist',
             },
@@ -293,7 +298,7 @@ describe('hq role & cross-campus views (IKAJSL)', () => {
         nickname: 'B校运营',
         grants: [
           {
-            roleCode: 'campus-operations',
+            roleCode: 'campus-operator',
             scope: 'campus',
             campusId: CAMPUS_B,
           },
@@ -303,7 +308,7 @@ describe('hq role & cross-campus views (IKAJSL)', () => {
     );
     accountIds.push(bAdmin.id);
     await rbac.setAccountRoles(actor, bAdmin.id, [
-      { roleCode: 'campus-operations', scope: 'campus', campusId: CAMPUS_B },
+      { roleCode: 'campus-operator', scope: 'campus', campusId: CAMPUS_B },
     ]);
     const login = (await auth.adminLogin({
       username: `${tag}-b-admin`,

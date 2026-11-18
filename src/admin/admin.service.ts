@@ -1,3 +1,4 @@
+import { nightAccess, assertNightEnabled, closeNightStores } from '../common/night-access';
 import { RbacService } from './rbac/rbac.service';
 import {
   BadRequestException,
@@ -998,6 +999,7 @@ export class AdminService {
           await this.db.product.findMany({
             where: {
               campusId: excludeImportedBy,
+              nightCatalog: false,
               sourceProductId: { not: null },
             },
             select: { sourceProductId: true },
@@ -1010,6 +1012,10 @@ export class AdminService {
       // IKD6FG：categoryId 分类筛选（官方库/本校区/库存共用）
       where: {
         campusId,
+        // IKSW1F 夜宵隔离：夜主档行（nightCatalog=true）不进白天商品管理
+        // 列表（夜主档走 /admin/night/catalog 独立数据面）；存量行默认
+        // false，该过滤对存量行为零变化
+        nightCatalog: false,
         ...(categoryId ? { categoryId } : {}),
         ...(catalogScope ? { catalogScope } : {}),
         // IKKRMX：组织目录行也落 campus-official 伪校区（复用校区模型不建
@@ -1054,7 +1060,8 @@ export class AdminService {
       weight: this.num(x.weight),
       skuNo: `SKU-${x.id.toUpperCase()}`,
       // 官方库不记库存（IKAJSM）：库存归校区，不参与售罄映射
-      actualStock: x.stock + x.lockedStock,
+      actualStock: x.stock + x.lockedStock + x.nightReservedStock,
+      nightReservedStock: x.nightReservedStock,
       availableStock: x.stock,
       status: isOfficial || x.stock ? x.status : 'sold-out',
       upstreamChanged: !!(
@@ -1158,7 +1165,8 @@ export class AdminService {
       wholesalePrice: this.num(x.wholesalePrice),
       weight: this.num(x.weight),
       skuNo: `SKU-${x.id.toUpperCase()}`,
-      actualStock: x.stock + x.lockedStock,
+      actualStock: x.stock + x.lockedStock + x.nightReservedStock,
+      nightReservedStock: x.nightReservedStock,
       availableStock: x.stock,
     }));
     // IKKRMY：组织目录行无 cost.read 账号剔除成本字段（supplyMode 一并隐藏）
@@ -1453,7 +1461,7 @@ export class AdminService {
   /** 首页推荐位（IKH0EK）：本校区已选推荐商品，featuredSort 升序 */
   async featured(campusId: string) {
     return this.db.product.findMany({
-      where: { campusId, featured: true },
+      where: { campusId, featured: true, nightCatalog: false },
       orderBy: { featuredSort: 'asc' },
       select: {
         id: true,
@@ -1470,14 +1478,14 @@ export class AdminService {
   /** 推荐位保存（IKH0EK）：全量有序提交，事务清位重设；越界/跨校区 id 静默剔除 */
   async saveFeatured(ids: string[], campusId: string) {
     const own = await this.db.product.findMany({
-      where: { id: { in: ids }, campusId },
+      where: { id: { in: ids }, campusId, nightCatalog: false },
       select: { id: true },
     });
     const ownIds = new Set(own.map((r) => r.id));
     const valid = ids.filter((id) => ownIds.has(id));
     await this.db.$transaction([
       this.db.product.updateMany({
-        where: { campusId, featured: true },
+        where: { campusId, featured: true, nightCatalog: false },
         data: { featured: false, featuredSort: 0 },
       }),
       // 逐行写序（数组序=展示序，1 起）
@@ -1630,10 +1638,12 @@ export class AdminService {
   /** 首页 Banner 管理（IK9RX2）：校园维度，sort 升序；删除为物理删。 */
   /** Banner 列表（IKAJSL）：campusId 空 = 总部视角查全部并附 campusName。
    *  IKB5PB：placement 可选过滤（支付广告位独立菜单只看 pay-success）。 */
-  async banners(campusId: string, placement?: string, status?: string) {
+  async banners(campusId: string, placement?: string, status?: string, businessType = 'day') {
+    if (!['day', 'night'].includes(businessType)) throw new BadRequestException('业务类型不正确');
     const xs = await this.db.banner.findMany({
       where: {
         ...(campusId ? { campusId } : {}),
+        businessType,
         ...(placement ? { placement } : {}),
         ...(status ? { status } : {}),
       },
@@ -1670,6 +1680,7 @@ export class AdminService {
     const banner = await this.db.banner.create({
       data: {
         campusId,
+        businessType: body.businessType ?? 'day',
         title: body.title,
         subtitle: body.subtitle ?? '',
         badge: body.badge ?? '',
@@ -1765,9 +1776,10 @@ export class AdminService {
    *  无删除（留审计），已结束不可改。 */
   /** IKB5PA：state 过滤（live/upcoming/ended/disabled，按时间窗读时判定），
    *  不传 = 全部。口径与前台 promoState 一致。 */
-  async promotions(campusId: string, state?: string, categoryId?: string) {
+  async promotions(campusId: string, state?: string, categoryId?: string, businessType = 'day') {
+    if (!['day', 'night'].includes(businessType)) throw new BadRequestException('业务类型不正确');
     const xs = await this.db.promotion.findMany({
-      where: { product: { campusId } },
+      where: { product: { campusId, nightCatalog: businessType === 'night' } },
       orderBy: { createdAt: 'desc' },
       include: {
         product: {
@@ -2332,7 +2344,7 @@ export class AdminService {
     });
     const officialById = new Map(officials.map((o) => [o.id, o]));
     const existing = await this.db.product.findMany({
-      where: { campusId },
+      where: { campusId, nightCatalog: false },
       select: { sourceProductId: true, barcode: true },
     });
     const importedSources = new Set(
@@ -3748,6 +3760,7 @@ export class AdminService {
       where: {
         campusId: HQ_CAMPUS_ID,
         sourceProductId: { in: lines.map((l) => l.item.productId) },
+        nightCatalog: false,
       },
       select: { id: true, sourceProductId: true, name: true },
     });
@@ -3949,6 +3962,7 @@ export class AdminService {
       where: {
         campusId: HQ_CAMPUS_ID,
         sourceProductId: { in: order.items.map((i) => i.productId) },
+        nightCatalog: false,
       },
       select: { id: true, sourceProductId: true, name: true, stock: true },
     });
@@ -4098,6 +4112,7 @@ export class AdminService {
       where: {
         campusId: order.campusId,
         sourceProductId: { in: order.items.map((i) => i.productId) },
+        nightCatalog: false,
       },
       select: { id: true, sourceProductId: true, procurementMode: true },
     });
@@ -6444,8 +6459,8 @@ export class AdminService {
       if (!['pending', 'failed'].includes(refund.status))
         throw new BadRequestException('当前状态不可拒绝');
       const record = await this.db.$transaction(async (tx) => {
-        const after = await tx.refund.update({
-          where: { id },
+        const changed = await tx.refund.updateMany({
+          where: { id, status: refund.status },
           data: {
             status: 'rejected',
             auditBy: operator,
@@ -6454,6 +6469,8 @@ export class AdminService {
             rejectCount: { increment: 1 },
           },
         });
+        if (!changed.count) throw new BadRequestException('申请状态已变化，请刷新');
+        const after = await tx.refund.findUniqueOrThrow({ where: { id } });
         await this.restoreOrderFromRefund(
           tx,
           refund.orderId,
@@ -7439,6 +7456,7 @@ export class AdminService {
     return Promise.all(
       xs.map(async (x) => ({
         ...x,
+        nightAccess: await nightAccess(this.db, x.id),
         buildings: await this.db.building.count({
           where: { campusId: x.id },
         }),
@@ -7479,6 +7497,7 @@ export class AdminService {
         name: o.name,
         shortName: o.shortName,
         status: o.status,
+        nightEnabled: o.nightEnabled,
         createdAt: o.createdAt,
         campusCount: own.length,
         userCount: own.reduce((n, c) => n + (usersByCampus.get(c.id) ?? 0), 0),
@@ -7534,6 +7553,7 @@ export class AdminService {
       name: org.name,
       shortName: org.shortName,
       status: org.status,
+      nightEnabled: org.nightEnabled,
       createdAt: org.createdAt,
       // 微信配置（ADR-0001 决策 2 预留）：非敏感位透出，敏感凭据只回布尔
       wxAppId: org.wxAppId,
@@ -7568,6 +7588,7 @@ export class AdminService {
     name: string;
     shortName: string;
     status: string;
+    nightEnabled: boolean;
     createdAt: Date;
     wxAppId: string | null;
     deliveryWxAppId: string | null;
@@ -7591,6 +7612,7 @@ export class AdminService {
       name: org.name,
       shortName: org.shortName,
       status: org.status,
+      nightEnabled: org.nightEnabled,
       createdAt: org.createdAt,
       wxAppId: org.wxAppId,
       deliveryWxAppId: org.deliveryWxAppId,
@@ -7666,6 +7688,7 @@ export class AdminService {
     const org = await this.db.organization.create({
       data: {
         name: body.name.trim(),
+        nightEnabled: body.nightEnabled ?? false,
         shortName: body.shortName.trim(),
         wxAppId: body.wxAppId.trim(),
         ...(body.wxSecret ? { wxSecret: body.wxSecret } : {}),
@@ -7753,9 +7776,11 @@ export class AdminService {
       ],
       id,
     );
-    const after = await this.db.organization.update({
+    const after = await this.db.$transaction(async tx => {
+      const updated = await tx.organization.update({
       where: { id },
       data: {
+        ...(body.nightEnabled !== undefined ? { nightEnabled: body.nightEnabled } : {}),
         ...(body.name !== undefined ? { name: body.name.trim() } : {}),
         ...(body.shortName !== undefined
           ? { shortName: body.shortName.trim() }
@@ -7812,6 +7837,13 @@ export class AdminService {
           ? { gzhQrcodeUrl: body.gzhQrcodeUrl?.trim() || null }
           : {}),
       },
+      });
+      if (body.nightEnabled !== undefined && body.nightEnabled !== before.nightEnabled) {
+        const campuses = await tx.campus.findMany({ where: { organizationId: id }, select: { id: true } });
+        await tx.campus.updateMany({ where: { organizationId: id }, data: { nightEnabled: false } });
+        await closeNightStores(tx, campuses.map(c => c.id));
+      }
+      return updated;
     });
     await this.audit(
       operator,
@@ -7827,6 +7859,7 @@ export class AdminService {
 
   /** 审计快照（非敏感字段透出，敏感凭据只留布尔位）。 */
   private organizationAuditView(org: {
+    nightEnabled: boolean;
     name: string;
     shortName: string;
     wxAppId: string | null;
@@ -7847,6 +7880,7 @@ export class AdminService {
   }) {
     return {
       name: org.name,
+      nightEnabled: org.nightEnabled,
       shortName: org.shortName,
       wxAppId: org.wxAppId,
       deliveryWxAppId: org.deliveryWxAppId,
@@ -7874,9 +7908,14 @@ export class AdminService {
   ) {
     const before = await this.db.organization.findUnique({ where: { id } });
     if (!before) throw new BadRequestException(`组织不存在: ${id}`);
-    const after = await this.db.organization.update({
-      where: { id },
-      data: { status },
+    const after = await this.db.$transaction(async tx => {
+      const updated = await tx.organization.update({ where: { id }, data: { status } });
+      if (status === 'disabled') {
+        const campuses = await tx.campus.findMany({ where: { organizationId: id }, select: { id: true } });
+        await tx.campus.updateMany({ where: { organizationId: id }, data: { nightEnabled: false } });
+        await closeNightStores(tx, campuses.map(c => c.id));
+      }
+      return updated;
     });
     await this.audit(
       operator,
@@ -8125,9 +8164,16 @@ export class AdminService {
       if (organization.status !== 'active')
         throw new BadRequestException('不能将校区转移到停用组织');
     }
-    const after = await this.db.campus.update({
+    if (body.nightEnabled === true) {
+      const organizationId = body.organizationId ?? before.organizationId;
+      const org = organizationId ? await this.db.organization.findUnique({ where: { id: organizationId }, select: { nightEnabled: true, status: true } }) : null;
+      if (before.type === 'hq' || !org?.nightEnabled || org.status !== 'active') throw new ForbiddenException('所属组织尚未获授权开通夜宵服务');
+    }
+    const after = await this.db.$transaction(async tx => {
+      const updated = await tx.campus.update({
       where: { id },
       data: {
+        ...(body.nightEnabled !== undefined ? { nightEnabled: body.nightEnabled } : body.organizationId && body.organizationId !== before.organizationId ? { nightEnabled: false } : {}),
         ...(body.organizationId ? { organizationId: body.organizationId } : {}),
         ...(body.name != null ? { name: body.name } : {}),
         ...(body.shortName != null ? { shortName: body.shortName } : {}),
@@ -8242,6 +8288,9 @@ export class AdminService {
           ? { deliveryThreshold: body.deliveryThreshold }
           : {}),
       },
+      });
+      if (body.nightEnabled === false || (body.organizationId && body.organizationId !== before.organizationId)) await closeNightStores(tx, [id]);
+      return updated;
     });
     await this.audit(
       operator,
@@ -8252,11 +8301,13 @@ export class AdminService {
         name: before.name,
         status: before.status,
         organizationId: before.organizationId,
+        nightEnabled: before.nightEnabled,
       },
       {
         name: after.name,
         status: after.status,
         organizationId: after.organizationId,
+        nightEnabled: after.nightEnabled,
       },
       id,
     );
@@ -8390,9 +8441,19 @@ export class AdminService {
     return after;
   }
   /** IKB5PA：status 过滤（active/paused），不传 = 全部。 */
-  async coupons(campusId: string, status?: string) {
+  async coupons(campusId: string, status?: string, businessType?: string) {
+    const night = (await nightAccess(this.db, campusId)).enabled;
+    if (businessType === 'night') await assertNightEnabled(this.db, campusId);
+    if (!night) businessType = 'day';
     const xs = await this.db.coupon.findMany({
-      where: { campusId, ...(status ? { status } : {}) },
+      where: {
+        campusId,
+        ...(status ? { status } : {}),
+        // IKSW1F 夜宵券 Tab 过滤：day/night 显式过滤，缺省不过滤（零变化）
+        ...(businessType === 'day' || businessType === 'night'
+          ? { businessType }
+          : {}),
+      },
     });
     return xs.map((x) => ({
       ...x,
@@ -8473,7 +8534,8 @@ export class AdminService {
           orderBy: { paidAt: 'desc' },
         })
       : [];
-    const usedBy = new Map(usedOrders.map((o) => [o.couponId, o]));
+    const nightUsedOrders = usedIds.length ? await this.db.nightOrder.findMany({ where: { couponId: { in: usedIds } }, select: { couponId: true, orderNo: true, paidAt: true }, orderBy: { paidAt: 'desc' } }) : [];
+    const usedBy = new Map([...usedOrders, ...nightUsedOrders].map((o) => [o.couponId, o]));
     return rows.map((r) => {
       const used = usedBy.get(r.id);
       return {
@@ -8496,6 +8558,8 @@ export class AdminService {
     operator: string,
     campusId: string,
   ) {
+    const nightProductIds = [...new Set(body.nightProductIds ?? [])];
+    if (nightProductIds.length && (body.businessType !== 'night' || body.kind === 'partner' || await this.db.product.count({ where: { id: { in: nightProductIds }, campusId, nightCatalog: true } }) !== nightProductIds.length)) throw new BadRequestException('适用商品必须来自本校区夜宵商品库');
     // IKDCVO：长期券不传 expiresAt（null=长期有效）；传了则须合法且晚于当前。
     let expiresAt: Date | null = null;
     if (body.expiresAt) {
@@ -8519,6 +8583,9 @@ export class AdminService {
         name: body.name,
         kind,
         trigger,
+        // IKSW1F 券双向隔离（T52）：businessType 缺省 day=存量行为零变化
+        businessType: body.businessType === 'night' ? 'night' : 'day',
+        nightProductIds,
         remark: body.remark?.trim() ?? '',
         amount: kind === 'partner' ? 0 : body.amount,
         threshold: kind === 'partner' ? 0 : body.threshold,
@@ -8589,6 +8656,9 @@ export class AdminService {
       where: { id, campusId },
     });
     if (!before) throw new NotFoundException('优惠券不存在');
+    const nightProductIds = body.nightProductIds ? [...new Set(body.nightProductIds)] : undefined;
+    if (nightProductIds?.length && (before.businessType !== 'night' || before.kind === 'partner' || await this.db.product.count({ where: { id: { in: nightProductIds }, campusId, nightCatalog: true } }) !== nightProductIds.length)) throw new BadRequestException('适用商品必须来自本校区夜宵商品库');
+    if (nightProductIds && before.claimed > 0 && JSON.stringify([...before.nightProductIds].sort()) !== JSON.stringify([...nightProductIds].sort())) throw new BadRequestException('已发放优惠券的适用商品不可修改');
     // 编辑语义：amount/threshold 不存在「清空」，null 一律视为未传
     const amount = body.amount ?? undefined;
     const threshold = body.threshold ?? undefined;
@@ -8613,6 +8683,7 @@ export class AdminService {
     if (amount !== undefined && before.kind === 'platform' && amount <= 0)
       throw new BadRequestException('金额券面额必须大于 0');
     const data: Prisma.CouponUpdateInput = {};
+    if (nightProductIds) data.nightProductIds = nightProductIds;
     if (body.status !== undefined) data.status = body.status;
     if (body.name !== undefined) data.name = body.name;
     if (body.remark !== undefined) data.remark = body.remark;
@@ -8630,9 +8701,12 @@ export class AdminService {
       data.expiresAt = body.expiresAt ? new Date(body.expiresAt) : null;
     if (!Object.keys(data).length)
       throw new BadRequestException('没有要修改的字段');
-    const after = await this.db.coupon.update({
-      where: { id },
-      data,
+    const after = await this.db.$transaction(async tx => {
+      await tx.$queryRaw`SELECT id FROM "Coupon" WHERE id = ${id} FOR UPDATE`;
+      const fresh = await tx.coupon.findUniqueOrThrow({ where: { id } });
+      if (fresh.claimed > 0 && (amount !== undefined || threshold !== undefined || (nightProductIds && JSON.stringify([...fresh.nightProductIds].sort()) !== JSON.stringify([...nightProductIds].sort())))) throw new BadRequestException('该券已发放，面额、门槛和适用商品不可修改');
+      if (body.total != null && body.total < fresh.claimed) throw new BadRequestException('发放总量不能小于已发放数');
+      return tx.coupon.update({ where: { id }, data });
     });
     await this.audit(
       operator,
@@ -9780,7 +9854,8 @@ export class AdminService {
         orderBy: { createdAt: 'asc' },
       }),
     ]);
-    return { campus, slots, notices };
+    const access = await nightAccess(this.db, campusId);
+    return { campus, slots, notices: notices.filter(n => n.businessType !== 'night' || access.enabled), nightAccess: access };
   }
 
   /* ---------- 送达时段管理（IKHM1O 补窟窿：原无后台入口） ---------- */
@@ -9854,9 +9929,10 @@ export class AdminService {
 
   /* ---------- 公告（IKHM1P）：校区多条 + 生效窗 + 启停 ---------- */
 
-  async notices(campusId: string) {
+  async notices(campusId: string, businessType = 'day') {
+    if (!['day', 'night'].includes(businessType)) throw new BadRequestException('业务类型不正确');
     return this.db.notice.findMany({
-      where: { campusId },
+      where: { campusId, businessType },
       orderBy: { createdAt: 'asc' },
     });
   }
@@ -9869,7 +9945,7 @@ export class AdminService {
     if (endsAt <= startsAt)
       throw new BadRequestException('结束时间必须晚于开始时间');
     const notice = await this.db.notice.create({
-      data: { campusId, content: body.content, startsAt, endsAt },
+      data: { campusId, businessType: body.businessType ?? 'day', content: body.content, startsAt, endsAt },
     });
     await this.audit(
       operator,

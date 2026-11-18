@@ -1,0 +1,369 @@
+{
+  "environment": "admin-test.buchuqin.com",
+  "payments": "domain-simulated-no-WeChat",
+  "checks": [
+    {
+      "route": "/night-rider/night/stock/orders",
+      "method": "POST",
+      "status": 201,
+      "expected": 201
+    },
+    {
+      "route": "/admin/night/stock-orders/cmwk3nvca0006lo01bu9h8q25/review",
+      "method": "POST",
+      "status": 201,
+      "expected": 201
+    },
+    {
+      "route": "/admin/night/stock-orders/cmwk3nvca0006lo01bu9h8q25/ship",
+      "method": "POST",
+      "status": 201,
+      "expected": 201
+    },
+    {
+      "route": "/night-rider/night/stock/orders/cmwk3nvca0006lo01bu9h8q25/receive",
+      "method": "POST",
+      "status": 201,
+      "expected": 201
+    },
+    {
+      "route": "/night-rider/night/stock/orders",
+      "method": "POST",
+      "status": 201,
+      "expected": 201
+    },
+    {
+      "route": "/admin/night/stock-orders/cmwk3nvfj000jlo01xg72igfo/review",
+      "method": "POST",
+      "status": 201,
+      "expected": 201
+    },
+    {
+      "route": "/admin/night/stock-orders/cmwk3nvfj000jlo01xg72igfo/ship",
+      "method": "POST",
+      "status": 201,
+      "expected": 201
+    },
+    {
+      "route": "/cart",
+      "method": "PUT",
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "route": "/cart",
+      "method": "PUT",
+      "status": 200,
+      "expected": 200,
+      "message": "success"
+    },
+    {
+      "route": "/orders",
+      "method": "POST",
+      "status": 201,
+      "expected": 201,
+      "message": "下单成功"
+    },
+    {
+      "route": "/night-rider/night/store/open",
+      "method": "POST",
+      "status": 201,
+      "expected": 201,
+      "message": "开店成功"
+    },
+    {
+      "route": "/night-rider/night/products",
+      "method": "GET",
+      "status": 200,
+      "expected": 200,
+      "message": "success"
+    },
+    {
+      "route": "/night/orders",
+      "method": "POST",
+      "status": 201,
+      "expected": 201,
+      "message": "success"
+    },
+    {
+      "route": "/admin/night/orders/cmwk3petr000ulo01enxx1au3",
+      "method": "GET",
+      "status": 200,
+      "expected": 200,
+      "message": "success"
+    },
+    {
+      "route": "/admin/night/orders/cmwk3petr000ulo01enxx1au3",
+      "method": "GET",
+      "status": 200,
+      "expected": 200,
+      "message": "success"
+    },
+    {
+      "route": "/admin/night/orders/cmwk3petr000ulo01enxx1au3",
+      "method": "GET",
+      "status": 403,
+      "expected": 403,
+      "message": "未授权在该校区操作"
+    },
+    {
+      "route": "/night/orders/cmwk3petr000ulo01enxx1au3",
+      "method": "GET",
+      "status": 200,
+      "expected": 200,
+      "message": "success"
+    },
+    {
+      "route": "/orders?unified=true",
+      "method": "GET",
+      "status": 200,
+      "expected": 200,
+      "message": "success"
+    },
+    {
+      "route": "/orders?unified=true&businessType=night",
+      "method": "GET",
+      "status": 200,
+      "expected": 200,
+      "message": "success"
+    },
+    {
+      "route": "/night-rider/night/products",
+      "method": "GET",
+      "status": 200,
+      "expected": 200,
+      "message": "success"
+    },
+    {
+      "route": "/night-rider/night/inventory/reports",
+      "method": "POST",
+      "status": 201,
+      "expected": 201,
+      "message": "已提交校区审核"
+    },
+    {
+      "route": "/admin/night/inventory-reports/7e4d8183-fd5b-44c1-9fd9-3ccc2bfbda1c/review",
+      "method": "POST",
+      "status": 201,
+      "expected": 201,
+      "message": "success"
+    },
+    {
+      "route": "/admin/night/inventory-reports/7e4d8183-fd5b-44c1-9fd9-3ccc2bfbda1c/review",
+      "method": "POST",
+      "status": 201,
+      "expected": 201,
+      "message": "success"
+    },
+    {
+      "route": "/night-rider/night/store/close",
+      "method": "POST",
+      "status": 201,
+      "expected": 201,
+      "message": "已打烊"
+    },
+    {
+      "route": "/admin/night/config",
+      "method": "PUT",
+      "status": 200,
+      "expected": 200,
+      "message": "配置已保存"
+    },
+    {
+      "route": "/night-rider/night/store/open",
+      "method": "POST",
+      "status": 400,
+      "expected": 400,
+      "message": "未到夜宵营业时间，请先申请临时营业并等待校区审核"
+    },
+    {
+      "route": "/night-rider/night/opening-requests",
+      "method": "POST",
+      "status": 201,
+      "expected": 201,
+      "message": "营业申请已提交，等待校区审核"
+    },
+    {
+      "route": "/admin/night/opening-requests/cmwk3pf3s0018lo01p9trq7j6/review",
+      "method": "POST",
+      "status": 201,
+      "expected": 201,
+      "message": "success"
+    },
+    {
+      "route": "/night-rider/night/store/open",
+      "method": "POST",
+      "status": 201,
+      "expected": 201,
+      "message": "开店成功"
+    },
+    {
+      "route": "/night/entry?buildingId=cmwk3nuz30000lo7o9u4zbvb8",
+      "method": "GET",
+      "status": 200,
+      "expected": 200,
+      "message": "success"
+    },
+    {
+      "route": "/night/entry?buildingId=cmwk3nuz50001lo7o5rpbgcix",
+      "method": "GET",
+      "status": 200,
+      "expected": 200,
+      "message": "success"
+    },
+    {
+      "route": "/cart",
+      "method": "PUT",
+      "status": 200,
+      "expected": 200,
+      "message": "success"
+    },
+    {
+      "route": "/orders",
+      "method": "POST",
+      "status": 400,
+      "expected": 400,
+      "message": "本楼夜宵店营业中，请刷新后进入夜宵店下单"
+    },
+    {
+      "route": "/night/entry?buildingId=cmwk3nuz30000lo7o9u4zbvb8",
+      "method": "GET",
+      "status": 200,
+      "expected": 200,
+      "message": "success"
+    },
+    {
+      "route": "/night/orders",
+      "method": "POST",
+      "status": 400,
+      "expected": 400,
+      "message": "未到夜宵营业时间，请先申请临时营业并等待校区审核"
+    },
+    {
+      "route": "/admin/night/config",
+      "method": "PUT",
+      "status": 200,
+      "expected": 200,
+      "message": "配置已保存"
+    },
+    {
+      "route": "/fulfillment/business-context",
+      "method": "GET",
+      "status": 200,
+      "expected": 200,
+      "message": "success"
+    },
+    {
+      "route": "/night-rider/night/dashboard",
+      "method": "GET",
+      "status": 403,
+      "expected": 403,
+      "message": "本校区未开通夜宵服务"
+    },
+    {
+      "route": "/night-rider/night/stock/pool",
+      "method": "GET",
+      "status": 403,
+      "expected": 403,
+      "message": "本校区未开通夜宵服务"
+    },
+    {
+      "route": "/night-rider/night/products",
+      "method": "GET",
+      "status": 403,
+      "expected": 403,
+      "message": "本校区未开通夜宵服务"
+    },
+    {
+      "route": "/night-rider/night/deposit/tiers",
+      "method": "GET",
+      "status": 403,
+      "expected": 403,
+      "message": "本校区未开通夜宵服务"
+    },
+    {
+      "route": "/night-rider/night/stock/orders",
+      "method": "POST",
+      "status": 403,
+      "expected": 403,
+      "message": "本校区未开通夜宵服务"
+    },
+    {
+      "route": "/night-rider/night/deposit",
+      "method": "GET",
+      "status": 200,
+      "expected": 200,
+      "message": "success"
+    },
+    {
+      "route": "/night-rider/night/orders",
+      "method": "GET",
+      "status": 200,
+      "expected": 200,
+      "message": "success"
+    },
+    {
+      "route": "/night-rider/night/stock/orders/cmwk3nvfj000jlo01xg72igfo/receive",
+      "method": "POST",
+      "status": 201,
+      "expected": 201,
+      "message": "实收库存已入账"
+    },
+    {
+      "route": "/night-rider/night/orders/cmwk3petr000ulo01enxx1au3/accept",
+      "method": "POST",
+      "status": 201,
+      "expected": 201,
+      "message": "已接单"
+    },
+    {
+      "route": "/night-rider/night/orders/cmwk3petr000ulo01enxx1au3/deliver",
+      "method": "POST",
+      "status": 201,
+      "expected": 201,
+      "message": "已送达完成"
+    },
+    {
+      "route": "/admin/night/config",
+      "method": "PUT",
+      "status": 200,
+      "expected": 200,
+      "message": "配置已保存"
+    },
+    {
+      "route": "/night-rider/night/store/open",
+      "method": "POST",
+      "status": 201,
+      "expected": 201,
+      "message": "开店成功"
+    }
+  ],
+  "assertions": [
+    "138 cost snapshot, margin, cost permission and campus isolation",
+    "135 image/quantity snapshots; 136 order-campus support group",
+    "141 combined user orders and channel filter",
+    "137 partial liability review and duplicate request deduct exactly once",
+    "139 approval while day store open, building isolation, real-time expiry",
+    "143 disabled operating gates, old receipt/delivery/deposit access",
+    "acceptance campus restored to usable preview state"
+  ],
+  "result": "passed",
+  "fixtureCorrections": [
+    {
+      "initialFailure": "POST /orders returned 400 instead of 201 because the one-item fixture was below the existing 10-yuan minimum",
+      "correction": "Used two items to satisfy the existing minimum; no product rule changed",
+      "verified": "Subsequent POST /orders returned 201; both day and night orders are listed"
+    }
+  ],
+  "previousAttemptError": "POST /orders: 商品金额满10.00元起送\n\n400 !== 201\n",
+  "successfulHttpAssertions": 49,
+  "priorFixtureAttempts": [
+    {
+      "route": "/orders",
+      "method": "POST",
+      "status": 400,
+      "expected": 201
+    }
+  ],
+  "rawEvidenceRetainedOnTestServer": "/opt/buchuqin/releases/issues134-143-20261117/http-evidence.json"
+}

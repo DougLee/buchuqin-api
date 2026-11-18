@@ -1,0 +1,304 @@
+TAP version 13
+# Subtest: 地址管理与夜宵结算均能选择超过首屏的旧地址，尊重服务端分页大小
+ok 1 - 地址管理与夜宵结算均能选择超过首屏的旧地址，尊重服务端分页大小
+  ---
+  duration_ms: 1.212833
+  type: 'test'
+  ...
+# Subtest: 地址后续页加载失败不能伪装成完整列表或无本楼地址
+ok 2 - 地址后续页加载失败不能伪装成完整列表或无本楼地址
+  ---
+  duration_ms: 0.611458
+  type: 'test'
+  ...
+# Subtest: 当前营业上下文决定渠道，已关闭场次回到白天，历史渠道可显式指定
+ok 3 - 当前营业上下文决定渠道，已关闭场次回到白天，历史渠道可显式指定
+  ---
+  duration_ms: 0.572
+  type: 'test'
+  ...
+# Subtest: 网络失败不能解释成白天，非法业务类型不能默默落入另一渠道
+ok 4 - 网络失败不能解释成白天，非法业务类型不能默默落入另一渠道
+  ---
+  duration_ms: 0.309584
+  type: 'test'
+  ...
+# Subtest: 校区或账号在请求中变化时拒绝旧响应，不把旧渠道结果显示给新身份
+ok 5 - 校区或账号在请求中变化时拒绝旧响应，不把旧渠道结果显示给新身份
+  ---
+  duration_ms: 0.102083
+  type: 'test'
+  ...
+# Subtest: 楼栋记忆跟随用户与校区，清除当前选择不影响其他作用域
+ok 6 - 楼栋记忆跟随用户与校区，清除当前选择不影响其他作用域
+  ---
+  duration_ms: 0.101334
+  type: 'test'
+  ...
+# Subtest: 旧楼栋请求返回无店时，不能清除新校区的楼栋记忆
+ok 7 - 旧楼栋请求返回无店时，不能清除新校区的楼栋记忆
+  ---
+  duration_ms: 0.197792
+  type: 'test'
+  ...
+# Subtest: 身份刷新后拒绝旧数据，但最新加载仍能结束并呈现重试状态
+ok 8 - 身份刷新后拒绝旧数据，但最新加载仍能结束并呈现重试状态
+  ---
+  duration_ms: 0.07225
+  type: 'test'
+  ...
+# Subtest: 售后记录跨零点显示中国营业日期，非法日期不泄露Invalid Date
+ok 9 - 售后记录跨零点显示中国营业日期，非法日期不泄露Invalid Date
+  ---
+  duration_ms: 1.359125
+  type: 'test'
+  ...
+# Subtest: 历史夜宵售后类型显示中文，保留用户描述原文
+ok 10 - 历史夜宵售后类型显示中文，保留用户描述原文
+  ---
+  duration_ms: 0.168625
+  type: 'test'
+  ...
+# Subtest: 白天购物车旧账号响应与排队写操作不能覆盖新账号
+ok 11 - 白天购物车旧账号响应与排队写操作不能覆盖新账号
+  ---
+  duration_ms: 4.825667
+  type: 'test'
+  ...
+# Subtest: 购物车旧查询晚到，不能盖掉查询期间已经成功的新加购
+ok 12 - 购物车旧查询晚到，不能盖掉查询期间已经成功的新加购
+  ---
+  duration_ms: 5.081958
+  type: 'test'
+  ...
+# Subtest: 清空之前的在途写入不能吞掉清空之后新增的商品
+ok 13 - 清空之前的在途写入不能吞掉清空之后新增的商品
+  ---
+  duration_ms: 12.203708
+  type: 'test'
+  ...
+# Subtest: 支付本机清车后，旧加购响应不能让已购商品重新出现
+ok 14 - 支付本机清车后，旧加购响应不能让已购商品重新出现
+  ---
+  duration_ms: 1.446833
+  type: 'test'
+  ...
+# Subtest: 排队中的普通加购与秒杀加购分别保留各自的价格身份
+ok 15 - 排队中的普通加购与秒杀加购分别保留各自的价格身份
+  ---
+  duration_ms: 1.373875
+  type: 'test'
+  ...
+# Subtest: 首次加购先读取服务端购物车，保留已有其他商品并提交版本
+ok 16 - 首次加购先读取服务端购物车，保留已有其他商品并提交版本
+  ---
+  duration_ms: 0.698084
+  type: 'test'
+  ...
+# Subtest: 已加载旧版本时清空等待在途加购后重读版本，最终服务端为空
+ok 17 - 已加载旧版本时清空等待在途加购后重读版本，最终服务端为空
+  ---
+  duration_ms: 2.047375
+  type: 'test'
+  ...
+# Subtest: 校区确认页先存本次合法token再解除等待，挂起原请求应直接继续
+ok 18 - 校区确认页先存本次合法token再解除等待，挂起原请求应直接继续
+  ---
+  duration_ms: 11.4105
+  type: 'test'
+  ...
+# Subtest: 真正的旧微信登录返回不能覆盖后来登录的新身份
+ok 19 - 真正的旧微信登录返回不能覆盖后来登录的新身份
+  ---
+  duration_ms: 8.717417
+  type: 'test'
+  ...
+# Subtest: 自动登录成功后同步实际用户与校区，购物车owner不会继续用旧身份
+ok 20 - 自动登录成功后同步实际用户与校区，购物车owner不会继续用旧身份
+  ---
+  duration_ms: 0.877208
+  type: 'test'
+  ...
+# Subtest: 同SKU新活动不能把旧秒杀行视为有效，停用和过期立即提示重新选购
+ok 21 - 同SKU新活动不能把旧秒杀行视为有效，停用和过期立即提示重新选购
+  ---
+  duration_ms: 0.5395
+  type: 'test'
+  ...
+# Subtest: 下架、库存不足与非法秒杀数量明确反馈，普通渠道不受秒杀每单限购影响
+ok 22 - 下架、库存不足与非法秒杀数量明确反馈，普通渠道不受秒杀每单限购影响
+  ---
+  duration_ms: 0.090334
+  type: 'test'
+  ...
+# Subtest: 账号和楼栋分桶互相隔离，返回原账号保留自己的商品
+ok 23 - 账号和楼栋分桶互相隔离，返回原账号保留自己的商品
+  ---
+  duration_ms: 3.227583
+  type: 'test'
+  ...
+# Subtest: 重验最新售价和资料，保留缺货数量让用户核对，金额随快照更新
+ok 24 - 重验最新售价和资料，保留缺货数量让用户核对，金额随快照更新
+  ---
+  duration_ms: 1.01475
+  type: 'test'
+  ...
+# Subtest: 数量为整数且不超过库存，无效数量不能污染金额
+ok 25 - 数量为整数且不超过库存，无效数量不能污染金额
+  ---
+  duration_ms: 0.883833
+  type: 'test'
+  ...
+# Subtest: 损坏或旧的无归属购物车不会带入其他用户
+ok 26 - 损坏或旧的无归属购物车不会带入其他用户
+  ---
+  duration_ms: 1.311708
+  type: 'test'
+  ...
+# Subtest: 支付只扣除该单已选数量，保留新加商品，重查支付与刷新都不重复清车
+ok 27 - 支付只扣除该单已选数量，保留新加商品，重查支付与刷新都不重复清车
+  ---
+  duration_ms: 1.126209
+  type: 'test'
+  ...
+# Subtest: 同一用户跨校区购物车隔离，切回原校区保留商品
+ok 28 - 同一用户跨校区购物车隔离，切回原校区保留商品
+  ---
+  duration_ms: 0.716792
+  type: 'test'
+  ...
+# Subtest: 秒杀行锁定渠道与数量，过期不悄悄改成原价，原单支付不清掉新换的普通行
+ok 29 - 秒杀行锁定渠道与数量，过期不悄悄改成原价，原单支付不清掉新换的普通行
+  ---
+  duration_ms: 2.270834
+  type: 'test'
+  ...
+# Subtest: 旧秒杀活动不会迁移到下一场，新活动车行也不会被旧订单支付清除
+ok 30 - 旧秒杀活动不会迁移到下一场，新活动车行也不会被旧订单支付清除
+  ---
+  duration_ms: 0.716167
+  type: 'test'
+  ...
+# Subtest: 夜宵分享保留校区楼栋商品，但必须经过楼栋确认入口
+ok 31 - 夜宵分享保留校区楼栋商品，但必须经过楼栋确认入口
+  ---
+  duration_ms: 0.468083
+  type: 'test'
+  ...
+# Subtest: 夜宵运营券和订单入口落正确渠道
+ok 32 - 夜宵运营券和订单入口落正确渠道
+  ---
+  duration_ms: 54.137416
+  type: 'test'
+  ...
+# Subtest: 夜宵商品目标经过楼栋选择；遗留白天商品链接不得打开白天详情
+ok 33 - 夜宵商品目标经过楼栋选择；遗留白天商品链接不得打开白天详情
+  ---
+  duration_ms: 28.642209
+  type: 'test'
+  ...
+# Subtest: 白天商品目标与tab导航保持原有行为
+ok 34 - 白天商品目标与tab导航保持原有行为
+  ---
+  duration_ms: 13.676833
+  type: 'test'
+  ...
+# Subtest: 夜宵朋友圈query明确渠道并保留商品参数，无楼栋也能确认楼栋
+ok 35 - 夜宵朋友圈query明确渠道并保留商品参数，无楼栋也能确认楼栋
+  ---
+  duration_ms: 0.111541
+  type: 'test'
+  ...
+# Subtest: 订阅授权 unsupported 不阻塞订单支付
+ok 36 - 订阅授权 unsupported 不阻塞订单支付
+  ---
+  duration_ms: 62.149875
+  type: 'test'
+  ...
+# Subtest: 订阅授权 synchronous platform failure 不阻塞订单支付
+ok 37 - 订阅授权 synchronous platform failure 不阻塞订单支付
+  ---
+  duration_ms: 32.588708
+  type: 'test'
+  ...
+# Subtest: 账号或校区切换后，旧成功响应不能再交给页面或store
+ok 38 - 账号或校区切换后，旧成功响应不能再交给页面或store
+  ---
+  duration_ms: 2.703791
+  type: 'test'
+  ...
+# Subtest: 旧401响应不能清掉后来登录的新身份令牌
+ok 39 - 旧401响应不能清掉后来登录的新身份令牌
+  ---
+  duration_ms: 0.975125
+  type: 'test'
+  ...
+# Subtest: 上下文不变时正常解包响应
+ok 40 - 上下文不变时正常解包响应
+  ---
+  duration_ms: 0.791416
+  type: 'test'
+  ...
+# Subtest: 昵称以当前用户服务端资料为准，历史全局缓存不串账号
+ok 41 - 昵称以当前用户服务端资料为准，历史全局缓存不串账号
+  ---
+  duration_ms: 2.686708
+  type: 'test'
+  ...
+# Subtest: 新人礼包仅展示本渠道返回的有效注册券，过期/锁定/已用/手领券不混入
+ok 42 - 新人礼包仅展示本渠道返回的有效注册券，过期/锁定/已用/手领券不混入
+  ---
+  duration_ms: 0.779834
+  type: 'test'
+  ...
+# Subtest: 礼包/群提示偏好按用户校区隔离，礼包额外按日夜隔离
+ok 43 - 礼包/群提示偏好按用户校区隔离，礼包额外按日夜隔离
+  ---
+  duration_ms: 0.10675
+  type: 'test'
+  ...
+# Subtest: 可见页更新到期判断时间，离开停止计时，返回立即刷新且不叠加定时器
+ok 44 - 可见页更新到期判断时间，离开停止计时，返回立即刷新且不叠加定时器
+  ---
+  duration_ms: 40.048291
+  type: 'test'
+  ...
+# Subtest: each mini program has an independent app id
+ok 45 - each mini program has an independent app id
+  ---
+  duration_ms: 0.530458
+  type: 'test'
+  ...
+# Subtest: global navigation title follows the selected brand
+ok 46 - global navigation title follows the selected brand
+  ---
+  duration_ms: 0.171125
+  type: 'test'
+  ...
+# Subtest: dev and build outputs are isolated by brand
+ok 47 - dev and build outputs are isolated by brand
+  ---
+  duration_ms: 0.081208
+  type: 'test'
+  ...
+# Subtest: unknown brand fails before compiling
+ok 48 - unknown brand fails before compiling
+  ---
+  duration_ms: 1.060583
+  type: 'test'
+  ...
+# Subtest: brand metadata is applied before uni compiles the manifest
+ok 49 - brand metadata is applied before uni compiles the manifest
+  ---
+  duration_ms: 0.161667
+  type: 'test'
+  ...
+1..49
+# tests 49
+# suites 0
+# pass 49
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 793.946833

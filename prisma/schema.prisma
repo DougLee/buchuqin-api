@@ -64,6 +64,8 @@ model Organization {
   /// 已开通能力白名单（如 ["marketing"]，空数组=全关）。能力开关只收窄不放大
   /// ——组织关了校区不能显式开。
   capabilities             Json?
+  /// Super-admin grants the organization permission to enroll individual campuses.
+  nightEnabled             Boolean  @default(false)
   /// IKKRMV 配送履约模式：'rider_delivery'=骑手小程序履约（组织 A 现状）|
   /// 'staff_delivery'=后台员工履约（组织 B）。两种模式共用订单状态语义
   /// （12 态状态机不因模式增删，见 common/order-state.ts）——仅履约执行
@@ -97,6 +99,15 @@ model Campus {
   // 楼长月度底薪（IKDOIU 道哥）：单位分，0 = 无底薪（纯提成+调整）——
   // 取代 settlements 硬编码 50000，校区维度自主配置
   buildingManagerBaseSalary Int                     @default(0)
+  nightEnabled              Boolean      @default(false)
+  nightStartAt              String?
+  nightEndAt                String?
+  nightPayTimeout           Int?
+  nightAcceptTimeout        Int?
+  // 夜宵配送费（IKSW1F 楼栋夜宵店，单位分）：null=未配置（回落
+  // deliveryFeeInstant 口径）；0=显式免费（PRD A18「0 元须显式配置」语义）
+  nightDeliveryFee          Int?
+  nightStores               NightStore[]
   // 客服电话（IKHMF1 道哥 2026-09-21）：校区自定义，小程序我的/详情/订单
   // 拨号展示；默认 4008002026 兜底（换号改默认值即全量更新）
   servicePhone              String                  @default("4008002026")
@@ -480,6 +491,7 @@ model User {
   refunds             Refund[]
   userCoupons         UserCoupon[]
   recruitApplications RecruitingApplication[]
+  nightOrders         NightOrder[]
 }
 
 model Category {
@@ -516,6 +528,21 @@ model Product {
    * IKKRMX。
    */
   catalogScope       String                @default("campus")
+  /**
+   * 夜宵主档标识（IKSW1F 楼栋夜宵店）：true=夜主档行——price 字段语义变为
+   * 夜宵统一售价（各校区独立一行，同校区统一价），资料（图/名/规格）供
+   * NightProduct 楼栋行引用。与白天业务完全隔离：白天 C 端读路径
+   * （home/listProducts/秒杀/推荐/详情/搜索/加购）与后台白天商品列表一律
+   * nightCatalog=false 过滤；夜宵行默认挂「夜宵专供」隐藏分类双保险。
+   */
+  nightCatalog       Boolean               @default(false)
+  /// 夜宵渠道副本关联的校区实物 SKU；渠道行不另记仓库库存。
+  warehouseProductId String?
+  warehouseProduct   Product? @relation("NightWarehouse", fields: [warehouseProductId], references: [id])
+  nightVariants      Product[] @relation("NightWarehouse")
+  nightBarcode       String?
+  /// 已审核夜宵备货预留。stock 为可用量，实物在库还包含此列。
+  nightReservedStock Int @default(0)
   /**
    * 组织商品目录归属（IKKRMX / ADR-0001 决策 4）：非空=catalogScope='org' 的
    * 组织目录行归属该组织（复用校区模型不建新表——行物理上仍落 campus-official
@@ -616,6 +643,7 @@ model Product {
   purchaseOrderItems PurchaseOrderItem[]
   shipmentItems      RestockShipmentItem[]
 
+  nightCatalogProducts NightProduct[]
   @@unique([campusId, barcode])
 }
 
@@ -861,6 +889,7 @@ model InventoryTxn {
 }
 
 model Banner {
+  businessType String @default("day")
   id          String  @id @default(cuid())
   campusId    String
   // 标题/副标题/角标（IKC1AD）：内部字段供运营辨识，用户端不再渲染
@@ -895,6 +924,7 @@ model Building {
   createdAt   DateTime @default(now())
   rooms       Room[]
   staff       Staff[]
+  nightStore  NightStore?
 }
 
 model Room {
@@ -942,6 +972,9 @@ model CartItem {
 model Coupon {
   id               String       @id @default(cuid())
   campusId         String
+  businessType     String       @default("day")
+  /// 夜宵券适用的校区夜商品主档ID；空数组表示本校区全部夜宵商品。
+  nightProductIds  String[]     @default([])
   name             String
   // IKDCVO：kind 券品种（platform 金额券下单抵扣 | partner 异业券到店展示暂不核销）；
   // trigger 发放方式（manual 手动领取 | lottery 转盘 | signup 注册自动发）。
@@ -1025,6 +1058,8 @@ model Order {
 }
 
 model Notification {
+  businessType String @default("day")
+  orderId String?
   id        String   @id @default(cuid())
   userId    String
   user      User     @relation(fields: [userId], references: [id])
@@ -1158,6 +1193,7 @@ model Staff {
   commissions         Commission[]
   bills               BmBill[]
   transferLogs        TransferLog[]
+  nightStores         NightStore[]
 }
 
 model LeaveRequest {
@@ -1387,6 +1423,7 @@ model LotteryDraw {
  * C 端按创建时间正序拼接「｜」跑马灯滚动展示。
  */
 model Notice {
+  businessType String @default("day")
   id        String   @id @default(cuid())
   campusId  String
   campus    Campus   @relation(fields: [campusId], references: [id])
@@ -1436,4 +1473,366 @@ model TransferLog {
 
   @@index([orderId])
   @@index([staffId, createdAt])
+}
+
+// ==================================================================
+// 楼栋夜宵店（IKSW1F 道哥 2026-11-04 定稿）
+// 业务基线：押金=进货额度（库存×售价≤押金，500 档递增补缴，经营期不退）
+// 商品两级：Product 夜主档行（平台池）→ NightProduct 楼栋行（选品+库存）
+// 与白天业务完全隔离：独立库存/价格/券（Coupon.businessType）/订单/购物车
+// ==================================================================
+
+/// 夜宵店（一栋一楼长一期；buildingId 唯一）
+model NightStore {
+  id             String   @id @default(cuid())
+  campusId       String
+  campus         Campus   @relation(fields: [campusId], references: [id])
+  buildingId     String   @unique
+  building       Building @relation(fields: [buildingId], references: [id])
+  /// 楼长（解绑置空；置空=招募中）
+  managerStaffId String?
+  managerStaff   Staff?   @relation(fields: [managerStaffId], references: [id])
+  /// open 营业中 / paused 暂停 / closed 打烊 / suspended 停业
+  status         String   @default("closed")
+  /// 押金余额（分）：库存历史货值、待配送/损耗及备货预占的额度基准；变动写 NightDepositTxn
+  deposit        Int      @default(0)
+  /// 佣金比例（万分比，2000=20%）；后台配置，楼长只读
+  commissionRate Int      @default(0)
+  openedAt       DateTime?
+  closedAt       DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  products      NightProduct[]
+  orders        NightOrder[]
+  depositTxns   NightDepositTxn[]
+  depositOrders NightDepositOrder[]
+  depositRefunds NightDepositRefund[]
+  stockOrders   NightStockOrder[]
+  stockTxns     NightStockTxn[]
+  inventoryReports NightInventoryReport[]
+  commissionTxns NightCommissionTxn[]
+  refunds        NightRefund[]
+  openingRequests NightOpeningRequest[]
+}
+
+/// 窗口外临时营业申请，一层校区审核；授权仅在申请时段内且同一楼长生效。
+model NightOpeningRequest {
+  id String @id @default(cuid())
+  storeId String
+  store NightStore @relation(fields: [storeId], references: [id])
+  managerStaffId String
+  requestId String
+  startAt DateTime
+  endAt DateTime
+  reason String
+  status String @default("pending")
+  reviewReason String @default("")
+  reviewedBy String?
+  reviewedAt DateTime?
+  createdAt DateTime @default(now())
+  @@unique([storeId, requestId])
+  @@index([storeId, status, startAt, endAt])
+}
+
+/// 夜宵商品楼栋行（每栋各选各的货；资料与售价引主档 Product 夜宵行）
+model NightProduct {
+  id               String   @id @default(cuid())
+  storeId          String
+  store            NightStore @relation(fields: [storeId], references: [id])
+  /// 主档（Product 夜宵行，catalogScope 含夜宵标识）
+  catalogProductId String
+  catalogProduct   Product  @relation(fields: [catalogProductId], references: [id])
+  /// 本楼可售库存（实收才入账；下单预占、报损冻结、审核盘盈等全走流水）
+  stock            Int      @default(0)
+  /// 可售数量对应的历史入库货值（分），不随售价重估。
+  inventoryValue   Int      @default(0)
+  inventoryVersion Int      @default(0)
+  frozenStock      Int      @default(0)
+  /// 楼长上架选择（备货入库默认上架；后台停售不覆盖此选择）
+  onShelf          Boolean  @default(true)
+  /// 后台售卖许可（false=强制下架，优先于楼长选择）
+  saleAllowed      Boolean  @default(true)
+  /// IKTU033 楼长推荐（楼栋行级，道哥 2026-11-09）：本店首页/货架排序自管，
+  /// featured 优先展示（featuredSort 小值在前），与主档运营推荐位（admin 设
+  /// 的 catalogProduct.featured）两级并存——楼栋行优先
+  featured         Boolean  @default(false)
+  featuredSort     Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  stockTxns NightStockTxn[]
+
+  @@unique([storeId, catalogProductId])
+  @@index([storeId])
+}
+
+/// 押金流水（缴纳/补缴 deposit、判责扣除 deduct、退出退还 refund）
+model NightDepositTxn {
+  id         String     @id @default(cuid())
+  storeId    String
+  store      NightStore @relation(fields: [storeId], references: [id])
+  type       String
+  /// 金额（分，恒正）；余额恒等式：deposit ≡ Σdeposit − Σdeduct − Σrefund
+  amount     Int
+  /// 微信支付/退款单号（原路追溯）
+  payOrderNo String?
+  /// 操作者（deduct 为后台判责人员；deposit 为楼长）
+  operatorId String?
+  remark     String     @default("")
+  createdAt  DateTime   @default(now())
+
+  @@index([storeId, createdAt])
+}
+
+/// 夜宵订单（与白天 Order 完全独立；仅配送本楼）
+model NightOrder {
+  id             String   @id @default(cuid())
+  /// YX 前缀唯一单号
+  orderNo        String   @unique
+  requestId      String?  @db.VarChar(80)
+  requestHash    String?
+  payMerchantId  String?
+  payAppId       String?
+  wxTransactionId String?
+  storeId        String
+  store          NightStore @relation(fields: [storeId], references: [id])
+  /// 楼长快照（软引用，下单时定）
+  managerStaffId String?
+  userId         String
+  user           User     @relation(fields: [userId], references: [id])
+  /// 营业日 YYYY-MM-DD（跨零点归属前一晚）
+  businessDate   String
+  /// pending-payment → pending-accept → delivering → delivered → completed
+  /// 分支 cancelled（超时/用户取消）/ refunded
+  status         String
+  statusText     String
+  /// 商品快照 [{productId, name, price, quantity}]（改价不追溯）
+  items          Json
+  productAmount  Int
+  couponDiscount Int      @default(0)
+  deliveryFee    Int      @default(0)
+  payableAmount  Int
+  couponId       String?
+  /// 券快照（名称/面额/门槛）
+  couponSnapshot Json?
+  /// 下单时店铺佣金比例快照（万分比）
+  commissionRate Int
+  /// 已锁定但仍在楼长手中的商品历史货值；送达释放。
+  quotaHeld      Int @default(0)
+  inventoryRestocked Boolean @default(false)
+  /// 本楼地址快照 {buildingName, room, contactName, phone}
+  address        Json
+  remark         String   @default("")
+  timeline       Json
+  /// 待支付截止（超时自动关闭，时长校区可配）
+  timeoutAt      DateTime?
+  cancelReason   String?
+  /// 售后状态（IKSW1F 一期轻量承载）：null=无售后；requested=用户已申请
+  /// （申请内容进 timeline）；resolved/rejected=后台退款/驳回后回写。
+  /// requested 期间佣金不得转 pending（「无进行中售后」判定依据）
+  afterSaleStatus String?
+  createdAt      DateTime @default(now())
+  paidAt         DateTime?
+  completedAt    DateTime?
+
+  commissionTxns NightCommissionTxn[]
+  refund         NightRefund?
+
+  @@index([storeId, status])
+  @@index([managerStaffId, status])
+  @@index([businessDate])
+  @@index([userId, status])
+  @@unique([userId, requestId])
+}
+
+/// 一期每单一次退款；网关资金状态持久化，成功后才释放券/库存和冲回佣金。
+model NightRefund {
+  id                      String     @id @default(cuid())
+  orderId                 String     @unique
+  order                   NightOrder @relation(fields: [orderId], references: [id])
+  storeId                 String
+  store                   NightStore @relation(fields: [storeId], references: [id])
+  outRefundNo             String     @unique
+  kind                    String
+  status                  String     @default("requested")
+  originalStatus          String
+  originalAfterSaleStatus String?
+  productAmount           Int
+  deliveryFeeAmount       Int
+  totalAmount             Int
+  restock                 Boolean    @default(true)
+  fullProductRefund       Boolean    @default(false)
+  heldValue               Int        @default(0)
+  reason                  String
+  operatorId              String
+  gatewayRefundId         String?
+  errorMessage            String     @default("")
+  attempts                Int        @default(0)
+  leaseUntil              DateTime?
+  completedAt             DateTime?
+  createdAt               DateTime   @default(now())
+  updatedAt               DateTime   @updatedAt
+
+  @@index([status, leaseUntil])
+  @@index([storeId, createdAt])
+}
+
+/// 佣金流水（每单两条：商品佣金 commission + 配送费收入 deliveryFee；
+/// 退款 adjust 重算、配送费退款 clawback 冲回——V1.5 修订项 2/3）
+model NightCommissionTxn {
+  id             String     @id @default(cuid())
+  orderId        String
+  order          NightOrder @relation(fields: [orderId], references: [id])
+  storeId        String
+  store          NightStore @relation(fields: [storeId], references: [id])
+  managerStaffId String
+  type           String
+  /// 佣金基数（券后商品净实收，仅 commission）
+  base           Int?
+  rate           Int?
+  amount         Int
+  /// estimated 预计 → pending 待结算 → settled 已结算
+  status         String     @default("estimated")
+  settleBatch    String?
+  remark         String     @default("")
+  createdAt      DateTime   @default(now())
+
+  @@index([managerStaffId, status])
+  @@index([storeId, status])
+  @@index([settleBatch])
+}
+
+/// 楼长备货申请：申请占额度、校区审核预留、出库后一次确认实收。
+model NightStockOrder {
+  id             String     @id @default(cuid())
+  storeId        String
+  store          NightStore @relation(fields: [storeId], references: [id])
+  managerStaffId String
+  requestId      String?
+  /// [{nightProductId, catalogProductId, name, price, quantity}]
+  items          Json
+  /// 货值合计（分，校验通过瞬间计算值留痕）
+  totalValue     Int
+  /// 未收货预占。少收部分转入收货损耗报告，待审核才释放。
+  heldValue      Int @default(0)
+  /// requested / approved / shipped / received / rejected / cancelled；completed 为历史一步制单。
+  status         String     @default("requested")
+  reason         String @default("")
+  reviewedBy     String?
+  reviewedAt     DateTime?
+  shippedBy      String?
+  shippedAt      DateTime?
+  receivedAt     DateTime?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime @updatedAt
+  inventoryReports NightInventoryReport[]
+
+  @@index([storeId, createdAt])
+  @@unique([storeId, requestId])
+}
+
+/// 楼长盘点、店内损耗及收货少货共用审核单，数量/货值快照不得随调价改写。
+model NightInventoryReport {
+  id String @id @default(cuid())
+  storeId String
+  store NightStore @relation(fields: [storeId], references: [id])
+  managerStaffId String
+  /// loss / stocktake / receipt-shortage
+  kind String
+  status String @default("pending")
+  requestId String
+  stockOrderId String?
+  stockOrder NightStockOrder? @relation(fields: [stockOrderId], references: [id])
+  items Json
+  reason String
+  photos Json?
+  heldValue Int @default(0)
+  reviewReason String @default("")
+  reviewedBy String?
+  reviewedAt DateTime?
+  responsibility String?
+  compensationAmount Int @default(0)
+  depositTxnId String? @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([storeId, requestId])
+  @@index([storeId, status])
+  @@index([stockOrderId])
+}
+
+/// 夜宵库存流水（NightProduct.stock 的全量变动账本；
+/// afterStock 快照：当前 stock 必须等于最后一条 afterStock）
+model NightStockTxn {
+  id             String     @id @default(cuid())
+  storeId        String
+  store          NightStore @relation(fields: [storeId], references: [id])
+  nightProductId String
+  product        NightProduct @relation(fields: [nightProductId], references: [id])
+  /// stockIn 备货入库 / saleOut 销售扣减 / refundBack 退款回库 /
+  /// adjust 调整 / returnOut 退货 / loss 报损
+  type           String
+  /// 带方向：入库正、出库负
+  delta          Int
+  afterStock     Int
+  refType        String?
+  refId          String?
+  operatorId     String?
+  remark         String     @default("")
+  createdAt      DateTime   @default(now())
+
+  @@index([nightProductId, createdAt])
+  @@index([storeId, createdAt])
+}
+
+/// 押金支付单（IKSW1F）：楼长发起缴纳时创建（pending），微信回调/查单成功
+/// 后幂等落账（paid → 写 NightDepositTxn(deposit) + NightStore.deposit+=）。
+/// 微信商户单号=outTradeNo（ND 前缀，payments.notify 按前缀路由夜宵通道）。
+model NightDepositOrder {
+  id         String     @id @default(cuid())
+  storeId    String
+  store      NightStore @relation(fields: [storeId], references: [id])
+  /// 微信商户单号（唯一；回调/查单幂等键）
+  outTradeNo String     @unique
+  /// 本次缴纳金额（分）= 目标档位 − 当前押金余额；按 500 元档递增
+  amount     Int
+  payMerchantId String?
+  payAppId String?
+  wxTransactionId String?
+  /// 目标押金档位（分，留痕：50000/100000/…）
+  targetTier Int
+  /// pending 待支付 / paid 已到账 / closed 已关闭（超时未付）
+  status     String     @default("pending")
+  paidAt     DateTime?
+  createdAt  DateTime   @default(now())
+
+  @@index([storeId, status])
+}
+
+/// 每次退押申请按原缴款分配。渠道确认成功后才扣余额，处理中保留额度。
+model NightDepositRefund {
+  id String @id @default(cuid())
+  storeId String
+  store NightStore @relation(fields: [storeId], references: [id])
+  requestId String @db.VarChar(80)
+  payOrderNo String
+  outRefundNo String @unique
+  originalAmount Int
+  amount Int
+  payMerchantId String?
+  status String @default("requested")
+  operatorId String
+  reason String
+  errorMessage String @default("")
+  gatewayRefundId String?
+  attempts Int @default(0)
+  leaseUntil DateTime?
+  completedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([storeId, requestId, payOrderNo])
+  @@index([storeId, createdAt])
+  @@index([status, leaseUntil])
 }

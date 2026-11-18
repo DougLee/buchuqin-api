@@ -12,7 +12,8 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiConsumes, ApiTags } from '@nestjs/swagger';
 import { randomUUID } from 'node:crypto';
-import { extname } from 'node:path';
+import { dirname, extname, resolve } from 'node:path';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { memoryStorage } from 'multer';
 import COS from 'cos-nodejs-sdk-v5';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -65,7 +66,7 @@ const PUBLIC_UPLOAD_PERMISSIONS: Record<string, string[]> = {
   // 该目录，banner 上传一直只能走 app/ 混放）
   'app/banner': ['POST /admin/banners', 'PATCH /admin/banners/:id'],
   'app/banner-detail': ['POST /admin/banners', 'PATCH /admin/banners/:id'],
-  'app/product': ['POST /admin/products', 'PATCH /admin/products/:id'],
+  'app/product': ['POST /admin/products', 'PATCH /admin/products/:id', 'POST /admin/night/catalog', 'PATCH /admin/night/catalog/:id'],
   'app/category': ['POST /admin/categories', 'PATCH /admin/categories/:id'],
   'app/wechat-group': ['POST /admin/wechat-groups'],
   'app/wheel': ['PUT /admin/wheel'],
@@ -160,7 +161,13 @@ export class FilesController {
       // 私有门控被本条件自然覆盖。
       throw new ForbiddenException('该目录仅后台账号可用');
     }
-    if (!COS_BUCKET || !COS_REGION)
+    const localPreview = process.env.NIGHT_LOCAL_UPLOADS === '1';
+    if (localPreview) {
+      const database = new URL(process.env.DATABASE_URL || '');
+      if (process.env.NODE_ENV !== 'test' || !database.pathname.endsWith('_spec') || database.searchParams.get('schema') !== 'night_stock_preview_20261106' || PRIVATE_FOLDERS.has(target))
+        throw new BadRequestException('本机存储适配器仅支持独立夜宵预览的公开图片');
+    }
+    if (!localPreview && (!COS_BUCKET || !COS_REGION))
       throw new BadRequestException('文件存储未配置，请检查 COS 环境变量');
 
     const ext = extname(file.originalname || '').toLowerCase();
@@ -179,6 +186,14 @@ export class FilesController {
     const mime = compressed?.mimetype ?? file.mimetype;
     const finalExt = compressed?.ext ?? safeExt;
     const key = `${dir}/${randomUUID()}${finalExt}`;
+
+    if (localPreview) {
+      const localKey = `uploads/night-preview/${key}`;
+      const output = resolve(process.cwd(), localKey);
+      await mkdir(dirname(output), { recursive: true });
+      await writeFile(output, body, { flag: 'wx' });
+      return ok({ url: `http://localhost:3150/api/v1/${localKey}`, private: false, webp: compressed != null, localSimulation: true }, '本机预览上传成功');
+    }
 
     try {
       await putToCos(

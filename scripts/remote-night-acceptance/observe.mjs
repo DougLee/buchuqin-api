@@ -1,0 +1,11 @@
+import assert from 'node:assert/strict';
+import { call, state, save, q, items } from './http.mjs';
+const dash = await call('/api/v1/night-rider/night/dashboard', 'GET', undefined, state.manager.token);
+const products = await call('/api/v1/night-rider/night/products', 'GET', undefined, state.manager.token);
+const orders = items(await call('/api/v1/night-rider/night/stock/orders', 'GET', undefined, state.manager.token));
+const inventory = items(await call('/api/v1/admin/inventory' + q(state.campusId)));
+const deposit = await call('/api/v1/night-rider/night/deposit', 'GET', undefined, state.manager.token);
+assert.ok(deposit.deposit >= 50000); state.depositPaid = true;
+state.stockOrders = orders.map(row => ({ id: row.id, status: row.status }));
+state.nightProducts = products.map(row => ({ id: row.id, catalogProductId: row.catalogProductId, name: row.name, stock: row.stock, inventoryValue: row.inventoryValue, inventoryVersion: row.inventoryVersion })); save();
+console.log(JSON.stringify({ deposit: deposit.deposit, depositTxnCount: deposit.total, dashboard: dash, products, stockOrders: orders, warehouse: inventory.filter(row => state.day.some(product => product.id === row.id)).map(({ id, stock, lockedStock, nightReservedStock }) => ({ id, stock, lockedStock, nightReservedStock })) }, null, 2));
