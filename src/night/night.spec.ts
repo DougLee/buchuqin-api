@@ -4,6 +4,7 @@ import { PaymentsService } from '../payments/payments.service';
 import { NightOrderService } from './night-order.service';
 import { NightRiderService } from './night-rider.service';
 import { NightInventoryService } from './night-inventory.service';
+import { NightAdminService } from './night-admin.service';
 import { inNightWindow } from './night.helpers';
 import type { Campus } from '@prisma/client';
 
@@ -435,5 +436,218 @@ describe('Night store PostgreSQL integration (IKSW1F)', () => {
     expect(earning.commission).toBe(140);
     expect(earning.deliveryFee).toBe(200);
     expect(earning.total).toBe(340);
+  });
+});
+
+/** IKWL2G 调整库存类型驱动联动共享仓：调增扣仓 / returnOut 回仓 / loss·stocktake 不动仓 */
+describe('调整库存共享仓联动 (IKWL2G)', () => {
+  const db = new PrismaService();
+  const business = new BusinessService(db);
+  const payments = new PaymentsService(db, business);
+  const orders = new NightOrderService(db, payments);
+  const admin = new NightAdminService(db, payments, orders);
+
+  const tag = `ikwl2g-${Date.now()}`;
+  const staffIdRef = { id: '' };
+  let storeId: string;
+  let warehouseId: string;
+  let catalogId: string;
+  let npId: string;
+  let npNoWhId: string; // 未关联仓库的夜行
+
+  const npOf = (id: string) => db.nightProduct.findUniqueOrThrow({ where: { id } });
+
+  beforeAll(async () => {
+    await db.organization.create({ data: { id: tag, name: tag, nightEnabled: true } });
+    const campus = await db.campus.create({
+      data: {
+        name: `联动测试大学${tag}`,
+        shortName: '联动测',
+        warehouseName: '联动测仓',
+        manualClosed: true,
+        organizationId: tag,
+        nightEnabled: true,
+        nightStartAt: '22:00',
+        nightEndAt: '02:00',
+        nightPayTimeout: 15,
+        nightAcceptTimeout: 30,
+        nightDeliveryFee: 200,
+        deliveryFeeInstant: 400,
+      },
+    });
+    const building = await db.building.create({
+      data: { campusId: campus.id, name: `联动 ${tag.slice(-4)} 栋` },
+    });
+    const staff = await db.staff.create({
+      data: {
+        campusId: campus.id,
+        name: '联动楼长',
+        role: 'building-manager',
+        roleText: '楼长',
+        staffNo: `lnk-${tag.slice(-8)}`,
+        building: building.name,
+        buildingId: building.id,
+        onTimeRate: 100,
+        income: 0,
+      },
+    });
+    staffIdRef.id = staff.id;
+    const store = await db.nightStore.create({
+      data: {
+        campusId: campus.id,
+        buildingId: building.id,
+        managerStaffId: staff.id,
+        commissionRate: 2000,
+        deposit: 50000,
+        status: 'closed',
+      },
+    });
+    storeId = store.id;
+    const category = await db.category.upsert({
+      where: { campusId_name: { campusId: campus.id, name: '夜宵专供' } },
+      update: {},
+      create: { campusId: campus.id, name: '夜宵专供', hidden: true },
+    });
+    const warehouse = await db.product.create({
+      data: {
+        campusId: campus.id,
+        categoryId: category.id,
+        name: '联动可乐实物',
+        subtitle: '',
+        price: 1000,
+        originalPrice: 1000,
+        image: '',
+        tag: '',
+        stock: 100,
+        weight: 0,
+      },
+    });
+    warehouseId = warehouse.id;
+    const catalog = await db.product.create({
+      data: {
+        campusId: campus.id,
+        nightCatalog: true,
+        warehouseProductId: warehouse.id,
+        sourceProductId: warehouse.id,
+        categoryId: category.id,
+        name: '联动可乐',
+        subtitle: '',
+        price: 1000,
+        originalPrice: 1000,
+        image: '',
+        tag: '',
+        stock: 0,
+        status: 'on-sale',
+        weight: 0,
+      },
+    });
+    catalogId = catalog.id;
+    const np = await db.nightProduct.create({
+      data: { storeId: store.id, catalogProductId: catalog.id },
+    });
+    npId = np.id;
+    // 未关联仓库商品的夜行（调增应被拒绝）
+    const catalog2 = await db.product.create({
+      data: {
+        campusId: campus.id,
+        nightCatalog: true,
+        categoryId: category.id,
+        name: '联动可乐-无仓行',
+        subtitle: '',
+        price: 1000,
+        originalPrice: 1000,
+        image: '',
+        tag: '',
+        stock: 0,
+        status: 'on-sale',
+        weight: 0,
+      },
+    });
+    const np2 = await db.nightProduct.create({
+      data: { storeId: store.id, catalogProductId: catalog2.id },
+    });
+    npNoWhId = np2.id;
+  });
+
+  it('调增（adjust 正数）：夜店+10、共享仓-10（守恒）', async () => {
+    await admin.adjustStock('test-admin', storeId, npId, {
+      delta: 10, type: 'adjust', reason: '从共享仓调拨',
+    });
+    expect((await npOf(npId)).stock).toBe(10);
+    expect((await db.product.findUniqueOrThrow({ where: { id: warehouseId } })).stock).toBe(90);
+    expect((await npOf(npId)).inventoryValue).toBe(10000); // 10 × 主档价 1000
+  });
+
+  it('仓可用不足：整笔拒绝且两边都不变', async () => {
+    await expect(
+      admin.adjustStock('test-admin', storeId, npId, {
+        delta: 91, type: 'adjust', reason: '超出共享仓可用 90',
+      }),
+    ).rejects.toThrow('共享仓可用库存不足');
+    expect((await npOf(npId)).stock).toBe(10);
+    expect((await db.product.findUniqueOrThrow({ where: { id: warehouseId } })).stock).toBe(90);
+  });
+
+  it('returnOut 调减：夜店-4、共享仓+4（退回入库）', async () => {
+    await admin.adjustStock('test-admin', storeId, npId, {
+      delta: -4, type: 'returnOut', reason: '退回共享仓',
+    });
+    expect((await npOf(npId)).stock).toBe(6);
+    expect((await db.product.findUniqueOrThrow({ where: { id: warehouseId } })).stock).toBe(94);
+  });
+
+  it('returnOut/loss 正数拒绝', async () => {
+    await expect(
+      admin.adjustStock('test-admin', storeId, npId, { delta: 2, type: 'returnOut', reason: 'x' }),
+    ).rejects.toThrow('退货出库仅支持调减');
+    await expect(
+      admin.adjustStock('test-admin', storeId, npId, { delta: 2, type: 'loss', reason: 'x' }),
+    ).rejects.toThrow('报损仅支持调减');
+  });
+
+  it('loss 调减：夜店-3、共享仓不动（损耗不回仓）', async () => {
+    await admin.adjustStock('test-admin', storeId, npId, {
+      delta: -3, type: 'loss', reason: '运输破损',
+    });
+    expect((await npOf(npId)).stock).toBe(3);
+    expect((await db.product.findUniqueOrThrow({ where: { id: warehouseId } })).stock).toBe(94);
+  });
+
+  it('stocktake 账面纠偏：夜店-2、共享仓不动', async () => {
+    await admin.adjustStock('test-admin', storeId, npId, {
+      delta: -2, type: 'stocktake', reason: '盘点差异',
+    });
+    expect((await npOf(npId)).stock).toBe(1);
+    expect((await db.product.findUniqueOrThrow({ where: { id: warehouseId } })).stock).toBe(94);
+  });
+
+  it('未关联仓库商品的夜行调增：拒绝并提示修复关联', async () => {
+    await expect(
+      admin.adjustStock('test-admin', storeId, npNoWhId, {
+        delta: 1, type: 'adjust', reason: 'x',
+      }),
+    ).rejects.toThrow('尚未关联仓库商品');
+  });
+
+  it('流水类型与 afterStock 留痕', async () => {
+    const txns = await db.nightStockTxn.findMany({
+      where: { nightProductId: npId },
+      orderBy: { createdAt: 'asc' },
+    });
+    expect(txns.map((t) => t.type)).toEqual(['adjust', 'returnOut', 'loss', 'stocktake']);
+    expect(txns.map((t) => t.afterStock)).toEqual([10, 6, 3, 1]);
+    expect(txns.every((t) => t.storeId === storeId)).toBe(true);
+  });
+
+  afterAll(async () => {
+    // 清理：按外键依赖倒序删本夹具数据（spec 库允许残留更少为佳）
+    await db.nightStockTxn.deleteMany({ where: { storeId } });
+    await db.nightProduct.deleteMany({ where: { storeId } });
+    await db.product.deleteMany({ where: { id: { in: [catalogId, warehouseId] } } });
+    await db.nightStore.deleteMany({ where: { id: storeId } });
+    await db.building.deleteMany({ where: { campusId: { contains: tag } } });
+    await db.staff.deleteMany({ where: { campusId: { contains: tag } } });
+    await db.campus.deleteMany({ where: { id: { contains: tag } } });
+    await db.organization.deleteMany({ where: { id: tag } });
   });
 });

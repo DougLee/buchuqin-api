@@ -588,6 +588,65 @@ export class NightAdminService {
         throw new BadRequestException(
           '请先处理待审核盘点/报损，再进行人工调整',
         );
+      // IKWL2G 类型语义 + 共享仓联动（库存守恒：共享仓 + 各店 + 在途 = 总账）
+      // - returnOut / loss 仅调减（退货出库/报损不存在加货语义）
+      // - 调增（adjust, +N）= 从共享仓调拨进店：仓 −N（条件更新防并发超卖，
+      //   可用口径与备货审核一致 stock-lockedStock ≥ N）；未关联仓库商品拒绝
+      // - returnOut 调减 = 退回共享仓：仓 +N 入库
+      // - loss / stocktake / 负向 adjust = 店内账面纠偏（盘亏/损耗），不动仓
+      if (body.delta > 0 && (body.type === 'returnOut' || body.type === 'loss'))
+        throw new BadRequestException(
+          body.type === 'returnOut'
+            ? '退货出库仅支持调减（负数）'
+            : '报损仅支持调减（负数）',
+        );
+      const linkWarehouse =
+        body.delta > 0
+          ? body.type === 'adjust'
+          : body.type === 'returnOut';
+      if (linkWarehouse) {
+        // 仓库关联挂在主档行（Product nightCatalog=true）上，NightProduct 经
+        // catalogProduct 关系可达
+        const whId = current.catalogProduct.warehouseProductId;
+        if (!whId)
+          throw new BadRequestException(
+            '尚未关联仓库商品，无法联动共享仓库存（请先修复仓库关联）',
+          );
+        const dayRow = await tx.product.findUnique({
+          where: { id: whId },
+          select: {
+            id: true,
+            campusId: true,
+            nightCatalog: true,
+            stock: true,
+            lockedStock: true,
+          },
+        });
+        if (
+          !dayRow ||
+          dayRow.campusId !== store.campusId ||
+          dayRow.nightCatalog
+        )
+          throw new BadRequestException(
+            '关联仓库商品无效，请先修复仓库关联',
+          );
+        const warehouseDelta = -body.delta;
+        if (warehouseDelta < 0) {
+          const moved = await tx.$executeRaw`UPDATE "Product"
+            SET stock = stock - ${body.delta}
+            WHERE id = ${dayRow.id}
+              AND stock - "lockedStock" >= ${body.delta}`;
+          if (!moved)
+            throw new BadRequestException(
+              '共享仓可用库存不足，无法调拨进店（整笔拒绝）',
+            );
+        } else {
+          await tx.product.update({
+            where: { id: dayRow.id },
+            data: { stock: { increment: warehouseDelta } },
+          });
+        }
+      }
       const valueDelta =
         body.delta < 0
           ? -allocateInventoryValue(
