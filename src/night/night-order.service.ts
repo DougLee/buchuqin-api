@@ -1474,18 +1474,24 @@ export class NightOrderService implements NightPaymentHandler {
     if (store.campusId !== campusId) throw new BadRequestException('店铺归属已变化，请刷新');
     await this.inventory.assertCampusEnabled(campusId, tx);
     if (await tx.nightDepositRefund.count({ where: { storeId, status: { in: ['requested', 'submitting', 'processing', 'unknown'] } } })) throw new BadRequestException('押金退还处理中，请先完成核对再缴纳');
+    // 押金档位基数校区可配（IKWLHZ，默认 500 元 = 50000 分）
+    const campus = await tx.campus.findUniqueOrThrow({
+      where: { id: campusId },
+      select: { nightDeposit: true },
+    });
+    const base = campus.nightDeposit > 0 ? campus.nightDeposit : 50000;
     const minimumTier = Math.max(
-      50000,
-      (Math.floor(store.deposit / 50000) + 1) * 50000,
+      base,
+      (Math.floor(store.deposit / base) + 1) * base,
     );
     const targetTier = requestedTier ?? minimumTier;
     if (
       !Number.isSafeInteger(targetTier) ||
-      targetTier % 50000 !== 0 ||
+      targetTier % base !== 0 ||
       targetTier < minimumTier ||
-      targetTier > 5000000
+      targetTier > base * 100
     )
-      throw new BadRequestException('请选择有效的 500 元押金档位');
+      throw new BadRequestException('请选择有效的押金档位');
     const amount = targetTier - store.deposit;
     if (amount <= 0) throw new BadRequestException('押金已足额，无需缴纳');
     // 复用未支付旧单（幂等；避免堆积死单）

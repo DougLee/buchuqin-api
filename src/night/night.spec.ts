@@ -5,7 +5,7 @@ import { NightOrderService } from './night-order.service';
 import { NightRiderService } from './night-rider.service';
 import { NightInventoryService } from './night-inventory.service';
 import { NightAdminService } from './night-admin.service';
-import { inNightWindow } from './night.helpers';
+import { inNightWindow, nextDepositTier, depositTierPreview } from './night.helpers';
 import type { Campus } from '@prisma/client';
 
 /**
@@ -649,5 +649,29 @@ describe('调整库存共享仓联动 (IKWL2G)', () => {
     await db.staff.deleteMany({ where: { campusId: { contains: tag } } });
     await db.campus.deleteMany({ where: { id: { contains: tag } } });
     await db.organization.deleteMany({ where: { id: tag } });
+  });
+});
+
+/** IKWLHZ 押金档位助手：基数可配（默认 500 元），纯函数 */
+describe('押金档位助手 (IKWLHZ)', () => {
+  it('默认档位基数 50000 分（500 元）', () => {
+    expect(nextDepositTier(0)).toBe(50000);
+    expect(nextDepositTier(12345)).toBe(50000);
+    expect(nextDepositTier(50000)).toBe(100000);
+  });
+  it('自定义档位基数', () => {
+    expect(nextDepositTier(0, 20000)).toBe(20000);
+    expect(nextDepositTier(25000, 20000)).toBe(40000);
+  });
+  it('非法基数回落默认', () => {
+    expect(nextDepositTier(0, 0)).toBe(50000);
+    expect(nextDepositTier(0, -100)).toBe(50000);
+  });
+  it('档位预览：余额 + 后续三档差额', () => {
+    expect(depositTierPreview(10000, 20000, 3)).toEqual([
+      { tier: 20000, gap: 10000 },
+      { tier: 40000, gap: 30000 },
+      { tier: 60000, gap: 50000 },
+    ]);
   });
 });

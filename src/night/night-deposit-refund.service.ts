@@ -95,7 +95,13 @@ export class NightDepositRefundService {
         if (!pending.includes(current.status)) return;
         if (store.deposit < current.amount) throw new BadRequestException('押金余额异常，保留原申请待核对');
         const deposit = store.deposit - current.amount;
-        await tx.nightStore.update({ where: { id: store.id }, data: { deposit, ...(deposit < 50000 ? { status: 'closed', closedAt: new Date() } : {}) } });
+        // 余额低于一档（校区可配档位，IKWLHZ 默认 500 元）→ 自动闭店
+        const campusTier = await tx.campus.findUniqueOrThrow({
+          where: { id: store.campusId },
+          select: { nightDeposit: true },
+        });
+        const base = campusTier.nightDeposit > 0 ? campusTier.nightDeposit : 50000;
+        await tx.nightStore.update({ where: { id: store.id }, data: { deposit, ...(deposit < base ? { status: 'closed', closedAt: new Date() } : {}) } });
         await tx.nightDepositTxn.create({ data: { id: `refund-${current.id}`, storeId: store.id, type: 'refund', amount: current.amount, payOrderNo: current.payOrderNo, operatorId: current.operatorId, remark: `退押 ${current.requestId} / ${current.outRefundNo}` } });
         await tx.nightDepositRefund.update({ where: { id }, data: { status: 'succeeded', gatewayRefundId: result.refundId, completedAt: new Date(), errorMessage: '', leaseUntil: null } });
         await tx.auditLog.create({ data: { campusId: store.campusId, operator: current.operatorId, action: 'night.deposit.refund.confirm', entityType: 'nightStore', entityId: store.id, before: { deposit: store.deposit }, after: { deposit, refundId: id, amount: current.amount } } });

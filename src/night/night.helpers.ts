@@ -90,9 +90,23 @@ export function nightDepositTradeNo(): string {
   return `ND${Date.now()}${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
 }
 
-/** 押金 500 元档：给定余额的下一档目标（分）。 */
-export function nextDepositTier(deposit: number): number {
-  return (Math.floor(deposit / 50000) + 1) * 50000;
+/** 押金档位：给定余额的下一档目标（分）；档位基数校区可配（IKWLHZ，默认 500 元）。 */
+export function nextDepositTier(deposit: number, base = 50000): number {
+  const b = base > 0 ? base : 50000;
+  return (Math.floor(deposit / b) + 1) * b;
+}
+
+/** 押金档位预览：当前余额 + 后续 count 档（IKWLHZ）。 */
+export function depositTierPreview(
+  deposit: number,
+  base: number,
+  count = 3,
+): Array<{ tier: number; gap: number }> {
+  const next = nextDepositTier(deposit, base);
+  return Array.from({ length: Math.max(1, count) }, (_, i) => {
+    const tier = next + i * base;
+    return { tier, gap: tier - deposit };
+  });
 }
 
 /** 佣金：券后基数 × 万分比比例，四舍五入到分（PRD 6.6 以分为单位）。 */

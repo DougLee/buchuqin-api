@@ -717,6 +717,7 @@ export class NightAdminService {
       nightPayTimeout: campus.nightPayTimeout,
       nightAcceptTimeout: campus.nightAcceptTimeout,
       nightDeliveryFee: campus.nightDeliveryFee,
+      nightDeposit: campus.nightDeposit,
       closeStart: campus.closeStart,
       closeEnd: campus.closeEnd,
     };
@@ -767,6 +768,9 @@ export class NightAdminService {
         nightAcceptTimeout: body.nightAcceptTimeout ?? null,
         ...(body.nightDeliveryFee !== undefined
           ? { nightDeliveryFee: body.nightDeliveryFee }
+          : {}),
+        ...(body.nightDeposit !== undefined
+          ? { nightDeposit: body.nightDeposit }
           : {}),
       },
     });

@@ -107,6 +107,9 @@ model Campus {
   // 夜宵配送费（IKSW1F 楼栋夜宵店，单位分）：null=未配置（回落
   // deliveryFeeInstant 口径）；0=显式免费（PRD A18「0 元须显式配置」语义）
   nightDeliveryFee          Int?
+  // 楼长押金档位（IKWLHZ，单位分，默认 500 元）：缴纳按此档递增补缴，
+  // 余额低于一档自动闭店；后台夜宵配置可改（10000~5000000）
+  nightDeposit              Int          @default(50000)
   nightStores               NightStore[]
   // 客服电话（IKHMF1 道哥 2026-09-21）：校区自定义，小程序我的/详情/订单
   // 拨号展示；默认 4008002026 兜底（换号改默认值即全量更新）

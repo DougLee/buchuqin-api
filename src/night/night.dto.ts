@@ -110,6 +110,8 @@ export class NightConfigDto {
   @IsOptional() @IsInt() @Min(1) @Max(240) nightAcceptTimeout?: number | null;
   /** 夜间配送费（分）；null=回落白天即时送口径；0=显式免费 */
   @IsOptional() @IsInt() @Min(0) @Max(5000) nightDeliveryFee?: number | null;
+  /** 楼长押金档位（分，IKWLHZ）：缴纳按此档递增，余额低于一档自动闭店；默认 50000=500 元 */
+  @IsOptional() @IsInt() @Min(10000) @Max(5000000) nightDeposit?: number;
   /** 强警告二次确认：夜宵开始早于校区闭店时刻时须显式 true（PRD V1.5 A02） */
   @IsOptional() @IsBoolean() confirm?: boolean;
 }
@@ -227,7 +229,8 @@ export class NightDeliverDto {
 }
 
 export class NightDepositPayDto {
-  @IsOptional() @IsInt() @Min(50000) @Max(5000000) targetTier?: number;
+  /** 押金档位（分）：per-campus 校验在 service（档位基数校区可配，IKWLHZ） */
+  @IsOptional() @IsInt() @Min(1) @Max(100000000) targetTier?: number;
 }
 
 /* ==================== 用户端 /night/* ==================== */

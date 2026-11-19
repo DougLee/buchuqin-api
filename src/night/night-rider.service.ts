@@ -12,6 +12,7 @@ import { NightOrderService } from './night-order.service';
 import {
   inNightWindow,
   nextDepositTier,
+  depositTierPreview,
   nightBusinessDate,
 } from './night.helpers';
 import { NightStockOrderDto, NightDeliverDto } from './night.dto';
@@ -79,7 +80,15 @@ export class NightRiderService {
     };
   }
 
-  /** 本人夜宵店（未绑定=404；解绑/换人后旧 token 立即失效口径）。 */
+  /** 校区押金档位（分）：Campus.nightDeposit（IKWLHZ，默认 500 元）。 */
+  private async campusDepositTier(campusId: string): Promise<number> {
+    const campus = await this.db.campus.findUniqueOrThrow({
+      where: { id: campusId },
+      select: { nightDeposit: true },
+    });
+    return campus.nightDeposit > 0 ? campus.nightDeposit : 50000;
+  }
+
   private async myStore(staffId: string) {
     const staff = await this.db.staff.findUnique({ where: { id: staffId } });
     if (
@@ -99,6 +108,7 @@ export class NightRiderService {
             nightStartAt: true,
             nightEndAt: true,
             nightAcceptTimeout: true,
+            nightDeposit: true,
             closeStart: true,
             closeEnd: true,
             manualClosed: true,
@@ -112,27 +122,27 @@ export class NightRiderService {
 
   /* ==================== 押金 ==================== */
 
-  /** 押金档位：当前余额 + 下一档 + 差额（初始 500，按 500 档递增补缴）。 */
+  /** 押金档位：当前余额 + 下一档 + 差额（档位基数校区可配，IKWLHZ 默认 500）。 */
   async depositTiers(staffId: string) {
     const store = await this.myStore(staffId);
-    const nextTier = nextDepositTier(store.deposit);
+    const base = await this.campusDepositTier(store.campusId);
+    const nextTier = nextDepositTier(store.deposit, base);
     return {
       deposit: store.deposit,
+      base,
       nextTier,
       gapToNext: nextTier - store.deposit,
-      // 预览后续三档（500 档递增）
-      tiers: [0, 1, 2].map((i) => {
-        const tier = nextTier + i * 50000;
-        return { tier, gap: tier - store.deposit };
-      }),
+      // 预览后续三档（按配置档位递增）
+      tiers: depositTierPreview(store.deposit, base, 3),
     };
   }
 
   /** 押金详情：余额 + 流水（缴纳/扣除/退还全量，时间倒序）。 */
   async depositDetail(staffId: string, page?: string, pageSize?: string) {
     const store = await this.myStore(staffId);
+    const base = await this.campusDepositTier(store.campusId);
     const records = await this.inventory.depositTransactions(store.id, page, pageSize);
-    const nextTier = nextDepositTier(store.deposit);
+    const nextTier = nextDepositTier(store.deposit, base);
     return {
       staffId,
       storeId: store.id,
@@ -294,7 +304,7 @@ export class NightRiderService {
         nightEndAt: c.nightEndAt,
       },
       inWindow: inNightWindow(c.nightStartAt, c.nightEndAt),
-      gapToNextTier: nextDepositTier(store.deposit) - store.deposit,
+      gapToNextTier: nextDepositTier(store.deposit, c.nightDeposit || 50000) - store.deposit,
       pendingOrders,
       ...sales,
       todayIncome: monthly.days.filter(d => d.day === sales.businessDate).reduce((sum, d) => sum + d.commission + d.deliveryFee, 0),
