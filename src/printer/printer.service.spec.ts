@@ -72,10 +72,15 @@ describe('PrinterService (IKBT6N)', () => {
     it('票头仓库名 + 订单号 + 收件信息齐备', () => {
       expect(content).toContain('湖工大校园仓');
       expect(content).toContain('BCQ20260828TEST01');
-      expect(content).toContain('西区 3 栋 302');
-      // 电话脱敏
-      expect(content).toContain('138****1234');
-      expect(content).not.toContain('13800001234');
+      // IKX5I3 地址放大：<B> 加粗 + 半宽折行（去标签去换行后地址连续可读）
+      expect(content.replace(/<[^>]+>/g, '').replace(/\n/g, '')).toContain(
+        '收件：西区 3 栋 302',
+      );
+      expect(content).toContain('<B>收件：西区 3 栋 ');
+      // 电话脱敏（IKX5I3 放大后折行：去标签去换行断言连续号码）
+      const plain = content.replace(/<[^>]+>/g, '').replace(/\n/g, '');
+      expect(plain).toContain('138****1234');
+      expect(plain).not.toContain('13800001234');
     });
 
     it('品名量价统一加粗（11/04定稿），16半角位折行、量价独立行', () => {
@@ -121,7 +126,9 @@ describe('PrinterService (IKBT6N)', () => {
       const without = service.buildReceipt(order, undefined, false);
       expect(without).not.toContain('库位');
       // 金额/地址/二维码不受开关影响
-      expect(without).toContain('西区 3 栋 302');
+      expect(
+        without.replace(/<[^>]+>/g, '').replace(/\n/g, ''),
+      ).toContain('收件：西区 3 栋 302');
       expect(without).toContain('￥19.5');
       expect(without.endsWith('<CUT>')).toBe(true);
     });

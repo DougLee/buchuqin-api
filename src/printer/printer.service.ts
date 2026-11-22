@@ -492,15 +492,17 @@ export class PrinterService {
       lines.push(itemLine('优惠', `-${yuan(order.discount)}`));
     lines.push(itemLine('实付', TAG.bold(yuan(order.payableAmount))));
     lines.push('-'.repeat(LINE_WIDTH));
-    // 收件/联系人（IKRSJ2 挪位）：金额区之后、感谢语之前——拣货装袋时
-    // 票尾即地址，最后一眼核对收件人，不用回抬头找。
-    lines.push(
-      `收件：${[address.buildingName, address.room].filter(Boolean).join(' ') || '—'}`,
-    );
-    if (address.contactName || address.phone)
-      lines.push(
-        `联系人：${address.contactName ?? ''} ${maskPhone(address.phone)}`.trim(),
-      );
+    // 收件/联系人（IKRSJ2 挪位；IKX5I3 反馈155 道哥 2026-11-19）：放大到
+    // 与商品清单同级（<B> 放大加粗 + BIG_LINE_WIDTH 半宽逐字折行）——拣货
+    // 装袋时票尾即地址，最后一眼核对收件人。脱敏口径不变。
+    const receiverLine = `收件：${[address.buildingName, address.room].filter(Boolean).join(' ') || '—'}`;
+    for (const seg of wrapText(receiverLine, BIG_LINE_WIDTH))
+      lines.push(TAG.bold(seg));
+    if (address.contactName || address.phone) {
+      const contactLine = `联系人：${address.contactName ?? ''} ${maskPhone(address.phone)}`.trim();
+      for (const seg of wrapText(contactLine, BIG_LINE_WIDTH))
+        lines.push(TAG.bold(seg));
+    }
     // 票尾二维码（IKSN21 道哥 2026-11-04）：URL Link=微信扫一扫直达配送小
     // 程序到店确认页，文案「骑手扫码 · 到店取货」；生成失败回落 orderNo
     // 文本码（仓管/客服扫码查单 + 小程序内扫码旧行为），文案随之回旧口径。
