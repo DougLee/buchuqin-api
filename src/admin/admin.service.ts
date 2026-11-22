@@ -87,6 +87,8 @@ import {
 import { HQ_CAMPUS_ID, OFFICIAL_CAMPUS_ID } from '../common/campus';
 import { assertMarketingEnabled } from '../common/capability';
 import { campusStaffDelivery } from '../common/organization';
+// IKX2Z7 删除楼长前校验夜宵店绑定（人员删除不再静默断链夜宵店）
+import { staffNightStoreNames } from '../night/night.helpers';
 import {
   approvedRefundAmount,
   orderArrived,
@@ -5886,6 +5888,13 @@ export class AdminService {
     });
     if (!before || before.status === 'deleted')
       throw new NotFoundException('员工不存在');
+    // IKX2Z7 删除楼长前校验夜宵店绑定：楼长被删会让夜宵店悬空到已删除
+    // 人员身上（营业判定零容忍）——有绑定一律阻断，先换楼长或退出清算
+    const boundStores = await staffNightStoreNames(this.db, id);
+    if (boundStores.length)
+      throw new BadRequestException(
+        `该楼长名下有 ${boundStores.length} 家夜宵店（${boundStores.join('、')}），请先在夜宵店铺中更换楼长或完成退出清算后再删除`,
+      );
     const after = await this.db.staff.update({
       where: { id, campusId: before.campusId },
       data: { status: 'deleted' },

@@ -5,7 +5,7 @@ import { NightOrderService } from './night-order.service';
 import { NightRiderService } from './night-rider.service';
 import { NightInventoryService } from './night-inventory.service';
 import { NightAdminService } from './night-admin.service';
-import { inNightWindow, nextDepositTier, depositTierPreview } from './night.helpers';
+import { inNightWindow, nextDepositTier, depositTierPreview, staffNightStoreNames } from './night.helpers';
 import type { Campus } from '@prisma/client';
 
 /**
@@ -637,6 +637,13 @@ describe('调整库存共享仓联动 (IKWL2G)', () => {
     expect(txns.map((t) => t.type)).toEqual(['adjust', 'returnOut', 'loss', 'stocktake']);
     expect(txns.map((t) => t.afterStock)).toEqual([10, 6, 3, 1]);
     expect(txns.every((t) => t.storeId === storeId)).toBe(true);
+  });
+
+  it('IKX2Z7 删除保护：名下有夜宵店的楼长命中店名列表，无绑定返回空', async () => {
+    expect(await staffNightStoreNames(db, staffIdRef.id)).toEqual([
+      `联动 ${tag.slice(-4)} 栋`,
+    ]);
+    expect(await staffNightStoreNames(db, 'no-such-staff')).toEqual([]);
   });
 
   afterAll(async () => {

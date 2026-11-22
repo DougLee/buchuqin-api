@@ -1,8 +1,25 @@
 /**
- * 楼栋夜宵店（IKSW1F）纯函数工具：场次窗口判定 / 营业日归属 / 单号生成。
- * 独立成模块便于单测；时间判定一律服务端上海时区口径（与白天业务
+ * 楼栋夜宵店（IKSW1F）工具：场次窗口判定 / 营业日归属 / 单号生成 /
+ * 楼长绑定校验。时间判定一律服务端上海时区口径（与白天业务
  * business.service.beijingMinutes 同源规则），不依赖部署机本地时区。
  */
+import type { PrismaService } from '../database/prisma.service';
+import { Prisma } from '@prisma/client';
+
+type Db = PrismaService | Prisma.TransactionClient;
+
+/** IKX2Z7 楼长名下夜宵店名列表（删除人员前校验用）：不限店态，
+ *  停业店日后恢复也需要在册楼长，有绑定即阻断人员删除。 */
+export async function staffNightStoreNames(
+  db: Db,
+  staffId: string,
+): Promise<string[]> {
+  const rows = await db.nightStore.findMany({
+    where: { managerStaffId: staffId },
+    select: { building: { select: { name: true } } },
+  });
+  return rows.map((row) => row.building.name);
+}
 
 /** HH:mm → 当日分钟数；非法格式返回 null。 */
 export function hhmmToMinutes(s?: string | null): number | null {
