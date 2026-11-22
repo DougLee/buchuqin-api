@@ -3,6 +3,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
@@ -10,6 +11,8 @@ import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../database/prisma.service';
 import { OFFICIAL_CAMPUS_ID } from '../common/campus';
 import { parsePagination } from '../common/pagination';
+import { Optional } from '@nestjs/common';
+import { PrinterService } from '../printer/printer.service';
 
 type Tx = Prisma.TransactionClient;
 export interface NightCatalogFilters {
@@ -74,7 +77,11 @@ export function allocateInventoryValue(
 
 @Injectable()
 export class NightInventoryService {
-  constructor(private readonly db: PrismaService) {}
+  constructor(
+    private readonly db: PrismaService,
+    // IKX25Y 拣货小票：可选注入（单测/夜宵单内部 new 时不传，跳过打印）
+    @Optional() private readonly printer?: PrinterService,
+  ) {}
 
   async assertCampusEnabled(campusId: string, tx: Tx = this.db) {
     await assertNightEnabled(tx, campusId);
@@ -1147,7 +1154,7 @@ export class NightInventoryService {
     const raw = await this.db.nightStockOrder.findUniqueOrThrow({
       where: { id },
     });
-    return this.db.$transaction(
+    const view = await this.db.$transaction(
       async (tx) => {
         await this.lockStore(tx, raw.storeId);
         const order = await tx.nightStockOrder.findUniqueOrThrow({
@@ -1191,6 +1198,52 @@ export class NightInventoryService {
       },
       { timeout: 20000 },
     );
+    // IKX25Y 拣货小票：出库成功即推送仓内饰打印（fire-and-forget，失败不阻断出库）
+    void this.printPickingSlip(raw.storeId, id, operator).catch((e) =>
+      Logger.warn(`夜宵拣货单打印失败: ${String(e)}`, NightInventoryService.name),
+    );
+    return view;
+  }
+
+  /** 拣货小票（IKX25Y）：备货出库时推送到校区绑定打印机（芯烨云），
+   *  仓库按单拣货，货+单一起给楼长核对实收。票面纯中文/数字（GBK 安全），
+   *  无绑定打印机/未注入打印服务时静默跳过，失败仅 warn 不阻断出库。 */
+  private async printPickingSlip(
+    storeId: string,
+    stockOrderId: string,
+    operator: string,
+  ): Promise<void> {
+    if (!this.printer) return;
+    const order = await this.db.nightStockOrder.findUniqueOrThrow({
+      where: { id: stockOrderId },
+    });
+    const store = await this.db.nightStore.findUniqueOrThrow({
+      where: { id: storeId },
+      include: {
+        building: { select: { name: true } },
+        managerStaff: { select: { name: true } },
+      },
+    });
+    const bound = await this.db.printer.findUnique({
+      where: { campusId: store.campusId },
+      select: { sn: true, status: true },
+    });
+    if (!bound || bound.status !== 'active') return;
+    const lines = stockLines(order.items as Prisma.JsonArray);
+    const totalQty = lines.reduce((sum, l) => sum + l.quantity, 0);
+    const rule = '-'.repeat(24);
+    const content = [
+      '夜宵拣货单',
+      `单号 ${order.requestId}`,
+      `楼栋 ${store.building.name}`,
+      `楼长 ${store.managerStaff?.name || '-'}`,
+      rule,
+      ...lines.map((l) => `${l.name} x${l.quantity}`),
+      rule,
+      `合计 ${totalQty} 件`,
+      `出库 ${operator}`,
+    ].join('\n');
+    await this.printer.printRaw(content, bound.sn);
   }
 
   async receiveStockOrder(

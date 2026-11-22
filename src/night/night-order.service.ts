@@ -656,7 +656,7 @@ export class NightOrderService implements NightPaymentHandler {
           {
             key: 'after-sale',
             title: '用户申请售后',
-            description: `${body.type}：${body.description.trim()}`,
+            description: `${NightOrderService.AFTER_SALE_TYPE_LABEL[body.type] ?? body.type}：${body.description.trim()}`,
             images: body.images ?? [],
             productIds: selected,
             requestedAmount,
@@ -849,6 +849,18 @@ export class NightOrderService implements NightPaymentHandler {
   }
 
   /** 支付结果轮询兜底：超 30 秒未收到回调时主动向微信查单落账。 */
+  /** 售后原因类型 → 中文标签（IKWLHZ 追问/反馈145：时间线展示用中文） */
+  private static readonly AFTER_SALE_TYPE_LABEL: Record<
+    string,
+    string
+  > = {
+    quality: '质量问题',
+    missing: '少件漏发',
+    damaged: '商品破损',
+    wrong: '商品错发',
+    other: '其他问题',
+  };
+
   async orderPayStatus(userId: string, orderId: string) {
     let order = await this.db.nightOrder.findFirst({
       where: { id: orderId, userId },
