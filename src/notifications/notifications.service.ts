@@ -661,20 +661,28 @@ export class NotificationsService {
       const gzhCfg = await this.gzhConfig(order.campusId);
       await Promise.all(
         riders.map(async (r) => {
-          if (gzhCfg && r.gzhOpenid) {
-            try {
-              await this.sendGzhTemplate(
-                r.gzhOpenid,
-                this.gzhDispatchData(order),
-                gzhCfg,
-                deliveryConfig.appId,
-              );
-              return; // 服务号成功即触达，不发订阅消息
-            } catch (error) {
-              // 取关/接口异常 → 回退订阅消息（该骑手仍有 openid 授权额度体系）
-              this.logger.warn(
-                `服务号派单失败回退订阅消息 staff=${r.id}: ${(error as Error).message}`,
-              );
+          if (gzhCfg) {
+            // IKXLV5：按（骑手, 本组织服务号）取绑定；无行回读旧列垫片
+            const boundOpenid = await this.resolveStaffGzhOpenid(
+              r.id,
+              gzhCfg.appId,
+              r.gzhOpenid,
+            );
+            if (boundOpenid) {
+              try {
+                await this.sendGzhTemplate(
+                  boundOpenid,
+                  this.gzhDispatchData(order),
+                  gzhCfg,
+                  deliveryConfig.appId,
+                );
+                return; // 服务号成功即触达，不发订阅消息
+              } catch (error) {
+                // 取关/接口异常 → 回退订阅消息（该骑手仍有 openid 授权额度体系）
+                this.logger.warn(
+                  `服务号派单失败回退订阅消息 staff=${r.id}: ${(error as Error).message}`,
+                );
+              }
             }
           }
           await this.sendStaffSubscribe(
@@ -976,6 +984,58 @@ export class NotificationsService {
   }
 
   /**
+   * IKXLV5：服务号 AppID → 组织 id。组织行登记的 gzhAppId 直查；org-a 的
+   * 服务号是 env 配置（组织行无 gzhAppId），按 env 值对上。查不到返回 null
+   * （未知来源服务号的事件只验签不绑定）。
+   */
+  private async organizationIdByGzhAppId(
+    appId: string,
+  ): Promise<string | null> {
+    const org = await this.db.organization.findFirst({
+      where: { gzhAppId: appId },
+      select: { id: true },
+    });
+    if (org) return org.id;
+    if (appId && appId === process.env.WX_GZH_APPID?.trim()) return 'org-a';
+    return null;
+  }
+
+  /**
+   * IKXLV5：取员工在指定服务号下应使用的 gzh openid。权威查 StaffGzhBinding
+   * （staffId + gzhAppId）；无行时回读旧列垫片（legacyOpenid，org-a 时期
+   * 存量绑定/兼容写入值），仍无则 null → 调用方走订阅消息回退。
+   */
+  private async resolveStaffGzhOpenid(
+    staffId: string,
+    gzhAppId: string,
+    legacyOpenid: string | null,
+  ): Promise<string | null> {
+    const binding = await this.db.staffGzhBinding.findUnique({
+      where: { staffId_gzhAppId: { staffId, gzhAppId } },
+      select: { gzhOpenid: true },
+    });
+    return binding?.gzhOpenid ?? legacyOpenid ?? null;
+  }
+
+  /** IKXLV5：绑定 upsert + 旧列兼容写（垫片数据源保持最新）。 */
+  private async upsertStaffGzhBinding(
+    staffId: string,
+    gzhAppId: string,
+    gzhOpenid: string,
+    unionId: string,
+  ): Promise<void> {
+    await this.db.staffGzhBinding.upsert({
+      where: { staffId_gzhAppId: { staffId, gzhAppId } },
+      create: { staffId, gzhAppId, gzhOpenid, unionId },
+      update: { gzhOpenid, unionId },
+    });
+    // 旧列兼容写：唯一约束已放开，多组织下覆盖式写入无害（垫片口径）
+    await this.db.staff
+      .update({ where: { id: staffId }, data: { gzhOpenid } })
+      .catch(() => undefined);
+  }
+
+  /**
    * 回调候选 Token 遍历（IKP34J 多租户）：env WX_GZH_TOKEN（组织 A 历史配置）
    * + 全部组织行非空 gzhToken。对签 = sha1(sort(token,timestamp,nonce))，本地
    * 哈希零成本——谁命中谁的配置生效（拿命中者的 appId/secret 换 access_token
@@ -1068,19 +1128,27 @@ export class NotificationsService {
         );
         const info = (await res.json()) as { unionid?: string };
         if (info.unionid) {
-          const staff = await this.db.staff.findUnique({
-            where: { unionId: info.unionid },
-            select: { id: true },
-          });
-          if (staff)
-            await this.db.staff
-              .update({
-                where: { id: staff.id },
-                data: { gzhOpenid: openid },
+          // IKXLV5：按「来源服务号 + unionid + 组织校区」匹配员工——同一微信
+          // 在多个组织做员工时，本服务号的事件只绑本组织的工号
+          const organizationId = await this.organizationIdByGzhAppId(hit.appId);
+          const staff = organizationId
+            ? await this.db.staff.findFirst({
+                where: {
+                  unionId: info.unionid,
+                  campus: { organizationId },
+                },
+                select: { id: true },
               })
-              .catch(() => undefined); // gzhOpenid 唯一冲突静默（异常数据）
+            : null;
+          if (staff)
+            await this.upsertStaffGzhBinding(
+              staff.id,
+              hit.appId,
+              openid,
+              info.unionid,
+            );
           this.logger.log(
-            `服务号关注：openid=${openid.slice(0, 8)}… unionid 匹配 ${staff ? '成功' : '无员工（未用工号绑定过小程序）'}`,
+            `服务号关注：openid=${openid.slice(0, 8)}… unionid 匹配 ${staff ? '成功' : '无员工（该组织下未用工号绑定过小程序）'}`,
           );
         }
       } catch (error) {
@@ -1089,7 +1157,12 @@ export class NotificationsService {
         );
       }
     } else if (event === 'unsubscribe') {
-      // 取关：清绑定，派单自动回退订阅消息通道
+      // IKXLV5：按来源服务号精确解绑，其他组织的绑定不受影响；
+      // 旧列匹配时一并清（垫片口径保持一致）
+      if (hit.appId)
+        await this.db.staffGzhBinding
+          .deleteMany({ where: { gzhAppId: hit.appId, gzhOpenid: openid } })
+          .catch(() => undefined);
       await this.db.staff.updateMany({
         where: { gzhOpenid: openid },
         data: { gzhOpenid: null },
@@ -1136,73 +1209,111 @@ export class NotificationsService {
    * 服务号绑定对账（IKI3ZP 时序缝隙兜底）：code2session 只在用户已关注
    * 服务号时返回 unionid——「先绑定后关注」的骑手，关注事件到达时
    * Staff.unionId 还是空，匹配不上即漏绑。此兜底拉服务号关注者全量列表，
-   * 逐个查 unionid 匹配员工表，把 unionId 已知但 gzhOpenid 为空的补上。
-   * 触发时机：登录补录 unionId 后 fire-and-forget；骑手量级小（几十人），
-   * user/info 调用量可控。
+   * 逐个查 unionid 匹配员工表补绑。
+   * IKXLV5：遍历 env（org-a）+ 全部 gzh 凭证配齐的组织，逐组织对账——
+   * 每个服务号的关注者只匹配该组织校区的员工，补绑写入 StaffGzhBinding
+   * （+旧列兼容写）。触发时机：登录补录 unionId 后 fire-and-forget；
+   * 骑手量级小（几十人/组织），user/info 调用量可控。
    */
   async syncGzhBindings(): Promise<void> {
-    if (!process.env.WX_GZH_APPID || !process.env.WX_GZH_SECRET) return;
-    try {
-      // IKP34J：对账与发送无关，仍走 env 服务号（组织 A 现状，一字不变）
-      const token = await this.gzhAccessToken({
-        appId: process.env.WX_GZH_APPID,
-        secret: process.env.WX_GZH_SECRET,
+    const configs: Array<{
+      appId: string;
+      secret: string;
+      organizationId: string;
+    }> = [];
+    const envCfg = this.envGzhConfig();
+    if (envCfg)
+      configs.push({
+        appId: envCfg.appId,
+        secret: envCfg.secret,
+        organizationId: 'org-a',
       });
-      const openids: string[] = [];
-      let next = '';
-      // 分页拉全量关注者（每页最多 10000）
-      for (let i = 0; i < 10; i++) {
-        const res = await fetch(
-          `https://api.weixin.qq.com/cgi-bin/user/get?access_token=${token}${next ? `&next_openid=${next}` : ''}`,
-          { signal: AbortSignal.timeout(6000) },
-        );
-        const body = (await res.json()) as {
-          count?: number;
-          data?: { openid?: string[] };
-          next_openid?: string;
-          errcode?: number;
-        };
-        openids.push(...(body.data?.openid ?? []));
-        if (!body.next_openid || !body.count) break;
-        next = body.next_openid;
-      }
-      if (!openids.length) return;
-      let bound = 0;
-      for (const openid of openids) {
-        // 已绑定的跳过（查库不查微信，省 user/info 调用）
-        const known = await this.db.staff.findFirst({
-          where: { gzhOpenid: openid },
-          select: { id: true },
-        });
-        if (known) continue;
-        const res = await fetch(
-          `https://api.weixin.qq.com/cgi-bin/user/info?access_token=${token}&openid=${openid}&lang=zh_CN`,
-          { signal: AbortSignal.timeout(5000) },
-        );
-        const info = (await res.json()) as {
-          unionid?: string;
-          subscribe?: number;
-        };
-        if (!info.unionid || info.subscribe !== 1) continue;
-        const staff = await this.db.staff.findUnique({
-          where: { unionId: info.unionid },
-          select: { id: true },
-        });
-        if (!staff) continue;
-        await this.db.staff
-          .update({ where: { id: staff.id }, data: { gzhOpenid: openid } })
-          .catch(() => undefined);
-        bound++;
-      }
-      if (bound)
-        this.logger.log(
-          `服务号绑定对账完成：关注者 ${openids.length}，新补绑 ${bound}`,
-        );
+    try {
+      const orgs = await this.db.organization.findMany({
+        where: {
+          gzhAppId: { not: null },
+          gzhSecret: { not: null },
+          gzhToken: { not: null },
+          gzhTemplateId: { not: null },
+        },
+        select: { id: true, gzhAppId: true, gzhSecret: true },
+      });
+      for (const o of orgs)
+        if (o.gzhAppId && o.gzhSecret)
+          configs.push({
+            appId: o.gzhAppId,
+            secret: o.gzhSecret,
+            organizationId: o.id,
+          });
     } catch (error) {
       this.logger.warn(
-        `服务号绑定对账失败（已忽略）: ${(error as Error).message}`,
+        `对账组织配置加载失败（仅 env 兜底）: ${(error as Error).message}`,
       );
     }
+    let bound = 0;
+    for (const cfg of configs) {
+      try {
+        const token = await this.gzhAccessToken({
+          appId: cfg.appId,
+          secret: cfg.secret,
+        });
+        const openids: string[] = [];
+        let next = '';
+        // 分页拉全量关注者（每页最多 10000）
+        for (let i = 0; i < 10; i++) {
+          const res = await fetch(
+            `https://api.weixin.qq.com/cgi-bin/user/get?access_token=${token}${next ? `&next_openid=${next}` : ''}`,
+            { signal: AbortSignal.timeout(6000) },
+          );
+          const body = (await res.json()) as {
+            count?: number;
+            data?: { openid?: string[] };
+            next_openid?: string;
+            errcode?: number;
+          };
+          openids.push(...(body.data?.openid ?? []));
+          if (!body.next_openid || !body.count) break;
+          next = body.next_openid;
+        }
+        for (const openid of openids) {
+          // 已绑定该服务号的跳过（查库不查微信，省 user/info 调用）
+          const known = await this.db.staffGzhBinding.findUnique({
+            where: { gzhAppId_gzhOpenid: { gzhAppId: cfg.appId, gzhOpenid: openid } },
+            select: { id: true },
+          });
+          if (known) continue;
+          const res = await fetch(
+            `https://api.weixin.qq.com/cgi-bin/user/info?access_token=${token}&openid=${openid}&lang=zh_CN`,
+            { signal: AbortSignal.timeout(5000) },
+          );
+          const info = (await res.json()) as {
+            unionid?: string;
+            subscribe?: number;
+          };
+          if (!info.unionid || info.subscribe !== 1) continue;
+          const staff = await this.db.staff.findFirst({
+            where: {
+              unionId: info.unionid,
+              campus: { organizationId: cfg.organizationId },
+            },
+            select: { id: true },
+          });
+          if (!staff) continue;
+          await this.upsertStaffGzhBinding(
+            staff.id,
+            cfg.appId,
+            openid,
+            info.unionid,
+          );
+          bound++;
+        }
+      } catch (error) {
+        this.logger.warn(
+          `服务号绑定对账失败（已忽略，继续下一组织）appId=${cfg.appId}: ${(error as Error).message}`,
+        );
+      }
+    }
+    if (bound) this.logger.log(`服务号绑定对账完成：新补绑 ${bound}`);
   }
 
   /**

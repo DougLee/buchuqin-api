@@ -509,7 +509,10 @@ export class AuthController {
           staffOrganizationId !== expectedOrganizationId)
       )
         throw new ForbiddenException('该账号不属于当前小程序所在组织');
-      // IKI3ZP：登录侧写补录 unionId（服务号关注事件按 unionid 自动绑定派单通道）
+      // IKI3ZP：登录侧写补录 unionId（服务号关注事件按 unionid 自动绑定派单
+      // 通道）。IKXLV5：unionId 唯一约束已放开——同一微信可在多个组织做员工
+      // 并各自落同一 unionid，此前"唯一冲突静默跳过"导致的跨组织绑不上问题
+      // 不复存在；catch 仅防库异常阻塞登录主流程
       this.logger.log(
         `骑手静默登录诊断：staff=${staff.staffNo} code2session unionid=${session.unionid ?? '未返回（用户未关注同平台服务号或绑定不一致）'}`,
       );
@@ -519,9 +522,9 @@ export class AuthController {
             where: { id: staff.id },
             data: { unionId: session.unionid },
           })
-          .catch(() => undefined); // unionId 唯一冲突（异常数据）静默跳过
+          .catch(() => undefined);
         // 时序缝隙兜底：先绑定后关注的骑手会错过关注事件——补录 unionId 后
-        // 全量对账服务号关注者，把漏绑的补上（fire-and-forget）
+        // 全量对账各组织服务号关注者，把漏绑的补上（fire-and-forget，IKXLV5）
         void this.notifications?.syncGzhBindings().catch(() => undefined);
       }
       const claims: AuthUser = {

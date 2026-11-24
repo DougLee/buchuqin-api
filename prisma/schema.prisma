@@ -1165,15 +1165,24 @@ model Staff {
    */
   openid              String?              @unique
   /**
-   * UnionID（IKI3ZP）：履约小程序登录侧写——小程序/服务号同开放平台，
-   * 服务号关注事件按 unionid 自动匹配本表落 gzhOpenid（零操作绑定）
+   * UnionID（IKI3ZP）：履约小程序登录侧写——小程序/服务号同开放平台。
+   * IKXLV5（道哥 2026-11-24）：去掉唯一约束——同一微信可在多个组织做
+   * 员工（一人多组织），unionid 相同是常态；绑定关系权威数据在
+   * StaffGzhBinding（按来源服务号维度），本列仅存最近一次侧写做诊断。
    */
-  unionId             String?              @unique
+  unionId             String?
   /**
-   * 服务号 openid（IKI3ZP）：关注事件落库、取关清空；派单推送优先走服务号
-   * 模板消息（关注即可推，无订阅额度），失败/未绑定回退小程序订阅消息
+   * 服务号 openid（IKI3ZP）：派单推送优先走服务号模板消息（关注即可推，
+   * 无订阅额度），失败/未绑定回退小程序订阅消息。IKXLV5 起为**过渡兼容
+   * 垫片**：权威数据在 StaffGzhBinding（多组织一人各服务号一条），本列
+   * 由关注/取关事件同步写入最近一次绑定，仅供 org-a 存量与新查询兜底读。
    */
-  gzhOpenid           String?              @unique
+  gzhOpenid           String?
+  /**
+   * 服务号绑定（IKXLV5）：按「员工 × 来源服务号」维度，一人多组织各持
+   * 一条；匹配键（unionid, gzhAppId），权威数据源。
+   */
+  gzhBindings         StaffGzhBinding[]
   buildingId          String?
   buildingRef         Building?            @relation(fields: [buildingId], references: [id])
   building            String
@@ -1218,6 +1227,31 @@ model LeaveRequest {
   status            String
   statusText        String
   createdAt         DateTime @default(now())
+}
+
+/**
+ * 服务号绑定（IKXLV5，道哥 2026-11-24 拍板）：一人多组织——同一微信在
+ * 每个组织的服务号下各有独立 openid，按「员工 × 来源服务号」维度存。
+ * - 关注事件（subscribe）：按「来源 gzhAppId + unionid + 组织校区」匹配
+ *   员工后 upsert 本表；取关（unsubscribe）按 (gzhAppId, gzhOpenid) 精确删
+ * - 派单推送：按 (staffId, 订单组织 gzhAppId) 查 openid；查不到回读
+ *   Staff.gzhOpenid 旧列垫片（org-a 时期存量兼容），仍无则订阅消息回退
+ */
+model StaffGzhBinding {
+  id        String   @id @default(cuid())
+  staffId   String
+  staff     Staff    @relation(fields: [staffId], references: [id])
+  /// 来源服务号 AppID（哪个组织的）；org-a 为 env WX_GZH_APPID
+  gzhAppId  String
+  /// 该服务号发给这个微信用户的 openid
+  gzhOpenid String
+  /// 匹配键：微信用户 unionid（同微信跨服务号恒等）
+  unionId   String
+  boundAt   DateTime @default(now())
+
+  @@unique([staffId, gzhAppId])
+  @@unique([gzhAppId, gzhOpenid])
+  @@index([unionId, gzhAppId])
 }
 
 model DispatchInvitation {

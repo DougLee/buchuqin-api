@@ -829,19 +829,44 @@ export class FulfillmentService {
       });
     const s = await this.db.staff.findUniqueOrThrow({
       where: { id: staffId },
-      select: { notifyQuota: true, notifyQuotaFailedAt: true, gzhOpenid: true },
+      select: {
+        notifyQuota: true,
+        notifyQuotaFailedAt: true,
+        gzhOpenid: true,
+        campus: { select: { organizationId: true } },
+      },
     });
     // 北京时间今天 0 点（容器 UTC，+8 偏移后取当日零点）
     const cnMidnight = new Date(Date.now() + 8 * 3600_000);
     cnMidnight.setUTCHours(0, 0, 0, 0);
+    // IKXLV5：服务号绑定状态——绑定表（本组织服务号）优先，旧列垫片兜底；
+    // 骑手端据此展示「关注服务号」引导。org-a 的服务号是 env 配置
+    const orgRow = s.campus.organizationId
+      ? await this.db.organization.findUnique({
+          where: { id: s.campus.organizationId },
+          select: { gzhAppId: true },
+        })
+      : null;
+    const gzhAppId =
+      orgRow?.gzhAppId ||
+      (s.campus.organizationId === 'org-a'
+        ? process.env.WX_GZH_APPID?.trim() || null
+        : null);
+    let gzhBound = !!s.gzhOpenid;
+    if (gzhAppId) {
+      const binding = await this.db.staffGzhBinding.findUnique({
+        where: { staffId_gzhAppId: { staffId, gzhAppId } },
+        select: { id: true },
+      });
+      gzhBound = gzhBound || !!binding;
+    }
     return {
       quota: s.notifyQuota,
       lowWater: s.notifyQuota < 5,
       failedToday:
         !!s.notifyQuotaFailedAt &&
         s.notifyQuotaFailedAt.getTime() >= cnMidnight.getTime(),
-      // IKI3ZP：服务号绑定状态——骑手端据此展示「关注服务号」引导
-      gzhBound: !!s.gzhOpenid,
+      gzhBound,
     };
   }
   async leave(staffId: string) {
