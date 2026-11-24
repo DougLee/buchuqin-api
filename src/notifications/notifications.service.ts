@@ -782,11 +782,18 @@ export class NotificationsService {
     try {
       const order = await this.db.order.findUnique({
         where: { id: orderId },
-        select: { campusId: true, address: true },
+        select: {
+          campusId: true,
+          address: true,
+          orderNo: true,
+          payableAmount: true,
+        },
       });
       if (!order) return;
       const deliveryConfig = await this.deliveryWechatConfig(order.campusId);
       if (!deliveryConfig) return;
+      // IKXOTD：组织服务号配置（gzh 四项不齐 → null → 全员订阅消息，现状不变）
+      const gzhCfg = await this.gzhConfig(order.campusId);
       const addr = (order.address ?? {}) as Record<string, unknown>;
       const buildingId = String(addr.buildingId ?? '');
       const buildingName = String(addr.buildingName ?? '');
@@ -803,7 +810,7 @@ export class NotificationsService {
               ? { building: buildingName }
               : {}),
         },
-        select: { id: true, openid: true },
+        select: { id: true, openid: true, gzhOpenid: true },
       });
       if (!managers.length) return;
       const data = {
@@ -813,15 +820,45 @@ export class NotificationsService {
         name7: { value: deliveryConfig.brandName.slice(0, 20) },
         time8: { value: NotificationsService.fmtCn(new Date()) },
       };
+      const gzhData = {
+        character_string2: { value: order.orderNo },
+        amount3: { value: `¥${((order.payableAmount ?? 0) / 100).toFixed(2)}` },
+        thing4: { value: `${buildingName} ${room}`.trim().slice(0, 20) || '校园订单' },
+        time5: { value: NotificationsService.fmtCn(new Date(), true) },
+      };
       await Promise.all(
-        managers.map((m) =>
-          this.sendStaffSubscribe(
+        managers.map(async (m) => {
+          if (gzhCfg) {
+            // IKXOTD：服务号优先（绑定表 + 旧列垫片）——关注即可推、免额度；
+            // 失败/未绑定回退订阅消息（与骑手派单同构）
+            const boundOpenid = await this.resolveStaffGzhOpenid(
+              m.id,
+              gzhCfg.appId,
+              m.gzhOpenid,
+            );
+            if (boundOpenid) {
+              try {
+                await this.sendGzhTemplate(
+                  boundOpenid,
+                  gzhData,
+                  gzhCfg,
+                  deliveryConfig.appId,
+                );
+                return; // 服务号成功即触达，不发订阅消息
+              } catch (error) {
+                this.logger.warn(
+                  `服务号楼长提醒失败回退订阅消息 staff=${m.id}: ${(error as Error).message}`,
+                );
+              }
+            }
+          }
+          await this.sendStaffSubscribe(
             m.id,
             m.openid as string,
             data,
             deliveryConfig,
-          ),
-        ),
+          );
+        }),
       );
     } catch (error) {
       this.logger.warn(`${errorLabel}: ${(error as Error).message}`);
