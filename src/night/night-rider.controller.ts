@@ -202,12 +202,9 @@ export class NightRiderController {
     return ok(await this.inventory.transactionsPage(store.id, productId, page, pageSize));
   }
 
-  @Get('night/dashboard')
-  @UseGuards(NightCampusEnabledGuard)
-  @ApiOperation({ summary: '夜宵工作台（场次/押金/待接单/销售额/佣金两列）' })
-  async dashboard(@Req() r: AuthRequest): Promise<ApiResponse<unknown>> {
-    return ok(await this.service.dashboard(this.auth(r)));
-  }
+  // night/dashboard 已迁 NightRiderBadgeController（同路径）：首页角标轮询
+  // 不能被类级 NightRiderAccessGuard 403（道哥 2026-11-24「本校区未开通
+  // 夜宵服务」toast 回归）。
 
   @Post('night/store/open')
   @UseGuards(NightCampusEnabledGuard)

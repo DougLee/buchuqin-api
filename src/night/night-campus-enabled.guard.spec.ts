@@ -18,7 +18,8 @@ describe('校区开通前置校验', () => {
     expect(findUnique).toHaveBeenLastCalledWith({ where: { id: 'campus' }, select: { organizationId: true, nightEnabled: true } });
   });
   it('所有新增经营入口都挂守卫，历史履约、收货和账务仍可处理', () => {
-    const guarded: Array<keyof NightRiderController> = ['depositTiers', 'depositPay', 'stockPool', 'createStockOrder', 'dashboard', 'open', 'resume', 'products', 'toggleShelf', 'setFeatured'];
+    // dashboard 已迁 NightRiderBadgeController（首页角标不可 403，2026-11-24）
+    const guarded: Array<keyof NightRiderController> = ['depositTiers', 'depositPay', 'stockPool', 'createStockOrder', 'open', 'resume', 'products', 'toggleShelf', 'setFeatured'];
     const cleanup: Array<keyof NightRiderController> = ['depositDetail', 'depositPayStatus', 'stockOrders', 'cancelStock', 'receiveStock', 'inventoryReports', 'submitInventoryReport', 'resubmitInventoryReport', 'inventoryTransactions', 'orders', 'orderDetail', 'accept', 'deliver', 'income', 'orderEarning', 'close', 'pause'];
     for (const name of guarded) expect(Reflect.getMetadata(GUARDS_METADATA, NightRiderController.prototype[name]) || []).toContain(NightCampusEnabledGuard);
     for (const name of cleanup) expect(Reflect.getMetadata(GUARDS_METADATA, NightRiderController.prototype[name]) || []).not.toContain(NightCampusEnabledGuard);

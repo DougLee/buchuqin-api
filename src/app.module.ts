@@ -37,6 +37,7 @@ import { PrinterService } from './printer/printer.service';
 // 楼栋夜宵店（IKSW1F）：三端接口 + 超时 Cron
 // （IKW3E7/IKW3H9 两个临时桩随本次合并删除，由真实实现接管——替换约定兑现）
 import { NightAdminController } from './night/night-admin.controller';
+import { NightRiderBadgeController } from './night/night-rider-badge.controller';
 import { NightRiderController } from './night/night-rider.controller';
 import { NightUserController } from './night/night-user.controller';
 import { NightAdminService } from './night/night-admin.service';
@@ -93,6 +94,9 @@ const adminDistDir = process.env.ADMIN_DIST_DIR ?? '';
     GzhController,
     // 楼栋夜宵店（IKSW1F）：后台/楼长/用户三端
     NightAdminController,
+    // 首页夜宵角标专用 dashboard（同路径，注册顺序在前优先匹配）：
+    // 未开通校区/非楼长返回全零，不再 403 toast（道哥 2026-11-24 A 方案）
+    NightRiderBadgeController,
     NightRiderController,
     NightUserController,
   ],
