@@ -20,5 +20,8 @@ CREATE INDEX "StaffGzhBinding_unionId_gzhAppId_idx" ON "StaffGzhBinding"("unionI
 ALTER TABLE "StaffGzhBinding" ADD CONSTRAINT "StaffGzhBinding_staffId_fkey" FOREIGN KEY ("staffId") REFERENCES "Staff"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- 放开唯一约束：一人多组织时同一 unionid/gzhOpenid 可出现在多个组织员工行
-ALTER TABLE "Staff" DROP CONSTRAINT IF EXISTS "Staff_unionId_key";
-ALTER TABLE "Staff" DROP CONSTRAINT IF EXISTS "Staff_gzhOpenid_key";
+-- 注意：Prisma 的 @unique 在 PostgreSQL 建的是独立唯一**索引**（不是表约束），
+-- 必须用 DROP INDEX——首个版本误用 DROP CONSTRAINT + IF EXISTS 静默空转，
+-- 导致生产 unionid 写入仍撞唯一冲突被吞（2026-11-24 实测已修正）
+DROP INDEX IF EXISTS "Staff_unionId_key";
+DROP INDEX IF EXISTS "Staff_gzhOpenid_key";
