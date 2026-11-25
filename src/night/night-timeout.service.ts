@@ -23,6 +23,22 @@ export class NightTimeoutService {
     @Optional() private readonly opening?: NightOpeningService,
   ) {}
 
+  /** IKXW9K Q6：售后申请超 24h 未处理 → 超时升级平台（打标后台置顶），不自动同意。 */
+  @Cron(CronExpression.EVERY_30_MINUTES)
+  async escalateAfterSalesSweep() {
+    try {
+      const escalated = await this.orders.escalateOverdueAfterSales(
+        NightTimeoutService.BATCH_LIMIT,
+      );
+      if (escalated)
+        this.logger.log(`夜宵售后超时升级 ${escalated} 单`);
+    } catch (error) {
+      this.logger.warn(
+        `夜宵售后超时扫描失败: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
   @Cron(CronExpression.EVERY_MINUTE)
   async sweep() {
     try { await this.opening?.closeExpired(); } catch (error) { this.logger.warn(`临时营业到期核对失败：${error instanceof Error ? error.message : "unknown"}`); }

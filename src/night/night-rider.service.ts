@@ -442,6 +442,33 @@ export class NightRiderService {
     return this.orders.orderView(order);
   }
 
+  /* ==================== 售后处理（IKXW9K） ==================== */
+
+  /** 售后列表（pending=待处理 / handled=已处理）。 */
+  aftersales(staffId: string, scope: 'pending' | 'handled') {
+    return this.orders.managerAfterSales(staffId, scope);
+  }
+
+  /** 待处理数（夜宵经营入口角标）。 */
+  aftersalesSummary(staffId: string) {
+    return this.orders.managerAfterSaleSummary(staffId);
+  }
+
+  /** 同意售后退款（仅正式楼长）。 */
+  approveAfterSale(staffId: string, orderId: string) {
+    return this.orders.managerApproveAfterSale(staffId, orderId);
+  }
+
+  /** 拒绝售后（仅正式楼长，理由必填）。 */
+  rejectAfterSale(staffId: string, orderId: string, reason: string) {
+    return this.orders.managerRejectAfterSale(staffId, orderId, reason);
+  }
+
+  /** 转交平台处理（实习楼长唯一动作）。 */
+  escalateAfterSale(staffId: string, orderId: string) {
+    return this.orders.managerEscalateAfterSale(staffId, orderId);
+  }
+
   /* ==================== 收入 ==================== */
 
   /** 收入页：佣金流水（商品佣金/配送费两列）+ 期间汇总。 */

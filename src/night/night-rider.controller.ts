@@ -234,6 +234,51 @@ export class NightRiderController {
     return ok(await this.service.closeStore(this.auth(r)), '已打烊');
   }
 
+  /* ---------- 售后处理（IKXW9K） ---------- */
+
+  @Get('night/aftersales/summary')
+  @ApiOperation({ summary: '待处理售后数（夜宵经营入口角标）' })
+  async aftersalesSummary(@Req() r: AuthRequest): Promise<ApiResponse<unknown>> {
+    return ok(await this.service.aftersalesSummary(this.auth(r)));
+  }
+
+  @Get('night/aftersales')
+  @ApiOperation({ summary: '售后列表（scope=pending 待处理 / handled 已处理）' })
+  async aftersales(
+    @Req() r: AuthRequest,
+    @Query('scope') scope?: string,
+  ): Promise<ApiResponse<unknown>> {
+    return ok(await this.service.aftersales(this.auth(r), scope === 'handled' ? 'handled' : 'pending'));
+  }
+
+  @Post('night/aftersales/:id/approve')
+  @ApiOperation({ summary: '同意售后退款（仅正式楼长；走现有退款机，不自动回库）' })
+  async approveAfterSale(
+    @Req() r: AuthRequest,
+    @Param('id') id: string,
+  ): Promise<ApiResponse<unknown>> {
+    return ok(await this.service.approveAfterSale(this.auth(r), id), '已同意退款，原路退回中');
+  }
+
+  @Post('night/aftersales/:id/reject')
+  @ApiOperation({ summary: '拒绝售后（仅正式楼长，理由必填且用户可见）' })
+  async rejectAfterSale(
+    @Req() r: AuthRequest,
+    @Param('id') id: string,
+    @Body() body: NightReasonDto,
+  ): Promise<ApiResponse<unknown>> {
+    return ok(await this.service.rejectAfterSale(this.auth(r), id, body.reason), '已拒绝');
+  }
+
+  @Post('night/aftersales/:id/escalate')
+  @ApiOperation({ summary: '转交平台处理（实习楼长唯一动作）' })
+  async escalateAfterSale(
+    @Req() r: AuthRequest,
+    @Param('id') id: string,
+  ): Promise<ApiResponse<unknown>> {
+    return ok(await this.service.escalateAfterSale(this.auth(r), id), '已转交平台处理');
+  }
+
   /* ---------- 商品 ---------- */
 
   @Get('night/products')

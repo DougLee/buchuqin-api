@@ -866,6 +866,79 @@ export class NotificationsService {
   }
 
   /**
+   * 夜宵售后申请通知楼长（IKXW9K）：用户提交售后 → 推送夜宵店楼长处理。
+   * 收件人=夜宵店绑定的楼长（单点，非楼栋扫描）；双通道路由与楼长交接
+   * 提醒同构——服务号优先（IKXLV5 绑定表+垫片），失败/未绑定回退订阅消息。
+   */
+  async notifyNightManagerAfterSale(orderId: string): Promise<void> {
+    try {
+      const order = await this.db.nightOrder.findUnique({
+        where: { id: orderId },
+        select: {
+          orderNo: true,
+          payableAmount: true,
+          address: true,
+          store: { select: { campusId: true, managerStaffId: true } },
+        },
+      });
+      if (!order || !order.store.managerStaffId) return;
+      const deliveryConfig = await this.deliveryWechatConfig(
+        order.store.campusId,
+      );
+      if (!deliveryConfig) return;
+      const gzhCfg = await this.gzhConfig(order.store.campusId);
+      const manager = await this.db.staff.findFirst({
+        where: {
+          id: order.store.managerStaffId,
+          status: { not: 'deleted' },
+          openid: { not: null },
+        },
+        select: { id: true, openid: true, gzhOpenid: true },
+      });
+      if (!manager) return;
+      const addr = (order.address ?? {}) as Record<string, unknown>;
+      const data = {
+        thing6: { value: '收到新的售后申请' },
+        thing5: { value: '用户申请售后，请及时处理' },
+        thing9: { value: String(addr.buildingName ?? '').slice(0, 20) },
+        name7: { value: deliveryConfig.brandName.slice(0, 20) },
+        time8: { value: NotificationsService.fmtCn(new Date()) },
+      };
+      const gzhData = {
+        character_string2: { value: order.orderNo },
+        amount3: { value: `¥${((order.payableAmount ?? 0) / 100).toFixed(2)}` },
+        thing4: { value: '收到新的售后申请' },
+        time5: { value: NotificationsService.fmtCn(new Date(), true) },
+      };
+      if (gzhCfg) {
+        const bound = await this.resolveStaffGzhOpenid(
+          manager.id,
+          gzhCfg.appId,
+          manager.gzhOpenid,
+        );
+        if (bound) {
+          try {
+            await this.sendGzhTemplate(bound, gzhData, gzhCfg, deliveryConfig.appId);
+            return; // 服务号成功即触达，不发订阅消息
+          } catch (error) {
+            this.logger.warn(
+              `服务号售后通知失败回退订阅消息 staff=${manager.id}: ${(error as Error).message}`,
+            );
+          }
+        }
+      }
+      await this.sendStaffSubscribe(
+        manager.id,
+        manager.openid as string,
+        data,
+        deliveryConfig,
+      );
+    } catch (error) {
+      this.logger.warn(`售后申请楼长通知失败（已忽略）: ${(error as Error).message}`);
+    }
+  }
+
+  /**
    * 北京时间格式化（订阅消息 time/date 字段展示用）。容器跑 UTC，订单客群在
    * 中国（湖工大），直接 +8 偏移避免引时区库；模板示例格式 "2020-09-24 11:20:56"。
    */
