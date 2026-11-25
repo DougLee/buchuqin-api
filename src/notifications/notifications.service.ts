@@ -891,7 +891,6 @@ export class NotificationsService {
         where: {
           id: order.store.managerStaffId,
           status: { not: 'deleted' },
-          openid: { not: null },
         },
         select: { id: true, openid: true, gzhOpenid: true },
       });
@@ -927,9 +926,10 @@ export class NotificationsService {
           }
         }
       }
+      if (!manager.openid) return;
       await this.sendStaffSubscribe(
         manager.id,
-        manager.openid as string,
+        manager.openid,
         data,
         deliveryConfig,
       );

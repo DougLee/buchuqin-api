@@ -26,7 +26,7 @@ const makeDb = (over: Record<string, unknown> = {}) => {
     id === INTERN
       ? { id, role: 'intern-building-manager', status: 'online' }
       : { id, role: 'building-manager', status: 'online' };
-  return {
+  const db: Record<string, unknown> = {
     staff: {
       findUnique: jest.fn().mockImplementation(({ where }) =>
         Promise.resolve(
@@ -37,8 +37,13 @@ const makeDb = (over: Record<string, unknown> = {}) => {
               : null,
         ),
       ),
+      findMany: jest.fn().mockResolvedValue([]),
     },
-    nightStore: { findFirst: jest.fn().mockResolvedValue({ id: STORE_ID, campusId: 'campus-1', managerStaffId: MANAGER }) },
+    adminAccount: { findMany: jest.fn().mockResolvedValue([]) },
+    nightStore: {
+      findFirst: jest.fn().mockResolvedValue({ id: STORE_ID, campusId: 'campus-1', managerStaffId: MANAGER }),
+      findUnique: jest.fn().mockResolvedValue({ id: STORE_ID, campusId: 'campus-1', managerStaffId: MANAGER }),
+    },
     nightOrder: {
       findFirst: jest.fn().mockResolvedValue(null),
       findUnique: jest.fn().mockResolvedValue({
@@ -50,9 +55,15 @@ const makeDb = (over: Record<string, unknown> = {}) => {
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       count: jest.fn().mockResolvedValue(2),
     },
-    auditLog: { create: jest.fn().mockResolvedValue({}) },
+    auditLog: {
+      create: jest.fn().mockResolvedValue({}),
+      findMany: jest.fn().mockResolvedValue([]),
+    },
+    $queryRaw: jest.fn().mockResolvedValue([{ id: STORE_ID }]),
     ...over,
-  } as unknown as PrismaService;
+  };
+  db.$transaction = jest.fn().mockImplementation((fn: (tx: unknown) => Promise<unknown>) => fn(db));
+  return db as unknown as PrismaService;
 };
 
 const makeService = (db: PrismaService) =>
@@ -104,6 +115,21 @@ describe('楼长售后处理（IKXW9K）', () => {
       (db.nightOrder.findUnique as jest.Mock).mockResolvedValue({ storeId: STORE_ID, afterSaleStatus: 'refund-processing', timeline: [] });
       const svc = makeService(db);
       await expect(svc.managerApproveAfterSale(MANAGER, ORDER_ID)).rejects.toThrow(BadRequestException);
+    });
+
+    it('同步退款成功返回 resolved，同步退款失败抛出 BadRequestException', async () => {
+      const db = makeDb();
+      const svc = makeService(db);
+      (svc as unknown as { refunds: { request: jest.Mock } }).refunds = {
+        request: jest.fn().mockResolvedValue({ totalAmount: 1099, status: 'succeeded' }),
+      };
+      const okRes = await svc.managerApproveAfterSale(MANAGER, ORDER_ID);
+      expect(okRes).toMatchObject({ id: ORDER_ID, afterSaleStatus: 'resolved' });
+
+      (svc as unknown as { refunds: { request: jest.Mock } }).refunds = {
+        request: jest.fn().mockResolvedValue({ totalAmount: 1099, status: 'failed', errorMessage: '微信余额不足' }),
+      };
+      await expect(svc.managerApproveAfterSale(MANAGER, ORDER_ID)).rejects.toThrow('微信余额不足');
     });
   });
 
@@ -160,14 +186,24 @@ describe('楼长售后处理（IKXW9K）', () => {
       }));
     });
 
-    it('列表项负载拆解：类型/描述分离、金额与图片透出', async () => {
+    it('列表项负载拆解：类型/描述分离、金额与图片透出；整单无 requestedAmount 时回退实付商品额并透出 escalated', async () => {
       const db = makeDb();
       (db.nightOrder.findMany as jest.Mock).mockResolvedValue([
         {
-          id: ORDER_ID, orderNo: 'NX001', payableAmount: 2099, status: 'completed',
+          id: ORDER_ID, orderNo: 'NX001', productAmount: 2099, couponDiscount: 0, payableAmount: 2099, status: 'completed',
           statusText: '已完成', afterSaleStatus: 'requested', createdAt: '2026-11-24T10:00:00Z',
           address: { contactName: '小明', buildingName: '学子楼', room: '302' },
           timeline: [AFTER_SALE_ENTRY],
+          refund: null,
+        },
+        {
+          id: 'no-2', orderNo: 'NX002', productAmount: 1800, couponDiscount: 300, payableAmount: 1500, status: 'completed',
+          statusText: '已完成', afterSaleStatus: 'requested', createdAt: '2026-11-24T11:00:00Z',
+          address: { contactName: '小红', buildingName: '学子楼', room: '405' },
+          timeline: [
+            { key: 'after-sale', title: '用户申请售后', description: '缺货：没收到', time: '2026-11-24T12:00:00.000Z' },
+            { key: 'after-sale-escalated', title: '已转交平台处理', time: '2026-11-24T13:00:00.000Z' },
+          ],
           refund: null,
         },
       ]);
@@ -179,7 +215,13 @@ describe('楼长售后处理（IKXW9K）', () => {
         description: '薯片压碎了',
         images: ['https://x/1.jpg'],
         requestedAmount: 1099,
+        escalated: false,
         contactName: '小明',
+      });
+      expect(items[1]).toMatchObject({
+        orderNo: 'NX002',
+        requestedAmount: 1500,
+        escalated: true,
       });
     });
   });
@@ -189,11 +231,13 @@ describe('楼长售后处理（IKXW9K）', () => {
       const db = makeDb();
       const old = Date.now() - 25 * 60 * 60 * 1000;
       const recent = Date.now() - 2 * 60 * 60 * 1000;
+      const oldTimeline = [{ ...AFTER_SALE_ENTRY, time: new Date(old).toISOString() }];
       (db.nightOrder.findMany as jest.Mock).mockResolvedValue([
-        { id: 'old-1', timeline: [{ ...AFTER_SALE_ENTRY, time: new Date(old).toISOString() }] },
-        { id: 'recent-1', timeline: [{ ...AFTER_SALE_ENTRY, time: new Date(recent).toISOString() }] },
-        { id: 'marked-1', timeline: [AFTER_SALE_ENTRY, { key: 'after-sale-escalated', title: '已转交平台处理', time: 'x' }] },
+        { id: 'old-1', storeId: STORE_ID, timeline: oldTimeline },
+        { id: 'recent-1', storeId: STORE_ID, timeline: [{ ...AFTER_SALE_ENTRY, time: new Date(recent).toISOString() }] },
+        { id: 'marked-1', storeId: STORE_ID, timeline: [AFTER_SALE_ENTRY, { key: 'after-sale-escalated', title: '已转交平台处理', time: 'x' }] },
       ]);
+      (db.nightOrder.findUnique as jest.Mock).mockResolvedValue({ afterSaleStatus: 'requested', timeline: oldTimeline });
       const svc = makeService(db);
       const n = await svc.escalateOverdueAfterSales(50);
       expect(n).toBe(1);
@@ -217,6 +261,32 @@ describe('楼长售后处理（IKXW9K）', () => {
       (svc as unknown as { push: unknown }).push = { notifyNightManagerAfterSale: notify };
       await svc.applyAfterSale('u1', ORDER_ID, { type: 'damaged', description: '薯片压碎了请退款' });
       expect(notify).toHaveBeenCalledWith(ORDER_ID);
+    });
+  });
+
+  describe('adminOrdersPage 售后处理人与转交置顶', () => {
+    it('拒绝单解析楼长处理人，转交单透出 afterSaleEscalated 并置顶', async () => {
+      const db = makeDb();
+      const base = {
+        storeId: STORE_ID, userId: 'u1', status: 'completed', statusText: '已完成',
+        businessDate: '2026-11-25', items: [], productAmount: 1000, deliveryFee: 0,
+        couponDiscount: 0, payableAmount: 1000, address: {}, createdAt: new Date(),
+        paidAt: new Date(), acceptedAt: null, deliveredAt: null, completedAt: new Date(),
+        cancelReason: null, refund: null, store: { id: STORE_ID, building: { name: '1栋' } },
+        user: { id: 'u1', nickname: '小王', phone: '13800000000' },
+      };
+      (db.nightOrder.findMany as jest.Mock).mockResolvedValue([
+        { ...base, id: 'o-normal', orderNo: 'YX1', afterSaleStatus: 'requested', timeline: [{ ...AFTER_SALE_ENTRY, time: new Date().toISOString() }] },
+        { ...base, id: 'o-escalated', orderNo: 'YX2', afterSaleStatus: 'requested', timeline: [{ ...AFTER_SALE_ENTRY, time: new Date().toISOString() }, { key: 'after-sale-escalated', title: '已转交平台处理', time: new Date().toISOString() }] },
+        { ...base, id: 'o-rejected', orderNo: 'YX3', afterSaleStatus: 'rejected', timeline: [AFTER_SALE_ENTRY, { key: 'after-sale-review', title: '售后审核未通过', description: '无破损', operatorId: MANAGER, time: new Date().toISOString() }] },
+      ]);
+      (db.nightOrder.count as jest.Mock).mockResolvedValue(3);
+      (db.staff.findMany as jest.Mock).mockResolvedValue([{ id: MANAGER, name: '张三' }]);
+      const svc = makeService(db);
+      const page = await svc.adminOrdersPage('campus-1', { afterSaleStatus: 'requested' });
+      expect(page.items[0]).toMatchObject({ id: 'o-escalated', afterSaleEscalated: true });
+      const rejected = page.items.find((x: { id: string }) => x.id === 'o-rejected');
+      expect(rejected).toMatchObject({ afterSaleOperatorName: '楼长 张三' });
     });
   });
 });

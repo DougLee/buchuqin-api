@@ -708,7 +708,7 @@ export class NightOrderService implements NightPaymentHandler {
       const store = await this.inventory.lockStore(tx, raw.storeId);
       const order = await tx.nightOrder.findUniqueOrThrow({ where: { id } });
       if (order.afterSaleStatus !== 'requested') throw new BadRequestException('售后状态已变化，请刷新');
-      await tx.nightOrder.update({ where: { id }, data: { afterSaleStatus: 'rejected', timeline: json([...asTimeline(order.timeline), { key: 'after-sale-review', title: '售后审核未通过', description: reason.trim(), time: new Date().toISOString() }]) } });
+      await tx.nightOrder.update({ where: { id }, data: { afterSaleStatus: 'rejected', timeline: json([...asTimeline(order.timeline), { key: 'after-sale-review', title: '售后审核未通过', description: reason.trim(), operatorId, time: new Date().toISOString() }]) } });
       if (order.status === 'completed') await tx.nightCommissionTxn.updateMany({ where: { orderId: id, status: 'estimated' }, data: { status: 'pending' } });
       await tx.auditLog.create({ data: { campusId: store.campusId, operator: operatorId, action: 'night.after-sale.reject', entityType: 'night-order', entityId: id, after: { reason } } });
       await tx.notification.create({ data: { userId: order.userId, businessType: 'night', orderId: order.id, type: 'order', title: '夜宵售后审核结果', content: reason.trim() } });
@@ -739,6 +739,17 @@ export class NightOrderService implements NightPaymentHandler {
     };
   }
 
+  /** 判断售后是否已转交/升级平台。 */
+  private static afterSaleEscalated(timeline: unknown): boolean {
+    return asTimeline(timeline).some(step => step.key === 'after-sale-escalated');
+  }
+
+  /** 提取最近一条售后驳回记录的处理人 ID（供后台处理人列回显）。 */
+  private static afterSaleReviewOperatorId(timeline: unknown): string | null {
+    const entry = [...asTimeline(timeline)].reverse().find(step => step.key === 'after-sale-review') as (ReturnType<typeof asTimeline>[number] & { operatorId?: string }) | undefined;
+    return entry?.operatorId ?? null;
+  }
+
   /** 楼长售后处理角色门槛（IKXW9K Q9C）：正式楼长可同意/拒绝，实习仅可转交。 */
   private async managerRoleGuard(staffId: string): Promise<void> {
     const staff = await this.db.staff.findUnique({ where: { id: staffId }, select: { role: true, status: true } });
@@ -757,13 +768,15 @@ export class NightOrderService implements NightPaymentHandler {
       orderBy: { createdAt: 'desc' },
       take: 100,
       select: {
-        id: true, orderNo: true, payableAmount: true, status: true, statusText: true,
-        afterSaleStatus: true, createdAt: true, address: true, timeline: true,
+        id: true, orderNo: true, productAmount: true, couponDiscount: true, payableAmount: true,
+        status: true, statusText: true, afterSaleStatus: true, createdAt: true, address: true, timeline: true,
         refund: { select: { totalAmount: true, status: true, operatorId: true, completedAt: true } },
       },
     });
     return rows.map(row => {
       const addr = (row.address ?? {}) as Record<string, unknown>;
+      const payload = NightOrderService.afterSalePayload(row.timeline);
+      const fallbackAmount = Math.max(0, (row.productAmount ?? row.payableAmount) - (row.couponDiscount ?? 0));
       return {
         id: row.id,
         orderNo: row.orderNo,
@@ -771,11 +784,13 @@ export class NightOrderService implements NightPaymentHandler {
         orderStatus: row.status,
         orderStatusText: row.statusText,
         afterSaleStatus: row.afterSaleStatus,
+        escalated: row.afterSaleStatus === 'requested' && NightOrderService.afterSaleEscalated(row.timeline),
         contactName: String(addr.contactName ?? '') || '用户',
         buildingName: String(addr.buildingName ?? ''),
         room: String(addr.room ?? ''),
         createdAt: row.createdAt,
-        ...NightOrderService.afterSalePayload(row.timeline),
+        ...payload,
+        requestedAmount: payload?.requestedAmount ?? fallbackAmount,
         refund: row.refund ? {
           totalAmount: row.refund.totalAmount,
           status: row.refund.status,
@@ -812,7 +827,11 @@ export class NightOrderService implements NightPaymentHandler {
       restock: false,
       reason: '楼长同意售后退款',
     });
-    return { id, afterSaleStatus: 'refund-processing', refund: { totalAmount: refund.totalAmount, status: refund.status } };
+    if (refund.status === 'failed') {
+      throw new BadRequestException(refund.errorMessage || '退款发起失败，请稍后重试或联系平台处理');
+    }
+    const afterSaleStatus = refund.status === 'succeeded' ? 'resolved' : 'refund-processing';
+    return { id, afterSaleStatus, refund: { totalAmount: refund.totalAmount, status: refund.status } };
   }
 
   /** 楼长拒绝售后：复用后台驳回（状态机/审计/用户通知/佣金解锁全复用）。 */
@@ -826,43 +845,57 @@ export class NightOrderService implements NightPaymentHandler {
   }
 
   /** 转交平台处理（实习楼长唯一动作；正式楼长亦可用于争议单）：状态不变，
-   *  timeline 打标供后台识别，审计留痕。 */
+   *  timeline 打标供后台识别，审计留痕；事务+锁店防止并发覆写 timeline。 */
   async managerEscalateAfterSale(staffId: string, id: string) {
     const store = await this.inventory.myStore(staffId);
-    const order = await this.db.nightOrder.findUnique({ where: { id }, select: { storeId: true, afterSaleStatus: true, timeline: true } });
-    if (!order || order.storeId !== store.id) throw new NotFoundException('订单不存在或非本店订单');
-    if (order.afterSaleStatus !== 'requested') throw new BadRequestException('售后状态已变化，请刷新');
-    const timeline = asTimeline(order.timeline);
-    if (timeline.some(step => step.key === 'after-sale-escalated')) return { id, escalated: true };
-    await this.db.nightOrder.update({
-      where: { id },
-      data: { timeline: json([...timeline, { key: 'after-sale-escalated', title: '已转交平台处理', time: new Date().toISOString() }]) },
+    return this.db.$transaction(async tx => {
+      await this.inventory.lockStore(tx, store.id);
+      const order = await tx.nightOrder.findUnique({ where: { id }, select: { storeId: true, afterSaleStatus: true, timeline: true } });
+      if (!order || order.storeId !== store.id) throw new NotFoundException('订单不存在或非本店订单');
+      if (order.afterSaleStatus !== 'requested') throw new BadRequestException('售后状态已变化，请刷新');
+      const timeline = asTimeline(order.timeline);
+      if (timeline.some(step => step.key === 'after-sale-escalated')) return { id, escalated: true };
+      await tx.nightOrder.update({
+        where: { id },
+        data: { timeline: json([...timeline, { key: 'after-sale-escalated', title: '已转交平台处理', operatorId: staffId, time: new Date().toISOString() }]) },
+      });
+      await tx.auditLog.create({ data: { campusId: store.campusId, operator: staffId, action: 'night.after-sale.escalate', entityType: 'night-order', entityId: id, after: {} } });
+      return { id, escalated: true };
     });
-    await this.db.auditLog.create({ data: { campusId: store.campusId, operator: staffId, action: 'night.after-sale.escalate', entityType: 'night-order', entityId: id, after: {} } });
-    return { id, escalated: true };
   }
 
   /** IKXW9K Q6：售后申请超 24h 未处理 → 打「超时转交平台」标记（后台置顶
-   *  标红、责任移交），不自动同意。幂等：已打标跳过。 */
+   *  标红、责任移交），不自动同意。幂等：已打标跳过；逐单锁店防并发覆写 timeline。 */
   async escalateOverdueAfterSales(limit = 50): Promise<number> {
     const deadline = Date.now() - 24 * 60 * 60 * 1000;
     const rows = await this.db.nightOrder.findMany({
       where: { afterSaleStatus: 'requested' },
-      select: { id: true, timeline: true },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true, storeId: true, timeline: true },
       take: 200,
     });
     let escalated = 0;
     for (const row of rows) {
-      const timeline = asTimeline(row.timeline);
-      const entry = [...timeline].reverse().find(step => step.key === 'after-sale');
-      if (!entry?.time || new Date(entry.time).getTime() > deadline) continue;
-      if (timeline.some(step => step.key === 'after-sale-escalated')) continue;
-      await this.db.nightOrder.update({
-        where: { id: row.id },
-        data: { timeline: json([...timeline, { key: 'after-sale-escalated', title: '超时转交平台处理', description: '售后申请超过24小时未处理，已升级平台', time: new Date().toISOString() }]) },
+      const preTimeline = asTimeline(row.timeline);
+      const preEntry = [...preTimeline].reverse().find(step => step.key === 'after-sale');
+      if (!preEntry?.time || new Date(preEntry.time).getTime() > deadline) continue;
+      if (preTimeline.some(step => step.key === 'after-sale-escalated')) continue;
+      const marked = await this.db.$transaction(async tx => {
+        if (row.storeId) await this.inventory.lockStore(tx, row.storeId);
+        const current = await tx.nightOrder.findUnique({ where: { id: row.id }, select: { afterSaleStatus: true, timeline: true } });
+        if (!current || current.afterSaleStatus !== 'requested') return false;
+        const timeline = asTimeline(current.timeline);
+        if (timeline.some(step => step.key === 'after-sale-escalated')) return false;
+        await tx.nightOrder.update({
+          where: { id: row.id },
+          data: { timeline: json([...timeline, { key: 'after-sale-escalated', title: '超时转交平台处理', description: '售后申请超过24小时未处理，已升级平台', time: new Date().toISOString() }]) },
+        });
+        return true;
       });
-      escalated++;
-      if (escalated >= limit) break;
+      if (marked) {
+        escalated++;
+        if (escalated >= limit) break;
+      }
     }
     return escalated;
   }
@@ -1518,8 +1551,24 @@ export class NightOrderService implements NightPaymentHandler {
       this.db.nightOrder.findMany({ where, include: { refund: true, store: { include: { building: { select: { name: true } } } }, user: { select: { id: true, nickname: true, phone: true } } }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], skip: (paging.page - 1) * paging.pageSize, take: paging.pageSize }),
       this.db.nightOrder.count({ where }),
     ]);
-    // IKXW9K Q14：处理人解析（楼长姓名 / 后台账号）+ 售后申请时间与超时标记
-    const operatorIds = [...new Set(rows.map(o => o.refund?.operatorId).filter((v): v is string => !!v))];
+    // IKXW9K Q14：处理人解析（楼长姓名 / 后台账号，含退款与拒绝双源）+ 售后申请时间、超时与转交标记
+    const legacyRejectedIds = rows
+      .filter(o => o.afterSaleStatus === 'rejected' && !o.refund?.operatorId && !NightOrderService.afterSaleReviewOperatorId(o.timeline))
+      .map(o => o.id);
+    const rejectAuditMap = new Map<string, string>();
+    if (legacyRejectedIds.length) {
+      const logs = await this.db.auditLog.findMany({
+        where: { action: 'night.after-sale.reject', entityType: 'night-order', entityId: { in: legacyRejectedIds } },
+        orderBy: { createdAt: 'desc' },
+        select: { entityId: true, operator: true },
+      });
+      for (const log of logs) {
+        if (log.entityId && log.operator && !rejectAuditMap.has(log.entityId)) rejectAuditMap.set(log.entityId, log.operator);
+      }
+    }
+    const resolveOperatorId = (o: (typeof rows)[number]) =>
+      o.refund?.operatorId ?? NightOrderService.afterSaleReviewOperatorId(o.timeline) ?? rejectAuditMap.get(o.id) ?? null;
+    const operatorIds = [...new Set(rows.map(resolveOperatorId).filter((v): v is string => !!v))];
     const [staffOps, adminOps] = operatorIds.length
       ? await Promise.all([
           this.db.staff.findMany({ where: { id: { in: operatorIds } }, select: { id: true, name: true } }),
@@ -1533,20 +1582,24 @@ export class NightOrderService implements NightPaymentHandler {
       const a = adminOps.find(x => x.id === id);
       return a ? `后台 ${a.nickname || a.username}` : null;
     };
-    return {
-      items: rows.map(o => {
-        const payload = NightOrderService.afterSalePayload(o.timeline);
-        return {
-          ...this.orderView(o),
-          user: o.user,
-          afterSaleRequestedAt: payload?.appliedAt ?? null,
-          afterSaleOverdue: o.afterSaleStatus === 'requested' && !!payload?.appliedAt && Date.now() - new Date(payload.appliedAt).getTime() > 24 * 60 * 60 * 1000,
-          afterSaleOperatorName: operatorName(o.refund?.operatorId ?? null),
-        };
-      }),
-      total,
-      ...paging,
-    };
+    const items = rows.map(o => {
+      const payload = NightOrderService.afterSalePayload(o.timeline);
+      const afterSaleOverdue = o.afterSaleStatus === 'requested' && !!payload?.appliedAt && Date.now() - new Date(payload.appliedAt).getTime() > 24 * 60 * 60 * 1000;
+      const afterSaleEscalated = o.afterSaleStatus === 'requested' && NightOrderService.afterSaleEscalated(o.timeline);
+      return {
+        ...this.orderView(o),
+        user: o.user,
+        afterSaleRequestedAt: payload?.appliedAt ?? null,
+        afterSaleOverdue,
+        afterSaleEscalated,
+        afterSaleOperatorName: operatorName(resolveOperatorId(o)),
+      };
+    });
+    // 筛选待处理售后时，超时/已转交平台的单页内置顶，便于运营优先处理
+    if (filters.afterSaleStatus === 'requested') {
+      items.sort((a, b) => Number(b.afterSaleOverdue || b.afterSaleEscalated) - Number(a.afterSaleOverdue || a.afterSaleEscalated));
+    }
+    return { items, total, ...paging };
   }
 
   async adminOrderDetail(id: string, includeCost = false) {

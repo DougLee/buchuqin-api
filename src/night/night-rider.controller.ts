@@ -257,7 +257,8 @@ export class NightRiderController {
     @Req() r: AuthRequest,
     @Param('id') id: string,
   ): Promise<ApiResponse<unknown>> {
-    return ok(await this.service.approveAfterSale(this.auth(r), id), '已同意退款，原路退回中');
+    const res = await this.service.approveAfterSale(this.auth(r), id);
+    return ok(res, res.afterSaleStatus === 'resolved' ? '已同意并退款成功' : '已同意退款，原路退回中');
   }
 
   @Post('night/aftersales/:id/reject')
