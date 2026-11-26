@@ -12,6 +12,7 @@ import { readFileSync } from 'node:fs';
 import { PrismaService } from '../database/prisma.service';
 import { BusinessService } from '../business/business.service';
 import { campusWechatConfig, normalizePem } from '../common/wechat-org';
+import type { OrderPayHooks } from '../business/order-pay-hooks';
 
 /** 微信支付 v3 商户 API 主机（下单/证书下载都走这里，不是 api.weixin.qq.com）。 */
 const WX_PAY_HOST = 'https://api.mch.weixin.qq.com';
@@ -78,6 +79,8 @@ interface WechatTrade {
   out_trade_no?: string;
   trade_state?: string;
   transaction_id?: string;
+  /** 微信支付成功时间（rfc3339），仅 trade_state=SUCCESS 时有值 */
+  success_time?: string;
   appid?: string;
   mchid?: string;
   amount?: { total?: number; currency?: string };
@@ -90,6 +93,36 @@ interface WechatTrade {
  */
 export interface NightPaymentHandler {
   onPaid(outTradeNo: string, transactionId?: string): Promise<void>;
+}
+
+/**
+ * 晚到支付处理器（IKY6QE）：订单已关闭（超时/用户取消）后微信才通知收款成功。
+ * 由 AdminService 实现并注册（setter 注入，避免 admin ↔ payments 循环依赖）：
+ * 记录支付事实（paidAt + 交易单号）并自动全额原路退款。实现必须幂等。
+ */
+export interface LatePaymentHandler {
+  handleLatePayment(
+    order: {
+      id: string;
+      userId: string;
+      orderNo: string;
+      campusId: string;
+      payableAmount: number;
+      statusText: string;
+    },
+    transactionId: string | null,
+  ): Promise<void>;
+}
+
+/** 微信 v3 time_expire 要求的北京时间格式：yyyy-MM-DDTHH:mm:ss+08:00 */
+function rfc3339Beijing(date: Date): string {
+  const shifted = new Date(date.getTime() + 8 * 3600_000);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${shifted.getUTCFullYear()}-${pad(shifted.getUTCMonth() + 1)}-${pad(
+    shifted.getUTCDate(),
+  )}T${pad(shifted.getUTCHours())}:${pad(shifted.getUTCMinutes())}:${pad(
+    shifted.getUTCSeconds(),
+  )}+08:00`;
 }
 
 /**
@@ -106,12 +139,17 @@ export interface NightPaymentHandler {
  *   notify 内注释）+ business.pay 条件更新幂等。
  */
 @Injectable()
-export class PaymentsService {
+export class PaymentsService implements OrderPayHooks {
   private readonly logger = new Logger(PaymentsService.name);
   constructor(
     private readonly db: PrismaService,
     private readonly business: BusinessService,
-  ) {}
+  ) {
+    // IKY6QE：向 BusinessService 注册支付钩子（关单前查微信、关单后通知微信
+    // 关闭订单）。setter 注入方向与 payments → business 的既有依赖一致，不成环；
+    // 单测里 business 为桩时静默跳过（无钩子路径）。
+    business.registerPayHooks?.(this);
+  }
   /**
    * 夜宵支付处理器（IKSW1F）：setter 注入（NightOrderService 构造时注册），
    * 避免 payments ↔ night 模块循环依赖。回调命中 YX/ND 前缀商户单号时分发；
@@ -121,6 +159,13 @@ export class PaymentsService {
   registerNightPaymentHandler(handler: NightPaymentHandler) {
     this.nightHandler = handler;
   }
+  /** 晚到支付处理器（IKY6QE）：AdminService 构造时注册。 */
+  private latePaymentHandler: LatePaymentHandler | null = null;
+  registerLatePaymentHandler(handler: LatePaymentHandler) {
+    this.latePaymentHandler = handler;
+  }
+  /** 预下单最小剩余支付时间：不足则不再发起支付（微信要求失效时间留足余量，用户也来不及完成）。 */
+  static readonly PREPAY_MIN_REMAINING_MS = 60_000;
   private privateKeyCache: string | null = null;
   /** 微信平台证书缓存：serialNo → PEM（验签用），未知序列号时刷新一次。 */
   private platformCerts = new Map<string, string>();
@@ -229,6 +274,19 @@ export class PaymentsService {
     if (!order) throw new NotFoundException('订单不存在');
     if (order.status !== 'pending-payment')
       throw new BadRequestException('当前状态不可支付');
+    // IKY6QE：微信侧有效期 = 我们的支付窗（下单 + 15 分钟）。此前预下单不带
+    // 失效时间，我们这边超时关单后微信仍可付款成功，钱到了只能人工退款。
+    // 剩余不足 1 分钟不再发起支付：微信要求失效时间留足余量，用户也来不及
+    // 完成，引导重新下单。失效时间由下单时刻推导（非当前时间），同一订单重复
+    // 预下单报文一致，微信按同单号幂等返回。
+    const expiresAt = new Date(
+      order.createdAt.getTime() + BusinessService.PAYMENT_TIMEOUT_MS,
+    );
+    if (
+      expiresAt.getTime() - Date.now() <
+      PaymentsService.PREPAY_MIN_REMAINING_MS
+    )
+      throw new BadRequestException('订单已临近支付超时，请重新下单');
     const creds = await this.campusCreds(order.campusId);
     if (!creds)
       throw new HttpException('微信支付未配置', HttpStatus.NOT_IMPLEMENTED);
@@ -246,6 +304,7 @@ export class PaymentsService {
       amount,
       openid: user.openid,
       description: `不出寝食社订单 ${order.orderNo}`,
+      timeExpire: expiresAt,
     });
     return {
       orderId: order.id,
@@ -265,7 +324,14 @@ export class PaymentsService {
    */
   private async jsapiPrepay(
     creds: WxPayCreds,
-    opts: { outTradeNo: string; amount: number; openid: string; description: string },
+    opts: {
+      outTradeNo: string;
+      amount: number;
+      openid: string;
+      description: string;
+      /** IKY6QE：微信订单失效时间（time_expire）；缺省不传（夜宵通道维持现状） */
+      timeExpire?: Date;
+    },
   ) {
     const appid = creds.appId;
     const body = JSON.stringify({
@@ -274,6 +340,9 @@ export class PaymentsService {
       description: opts.description,
       out_trade_no: opts.outTradeNo,
       notify_url: creds.notifyUrl,
+      ...(opts.timeExpire
+        ? { time_expire: rfc3339Beijing(opts.timeExpire) }
+        : {}),
       // 金额单位:分（IK8W5K）：payableAmount 已是整数分，直接作为微信支付 total。
       amount: { total: opts.amount, currency: 'CNY' },
       payer: { openid: opts.openid },
@@ -526,7 +595,11 @@ export class PaymentsService {
       try {
         const trade = await this.queryWechatTrade(order.orderNo);
         if (trade.trade_state === 'SUCCESS') {
-          await this.applyPayment(order, trade.transaction_id);
+          await this.applyPayment(
+            order,
+            trade.transaction_id,
+            trade.success_time,
+          );
           order = await this.db.order.findUniqueOrThrow({
             where: { id: order.id },
           });
@@ -589,6 +662,7 @@ export class PaymentsService {
       out_trade_no?: string;
       transaction_id?: string;
       trade_state?: string;
+      success_time?: string;
       amount?: { total?: number; currency?: string };
     };
     if (event.trade_state !== 'SUCCESS')
@@ -618,7 +692,8 @@ export class PaymentsService {
       }
       return { code: 'SUCCESS', message: '订单不存在，忽略' };
     }
-    await this.applyPayment(order, event.transaction_id);
+    // IKY6QE：落账的技术性故障由 applyPayment 原样上抛 → 控制器回 5xx → 微信重试
+    await this.applyPayment(order, event.transaction_id, event.success_time);
     return { code: 'SUCCESS', message: 'OK' };
   }
 
@@ -699,28 +774,68 @@ export class PaymentsService {
   }
 
   /**
-   * 落账（notify 回调与 status 查单补偿共用）：
-   * 幂等——已支付单 pay 直接返回；超时已关单不再复活（条件更新拦截）。
-   * G1（2026-08-19 发版 grilling）：微信侧扣款已成功但落账失败（库存不足/
-   * 超时关单竞态/用户取消后又完成支付等）。不能吞错放任订单被超时 Cron
-   * 关单——转 exception 冻结现场，站内通知安抚用户，客服在商户平台手动
-   * 退款或补发（ADR-0004 试点期不自动退款）。
+   * 落账（notify 回调、status 查单补偿、关单前查单、定时对账共用）。
+   * 幂等——已支付单 pay 直接返回。
+   * IKY6QE 重构（道哥 2026-11-26）：按失败性质分流，不再一律冻结成异常单。
+   * - 成功：落账事务只记录事实 + 兑现下单时已锁定的库存（不可失败，见
+   *   BusinessService.pay），同时记录微信交易单号；
+   * - 业务拒绝且订单已关闭（超时/用户取消后才收到钱）→ 晚到支付：记录支付
+   *   事实并自动全额原路退款；
+   * - 其余业务拒绝 → 冻结为异常单并告警（同时记录支付时间与交易单号）；
+   * - 技术性故障（数据库异常、事务超时等）→ 原样上抛：回调回 5xx，微信重试。
    */
   private async applyPayment(
-    order: { id: string; userId: string; orderNo: string },
+    order: {
+      id: string;
+      userId: string;
+      orderNo: string;
+      campusId: string;
+    },
     transactionId?: string,
+    successTime?: string,
   ) {
     try {
-      await this.business.pay(order.userId, order.id);
+      await this.business.pay(order.userId, order.id, { transactionId });
     } catch (error) {
-      const frozen = await this.db.order.updateMany({
-        where: {
-          id: order.id,
-          status: { in: ['pending-payment', 'cancelled'] },
+      const reason = error instanceof Error ? error.message : String(error);
+      const businessRejection =
+        error instanceof HttpException && error.getStatus() < 500;
+      if (!businessRejection) {
+        // 绝不冻结成异常单：上抛后回调返回 5xx，微信按其重试策略反复通知直到落账成功
+        this.logger.error(
+          `支付落账技术性失败（已请求微信重试）：order=${order.id} orderNo=${order.orderNo} ` +
+            `wxTradeId=${transactionId ?? '未知'} reason=${reason}`,
+        );
+        throw error;
+      }
+      const current = await this.db.order.findUnique({
+        where: { id: order.id },
+        select: {
+          id: true,
+          userId: true,
+          orderNo: true,
+          campusId: true,
+          payableAmount: true,
+          status: true,
+          statusText: true,
         },
+      });
+      if (current?.status === 'cancelled') {
+        this.logger.warn(
+          `晚到支付，自动原路退款：order=${order.id} orderNo=${order.orderNo} ` +
+            `wxTradeId=${transactionId ?? '未知'}`,
+        );
+        await this.handleLatePayment(current, transactionId ?? null);
+        return;
+      }
+      const frozen = await this.db.order.updateMany({
+        where: { id: order.id, status: 'pending-payment' },
         data: {
           status: 'exception',
           statusText: '支付已收到但订单异常，请联系客服处理',
+          // 钱已收到是事实：记录支付时间与交易单号，报表与追溯不再漏记
+          paidAt: successTime ? new Date(successTime) : new Date(),
+          ...(transactionId ? { wxTransactionId: transactionId } : {}),
         },
       });
       // 微信重复回调时第二次不命中（已是 exception），不重复通知/告警
@@ -737,10 +852,116 @@ export class PaymentsService {
         });
         this.logger.error(
           `支付落账失败转异常单：order=${order.id} orderNo=${order.orderNo} ` +
-            `wxTradeId=${transactionId ?? '未知'} ` +
-            `reason=${error instanceof Error ? error.message : String(error)}`,
+            `wxTradeId=${transactionId ?? '未知'} reason=${reason}`,
         );
       }
+    }
+  }
+
+  private async handleLatePayment(
+    order: {
+      id: string;
+      userId: string;
+      orderNo: string;
+      campusId: string;
+      payableAmount: number;
+      statusText: string;
+    },
+    transactionId: string | null,
+  ) {
+    if (!this.latePaymentHandler)
+      // 抛错 → 调用方上抛 → 微信重试 / 对账下一轮重试，不吞
+      throw new Error('晚到支付处理器未注册（AdminService 未就绪）');
+    await this.latePaymentHandler.handleLatePayment(order, transactionId);
+  }
+
+  /** 按 trade 落账（已向微信确认 SUCCESS）：重读订单最新状态后进入 applyPayment 分流。 */
+  private async landTradedOrder(
+    order: { id: string },
+    trade: WechatTrade,
+  ) {
+    const current = await this.db.order.findUnique({ where: { id: order.id } });
+    if (!current) return;
+    await this.applyPayment(
+      current,
+      trade.transaction_id,
+      trade.success_time,
+    );
+  }
+
+  /**
+   * IKY6QE：对账——向微信查单，已收款则落账（回调丢失/延迟的兜底；订单已
+   * 关闭的走晚到支付自动退款）。返回 paid=微信已收款且已处理，unpaid=未支付。
+   * 查单失败原样上抛，调用方下一轮重试。
+   */
+  async reconcilePaidOrder(order: {
+    id: string;
+    userId: string;
+    orderNo: string;
+    campusId: string;
+  }): Promise<'paid' | 'unpaid'> {
+    const trade = await this.queryWechatTrade(order.orderNo);
+    if (trade.trade_state !== 'SUCCESS') return 'unpaid';
+    await this.landTradedOrder(order, trade);
+    return 'paid';
+  }
+
+  /** OrderPayHooks：关单前查微信（抛错=查不清，调用方本轮不关单）。 */
+  async settleBeforeClose(order: {
+    id: string;
+    userId: string;
+    orderNo: string;
+    campusId: string;
+  }): Promise<boolean> {
+    const trade = await this.queryWechatTrade(order.orderNo);
+    // 用户正在输密码/确认中：结果未定，本轮不能关
+    if (trade.trade_state === 'USERPAYING')
+      throw new HttpException(
+        '微信侧用户支付中，本轮暂不关单',
+        HttpStatus.CONFLICT,
+      );
+    if (trade.trade_state !== 'SUCCESS') return false;
+    await this.landTradedOrder(order, trade);
+    return true;
+  }
+
+  /**
+   * OrderPayHooks：通知微信关闭订单（POST /v3/pay/transactions/out-trade-no/
+   * {out_trade_no}/close），阻止订单关闭后的付款。尽力而为：404=微信侧无此单
+   * （从未拉起支付）、已支付/已关闭等 4xx 均无需处理；其余失败只记日志，由
+   * 对账与晚到支付自动退款兜底。
+   */
+  async closeWechatOrder(order: {
+    orderNo: string;
+    campusId: string;
+  }): Promise<void> {
+    const creds = await this.campusCreds(order.campusId).catch(() => null);
+    if (!creds) return;
+    const urlPath = `/v3/pay/transactions/out-trade-no/${order.orderNo}/close`;
+    const body = JSON.stringify({ mchid: creds.mchId });
+    let response: Response;
+    try {
+      response = await fetch(`${WX_PAY_HOST}${urlPath}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          Authorization: this.authorization('POST', urlPath, body, creds),
+        },
+        body,
+        signal: AbortSignal.timeout(6000),
+      });
+    } catch {
+      this.logger.warn(
+        `关闭微信订单请求失败 order=${order.orderNo}（由对账与晚到支付退款兜底）`,
+      );
+      return;
+    }
+    if (!response.ok && response.status !== 404) {
+      const detail = await response.text().catch(() => '');
+      this.logger.warn(
+        `关闭微信订单未成功 order=${order.orderNo} status=${response.status} body=${detail.slice(0, 200)}`,
+      );
     }
   }
 

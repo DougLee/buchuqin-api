@@ -198,7 +198,17 @@ export class AdminService {
     // 微信退款（IKHZKA）：可选注入——审核批准时原路退回；测试不传时报「未就绪」。
     @Optional() private readonly payments?: PaymentsService,
     private readonly rbac: RbacService = new RbacService(db),
-  ) {}
+  ) {
+    // IKY6QE：向 PaymentsService 注册晚到支付处理器（setter 注入，避免 admin ↔
+    // payments 循环依赖）；单测里 payments 为桩时静默跳过。
+    payments?.registerLatePaymentHandler?.(this);
+  }
+  /**
+   * 晚到支付退款来源（Refund.source，IKY6QE）：订单已关闭（超时/用户取消）后
+   * 微信才收款成功，系统自动全额原路退回。区别于 pre-delivery（货未出仓的
+   * 悔单退款，会回补库存）与 after-sale（送达后售后，按比例冲佣金）。
+   */
+  static readonly LATE_PAYMENT_SOURCE = 'late-payment';
   private num(x: unknown) {
     return Number(x);
   }
@@ -880,6 +890,8 @@ export class AdminService {
     'order.advance': '推进订单',
     'order.outbound': '订单出库',
     'order.mark-exception': '标记订单异常',
+    // IKY6QE：晚到支付（订单已关闭后收到付款）系统自动全额原路退款
+    'refund.late-payment.auto': '晚到支付自动退款',
     'order.print-receipt': '补打小票',
     'order.manual-status': '手动改单状态',
     'product.create': '创建商品',
@@ -2606,24 +2618,50 @@ export class AdminService {
    * 盘点校准（IKD6FJ）：盘点 = 提交仓库实际清点数量，与 adjustStock 的增量调整
    * 语义不同——这里只报「账面 vs 实际」的差额，系统自动算 delta 落 adjust 流水；
    * 账实相符（delta=0）时不落流水，仅返回核对结果。
+   * IKY6QE：录入的是货架**实盘数**（与库存页「实际」列同口径 = 可售 + 锁定 +
+   * 夜宵预留）。已被待支付订单锁定的部分（lockedStock）和夜宵备货预留
+   * （nightReservedStock）都不属于可售，折算 可售 = 实盘 − 锁定 − 预留（不为负）；
+   * 流水差额按可售口径记。（此前直接把实盘数写成可售：有夜宵预留的商品盘点后
+   * 可售会虚高，一并修正。）
    */
   async stocktake(body: StocktakeDto, operator: string, campusId: string) {
+    if (body.countedQty < 0)
+      throw new BadRequestException('清点数量不能为负数');
     const product = await this.db.product.findFirst({
       where: { id: body.productId, campusId },
     });
     if (!product) throw new NotFoundException('商品不存在');
-    const delta = body.countedQty - product.stock;
-    if (!delta)
-      return {
-        productId: product.id,
-        before: product.stock,
-        countedQty: body.countedQty,
-        delta: 0,
-        applied: false,
-      };
-    if (body.countedQty < 0)
-      throw new BadRequestException('清点数量不能为负数');
-    const txn = await this.db.$transaction(async (tx) => {
+    const settled = await this.db.$transaction(async (tx) => {
+      // 锁行后读写：避免与并发下单锁定交错，导致可售虚高
+      const [fresh] = await tx.$queryRaw<
+        Array<{
+          stock: number;
+          lockedStock: number;
+          nightReservedStock: number;
+        }>
+      >`SELECT stock, "lockedStock", "nightReservedStock" FROM "Product" WHERE id = ${product.id} FOR UPDATE`;
+      const before = Number(fresh?.stock ?? product.stock);
+      const lockedStock = Number(
+        fresh?.lockedStock ?? product.lockedStock ?? 0,
+      );
+      const reservedStock = Number(
+        fresh?.nightReservedStock ?? product.nightReservedStock ?? 0,
+      );
+      const target = Math.max(
+        body.countedQty - lockedStock - reservedStock,
+        0,
+      );
+      const delta = target - before;
+      if (!delta)
+        return {
+          before,
+          lockedStock,
+          reservedStock,
+          target,
+          delta: 0,
+          applied: false as const,
+          txn: null,
+        };
       const record = await tx.inventoryTxn.create({
         data: {
           productId: product.id,
@@ -2637,25 +2675,44 @@ export class AdminService {
       });
       await tx.product.update({
         where: { id: product.id },
-        data: { stock: body.countedQty },
+        data: { stock: target },
       });
-      return record;
+      return {
+        before,
+        lockedStock,
+        reservedStock,
+        target,
+        delta,
+        applied: true as const,
+        txn: record,
+      };
     });
-    await this.audit(
-      operator,
-      'inventory.stocktake',
-      'product',
-      product.id,
-      { stock: product.stock },
-      { stock: body.countedQty, delta, txnId: txn.id },
-      campusId,
-    );
+    if (settled.applied)
+      await this.audit(
+        operator,
+        'inventory.stocktake',
+        'product',
+        product.id,
+        { stock: settled.before },
+        {
+          stock: settled.target,
+          countedQty: body.countedQty,
+          lockedStock: settled.lockedStock,
+          nightReservedStock: settled.reservedStock,
+          delta: settled.delta,
+          txnId: settled.txn.id,
+        },
+        campusId,
+      );
     return {
       productId: product.id,
-      before: product.stock,
+      before: settled.before,
       countedQty: body.countedQty,
-      delta,
-      applied: true,
+      lockedStock: settled.lockedStock,
+      nightReservedStock: settled.reservedStock,
+      stock: settled.target,
+      delta: settled.delta,
+      applied: settled.applied,
     };
   }
   /**
@@ -6453,10 +6510,13 @@ export class AdminService {
       where: { id: campusId },
       select: { refundDeliveryFeeBeforeArrive: true },
     });
+    // IKY6QE：晚到支付自动退款恒为全额（含配送费）原路退回，不受到店分界/审核开关影响
     const includeDeliveryFee =
-      refundDeliveryFee ??
-      (orderArrived(refund.order.status) ||
-        !!campusRow?.refundDeliveryFeeBeforeArrive);
+      refund.source === AdminService.LATE_PAYMENT_SOURCE
+        ? true
+        : refundDeliveryFee ??
+          (orderArrived(refund.order.status) ||
+            !!campusRow?.refundDeliveryFeeBeforeArrive);
     // 可退上限（含历史批次）：含配送费=实付全额；不含=实付−配送费（现状）
     const refundableTotal = refundCeiling(
       Number(refund.order.payableAmount),
@@ -6519,8 +6579,13 @@ export class AdminService {
       (PRE_DELIVERY_REFUNDABLE_STATUSES as readonly string[]).includes(
         refund.order.status,
       );
+    // IKY6QE：晚到支付自动退款被微信拒绝后（failed），客服可在售后列表重新批准重试
+    const latePaymentRetry =
+      refund.source === AdminService.LATE_PAYMENT_SOURCE &&
+      refund.order.status === 'cancelled';
     if (
       !preDeliveryOpen &&
+      !latePaymentRetry &&
       !['after-sales', 'delivered', 'completed'].includes(refund.order.status)
     )
       throw new BadRequestException('订单状态已变化，无法退款，请刷新');
@@ -6554,7 +6619,11 @@ export class AdminService {
       });
       if (!claimed.count)
         throw new BadRequestException('申请状态已变化，请刷新');
-      if (refund.order.status !== 'after-sales') {
+      // IKY6QE：晚到支付退款的订单保持「已关闭」，不锁进售后态
+      if (
+        refund.order.status !== 'after-sales' &&
+        refund.source !== AdminService.LATE_PAYMENT_SOURCE
+      ) {
         const locked = await tx.order.updateMany({
           where: { id: refund.orderId, status: refund.order.status },
           data: { status: 'after-sales', statusText: '退款处理中' },
@@ -6683,6 +6752,148 @@ export class AdminService {
       );
       throw new BadRequestException(
         `退款发起失败：${message}（申请已标记失败，处理后可再次批准重试）`,
+      );
+    }
+  }
+
+  /**
+   * LatePaymentHandler（IKY6QE，道哥 2026-11-26）：订单已关闭（超时/用户取消）后
+   * 微信才通知收款成功 → 记录支付事实并**自动全额原路退回**，不再转人工。
+   * 幂等（回调、关单前查单、定时对账可能重复触发）：
+   * 1) 事务内锁订单行：首次记录 paidAt + 微信交易单号，且只建一条
+   *    Refund(source=late-payment, 已审核)；
+   * 2) 向微信发起全额退款（out_refund_no = Refund.id，同号重试微信去重）：
+   *    即时到账直接走 finishRefund；受理中/结果未知交给退款同步任务（每 5 分钟）
+   *    收敛；明确被拒 → failed（售后列表可人工重试），订单保持已关闭并写明原因。
+   * 不动库存（货未出，锁已在关单时释放）、不冲佣金（从未履约）。订单终态 refunded。
+   */
+  async handleLatePayment(
+    order: {
+      id: string;
+      userId: string;
+      orderNo: string;
+      campusId: string;
+      payableAmount: number;
+      statusText: string;
+    },
+    transactionId: string | null,
+  ): Promise<void> {
+    const campusId = order.campusId;
+    const amount = Math.round(Number(order.payableAmount));
+    const refund = await this.db.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "Order" WHERE id = ${order.id} FOR UPDATE`;
+      const current = await tx.order.findUniqueOrThrow({
+        where: { id: order.id },
+      });
+      const existing = await tx.refund.findFirst({
+        where: { orderId: order.id, source: AdminService.LATE_PAYMENT_SOURCE },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (current.paidAt && existing) return null; // 已处理过（重复触发）
+      if (!current.paidAt)
+        await tx.order.update({
+          where: { id: order.id },
+          data: {
+            paidAt: new Date(),
+            wxTransactionId: transactionId || current.wxTransactionId || null,
+            statusText: '订单已关闭，付款将原路退回',
+          },
+        });
+      await tx.notification.create({
+        data: {
+          userId: order.userId,
+          type: 'order',
+          orderId: order.id,
+          businessType: 'day',
+          title: '订单已关闭，付款将原路退回',
+          content: `订单 ${order.orderNo} 已关闭，关闭后的付款将由系统原路退回，请留意微信到账通知。`,
+        },
+      });
+      return (
+        existing ??
+        (await tx.refund.create({
+          data: {
+            orderId: order.id,
+            userId: order.userId,
+            source: AdminService.LATE_PAYMENT_SOURCE,
+            amount,
+            // 全额原路退回（含配送费）
+            refundDeliveryFee: true,
+            beforeStatus: current.status,
+            reason: '订单已关闭后收到支付，系统自动全额原路退回',
+            status: 'approved',
+            auditBy: 'system-late-payment',
+            auditAt: new Date(),
+            auditRemark: '晚到支付自动退款',
+          },
+        }))
+      );
+    });
+    // 已发起过退款（受理中/已到账）→ 不重复提交
+    if (!refund || ['refunding', 'refunded'].includes(refund.status)) return;
+    if (!this.payments)
+      throw new ServiceUnavailableException('支付服务未就绪，无法发起退款');
+    await this.audit(
+      'system-late-payment',
+      'refund.late-payment.auto',
+      'refund',
+      refund.id,
+      null,
+      { orderId: order.id, amount, wxTradeId: transactionId },
+      campusId,
+    );
+    try {
+      const applied = await this.payments.applyWechatRefund(
+        order.orderNo,
+        amount,
+        refund.amount,
+        refund.id,
+        '订单已关闭，自动退款',
+      );
+      if (applied.status === 'SUCCESS') {
+        await this.finishRefund(
+          refund,
+          applied.refundId,
+          'system-late-payment',
+          campusId,
+        );
+        return;
+      }
+      await this.db.refund.update({
+        where: { id: refund.id },
+        data: { status: 'refunding', wxRefundId: applied.refundId },
+      });
+      await this.db.order.updateMany({
+        where: { id: order.id, status: 'cancelled' },
+        data: { statusText: '订单已关闭，退款处理中' },
+      });
+    } catch (error) {
+      if (
+        error instanceof WechatRefundOutcomeUnknownError ||
+        !(error instanceof HttpException)
+      ) {
+        // 结果未知：保持 refunding，由退款同步任务查单收敛
+        await this.db.refund.update({
+          where: { id: refund.id },
+          data: {
+            status: 'refunding',
+            refundError: '微信退款受理结果待确认，系统将自动查单',
+          },
+        });
+        return;
+      }
+      const message =
+        error instanceof HttpException ? error.message : '退款请求失败';
+      await this.db.refund.update({
+        where: { id: refund.id },
+        data: { status: 'failed', refundError: message },
+      });
+      await this.db.order.updateMany({
+        where: { id: order.id, status: 'cancelled' },
+        data: { statusText: '订单已关闭，自动退款未完成，客服处理中' },
+      });
+      this.logger.error(
+        `晚到支付自动退款被拒，待人工处理：order=${order.id} orderNo=${order.orderNo} refund=${refund.id} reason=${message}`,
       );
     }
   }
@@ -6818,7 +7029,11 @@ export class AdminService {
           const currentMode = new Map(
             existing.map((p) => [p.id, p.procurementMode]),
           );
-          for (const line of lines) {
+          // IKY6QE：多商品按 id 排序回补，与下单锁定/支付兑现/取消释放同序，
+          // 避免并发事务互相等待
+          for (const line of [...lines].sort((a, b) =>
+            (a.product?.id ?? '').localeCompare(b.product?.id ?? ''),
+          )) {
             const productId = line.product?.id;
             const soldAs = line.product?.costSource;
             // 商品清零后可能已切换采购来源；旧来源退款不能自动混回新库存。
@@ -6954,12 +7169,20 @@ export class AdminService {
       );
     if (wxStatus === 'PROCESSING')
       return this.db.$transaction(async (tx) => {
+        // IKY6QE：晚到支付退款处理中——订单保持「已关闭」（货未出，无履约可锁定），
+        // 不进售后态（售后态会把这笔已关闭的单计回有效销售）
+        const latePayment =
+          refund.source === AdminService.LATE_PAYMENT_SOURCE;
         await tx.order.updateMany({
           where: {
             id: refund.orderId,
-            status: { in: [refund.order.status, 'after-sales'] },
+            status: latePayment
+              ? 'cancelled'
+              : { in: [refund.order.status, 'after-sales'] },
           },
-          data: { status: 'after-sales', statusText: '退款处理中' },
+          data: latePayment
+            ? { statusText: '订单已关闭，退款处理中' }
+            : { status: 'after-sales', statusText: '退款处理中' },
         });
         return tx.refund.update({
           where: { id },
@@ -6988,6 +7211,12 @@ export class AdminService {
           refund.orderId,
           refund.beforeStatus,
         );
+        // IKY6QE：晚到支付退款被微信关闭/异常——订单保持已关闭，写明待客服处理
+        if (refund.source === AdminService.LATE_PAYMENT_SOURCE)
+          await tx.order.updateMany({
+            where: { id: refund.orderId, status: 'cancelled' },
+            data: { statusText: '订单已关闭，自动退款未完成，客服处理中' },
+          });
         return failed;
       });
     return refund;

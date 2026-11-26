@@ -19,6 +19,7 @@ import {
   type ProductImageSize,
 } from '../common/product-image';
 import { campusOrganizationId } from '../common/organization';
+import type { OrderPayHooks } from './order-pay-hooks';
 import { marketingEnabled } from '../common/capability';
 import { NotificationsService } from '../notifications/notifications.service';
 import {
@@ -163,6 +164,8 @@ export class BusinessService {
    * 限购已购计数（IKQZY7）：窗口内「已支付且未退款/未取消」订单的 items 快照
    * 含该商品即计 1 次（每件数累计件数，qty 并入）。返回 productId → 已购件数。
    * 不分价格身份（原价/秒杀/清仓都计），退款落出窗口自然释放。
+   * IKY6QE：**在途待支付单同样占用名额**（否则双设备先各下一单、再分别支付
+   * 即可绕过限购）；待支付单按下单时刻归属周期。取消/超时关单后名额自动释放。
    */
   private async purchaseLimitBought(
     userId: string,
@@ -183,20 +186,24 @@ export class BusinessService {
     const orders = await this.db.order.findMany({
       where: {
         userId,
-        paidAt: { gte: earliest },
         status: { notIn: ['refunded', 'cancelled'] },
+        OR: [{ paidAt: { gte: earliest } }, { status: 'pending-payment' }],
       },
-      select: { items: true, paidAt: true },
+      select: { items: true, paidAt: true, createdAt: true, status: true },
     });
     for (const o of orders) {
-      const paidAt = o.paidAt ? new Date(o.paidAt) : null;
+      const at = o.paidAt
+        ? new Date(o.paidAt)
+        : o.status === 'pending-payment'
+          ? new Date(o.createdAt)
+          : null;
       for (const line of o.items as Array<{
         product?: { id?: string };
         quantity?: number;
       }>) {
         const pid = line.product?.id;
         if (!pid || !byStart.has(pid)) continue;
-        if (paidAt && paidAt >= byStart.get(pid)!)
+        if (at && at >= byStart.get(pid)!)
           bought.set(pid, (bought.get(pid) ?? 0) + (line.quantity ?? 1));
       }
     }
@@ -1247,7 +1254,7 @@ export class BusinessService {
         }
         if (
           line.quantity > (oldQty.get(line.productId) ?? 0) &&
-          line.quantity > p.stock - p.lockedStock
+          line.quantity > p.stock
         )
           throw new BadRequestException(`${p.name}库存不足`);
         rows.push({
@@ -1322,7 +1329,7 @@ export class BusinessService {
     // 减少/清零放行——否则售罄商品的存量行永远删不掉
     if (
       quantity > (existing?.quantity ?? 0) &&
-      quantity > p.stock - p.lockedStock
+      quantity > p.stock
     )
       throw new BadRequestException(`${p.name}库存不足`);
     if (quantity === 0)
@@ -1381,7 +1388,7 @@ export class BusinessService {
       });
       // IKSW1F 夜宵隔离兜底：夜主档行混入购物车（直调绕过加购拦截）一律拒
       if (p && p.campusId !== campusId) throw new BadRequestException('商品不属于当前校区');
-      if (!p || p.nightCatalog || line.quantity > p.stock - p.lockedStock)
+      if (!p || p.nightCatalog || line.quantity > p.stock)
         throw new BadRequestException(`${line.product.name}库存不足`);
     }
     // IKQZY7 周期限购结算兜底（加购到结算间名额可能被占）
@@ -1531,6 +1538,57 @@ export class BusinessService {
         if (!locked.count)
           throw new BadRequestException('优惠券不可用或已被锁定');
       }
+      // IKY6QE（道哥 2026-11-26）：库存、限购、成本三项规则全部在**下单时**判定——
+      // 支付落账阶段不再有任何可失败的规则（钱到账必然落账，见 pay）。
+      const lines = settlement.items as unknown as OrderLine[];
+      const productIds = [
+        ...new Set(lines.map((line) => line.product.id).filter(Boolean)),
+      ] as string[];
+      // 限购：在途待支付单同样占用名额。先锁用户行再复核，双设备并发下单
+      // 串行化，后到者必见先到者的待支付单（原支付时复核 IKLDHI/IKQZY7 前移至此）。
+      if (
+        await tx.product.count({
+          where: { id: { in: productIds }, purchaseLimit: { not: 'none' } },
+        })
+      ) {
+        await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${userId} FOR UPDATE`;
+        await this.assertPurchaseLimit(
+          userId,
+          productIds,
+          new Map(lines.map((line) => [line.product.id, line.quantity])),
+        );
+      }
+      // 库存：原子锁定（可售 → 锁定），失败即下单失败——发生在付款之前，不涉及资金。
+      // 多商品按 id 排序加锁，与支付兑现/取消释放同序，避免并发事务互相等待。
+      for (const line of [...lines].sort((a, b) =>
+        a.product.id.localeCompare(b.product.id),
+      )) {
+        const product = await tx.product.findUnique({
+          where: { id: line.product.id },
+          select: { procurementMode: true, localPurchasePrice: true },
+        });
+        // 成本就绪：本地采购商品必须有进货价（毛利口径），缺失则不让下单——
+        // 此前是付款后才报错，钱已扣、单卡异常
+        if (
+          product?.procurementMode === 'LOCAL' &&
+          product.localPurchasePrice == null
+        ) {
+          BusinessService.logger.warn(
+            `商品未配置进货价，已拦截下单 product=${line.product.id}`,
+          );
+          throw new BadRequestException(
+            `${line.product.name}暂时无法购买，请稍后再试`,
+          );
+        }
+        const lockedRows = await tx.$executeRaw`
+          UPDATE "Product"
+          SET stock = stock - ${line.quantity},
+              "lockedStock" = "lockedStock" + ${line.quantity}
+          WHERE id = ${line.product.id}
+            AND stock >= ${line.quantity}`;
+        if (!lockedRows)
+          throw new BadRequestException(`${line.product.name}库存不足`);
+      }
       return tx.order.create({
         data: {
           // orderNo 唯一约束：时间戳 + 随机后缀防同毫秒并发冲突
@@ -1554,6 +1612,8 @@ export class BusinessService {
           estimatedArrival: settlement.estimatedArrival,
           timeline: json(timeline),
           createdAt: now,
+          // IKY6QE：本单持有库存锁（支付兑现 / 取消·超时释放）
+          stockLocked: true,
         },
       });
     });
@@ -1566,50 +1626,240 @@ export class BusinessService {
   /** 待支付超时阈值：15 分钟。 */
   static readonly PAYMENT_TIMEOUT_MS = 15 * 60 * 1000;
   /**
+   * 支付落账钩子（IKY6QE）：setter 注入 PaymentsService（payments → business 已有
+   * 依赖，反向构造注入会成环）。单测直接 new 时不注册 → 无钩子路径。
+   */
+  private payHooks: OrderPayHooks | null = null;
+  registerPayHooks(hooks: OrderPayHooks) {
+    this.payHooks = hooks;
+  }
+
+  /**
+   * IKY6QE：释放下单时锁定的库存（取消 / 超时关单）。仅持锁单（stockLocked）
+   * 生效——功能上线前的存量待支付单未持锁，不能释放，否则会放掉别的订单的锁。
+   * 调用方必须已赢得订单状态条件更新，保证每单只释放一次。多商品按 id 排序，
+   * 与下单锁定/支付兑现同序。
+   */
+  private async releaseStockLock(
+    tx: Prisma.TransactionClient,
+    order: { items: unknown; stockLocked: boolean },
+  ) {
+    if (!order.stockLocked) return;
+    const lines = (
+      Array.isArray(order.items) ? order.items : []
+    ) as Array<{ product?: { id?: string }; quantity?: number }>;
+    for (const line of [...lines].sort((a, b) =>
+      (a.product?.id ?? '').localeCompare(b.product?.id ?? ''),
+    )) {
+      const productId = line.product?.id;
+      const quantity = line.quantity ?? 0;
+      if (!productId || quantity <= 0) continue;
+      await tx.$executeRaw`
+        UPDATE "Product"
+        SET stock = stock + ${quantity},
+            "lockedStock" = GREATEST("lockedStock" - ${quantity}, 0)
+        WHERE id = ${productId}`;
+    }
+  }
+
+  /**
    * 条件关单一批超时待支付单（与并发 pay/cancel 互斥）。
    * 用户侧懒执行（expirePendingOrders）与支付超时 Cron（IK8W5I）共用。
+   * IKY6QE：①关单前先查微信；②关单与释放库存锁同事务；③关单后通知微信关闭订单。
    */
   private async closeStalePendingOrders(
-    stale: Array<{ id: string; couponId: string | null }>,
-  ) {
-    if (!stale.length) return;
-    await this.db.$transaction(async (tx) => {
-      for (const order of stale) {
-        // 逐单条件关单：仅当仍处于待支付时生效，避免与并发 pay/cancel 双写。
-        // 待支付单未扣库存，关单只需释放券，无需回补库存。
-        const closed = await tx.order.updateMany({
+    stale: Array<{
+      id: string;
+      userId: string;
+      orderNo: string;
+      campusId: string;
+      couponId: string | null;
+      items: unknown;
+      stockLocked: boolean;
+    }>,
+  ): Promise<number> {
+    if (!stale.length) return 0;
+    // ① 关单前先查微信——回调丢失/延迟时订单可能其实已支付。查到已支付即落账
+    //    并跳过关单；查不清（微信异常/超时）本轮不关该单、下一轮重试。绝不误关已支付的单。
+    const closable: typeof stale = [];
+    for (const order of stale) {
+      if (this.payHooks) {
+        try {
+          if (await this.payHooks.settleBeforeClose(order)) continue;
+        } catch (error) {
+          BusinessService.logger.warn(
+            `关单前查单失败，本轮暂不关单 order=${order.orderNo}: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+          continue;
+        }
+      }
+      closable.push(order);
+    }
+    const closed: typeof stale = [];
+    // ② 逐单事务：条件关单成功才释放锁，保证每单只释放一次
+    for (const order of closable) {
+      const won = await this.db.$transaction(async (tx) => {
+        const changed = await tx.order.updateMany({
           where: { id: order.id, status: 'pending-payment' },
           data: { status: 'cancelled', statusText: '支付超时已关闭' },
         });
-        if (closed.count && order.couponId)
+        if (!changed.count) return false;
+        if (order.couponId)
           await tx.userCoupon.updateMany({
             where: { id: order.couponId, status: 'locked' },
             data: { status: 'released' },
           });
-      }
-    });
+        await this.releaseStockLock(tx, order);
+        return true;
+      });
+      if (won) closed.push(order);
+    }
+    // ③ 通知微信关闭对应微信订单，阻止之后的付款（尽力而为；失败由对账与
+    //    晚到支付自动退款兜底）
+    for (const order of closed)
+      void this.payHooks?.closeWechatOrder(order).catch(() => undefined);
+    // 返回实际关单数（关单前查到已支付的单已落账，不计入）
+    return closed.length;
   }
-  private async expirePendingOrders(userId: string) {
+  /** 超时待支付单查询（懒执行 / Cron 共用同一字段集） */
+  private async findStalePendingOrders(userId?: string) {
     const deadline = new Date(Date.now() - BusinessService.PAYMENT_TIMEOUT_MS);
-    const stale = await this.db.order.findMany({
+    return this.db.order.findMany({
       where: {
-        userId,
+        ...(userId ? { userId } : {}),
         status: 'pending-payment',
         createdAt: { lt: deadline },
       },
-      select: { id: true, couponId: true },
+      select: {
+        id: true,
+        userId: true,
+        orderNo: true,
+        campusId: true,
+        couponId: true,
+        items: true,
+        stockLocked: true,
+      },
     });
-    await this.closeStalePendingOrders(stale);
   }
-  /** 全量超时待支付关单（支付超时 Cron 调用，见 IK8W5I）。 */
+  private async expirePendingOrders(userId: string) {
+    await this.closeStalePendingOrders(
+      await this.findStalePendingOrders(userId),
+    );
+  }
+  /** 全量超时待支付关单（支付超时 Cron 调用，见 IK8W5I）。返回实际关单数。 */
   async expireAllPendingOrders() {
-    const deadline = new Date(Date.now() - BusinessService.PAYMENT_TIMEOUT_MS);
-    const stale = await this.db.order.findMany({
-      where: { status: 'pending-payment', createdAt: { lt: deadline } },
-      select: { id: true, couponId: true },
+    const stale = await this.findStalePendingOrders();
+    return this.closeStalePendingOrders(stale);
+  }
+
+  /**
+   * IKY6QE：库存锁定巡检（定时任务调用）。
+   * 不变量：商品 lockedStock == 所有「持锁且待支付」订单该商品数量之和。
+   * - 多锁（释放路径漏写会把库存永久锁死）→ 自动把多出部分退回可售；
+   * - 少锁 → 只告警（多为人工改库，不自动加锁以免误伤）。
+   * 回收前先锁商品行、再重算持锁总量：与下单/支付/取消对同一商品行的写入
+   * 串行，不会覆盖并发事务刚提交的值。
+   */
+  async auditStockLocks(): Promise<{
+    checked: number;
+    repaired: number;
+    underLocked: number;
+  }> {
+    const holdersWhere = {
+      status: 'pending-payment',
+      stockLocked: true,
+    } as const;
+    const sumOf = (
+      orders: Array<{ items: unknown }>,
+      productId: string,
+    ): number =>
+      orders.reduce(
+        (sum, order) =>
+          sum +
+          (
+            (Array.isArray(order.items) ? order.items : []) as Array<{
+              product?: { id?: string };
+              quantity?: number;
+            }>
+          ).reduce(
+            (s, line) =>
+              s + (line.product?.id === productId ? (line.quantity ?? 0) : 0),
+            0,
+          ),
+        0,
+      );
+    /** 持锁待支付单逐商品汇总 */
+    const holderSumsOf = (
+      orders: Array<{ items: unknown }>,
+    ): Map<string, number> => {
+      const sums = new Map<string, number>();
+      const productIds = new Set<string>();
+      for (const order of orders)
+        for (const line of (
+          Array.isArray(order.items) ? order.items : []
+        ) as Array<{ product?: { id?: string } }>)
+          if (line.product?.id) productIds.add(line.product.id);
+      for (const productId of productIds)
+        sums.set(productId, sumOf(orders, productId));
+      return sums;
+    };
+    const holders = await this.db.order.findMany({
+      where: holdersWhere,
+      select: { items: true },
     });
-    await this.closeStalePendingOrders(stale);
-    return stale.length;
+    const holderSums = holderSumsOf(holders);
+    // 候选 = 账面有锁定的商品 ∪ 有持锁单的商品
+    const lockedProducts = await this.db.product.findMany({
+      where: {
+        OR: [
+          { lockedStock: { gt: 0 } },
+          { id: { in: [...holderSums.keys()] } },
+        ],
+      },
+      select: { id: true, name: true, lockedStock: true },
+    });
+    let repaired = 0;
+    let underLocked = 0;
+    for (const product of lockedProducts) {
+      const want = holderSums.get(product.id) ?? 0;
+      if (product.lockedStock === want) continue;
+      if (product.lockedStock < want) {
+        underLocked++;
+        BusinessService.logger.error(
+          `库存锁定巡检：少锁 product=${product.id}（${product.name}）持锁待支付 ${want} 件，账面锁定 ${product.lockedStock}`,
+        );
+        continue;
+      }
+      const fixedTo = await this.db.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT id FROM "Product" WHERE id = ${product.id} FOR UPDATE`;
+        // 锁内重算：以拿到行锁之后已提交的订单状态为准
+        const holdersNow = await tx.order.findMany({
+          where: holdersWhere,
+          select: { items: true },
+        });
+        const sum = holderSumsOf(holdersNow).get(product.id) ?? 0;
+        const changed = await tx.$executeRaw`
+          UPDATE "Product"
+          SET stock = stock + ("lockedStock" - ${sum}),
+              "lockedStock" = ${sum}
+          WHERE id = ${product.id}
+            AND "lockedStock" > ${sum}`;
+        return changed ? sum : null;
+      });
+      if (fixedTo !== null) {
+        repaired++;
+        BusinessService.logger.error(
+          `库存锁定巡检：回收多锁 product=${product.id}（${product.name}）锁定 ${product.lockedStock} → ${fixedTo}，差额已退回可售`,
+        );
+      }
+    }
+    return {
+      checked: lockedProducts.length,
+      repaired,
+      underLocked,
+    };
   }
   async orders(userId: string, status?: string) {
     await this.expirePendingOrders(userId);
@@ -1641,38 +1891,35 @@ export class BusinessService {
     if (!byNo) throw new NotFoundException('订单不存在');
     return this.orderDetail(byNo);
   }
-  async pay(userId: string, id: string) {
+  /**
+   * 支付落账（IKY6QE 重构，道哥 2026-11-26）：**落账不可失败**。
+   * - 钱到账是既成事实，本事务只做「记录事实 + 兑现下单时已锁定的资源」，
+   *   不再含任何可失败的规则：库存/限购/成本均在下单时判定（见 createOrder）；
+   * - 超时关单不在此处理（微信侧 time_expire 把关；关单统一走超时任务，且关单前
+   *   先查微信）——微信确认收款就必须落账；
+   * - 唯一会抛的业务错误是状态拒绝（非待支付），由调用方区分「晚到支付」与异常。
+   */
+  async pay(
+    userId: string,
+    id: string,
+    meta: { transactionId?: string } = {},
+  ) {
     return this.db.$transaction(async (tx) => {
       await this.lockCart(tx, userId);
       const raw = await tx.order.findFirst({ where: { id, userId } });
       if (!raw) throw new NotFoundException('订单不存在');
       // 顺序重复点击：已支付直接幂等返回。
       if (raw.status === 'paid') return this.orderView(raw);
-      if (
-        Date.now() - raw.createdAt.getTime() >=
-        BusinessService.PAYMENT_TIMEOUT_MS
-      ) {
-        // 条件关单：仅当仍待支付才关闭并释放券（与并发 pay/cancel 互斥）。
-        await tx.order.updateMany({
-          where: { id, status: 'pending-payment' },
-          data: { status: 'cancelled', statusText: '支付超时已关闭' },
-        });
-        if (raw.couponId)
-          await tx.userCoupon.updateMany({
-            where: { id: raw.couponId, status: 'locked' },
-            data: { status: 'released' },
-          });
-        throw new BadRequestException('订单支付已超时');
-      }
       if (raw.status !== 'pending-payment')
         throw new BadRequestException('当前状态不可支付');
       const items = raw.items as unknown as OrderLine[];
+      // IKY6QE：成本快照只写不拦——解析不出成本（本地采购未填进货价）时保留
+      // 下单时的快照、不阻断落账（就绪校验已前移到下单）。
       for (const line of items) {
         const p = await tx.product.findUnique({
           where: { id: line.product.id },
         });
-        if (!p || p.stock - p.lockedStock < line.quantity)
-          throw new BadRequestException(`${line.product.name}库存不足`);
+        if (!p) continue;
         // 双成本快照（IKFOPQ）：支付时把每零售单位成本写进行快照——
         // 商品批发价此后再改不影响历史订单毛利；除不尽 floor（毛利
         // 一律整单「金额−金额」计算，快照仅作行级展示基数，不累乘）
@@ -1684,8 +1931,7 @@ export class BusinessService {
             : p.procurementMode === 'HQ'
               ? p.wholesalePrice
               : perRetailUnitCostFen(p.wholesalePrice, p.unitsPerCase);
-        if (line.product.unitGrossCost == null)
-          throw new BadRequestException(`${line.product.name}未填写本地进货价`);
+        if (line.product.unitGrossCost == null) continue;
         line.product.costSource =
           p.procurementMode === 'HQ' || p.procurementMode === 'LOCAL'
             ? p.procurementMode
@@ -1701,35 +1947,21 @@ export class BusinessService {
       const timeline = raw.timeline as unknown as TimelineStep[],
         paidAt = new Date();
       timeline[0] = { ...timeline[0], done: true, time: paidAt.toISOString() };
-      // IKLDHI（审查报告 P0）：秒杀限购支付复核——下单时刻的校验会被
-      // "双设备先下单后支付"绕过，支付是资源落定的最后关口。复核放在
-      // 抢占之前：本单仍为 pending-payment，判定查询天然不把自己算进去。
-      // 行锁串行化同用户并发支付（防复核自身 TOCTOU：后到者必见先到者
-      // 已付单）；不同用户互不阻塞——限购本来就按人。
-      // IKQZOB：秒杀人均限购支付复核已拆（跨订单可重复购买）——库存
-      // 原子抢占在下方条件更新独立保留，超卖防护不受影响。
-      // IKQZY7 周期限购支付复核（防双设备先下单后支付）：行锁串行化
-      // 同用户并发支付，复核后到者必见先到者已付单。
-      const limitProducts = [
-        ...new Set(
-          items.map((l) => (l.product as { id?: string }).id).filter(Boolean),
-        ),
-      ] as string[];
-      const hasLimited = await this.db.product.count({
-        where: { id: { in: limitProducts }, purchaseLimit: { not: 'none' } },
-      });
-      if (hasLimited) {
-        await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${userId} FOR UPDATE`;
-        await this.assertPurchaseLimit(userId, limitProducts, new Map(items.map(line => [line.product.id, line.quantity])));
-      }
+      // IKY6QE：秒杀/周期限购的支付时复核（IKLDHI/IKQZY7）已前移到下单——
+      // 在途待支付单即占限购名额，双设备并发下单在下单事务内按用户行串行化，
+      // 待支付单在名额上恒不超限，落账阶段无需也不再复核。
       // 条件更新抢占支付权：并发的第二笔支付 count=0 直接失败，
-      // 库存扣减与后续副作用都移到抢占成功之后，防止双扣。
+      // 库存兑现与后续副作用都移到抢占成功之后，防止双扣。
       const won = await tx.order.updateMany({
         where: { id, status: 'pending-payment' },
         data: {
           status: 'paid',
           statusText: '仓库正在接单',
           paidAt,
+          // IKY6QE：微信支付交易单号随落账记录（追溯/对账）
+          ...(meta.transactionId
+            ? { wxTransactionId: meta.transactionId }
+            : {}),
           // IKFOPQ：items 连同成本快照一并写回
           items: json(items),
           timeline: json(timeline),
@@ -1741,19 +1973,27 @@ export class BusinessService {
         },
       });
       if (!won.count) throw new BadRequestException('订单状态已变化');
-      // IKLCXM（审查报告 P0）：查扣合一原子抢占——条件更新在加行锁的瞬间
-      // 完成可用库存判定，跨订单并发支付不再读到同一快照双双扣减（超卖）。
-      // 影响行数=0 → 抛库存不足 → 整个事务回滚（订单转 paid 一并回滚，
-      // 状态零污染）。销量累计（IKH0EK）合并同条 UPDATE：扣成功才计数。
-      for (const line of items) {
-        const decremented = await tx.$executeRaw`
-          UPDATE "Product"
-          SET stock = stock - ${line.quantity},
-              sales = sales + ${line.quantity}
-          WHERE id = ${line.product.id}
-            AND stock - "lockedStock" >= ${line.quantity}`;
-        if (!decremented)
-          throw new BadRequestException(`${line.product.name}库存不足`);
+      // IKY6QE：库存兑现——**无条件**，不带任何库存判断（落账不可失败）。
+      // - 持锁单（下单时已把数量从可售挪入锁定）：释放锁定 + 累计销量，可售不动；
+      // - 存量单（功能上线前创建，未持锁）：直接扣可售 + 累计销量。
+      // 盘点校准等后台操作把库存改低也不会让落账失败。多商品按 id 排序更新，
+      // 与下单锁定/取消释放同序，避免并发事务互相等待。
+      for (const line of [...items].sort((a, b) =>
+        a.product.id.localeCompare(b.product.id),
+      )) {
+        await tx.$executeRaw(
+          raw.stockLocked
+            ? Prisma.sql`
+                UPDATE "Product"
+                SET "lockedStock" = GREATEST("lockedStock" - ${line.quantity}, 0),
+                    sales = sales + ${line.quantity}
+                WHERE id = ${line.product.id}`
+            : Prisma.sql`
+                UPDATE "Product"
+                SET stock = stock - ${line.quantity},
+                    sales = sales + ${line.quantity}
+                WHERE id = ${line.product.id}`,
+        );
       }
       const updated = await tx.order.findUniqueOrThrow({ where: { id } });
       if (raw.couponId) {
@@ -2123,7 +2363,7 @@ export class BusinessService {
     );
   }
   async cancel(userId: string, id: string) {
-    return this.db.$transaction(async (tx) => {
+    const result = await this.db.$transaction(async (tx) => {
       const raw = await tx.order.findFirst({ where: { id, userId } });
       if (!raw) throw new NotFoundException('订单不存在');
       // ADR-0004：试点期不退款，已支付订单不可自助取消（客服人工处理），
@@ -2145,9 +2385,23 @@ export class BusinessService {
           where: { id: raw.couponId, status: { in: ['locked', 'used'] } },
           data: { status: 'released' },
         });
+      // IKY6QE：释放下单时锁定的库存（与取消同事务，只释放一次）
+      await this.releaseStockLock(tx, raw);
       const updated = await tx.order.findUniqueOrThrow({ where: { id } });
-      return this.orderView(updated);
+      return {
+        view: this.orderView(updated),
+        orderNo: raw.orderNo,
+        campusId: raw.campusId,
+      };
     });
+    // IKY6QE：取消后通知微信关闭对应微信订单，阻止之后的付款（尽力而为）
+    void this.payHooks
+      ?.closeWechatOrder({
+        orderNo: result.orderNo,
+        campusId: result.campusId,
+      })
+      .catch(() => undefined);
+    return result.view;
   }
   async addresses(userId: string, campusId: string) {
     return this.db.address.findMany({

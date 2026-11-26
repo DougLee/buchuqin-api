@@ -632,10 +632,11 @@ export class NightAdminService {
           );
         const warehouseDelta = -body.delta;
         if (warehouseDelta < 0) {
+          // IKY6QE：可售=stock（下单锁定已从 stock 挪入 lockedStock）
           const moved = await tx.$executeRaw`UPDATE "Product"
             SET stock = stock - ${body.delta}
             WHERE id = ${dayRow.id}
-              AND stock - "lockedStock" >= ${body.delta}`;
+              AND stock >= ${body.delta}`;
           if (!moved)
             throw new BadRequestException(
               '共享仓可用库存不足，无法调拨进店（整笔拒绝）',

@@ -27,6 +27,8 @@ import { PaymentsController } from './payments/payments.controller';
 import { PaymentsService } from './payments/payments.service';
 import { OrderTimeoutService } from './payments/order-timeout.service';
 import { RefundSyncService } from './payments/refund-sync.service';
+// IKY6QE 支付对账：回调丢失/延迟时查单补落账；已关单晚到支付自动退款
+import { PaymentReconcileService } from './payments/payment-reconcile.service';
 // IKM55A 订单自动出库：校区开启后 paid 单 N 秒 Cron 自动出库
 import { AutoOutboundService } from './business/auto-outbound.service';
 import { AutoCompleteService } from './business/auto-complete.service';
@@ -113,6 +115,8 @@ const adminDistDir = process.env.ADMIN_DIST_DIR ?? '';
     PaymentsService,
     OrderTimeoutService,
     RefundSyncService,
+    // IKY6QE 支付对账（待支付单每 2 分钟查单补落账；已关单每 10 分钟查晚到支付）
+    PaymentReconcileService,
     // IKM55A 订单自动出库（30s 精度扫描，校区开关默认关）
     AutoOutboundService,
     AutoCompleteService,

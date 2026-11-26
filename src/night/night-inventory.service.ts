@@ -155,8 +155,9 @@ export class NightInventoryService {
         status: p.status,
         sourceProductId: p.sourceProductId,
         warehouseProductId: p.warehouseProductId,
+        // IKY6QE：可售=stock（下单锁定已从 stock 挪入 lockedStock）
         warehouseAvailable: p.warehouseProduct
-          ? p.warehouseProduct.stock - p.warehouseProduct.lockedStock
+          ? p.warehouseProduct.stock
           : 0,
         warehouseReserved: p.warehouseProduct?.nightReservedStock ?? 0,
         retailUnit: p.retailUnit,
@@ -654,12 +655,8 @@ export class NightInventoryService {
         stockValue: row?.inventoryValue ?? 0,
         onShelf: row?.onShelf ?? false,
         saleAllowed: row?.saleAllowed ?? true,
-        warehouseAvailable: validWarehouse
-          ? Math.max(
-              0,
-              p.warehouseProduct!.stock - p.warehouseProduct!.lockedStock,
-            )
-          : 0,
+        // IKY6QE：可售=stock（下单锁定已从 stock 挪入 lockedStock）
+        warehouseAvailable: validWarehouse ? p.warehouseProduct!.stock : 0,
         canStock: Boolean(validWarehouse && (row?.saleAllowed ?? true)),
         unavailableReason: !validWarehouse
           ? '待校区关联仓库商品'
@@ -1064,7 +1061,7 @@ export class NightInventoryService {
             const updated =
               await tx.$executeRaw`UPDATE "Product" SET stock = stock - ${qty}, "nightReservedStock" = "nightReservedStock" + ${qty}
           WHERE id = ${productId} AND "campusId" = (SELECT "campusId" FROM "NightStore" WHERE id = ${order.storeId})
-          AND "nightCatalog" = false AND stock - "lockedStock" >= ${qty}`;
+          AND "nightCatalog" = false AND stock >= ${qty}`;
             if (!updated)
               throw new BadRequestException(
                 '仓库可用库存不足，整单不能通过审核',

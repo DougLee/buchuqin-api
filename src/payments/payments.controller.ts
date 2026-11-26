@@ -4,6 +4,8 @@ import {
   Get,
   Headers,
   HttpCode,
+  HttpException,
+  HttpStatus,
   Param,
   Post,
   Req,
@@ -48,6 +50,9 @@ export class PaymentsController {
 
   // 微信服务器回调：公网公开不走 JWT；响应体按微信规范裸返回 { code, message }。
   // 验签必须拿原始请求体（main.ts rawBody:true），JSON 再序列化字节序会变。
+  // IKY6QE：微信**只按 HTTP 状态码**判断是否重试（200/204=成功；5xx/4xx=失败并重试）。
+  // 此前夜宵通道落账失败虽返回 { code: 'FAIL' } 报文，状态码仍是 200，微信视为
+  // 成功、从不重试。这里统一：非 SUCCESS 一律回 5xx 让微信重试（处理方保证幂等）。
   @Post('wechat/notify')
   @HttpCode(200)
   @ApiOperation({ summary: '微信支付回调（平台证书验签 + 幂等处理）' })
@@ -56,11 +61,14 @@ export class PaymentsController {
     @Headers() headers: Record<string, string | string[] | undefined>,
     @Body() body: Record<string, unknown>,
   ) {
-    return this.service.notify(
+    const result = await this.service.notify(
       headers,
       req.rawBody?.toString('utf8') ?? '',
       body,
     );
+    if (result.code !== 'SUCCESS')
+      throw new HttpException(result, HttpStatus.INTERNAL_SERVER_ERROR);
+    return result;
   }
 
   @Post('wechat/refund-notify')

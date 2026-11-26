@@ -1054,6 +1054,13 @@ model Order {
   timeline          Json
   package           Json?
   stockRestored     Boolean       @default(false)
+  /// 微信支付交易单号（transaction_id）：支付落账（回调/查单/对账）时写入；
+  /// 晚到支付（订单已关闭后收到钱）同样记录，供对账与退款追溯。
+  wxTransactionId   String?
+  /// 下单时已锁定库存（IKY6QE）：true=本单持有 Product.lockedStock，支付时
+  /// 兑现、取消/超时释放；false=功能上线前创建的存量单（未持锁，不释放，
+  /// 支付时直接扣 stock）
+  stockLocked       Boolean       @default(false)
   afterSales        AfterSale[]
   refunds           Refund[]
   commissions       Commission[]

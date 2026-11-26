@@ -175,6 +175,14 @@ describe('payments wechat (IK8W5I)', () => {
   });
 
   it('timeout cron logic closes stale pending-payment orders conditionally', async () => {
+    // IKY6QE：关单前查微信/关单后通知微信——单测覆写为「未支付/空操作」，
+    // 不打真实网络（真实交互由 order-pay-safety.spec 覆盖）
+    const hooks = service as unknown as {
+      settleBeforeClose: () => Promise<boolean>;
+      closeWechatOrder: () => Promise<void>;
+    };
+    hooks.settleBeforeClose = async () => false;
+    hooks.closeWechatOrder = async () => {};
     const stale = await db.order.create({
       data: {
         orderNo: `BCQSTALE${Date.now()}`,
@@ -242,7 +250,7 @@ describe('payments wechat (IK8W5I)', () => {
     }
   });
 
-  it('notify freezes order to exception when pay() fails (G1 资损兜底)', async () => {
+  it('IKY6QE：幽灵商品（快照缺失）不再阻塞落账——钱到账必然落账，重复回调幂等', async () => {
     process.env.WX_APPID_USER = 'wx-spec';
     process.env.WX_MCH_ID = 'mch-spec';
     process.env.WX_APIV3_KEY = 'a'.repeat(32);
@@ -289,24 +297,30 @@ describe('payments wechat (IK8W5I)', () => {
       });
     try {
       const cbBody = { resource: { ciphertext: 'x', nonce: 'y' } };
-      // 第一次回调：pay 抛错 → 转 exception + 站内通知
+      // 第一次回调：落账成功（幽灵商品只跳过成本快照与库存兑现，不再冻结异常单）
       const res = await service.notify({}, '{}', cbBody);
       expect(res.code).toBe('SUCCESS');
       const after = await db.order.findUniqueOrThrow({
         where: { id: order.id },
       });
-      expect(after.status).toBe('exception');
-      expect(after.statusText).toContain('联系客服');
+      expect(after.status).toBe('paid');
+      expect(after.paidAt).not.toBeNull();
+      // IKY6QE：微信交易单号随落账记录
+      expect(after.wxTransactionId).toBe('wx-tid-g1');
       expect(
         await db.notification.count({
           where: { userId, title: '订单异常提醒' },
         }),
-      ).toBe(1);
-      // 微信重复回调：pay 仍抛错，但已是 exception → 幂等，不重复通知
+      ).toBe(0);
+      // 微信重复回调：已支付 → pay 幂等直接返回，仍是 paid、不重复副作用
       await service.notify({}, '{}', cbBody);
+      const again = await db.order.findUniqueOrThrow({
+        where: { id: order.id },
+      });
+      expect(again.status).toBe('paid');
       expect(
         await db.notification.count({
-          where: { userId, title: '订单异常提醒' },
+          where: { userId, title: '支付成功' },
         }),
       ).toBe(1);
     } finally {
