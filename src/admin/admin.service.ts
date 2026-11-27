@@ -1043,8 +1043,9 @@ export class AdminService {
           : {}),
       },
       // IKRSJ1 #93：价格列排序（售价/批发价/建议零售价），缺省维持销量序
+      // IKY6QE 追加：已售列（sales）可排序——升序排查滞销、降序看畅销
       orderBy:
-        sortBy && ['price', 'wholesalePrice', 'originalPrice'].includes(sortBy)
+        sortBy && ['price', 'wholesalePrice', 'originalPrice', 'sales'].includes(sortBy)
           ? ({ [sortBy]: sortDir === 'asc' ? 'asc' : 'desc' } as Prisma.ProductOrderByWithRelationInput)
           : { sales: 'desc' },
     });
