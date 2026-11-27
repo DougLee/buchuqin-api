@@ -26,6 +26,7 @@ import {
   NightCatalogCreateDto,
   NightCatalogUpdateDto,
   NightConfigDto,
+  NightDepositAddDto,
   NightDepositDeductDto,
   NightDepositRefundDto,
   NightProductUpdateDto,
@@ -600,6 +601,20 @@ export class NightAdminController {
     return ok(
       await this.service.deductDeposit(req.user.id, storeId, body),
       '押金已扣除',
+    );
+  }
+
+  @Post('stores/:id/deposit/add')
+  @ApiOperation({ summary: '押金补录（线下收款补录/运营赠送，写 deposit 流水）' })
+  async addDeposit(
+    @Req() req: AuthRequest,
+    @Param('id') storeId: string,
+    @Body() body: NightDepositAddDto,
+  ) {
+    await this.guardStoreCampus(req, storeId);
+    return ok(
+      await this.service.addDeposit(req.user.id, storeId, body),
+      '押金已补录',
     );
   }
 

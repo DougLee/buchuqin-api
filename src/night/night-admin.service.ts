@@ -21,6 +21,7 @@ import {
   NightCatalogCreateDto,
   NightCatalogUpdateDto,
   NightConfigDto,
+  NightDepositAddDto,
   NightDepositDeductDto,
   NightDepositRefundDto,
   NightRefundDto,
@@ -132,19 +133,19 @@ export class NightAdminService {
     return store;
   }
 
-  /** 楼长必须是本校区在职楼长角色（building-manager/实习）。 */
+  /** 楼长必须是本校区在职正式楼长角色（building-manager；实习楼长不可经营夜宵店）。 */
   private async assertManager(campusId: string, staffId: string) {
     const staff = await this.db.staff.findFirst({
       where: {
         id: staffId,
         campusId,
-        role: { in: ['building-manager', 'intern-building-manager'] },
+        role: 'building-manager',
         status: { not: 'deleted' },
       },
     });
     if (!staff)
       throw new BadRequestException(
-        '楼长不存在或不属于该校区（须为在职楼长角色）',
+        '楼长不存在或不属于该校区（须为在职正式楼长）',
       );
     return staff;
   }
@@ -828,6 +829,49 @@ export class NightAdminService {
       'nightStore',
       storeId,
       { deposit: result.balance + body.amount },
+      { deposit: result.balance, reason: body.reason },
+      (await this.db.nightStore.findUniqueOrThrow({ where: { id: storeId } }))
+        .campusId,
+    );
+    return { txnId: result.txn.id, deposit: result.balance };
+  }
+
+  /**
+   * 押金补录（IKY6QE 追加，道哥 2026-11-26）：线下收款后补录 / 运营赠送额度。
+   * 与 deductDeposit 对称——写 deposit 流水 + 余额增加 + 审计留痕；无支付单号
+   * （线下收款场景），operator 记后台操作人。余额恒等式保持：
+   * deposit ≡ Σdeposit − Σdeduct − Σrefund。
+   */
+  async addDeposit(
+    operator: string,
+    storeId: string,
+    body: NightDepositAddDto,
+  ) {
+    const result = await this.db.$transaction(async (tx) => {
+      const store = await this.inventory.lockStore(tx, storeId);
+      const won = await tx.nightStore.updateMany({
+        where: { id: storeId },
+        data: { deposit: { increment: body.amount } },
+      });
+      if (!won.count)
+        throw new BadRequestException('夜宵店已变化，请刷新重试');
+      const txn = await tx.nightDepositTxn.create({
+        data: {
+          storeId,
+          type: 'deposit',
+          amount: body.amount,
+          operatorId: operator,
+          remark: body.reason,
+        },
+      });
+      return { txn, balance: store.deposit + body.amount };
+    });
+    await this.audit(
+      operator,
+      'night.deposit.add',
+      'nightStore',
+      storeId,
+      { deposit: result.balance - body.amount },
       { deposit: result.balance, reason: body.reason },
       (await this.db.nightStore.findUniqueOrThrow({ where: { id: storeId } }))
         .campusId,

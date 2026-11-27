@@ -863,6 +863,9 @@ export class AdminService {
     'dispatch-invitation.create': '创建调配邀请',
     'dispatch-invitation.cancel': '取消调配邀请',
     'inventory.adjust': '调整库存',
+    // IKY6QE 追加：夜宵押金账务审计文案
+    'night.deposit.deduct': '押金判责扣除',
+    'night.deposit.add': '押金补录',
     'inventory.stock-in': '采购入库',
     'inventory.stocktake': '盘点校准',
     'inventory.purchase-apply': '提交采购申请',

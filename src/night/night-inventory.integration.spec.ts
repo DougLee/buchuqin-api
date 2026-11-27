@@ -280,6 +280,10 @@ integration('已确认的夜宵备货库存流程（独立 PostgreSQL schema）'
 
   it('137押金被既有扣款降至占用以下，纯盘亏仍可审核释放额度', async () => {
     const f = await fixture(5000); await f.receive(10);
+    // IKY6QE 追加：押金补录对称用例（先补 500 再扣 1000，验证流水与余额）
+    await new NightAdminService(db, {} as PaymentsService, {} as NightOrderService).addDeposit('test-admin', f.store.id, { amount: 500, reason: '线下收款补录' });
+    expect((await db.nightStore.findUniqueOrThrow({ where: { id: f.store.id } })).deposit).toBe(5500);
+    expect(await db.nightDepositTxn.count({ where: { storeId: f.store.id, type: 'deposit', remark: '线下收款补录' } })).toBe(1);
     await new NightAdminService(db, {} as PaymentsService, {} as NightOrderService).deductDeposit('test-admin', f.store.id, { amount: 1000, reason: '既有责任扣款' });
     const row = await db.nightProduct.findFirstOrThrow({ where: { storeId: f.store.id } });
     const report = await service.createReport(f.staff.id, { requestId: randomUUID(), kind: 'loss', reason: '平台承担损耗', items: [{ nightProductId: row.id, quantity: 1, inventoryVersion: row.inventoryVersion }] });

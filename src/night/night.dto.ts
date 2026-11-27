@@ -137,6 +137,12 @@ export class NightDepositDeductDto {
   @IsString() @MinLength(1) @MaxLength(200) reason!: string;
 }
 
+/** IKY6QE 追加：押金补录（线下收款补录/运营赠送额度），与 deduct 对称 */
+export class NightDepositAddDto {
+  @IsInt() @Min(1) amount!: number;
+  @IsString() @MinLength(1) @MaxLength(200) reason!: string;
+}
+
 export class NightDepositRefundDto {
   @IsString() @MinLength(8) @MaxLength(80) requestId!: string;
   /** 缺省=全额退当前押金余额 */
