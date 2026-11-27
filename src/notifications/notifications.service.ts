@@ -138,11 +138,11 @@ export class NotificationsService {
         this.logger.warn(`发货信息上报跳过（用户无 openid）→ ${order.orderNo}`);
         return;
       }
-      // 出库事务已固化 package.lastMileMode：customer-pickup=用户到楼下自取
-      // → 4 用户自提；building-manager（骑手/员工送寝室）→ 2 同城配送。
-      // 1 实体物流（需快递单号+物流公司编码）与 3 虚拟商品不适用本系统。
-      const pkg = (row?.package ?? {}) as Record<string, unknown>;
-      const logisticsType = pkg.lastMileMode === 'customer-pickup' ? 4 : 2;
+      // IKV42M 道哥 2026-11-13 拍板：统一上报 2 同城配送。无楼长
+      // （customer-pickup）单骑手仍从仓库同城配送到宿舍楼下（末端 50 米
+      // 用户自取）——报 4「用户自提」文案误导且与履约事实不符。1 实体物流
+      // （需快递单号）与 3 虚拟商品不适用本系统。
+      const logisticsType = 2;
       const items = Array.isArray(row?.items)
         ? (row.items as Array<{
             product?: { name?: string };
@@ -734,6 +734,13 @@ export class NotificationsService {
    * 与白天楼长到楼通知同模板同额度记账）。fire-and-forget 由业务触发点
    * void 调用；任何失败静默不阻断支付主流程。
    */
+  /**
+   * 夜宵新单通知楼长（IKY6QE 追加，道哥 2026-11-27 拍板）：**双渠道并行**——
+   * 服务号模板消息（免额度、跟随状态）与小程序订阅消息（消耗授权存量）**都发**，
+   * 两条触达互不依赖、互不吞并；任一失败只告警不影响另一条。
+   * - 服务号：按（楼长, 组织服务号）查绑定表 + 旧列垫片；未绑定/发送失败仅告警
+   * - 订阅消息：楼长无 openid 时跳过（43101 额度耗尽由 sendStaffSubscribe 内处理）
+   */
   async notifyNightManagerNewOrder(payload: {
     orderId: string;
     staffId: string;
@@ -747,23 +754,52 @@ export class NotificationsService {
       if (!deliveryConfig) return;
       const staff = await this.db.staff.findUnique({
         where: { id: payload.staffId },
-        select: { id: true, openid: true, status: true },
+        select: { id: true, openid: true, status: true, gzhOpenid: true },
       });
-      if (!staff?.openid || staff.status === 'deleted') return;
+      if (!staff || staff.status === 'deleted') return;
       const yuan = (payload.amountFen / 100).toFixed(2);
-      await this.sendStaffSubscribe(
-        staff.id,
-        staff.openid,
-        {
-          thing6: { value: `${payload.buildingName}夜宵新单 ¥${yuan}`.slice(0, 20) },
-          thing5: { value: '夜宵订单待接单' },
-          thing9: { value: payload.buildingName.slice(0, 20) },
-          name7: { value: deliveryConfig.brandName.slice(0, 20) },
-          time8: { value: NotificationsService.fmtCn(new Date()) },
-        },
-        deliveryConfig,
-        `pages/night/order-detail?id=${encodeURIComponent(payload.orderId)}`,
-      );
+      const gzhCfg = await this.gzhConfig(payload.campusId);
+      if (gzhCfg) {
+        const bound = await this.resolveStaffGzhOpenid(
+          staff.id,
+          gzhCfg.appId,
+          staff.gzhOpenid,
+        );
+        if (bound) {
+          try {
+            await this.sendGzhTemplate(
+              bound,
+              {
+                character_string2: { value: payload.orderNo },
+                amount3: { value: `¥${yuan}` },
+                thing4: { value: payload.buildingName.slice(0, 20) },
+                time5: { value: NotificationsService.fmtCn(new Date(), true) },
+              },
+              gzhCfg,
+              deliveryConfig.appId,
+            );
+          } catch (error) {
+            this.logger.warn(
+              `夜宵新单服务号通知失败（订阅消息照发）staff=${staff.id}: ${(error as Error).message}`,
+            );
+          }
+        }
+      }
+      if (staff.openid) {
+        await this.sendStaffSubscribe(
+          staff.id,
+          staff.openid,
+          {
+            thing6: { value: `${payload.buildingName}夜宵新单 ¥${yuan}`.slice(0, 20) },
+            thing5: { value: '夜宵订单待接单' },
+            thing9: { value: payload.buildingName.slice(0, 20) },
+            name7: { value: deliveryConfig.brandName.slice(0, 20) },
+            time8: { value: NotificationsService.fmtCn(new Date()) },
+          },
+          deliveryConfig,
+          `pages/night/order-detail?id=${encodeURIComponent(payload.orderId)}`,
+        );
+      }
     } catch (error) {
       this.logger.warn(
         `夜宵新单楼长通知失败（已忽略）: ${(error as Error).message}`,

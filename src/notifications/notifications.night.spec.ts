@@ -36,4 +36,66 @@ describe('140夜宵微信通知（离线网关，不发送真实消息）', () =
     expect(sent).toHaveLength(1);
     expect(sent[0]).toMatchObject({ touser: 'test-manager-openid', template_id: 'manager-template', page: 'pages/night/order-detail?id=night-order' });
   });
+
+  it('IKY6QE：双渠道并行——服务号与订阅消息都发，互不吞并', async () => {
+    const gzhDb = {
+      ...db,
+      organization: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'org-night', name: '夜宵测试', shortName: '夜宵',
+          wxAppId: 'user-app', wxSecret: 'user-secret',
+          deliveryWxAppId: 'delivery-app', deliveryWxSecret: 'delivery-secret',
+          deliveryNotifyTemplateId: 'manager-template',
+          gzhAppId: 'gzh-app', gzhSecret: 'gzh-secret', gzhToken: 'tok', gzhTemplateId: 'gzh-template',
+        }),
+      },
+      staff: {
+        findUnique: jest.fn().mockResolvedValue({ id: 'manager', openid: 'test-manager-openid', status: 'online', gzhOpenid: 'gzh-manager-openid' }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
+      staffGzhBinding: { findUnique: jest.fn().mockResolvedValue(null) },
+    };
+    const service = new NotificationsService(gzhDb as unknown as PrismaService);
+    await service.notifyNightManagerNewOrder({ orderId: 'night-order', staffId: 'manager', campusId: 'campus', orderNo: 'YX-test', amountFen: 600, buildingName: '9栋' });
+    // 服务号模板消息（垫片 openid）与小程序订阅消息各发一条
+    const gzhSend = sent.find(s => s.touser === 'gzh-manager-openid');
+    const subSend = sent.find(s => s.touser === 'test-manager-openid');
+    expect(gzhSend).toMatchObject({ template_id: 'gzh-template' });
+    expect(JSON.stringify(gzhSend)).toContain('YX-test');
+    expect(subSend).toMatchObject({ template_id: 'manager-template', page: 'pages/night/order-detail?id=night-order' });
+  });
+
+  it('IKY6QE：服务号发送失败不影响订阅消息（独立告警）', async () => {
+    const gzhDb = {
+      ...db,
+      organization: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'org-night', name: '夜宵测试', shortName: '夜宵',
+          wxAppId: 'user-app', wxSecret: 'user-secret',
+          deliveryWxAppId: 'delivery-app', deliveryWxSecret: 'delivery-secret',
+          deliveryNotifyTemplateId: 'manager-template',
+          gzhAppId: 'gzh-app', gzhSecret: 'gzh-secret', gzhToken: 'tok', gzhTemplateId: 'gzh-template',
+        }),
+      },
+      staff: {
+        findUnique: jest.fn().mockResolvedValue({ id: 'manager', openid: 'test-manager-openid', status: 'online', gzhOpenid: 'gzh-manager-openid' }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
+      staffGzhBinding: { findUnique: jest.fn().mockResolvedValue({ gzhOpenid: 'gzh-manager-openid' }) },
+    };
+    const service = new NotificationsService(gzhDb as unknown as PrismaService);
+    let call = 0;
+    global.fetch = jest.fn(async (url, options) => {
+      if (String(url).includes('stable_token')) return new Response(JSON.stringify({ access_token: 'offline-token', expires_in: 7200 }));
+      call++;
+      if (call === 1) return new Response(JSON.stringify({ errcode: 40003, errmsg: 'invalid openid' }));
+      sent.push(JSON.parse(String(options?.body))); return new Response(JSON.stringify({ errcode: 0 }));
+    }) as typeof fetch;
+    await service.notifyNightManagerNewOrder({ orderId: 'night-order', staffId: 'manager', campusId: 'campus', orderNo: 'YX-test', amountFen: 600, buildingName: '9栋' });
+    // 服务号失败（call 1），订阅消息照发（call 2）
+    expect(subscribe(sent)).toBe(true);
+    function subscribe(list: Array<Record<string, unknown>>) {
+      return list.some(s => s.touser === 'test-manager-openid');
+    }
+  });
 });
